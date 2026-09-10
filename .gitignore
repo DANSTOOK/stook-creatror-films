@@ -7,3 +7,4 @@ release/
 .vite/
 .e2e-tmp/
 dist-e2e/
+.ui-tmp/

@@ -8,7 +8,43 @@ Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
 Cifras de referencia al día de hoy: **176 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo** contra un vídeo real.
+comprobaciones de extremo a extremo** y **12/12 comprobaciones de interfaz**,
+todas contra un vídeo real.
+
+---
+
+## v0.8 — La interfaz por fin se prueba sola
+`(en curso)` · 2026-09-10
+
+Hasta ahora todas las pruebas ejercitaban **el código que la interfaz llama**,
+nunca la interfaz. El botón de importar y el diálogo de exportación **jamás se
+habían pulsado** en una ejecución automatizada.
+
+### Añadido
+- **Prueba de interfaz con Playwright** (`npm run test:ui`). Abre la ventana de
+  Electron de verdad y la maneja: importar, llevar a la línea de tiempo,
+  seleccionar el clip, abrir el diálogo, exportar.
+  - Los diálogos nativos viven en el proceso principal y no se pueden
+    interceptar desde la página, así que se **sustituyen** por
+    `electronApp.evaluate`, que es el método que Playwright documenta para esto.
+  - Instalado sin descargar navegadores (`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`):
+    para Electron no hacen falta.
+  - **12/12**, incluido *cero errores de consola durante toda la sesión*.
+  - *Comprobado con tu vídeo real y con material generado.* El archivo que sale
+    del diálogo lleva vídeo H.264 **y audio AAC**.
+
+### Nota de proceso: una prueba que pasó por el motivo equivocado
+La primera versión daba 10/10 — y era mentira. Pedía exportar 12 fotogramas y
+el archivo salía de **60 segundos**.
+
+Buscaba los campos numéricos en toda la página, y el Inspector estaba abierto
+detrás con los suyos. Los índices caían en el Inspector, así que el rango de
+exportación nunca se tocaba **y de paso se editaba la transformación del clip**.
+Todas las demás comprobaciones seguían pasando.
+
+Arreglado acotando las búsquedas al diálogo y, sobre todo, **añadiendo la
+comprobación que lo habría cazado**: que la duración del archivo corresponda al
+rango pedido. Ahora da 0,40 s para 12 fotogramas.
 
 ---
 
@@ -253,9 +289,9 @@ Cosas implementadas de las que **no puedo afirmar que funcionen**:
   oculto estrangula el bucle de animación y no pude medirlo en vivo.
 - **Que el audio suene.** Está medido que hay señal y que está alineada, pero
   no puedo oír la salida.
-- **La interfaz dentro de Electron.** Las pruebas ejercitan las mismas funciones
-  que llama el diálogo, pero **el diálogo en sí nunca se ha ejecutado**. Ni el
-  botón de importar, ni los menús contextuales, ni los atajos.
+- **Menús contextuales y atajos de teclado dentro de Electron.** La prueba de
+  interfaz cubre importar y exportar, pero no los menús con clic derecho ni los
+  atajos.
 - **El empaquetado** (`npm run dist`, electron-builder). Nunca ejecutado.
 
 ## Problemas conocidos
