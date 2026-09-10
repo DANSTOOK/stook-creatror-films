@@ -6,7 +6,7 @@ import { MediaLibrary } from './components/MediaLibrary';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
-import { useEditorShortcuts } from './hooks/useTransport';
+import { useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
 import { hasNativeBridge, rehydrateAssets } from './media/importMedia';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
@@ -17,6 +17,8 @@ import type { ProjectDocument } from './store/types';
  * viewport, inspector) with the timeline docked underneath.
  */
 export default function App(): JSX.Element {
+  // The clock advances the playhead and must exist exactly once in the tree.
+  usePlaybackClock();
   useEditorShortcuts();
   useAudioPlayback();
 

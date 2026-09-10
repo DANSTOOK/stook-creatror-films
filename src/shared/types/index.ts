@@ -106,8 +106,19 @@ export interface Track {
   order: number;
 }
 
+/** Frame rates offered in the project settings UI. */
+export const COMMON_FPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60] as const;
+
 export interface ProjectState {
-  fps: 24 | 30 | 60;
+  /**
+   * Timeline frame rate.
+   *
+   * Widened from the original `24 | 30 | 60` on purpose: 25 and 50 fps (PAL)
+   * and the 23.976/29.97 pulldown rates are ordinary source material, and
+   * forcing them onto one of three values resamples the footage silently -
+   * which reads to the eye as the export having "lost" frames.
+   */
+  fps: number;
   width: number;
   height: number;
   durationFrames: number;
@@ -142,6 +153,8 @@ export interface MediaAsset {
   width: number;
   height: number;
   hasAlphaChannel: boolean;
+  /** Frame rate of the source material, when it could be determined. */
+  sourceFps?: number;
   /** Data URL of a poster frame, when one has been decoded. */
   thumbnailUri?: string;
   /** Set when a reopened project could not restore this asset from disk. */

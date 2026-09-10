@@ -195,6 +195,42 @@ Deleting a track takes its clips with it, and the menu says how many
 (`Delete track (3 clips)`) rather than asking for confirmation - every one of
 these actions is a normal undoable transaction.
 
+## Frame rate
+
+The project takes its frame rate and resolution from the **first clip
+imported** into an empty project - the "new sequence from clip" behaviour every
+NLE has. Without it the project sat at its 30 fps default and 60 fps footage was
+silently halved on export, which looks exactly like the editor losing frames.
+
+`ProjectState.fps` is a `number`, deliberately widened from the original
+`24 | 30 | 60`: 25 and 50 fps (PAL) and the 23.976/29.97 pulldown rates are
+ordinary source material, and snapping them to one of three values resamples
+footage for no reason.
+
+Two sources of truth, in order of preference:
+
+1. **ffmpeg**, parsed from the stream summary it prints for a file. `ffprobe`
+   is not bundled with `ffmpeg-static`, so the previous ffprobe-based probe
+   never actually ran.
+2. **Measurement**, for files dropped in with no path on disk:
+   `requestVideoFrameCallback` reports the media time of each presented frame,
+   and the median gap between them is the frame interval. The result is snapped
+   to a standard rate within 4%, since a project running at 29.9994 fps would
+   drift against its audio.
+
+## Playback speed
+
+The clock and the transport commands are separate hooks on purpose.
+`usePlaybackClock` owns the `requestAnimationFrame` loop that advances the
+playhead and must be mounted **exactly once**, by `App`; `useTransport` is
+effect-free and safe to call anywhere.
+
+This is not hypothetical tidiness. `useTransport` originally owned the loop and
+was called from two components, so two loops advanced the same playhead and
+everything played at exactly double speed. `usePlaybackClock` now counts its own
+mounts and logs an error if a second one appears, because "everything is too
+fast" is very hard to trace back to a duplicated hook.
+
 ## Playback smoothness
 
 A video element drops below `HAVE_CURRENT_DATA` whenever it seeks or rebuffers.
@@ -268,8 +304,16 @@ half, grades only the right half to greyscale, animates a transparent sprite
 across the frame with eased keyframes, then exports twice: an MP4, and a PNG
 sequence with the video track hidden (the Godot sprite path).
 
-13 checks: edit arithmetic, no blank composites, MP4 codec / resolution / fps /
-duration, PNG count / size / colour type 6, and surviving soft alpha edges.
+14 checks: edit arithmetic, no blank composites, no duplicated frames, MP4 codec
+/ resolution / fps / duration, PNG count / size / colour type 6, and surviving
+soft alpha edges.
+
+**Export throughput, measured** (640x360, software rendering under SwiftShader,
+so a floor rather than a typical figure): 17.2 fps, of which 52.1 ms/frame is
+the renderer and 5.7 ms/frame is the IPC and FFmpeg pipe together. The
+bottleneck is seeking an `HTMLVideoElement` once per frame, not encoding.
+Sequential decoding through a WebCodecs `VideoDecoder` is the real fix and has
+not been done.
 
 **It found a real bug on its first run.** Exactly half the frames composited
 blank - the graded half. `gl.getError()` returned `0x502`
@@ -282,7 +326,7 @@ could have caught this: it needs a real GL context.
 
 ## Tests
 
-129 unit tests across seven suites, run with `npm test`:
+155 unit tests across nine suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track

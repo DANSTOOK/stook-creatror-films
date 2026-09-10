@@ -80,6 +80,8 @@ export interface RawImport {
   name: string;
   blob: Blob;
   sourcePath?: string;
+  /** Frame rate from ffmpeg, which is more authoritative than measuring. */
+  hintFps?: number;
 }
 
 /**
@@ -109,8 +111,31 @@ export async function buildAsset(input: RawImport, fps: number): Promise<MediaAs
     width: probe.width,
     height: probe.height,
     hasAlphaChannel: probe.hasAlphaChannel,
+    ...(input.hintFps || probe.fps ? { sourceFps: input.hintFps ?? probe.fps } : {}),
     ...(probe.thumbnailUri ? { thumbnailUri: probe.thumbnailUri } : {}),
   };
+}
+
+/**
+ * Project settings a freshly imported asset implies.
+ *
+ * An empty project has no opinion yet, so the first clip in decides - the same
+ * "new sequence from clip" behaviour every NLE has. Without this the project
+ * stays at its 30 fps default and 60 fps footage is silently halved.
+ */
+export function settingsFromAsset(
+  asset: MediaAsset,
+): { fps?: number; width?: number; height?: number } | null {
+  if (asset.kind === 'audio') return null;
+
+  const settings: { fps?: number; width?: number; height?: number } = {};
+  if (asset.sourceFps && asset.sourceFps > 0) settings.fps = asset.sourceFps;
+  if (asset.width > 0 && asset.height > 0) {
+    settings.width = asset.width;
+    settings.height = asset.height;
+  }
+
+  return Object.keys(settings).length > 0 ? settings : null;
 }
 
 export interface ImportOutcome {
@@ -165,9 +190,24 @@ export async function importFromDialog(fps: number): Promise<ImportOutcome> {
 
   for (const file of picked) {
     try {
-      const bytes = await window.filmora.readFile(file.path);
+      const [bytes, probe] = await Promise.all([
+        window.filmora.readFile(file.path),
+        // ffmpeg knows the exact rate; measuring is the fallback for drops.
+        window.filmora.probeMedia(file.path).catch(() => null),
+      ]);
       const blob = new Blob([bytes], { type: mimeForFile(file.name) });
-      assets.push(await buildAsset({ name: file.name, blob, sourcePath: file.path }, fps));
+
+      assets.push(
+        await buildAsset(
+          {
+            name: file.name,
+            blob,
+            sourcePath: file.path,
+            ...(probe?.fps ? { hintFps: probe.fps } : {}),
+          },
+          fps,
+        ),
+      );
     } catch (error) {
       rejected.push({
         name: file.name,

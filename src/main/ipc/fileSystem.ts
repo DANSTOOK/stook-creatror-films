@@ -37,77 +37,71 @@ function assertAllowed(path: string): void {
   }
 }
 
-interface FfprobeStream {
-  codec_type?: string;
-  codec_name?: string;
-  width?: number;
-  height?: number;
-  pix_fmt?: string;
-  r_frame_rate?: string;
-  duration?: string;
-}
-
-/** ffprobe ships alongside ffmpeg in most builds; fall back to the same dir. */
-function resolveFfprobePath(): string {
-  const ffmpeg = resolveFfmpegPath();
-  return ffmpeg === 'ffmpeg' ? 'ffprobe' : ffmpeg.replace(/ffmpeg(\.exe)?$/i, 'ffprobe$1');
-}
-
 /** Pixel formats whose names encode an alpha plane. */
 const hasAlphaPixelFormat = (pixelFormat: string | undefined): boolean =>
   pixelFormat !== undefined && /a$|^(yuva|rgba|bgra|argb|abgr|gbrap|pal8)/i.test(pixelFormat);
 
+/**
+ * Parse the stream summary ffmpeg prints on stderr.
+ *
+ * `ffmpeg-static` bundles ffmpeg but NOT ffprobe, and requiring ffprobe on PATH
+ * meant this probe effectively never ran. ffmpeg reports everything needed here
+ * when asked to open a file with no output, so the bundled binary is enough.
+ *
+ * Exported for tests: the parsing is the part worth pinning down.
+ */
+export function parseFfmpegBanner(stderr: string, path: string): MediaProbe {
+  const duration = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(stderr);
+  const video =
+    /Stream #\d+:\d+.*?: Video:\s*([a-zA-Z0-9_]+)[^\n]*?,\s*([a-z0-9]+)(?:\([^)]*\))?,\s*(\d{2,5})x(\d{2,5})/.exec(
+      stderr,
+    );
+  const fpsMatch = /,\s*(\d+(?:\.\d+)?)\s*fps/.exec(stderr);
+  const audio = /Stream #\d+:\d+.*?: Audio:\s*([a-zA-Z0-9_]+)/.exec(stderr);
+
+  const fps = fpsMatch ? Number(fpsMatch[1]) : 30;
+
+  return {
+    path,
+    durationSeconds: duration
+      ? Number(duration[1]) * 3600 + Number(duration[2]) * 60 + Number(duration[3])
+      : 0,
+    width: video ? Number(video[3]) : 0,
+    height: video ? Number(video[4]) : 0,
+    fps: Number.isFinite(fps) && fps > 0 ? fps : 30,
+    hasAlphaChannel: hasAlphaPixelFormat(video?.[2]),
+    hasAudio: audio !== null,
+    codec: video?.[1] ?? audio?.[1] ?? 'unknown',
+  };
+}
+
 async function probeMedia(path: string): Promise<MediaProbe> {
   assertAllowed(path);
 
-  const fallback: MediaProbe = {
-    path,
-    durationSeconds: 0,
-    width: 0,
-    height: 0,
-    fps: 30,
-    hasAlphaChannel: IMAGE_EXTENSIONS.has(extname(path).toLowerCase()),
-    hasAudio: false,
-    codec: 'unknown',
-  };
-
   try {
-    const { stdout } = await execFileAsync(resolveFfprobePath(), [
-      '-v',
-      'error',
-      '-print_format',
-      'json',
-      '-show_format',
-      '-show_streams',
-      path,
-    ]);
+    // Opening a file with no output makes ffmpeg print the stream summary and
+    // exit non-zero, so the information arrives via the thrown error.
+    await execFileAsync(resolveFfmpegPath(), ['-hide_banner', '-i', path], {
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return parseFfmpegBanner('', path);
+  } catch (error) {
+    const stderr = String((error as { stderr?: string }).stderr ?? '');
+    if (stderr.includes('Stream #') || stderr.includes('Duration:')) {
+      return parseFfmpegBanner(stderr, path);
+    }
 
-    const parsed = JSON.parse(stdout) as {
-      streams?: FfprobeStream[];
-      format?: { duration?: string };
-    };
-
-    const streams = parsed.streams ?? [];
-    const video = streams.find((stream) => stream.codec_type === 'video');
-    const audio = streams.find((stream) => stream.codec_type === 'audio');
-
-    const [numerator, denominator] = (video?.r_frame_rate ?? '30/1').split('/').map(Number);
-    const fps = denominator > 0 ? numerator / denominator : 30;
-
+    // Genuinely unreadable: the renderer still imports using element metadata.
     return {
       path,
-      durationSeconds: Number(parsed.format?.duration ?? video?.duration ?? 0),
-      width: video?.width ?? 0,
-      height: video?.height ?? 0,
-      fps: Number.isFinite(fps) && fps > 0 ? fps : 30,
-      hasAlphaChannel: hasAlphaPixelFormat(video?.pix_fmt),
-      hasAudio: audio !== undefined,
-      codec: video?.codec_name ?? audio?.codec_name ?? 'unknown',
+      durationSeconds: 0,
+      width: 0,
+      height: 0,
+      fps: 30,
+      hasAlphaChannel: IMAGE_EXTENSIONS.has(extname(path).toLowerCase()),
+      hasAudio: false,
+      codec: 'unknown',
     };
-  } catch {
-    // ffprobe is best-effort: an un-probeable file still imports, the renderer
-    // just falls back to element metadata.
-    return fallback;
   }
 }
 

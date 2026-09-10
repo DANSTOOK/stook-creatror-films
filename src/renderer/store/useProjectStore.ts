@@ -21,6 +21,7 @@ import {
   trimClipStart,
 } from '@renderer/components/Timeline/timelineOps';
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
+import { settingsFromAsset } from '@renderer/media/importMedia';
 import { createSnapshotCommand, useHistoryStore } from './useHistoryStore';
 import {
   DEFAULT_EXPORT_SETTINGS,
@@ -51,6 +52,8 @@ interface ProjectStore {
   assets: MediaAsset[];
   ui: EditorUiState;
   exportSettings: ExportSettings;
+  /** Name of the clip whose settings the project adopted, for the UI to report. */
+  adoptedSettingsFrom: string | null;
 
   /* Document ------------------------------------------------------------- */
   newProject(width?: number, height?: number, fps?: ProjectState['fps']): void;
@@ -125,6 +128,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   assets: [],
   ui: { ...DEFAULT_UI_STATE },
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
+  adoptedSettingsFrom: null,
 
   /* Document ------------------------------------------------------------- */
 
@@ -532,7 +536,40 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const existing = new Set(get().assets.map((asset) => asset.uri));
     const fresh = assets.filter((asset) => !existing.has(asset.uri));
     if (fresh.length === 0) return;
+
+    const wasEmpty = get().assets.length === 0 && Object.keys(get().project.clips).length === 0;
     set({ assets: [...get().assets, ...fresh] });
+
+    // "New sequence from clip": an untouched project takes its frame rate and
+    // resolution from the first thing imported, so 60 fps footage is not
+    // silently resampled to the 30 fps default.
+    if (!wasEmpty) return;
+
+    const settings = fresh
+      .map(settingsFromAsset)
+      .find((entry): entry is NonNullable<ReturnType<typeof settingsFromAsset>> => entry !== null);
+    if (!settings) return;
+
+    const project = get().project;
+    const fps = settings.fps ?? project.fps;
+
+    set({
+      project: {
+        ...project,
+        fps,
+        width: settings.width ?? project.width,
+        height: settings.height ?? project.height,
+        // durationFrames is expressed in frames, so it has to follow the rate.
+        durationFrames: Math.round((project.durationFrames / project.fps) * fps),
+      },
+      exportSettings: {
+        ...get().exportSettings,
+        fps,
+        width: settings.width ?? project.width,
+        height: settings.height ?? project.height,
+      },
+      adoptedSettingsFrom: fresh[0]?.name ?? null,
+    });
   },
 
   removeAsset(assetId) {

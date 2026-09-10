@@ -32,7 +32,13 @@ export interface E2EResult {
     rightDuration: number;
     totalFrames: number;
   };
-  render?: { framesRendered: number; nonBlankFrames: number; spriteAlphaPixels: number };
+  render?: {
+    framesRendered: number;
+    nonBlankFrames: number;
+    spriteAlphaPixels: number;
+    duplicateFrames: number;
+    exportFps: number;
+  };
 }
 
 const log: string[] = [];
@@ -185,18 +191,53 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
     const gl = renderer.compositor.context;
     const glErrors: number[] = [];
 
+    /** Cheap content hash, enough to spot a frame that never advanced. */
+    const hashFrame = (bytes: Uint8Array): number => {
+      let hash = 2166136261;
+      for (let i = 0; i < bytes.length; i += 997) {
+        hash = Math.imul(hash ^ bytes[i], 16777619);
+      }
+      return hash >>> 0;
+    };
+
+    let previousHash: number | null = null;
+    let duplicateFrames = 0;
+    let renderMs = 0;
+    let encodeMs = 0;
+    const exportStarted = performance.now();
+
     for (let frame = startFrame; frame < endFrame; frame += 1) {
+      const renderStart = performance.now();
       const rgba = await renderer.renderExact(project, frame, false);
+      renderMs += performance.now() - renderStart;
+
       framesRendered += 1;
       // A frame that is entirely transparent means the composite produced
       // nothing, which would make the whole export meaningless.
       if (rgba.some((byte) => byte !== 0)) nonBlankFrames += 1;
 
+      // A duplicate means the decoder had not reached the requested frame, so
+      // the export silently repeats pictures and looks like a lower frame rate.
+      const hash = hashFrame(rgba);
+      if (previousHash !== null && hash === previousHash) duplicateFrames += 1;
+      previousHash = hash;
+
       const error = gl.getError();
       if (error !== gl.NO_ERROR && !glErrors.includes(error)) glErrors.push(error);
 
+      const encodeStart = performance.now();
       await window.filmora.exportFrame(mp4Job.jobId, rgba.buffer as ArrayBuffer);
+      encodeMs += performance.now() - encodeStart;
     }
+
+    const totalMs = performance.now() - exportStarted;
+    step(
+      `export timing: ${(totalMs / 1000).toFixed(1)}s total, ` +
+        `${(framesRendered / (totalMs / 1000)).toFixed(1)} fps ` +
+        `(render ${(renderMs / framesRendered).toFixed(1)}ms/frame, ` +
+        `pipe ${(encodeMs / framesRendered).toFixed(1)}ms/frame)`,
+    );
+    step(`duplicate frames: ${duplicateFrames}/${framesRendered}`);
     if (glErrors.length > 0) {
       step(`GL errors during render: ${glErrors.map((e) => `0x${e.toString(16)}`).join(', ')}`);
     }
@@ -258,7 +299,13 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
         rightDuration: right.durationFrames,
         totalFrames: endFrame - startFrame,
       },
-      render: { framesRendered, nonBlankFrames, spriteAlphaPixels },
+      render: {
+        framesRendered,
+        nonBlankFrames,
+        spriteAlphaPixels,
+        duplicateFrames,
+        exportFps: Number((framesRendered / (totalMs / 1000)).toFixed(2)),
+      },
     };
   } catch (error) {
     return {

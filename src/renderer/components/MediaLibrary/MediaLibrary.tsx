@@ -32,6 +32,7 @@ export function MediaLibrary(): JSX.Element {
   const addAssets = useProjectStore((state) => state.addAssets);
   const removeAsset = useProjectStore((state) => state.removeAsset);
   const addAssetToTimeline = useProjectStore((state) => state.addAssetToTimeline);
+  const adoptedFrom = useProjectStore((state) => state.adoptedSettingsFrom);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
@@ -165,6 +166,13 @@ export function MediaLibrary(): JSX.Element {
         <p className="flex items-start gap-1.5 border-b border-panel-700 bg-amber-950/40 px-3 py-2 text-2xs text-amber-300">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
           {notice}
+        </p>
+      )}
+
+      {adoptedFrom && (
+        <p className="border-b border-panel-700 bg-panel-800 px-3 py-2 text-2xs text-slate-400">
+          Project set to {project.width}x{project.height} @ {project.fps} fps from{' '}
+          <span className="text-slate-300">{adoptedFrom}</span>.
         </p>
       )}
 

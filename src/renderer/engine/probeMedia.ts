@@ -16,6 +16,98 @@ export interface ElementProbe {
   hasAlphaChannel: boolean;
   /** Data URL poster frame, absent for audio and on decode failure. */
   thumbnailUri?: string;
+  /** Measured source frame rate, absent when it could not be determined. */
+  fps?: number;
+}
+
+/** Frame rates worth snapping a noisy measurement onto. */
+const STANDARD_RATES = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120];
+
+/**
+ * Snap a measured rate to the nearest standard one, within 4%.
+ *
+ * Measuring from presentation timestamps is accurate but not exact, and a
+ * project running at 29.9994 fps instead of 30 would drift against its audio.
+ */
+export function snapFrameRate(measured: number): number {
+  if (!Number.isFinite(measured) || measured <= 0) return 0;
+
+  let best = measured;
+  let bestError = Infinity;
+  for (const rate of STANDARD_RATES) {
+    const error = Math.abs(rate - measured) / rate;
+    if (error < bestError) {
+      bestError = error;
+      best = rate;
+    }
+  }
+  return bestError <= 0.04 ? best : Math.round(measured * 1000) / 1000;
+}
+
+interface FrameMetadata {
+  mediaTime: number;
+}
+
+type FrameCallbackVideo = HTMLVideoElement & {
+  requestVideoFrameCallback?(callback: (now: number, metadata: FrameMetadata) => void): number;
+  cancelVideoFrameCallback?(handle: number): void;
+};
+
+/**
+ * Derive the frame rate from the presentation timestamps of real decoded
+ * frames.
+ *
+ * `HTMLVideoElement` exposes no frame rate, and a dropped file has no path for
+ * ffmpeg to inspect - but `requestVideoFrameCallback` reports the media time of
+ * each frame the decoder actually presents, and the gap between them IS the
+ * frame interval.
+ */
+async function measureFrameRate(video: FrameCallbackVideo): Promise<number | undefined> {
+  if (typeof video.requestVideoFrameCallback !== 'function') return undefined;
+
+  return new Promise<number | undefined>((resolve) => {
+    const mediaTimes: number[] = [];
+    let handle = 0;
+    let settled = false;
+
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.cancelVideoFrameCallback?.(handle);
+      video.pause();
+
+      const deltas: number[] = [];
+      for (let i = 1; i < mediaTimes.length; i += 1) {
+        const delta = mediaTimes[i] - mediaTimes[i - 1];
+        if (delta > 0.0005) deltas.push(delta);
+      }
+      if (deltas.length < 3) {
+        resolve(undefined);
+        return;
+      }
+
+      // The median rejects the outliers a decoder start-up produces.
+      deltas.sort((a, b) => a - b);
+      const median = deltas[Math.floor(deltas.length / 2)];
+      resolve(snapFrameRate(1 / median) || undefined);
+    };
+
+    const timer = setTimeout(finish, 2000);
+
+    const onFrame = (_now: number, metadata: FrameMetadata): void => {
+      mediaTimes.push(metadata.mediaTime);
+      if (mediaTimes.length >= 15) {
+        finish();
+        return;
+      }
+      handle = video.requestVideoFrameCallback!(onFrame);
+    };
+
+    video.muted = true;
+    handle = video.requestVideoFrameCallback!(onFrame);
+    void video.play().catch(() => finish());
+  });
 }
 
 /** How long to wait for metadata before giving up on a source. */
@@ -170,6 +262,9 @@ export async function probeMediaElement(uri: string, kind: MediaKind): Promise<E
   video.src = uri;
   await waitForMetadata(video);
 
+  // Measured before the poster seek, since it plays the video briefly.
+  const fps = await measureFrameRate(video);
+
   // Frame zero of a real clip is often black or a fade-in, so the poster comes
   // from a little way in. A seek failure just leaves the first frame in place.
   if (Number.isFinite(video.duration) && video.duration > 0.5) {
@@ -188,6 +283,7 @@ export async function probeMediaElement(uri: string, kind: MediaKind): Promise<E
     durationSeconds: Number.isFinite(video.duration) ? video.duration : 0,
     width: video.videoWidth,
     height: video.videoHeight,
+    ...(fps ? { fps } : {}),
     ...sampleFrame(video, video.videoWidth, video.videoHeight),
   };
 }

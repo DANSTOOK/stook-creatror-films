@@ -179,6 +179,10 @@ async function main() {
     String(result.render.framesRendered));
   check('no frame composited blank', result.render.nonBlankFrames === result.render.framesRendered,
     `${result.render.nonBlankFrames}/${result.render.framesRendered}`);
+  // A duplicate means the decoder had not caught up, which reads as a lower
+  // frame rate in the finished file.
+  check('no duplicated frames', result.render.duplicateFrames === 0,
+    `${result.render.duplicateFrames} duplicates`);
 
   /* The MP4 -------------------------------------------------------------- */
   const mp4Stat = await stat(paths.mp4);
