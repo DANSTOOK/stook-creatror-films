@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react';
 import { AlertTriangle, FileVideo, Image as ImageIcon, Import, Music, Plus, Trash2, Upload } from 'lucide-react';
 import type { MediaAsset, MediaKind } from '@shared/types';
+import { ContextMenu, useContextMenu } from '@renderer/components/ContextMenu';
 import {
   ACCEPT_ATTRIBUTE,
   appendPosition,
@@ -33,6 +34,7 @@ export function MediaLibrary(): JSX.Element {
   const addAssetToTimeline = useProjectStore((state) => state.addAssetToTimeline);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const [busy, setBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -187,6 +189,23 @@ export function MediaLibrary(): JSX.Element {
                 <li
                   key={asset.id}
                   className="group flex items-center gap-2 rounded border border-transparent px-2 py-2 hover:border-panel-600 hover:bg-panel-800"
+                  onContextMenu={(event) =>
+                    openMenu(event, [
+                      {
+                        label: 'Add to timeline',
+                        icon: Plus,
+                        disabled: asset.missing,
+                        onSelect: () => appendToTimeline(asset),
+                      },
+                      { separator: true },
+                      {
+                        label: 'Remove from library',
+                        icon: Trash2,
+                        danger: true,
+                        onSelect: () => removeAsset(asset.id),
+                      },
+                    ])
+                  }
                 >
                   {asset.thumbnailUri ? (
                     <img
@@ -269,6 +288,8 @@ export function MediaLibrary(): JSX.Element {
           straight to a game engine.
         </p>
       </footer>
+
+      {menu && <ContextMenu {...menu} onClose={closeMenu} />}
     </aside>
   );
 }

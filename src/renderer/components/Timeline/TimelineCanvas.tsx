@@ -38,6 +38,7 @@ export interface TimelineCanvasProps {
   onPointerDown(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerMove(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerUp(event: React.PointerEvent<HTMLCanvasElement>): void;
+  onContextMenu(event: React.MouseEvent<HTMLCanvasElement>): void;
 }
 
 /** Vertical offset of a track row inside the canvas. */
@@ -340,6 +341,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       onPointerDown={props.onPointerDown}
       onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp}
+      onContextMenu={props.onContextMenu}
     />
   );
 }

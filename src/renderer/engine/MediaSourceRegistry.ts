@@ -12,12 +12,16 @@ import type { MediaAsset } from '@shared/types';
 export type MediaElement = HTMLVideoElement | HTMLImageElement;
 
 /** Playback drift beyond this many seconds is corrected by a hard seek. */
-const MAX_DRIFT_SECONDS = 0.2;
+const MAX_DRIFT_SECONDS = 0.25;
+
+/** Minimum gap between two drift corrections on the same element. */
+const MIN_CORRECTION_INTERVAL_MS = 600;
 
 export class MediaSourceRegistry {
   private readonly elements = new Map<string, MediaElement>();
   private readonly kinds = new Map<string, MediaAsset['kind']>();
   private readonly ready = new Set<string>();
+  private readonly lastCorrection = new Map<string, number>();
 
   register(asset: MediaAsset): MediaElement {
     const existing = this.elements.get(asset.uri);
@@ -64,29 +68,47 @@ export class MediaSourceRegistry {
    *
    * While playing, the element runs on its own clock and is nudged only when it
    * drifts; while paused, every scrub is an explicit seek.
+   *
+   * Corrections are rate limited on purpose. Every assignment to `currentTime`
+   * starts a seek, during which the element drops below HAVE_CURRENT_DATA - so
+   * a correction on each animation frame would keep the decoder permanently
+   * mid-seek and make playback stutter rather than smooth it out.
    */
   syncToFrame(uri: string, sourceFrame: number, fps: number, playing: boolean): void {
     const element = this.elements.get(uri);
     if (!(element instanceof HTMLVideoElement)) return;
 
-    const targetSeconds = Math.max(0, sourceFrame / fps);
+    const duration = Number.isFinite(element.duration) ? element.duration : Infinity;
+    // Seeking past the end never completes, so the target is clamped inside it.
+    const targetSeconds = Math.max(0, Math.min(sourceFrame / fps, duration - 1 / fps));
 
     if (!playing) {
       if (!element.paused) element.pause();
-      if (Math.abs(element.currentTime - targetSeconds) > 0.5 / fps) {
+      // A paused scrub is an explicit request, but re-seeking to the frame that
+      // is already displayed would restart the decoder for nothing.
+      if (!element.seeking && Math.abs(element.currentTime - targetSeconds) > 0.5 / fps) {
         element.currentTime = targetSeconds;
       }
       return;
     }
 
     if (element.paused) {
-      element.currentTime = targetSeconds;
+      if (Math.abs(element.currentTime - targetSeconds) > MAX_DRIFT_SECONDS) {
+        element.currentTime = targetSeconds;
+      }
       void element.play().catch(() => undefined);
+      this.lastCorrection.set(uri, performance.now());
       return;
     }
 
+    if (element.seeking) return;
+
+    const since = performance.now() - (this.lastCorrection.get(uri) ?? 0);
+    if (since < MIN_CORRECTION_INTERVAL_MS) return;
+
     if (Math.abs(element.currentTime - targetSeconds) > MAX_DRIFT_SECONDS) {
       element.currentTime = targetSeconds;
+      this.lastCorrection.set(uri, performance.now());
     }
   }
 
@@ -119,6 +141,7 @@ export class MediaSourceRegistry {
     this.elements.delete(uri);
     this.kinds.delete(uri);
     this.ready.delete(uri);
+    this.lastCorrection.delete(uri);
   }
 
   dispose(): void {

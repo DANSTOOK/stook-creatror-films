@@ -86,22 +86,34 @@ export class FrameRenderer {
   }
 
   private uploadFor(clip: Clip, fps: number, pixelArtViewport: boolean): ClipSource | null {
-    if (!this.media.isReady(clip.sourceUri)) return null;
-
     const element = this.media.get(clip.sourceUri);
     if (!element) return null;
+
+    const gl = this.compositor.context;
+    const applyFilter = (): void => {
+      this.textures.setFilter(
+        clip.sourceUri,
+        clip.pixelArt.enabled || pixelArtViewport ? gl.NEAREST : gl.LINEAR,
+      );
+    };
+
+    // A video element drops below HAVE_CURRENT_DATA while it seeks or rebuffers.
+    // Dropping the layer for those frames is what makes playback flicker, so the
+    // last decoded frame is held instead. Only a source that has never produced
+    // a frame contributes nothing.
+    if (!this.media.isReady(clip.sourceUri)) {
+      const cached = this.textures.get(clip.sourceUri);
+      if (!cached) return null;
+      applyFilter();
+      return { texture: cached, flipY: true };
+    }
 
     const texture = this.textures.upload(
       clip.sourceUri,
       element,
       this.media.revision(clip.sourceUri, fps),
     );
-
-    const gl = this.compositor.context;
-    this.textures.setFilter(
-      clip.sourceUri,
-      clip.pixelArt.enabled || pixelArtViewport ? gl.NEAREST : gl.LINEAR,
-    );
+    applyFilter();
 
     return { texture, flipY: true };
   }

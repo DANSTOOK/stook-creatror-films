@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
   Eye,
   EyeOff,
   Hand,
@@ -7,14 +10,17 @@ import {
   LockOpen,
   Magnet,
   MousePointer2,
+  Pencil,
   Plus,
   Scissors,
+  Trash2,
   Volume2,
   VolumeX,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import type { Clip } from '@shared/types';
+import type { Clip, Track } from '@shared/types';
+import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsOnTrack } from './timelineOps';
@@ -48,6 +54,9 @@ export function Timeline(): JSX.Element {
   const dragRef = useRef<DragMode>({ kind: 'none' });
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
   const [viewportWidth, setViewportWidth] = useState(1200);
+  const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const tracks = [...project.tracks].sort((a, b) => a.order - b.order);
   const contentWidth = Math.max(
@@ -102,8 +111,182 @@ export function Timeline(): JSX.Element {
     [project, tracks, ui.pixelsPerFrame, ui.scrollLeftPx],
   );
 
+  /* Context menus -------------------------------------------------------- */
+
+  const trackMenuItems = useCallback(
+    (track: Track): ContextMenuItem[] => {
+      const state = store.getState();
+      const index = tracks.findIndex((candidate) => candidate.id === track.id);
+      const clipCount = clipsOnTrack(state.project, track.id).length;
+
+      return [
+        {
+          label: 'Rename track',
+          icon: Pencil,
+          onSelect: () => setRenamingTrackId(track.id),
+        },
+        { separator: true },
+        {
+          label: 'Add track above',
+          icon: Plus,
+          onSelect: () => state.addTrackAt(track.type, index),
+        },
+        {
+          label: 'Add track below',
+          icon: Plus,
+          onSelect: () => state.addTrackAt(track.type, index + 1),
+        },
+        { separator: true },
+        {
+          label: 'Move up',
+          icon: ArrowUp,
+          disabled: index === 0,
+          onSelect: () => state.moveTrack(track.id, -1),
+        },
+        {
+          label: 'Move down',
+          icon: ArrowDown,
+          disabled: index === tracks.length - 1,
+          onSelect: () => state.moveTrack(track.id, 1),
+        },
+        { separator: true },
+        {
+          label: track.visible ? 'Hide track' : 'Show track',
+          icon: track.visible ? EyeOff : Eye,
+          onSelect: () => state.updateTrack(track.id, { visible: !track.visible }),
+        },
+        {
+          label: track.muted ? 'Unmute track' : 'Mute track',
+          icon: track.muted ? Volume2 : VolumeX,
+          onSelect: () => state.updateTrack(track.id, { muted: !track.muted }),
+        },
+        {
+          label: track.locked ? 'Unlock track' : 'Lock track',
+          icon: track.locked ? LockOpen : Lock,
+          onSelect: () => state.updateTrack(track.id, { locked: !track.locked }),
+        },
+        { separator: true },
+        {
+          // Saying how much goes with it makes an undoable delete predictable.
+          label: clipCount > 0 ? `Delete track (${clipCount} clips)` : 'Delete track',
+          icon: Trash2,
+          danger: true,
+          disabled: tracks.length <= 1,
+          onSelect: () => state.removeTrack(track.id),
+        },
+      ];
+    },
+    [store, tracks],
+  );
+
+  const clipMenuItems = useCallback(
+    (clip: Clip, frame: number): ContextMenuItem[] => {
+      const state = store.getState();
+      const selected = state.ui.selectedClipIds.includes(clip.id)
+        ? state.ui.selectedClipIds
+        : [clip.id];
+
+      const canSplit = frame > clip.startFrame && frame < clipEndFrame(clip);
+
+      return [
+        {
+          label: 'Split at playhead',
+          icon: Scissors,
+          shortcut: 'B',
+          disabled: !canSplit,
+          onSelect: () => state.razorAtFrame(state.project.currentFrame, [clip.id]),
+        },
+        {
+          label: selected.length > 1 ? `Duplicate ${selected.length} clips` : 'Duplicate',
+          icon: Copy,
+          onSelect: () => state.duplicateClips(selected),
+        },
+        { separator: true },
+        {
+          label: clip.mask.enabled ? 'Disable mask' : 'Enable mask',
+          onSelect: () =>
+            state.updateClip(clip.id, { mask: { ...clip.mask, enabled: !clip.mask.enabled } }),
+        },
+        {
+          label: clip.chromaKey.enabled ? 'Disable chroma key' : 'Enable chroma key',
+          onSelect: () =>
+            state.updateClip(clip.id, {
+              chromaKey: { ...clip.chromaKey, enabled: !clip.chromaKey.enabled },
+            }),
+        },
+        {
+          label: clip.pixelArt.enabled ? 'Disable pixel art' : 'Enable pixel art',
+          onSelect: () =>
+            state.updateClip(clip.id, {
+              pixelArt: { ...clip.pixelArt, enabled: !clip.pixelArt.enabled },
+            }),
+        },
+        { separator: true },
+        {
+          label: selected.length > 1 ? `Delete ${selected.length} clips` : 'Delete clip',
+          icon: Trash2,
+          shortcut: 'Del',
+          danger: true,
+          onSelect: () => state.removeClips(selected),
+        },
+      ];
+    },
+    [store],
+  );
+
+  const emptyAreaMenuItems = useCallback((): ContextMenuItem[] => {
+    const state = store.getState();
+    return [
+      { label: 'Add video track', icon: Plus, onSelect: () => state.addTrack('video') },
+      { label: 'Add audio track', icon: Plus, onSelect: () => state.addTrack('audio') },
+      { label: 'Add text track', icon: Plus, onSelect: () => state.addTrack('text') },
+      { separator: true },
+      {
+        label: 'Split at playhead',
+        icon: Scissors,
+        shortcut: 'B',
+        onSelect: () => state.razorAtFrame(),
+      },
+    ];
+  }, [store]);
+
+  const onCanvasContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+
+      const hit = clipAtPoint(x, y);
+      if (hit) {
+        // Right-clicking an unselected clip selects it first, so the menu acts
+        // on what the user just pointed at.
+        if (!ui.selectedClipIds.includes(hit.clip.id)) {
+          store.getState().selectClips([hit.clip.id]);
+        }
+        openMenu(event, clipMenuItems(hit.clip, project.currentFrame));
+        return;
+      }
+
+      openMenu(event, emptyAreaMenuItems());
+    },
+    [
+      clipAtPoint,
+      clipMenuItems,
+      emptyAreaMenuItems,
+      openMenu,
+      project.currentFrame,
+      store,
+      ui.selectedClipIds,
+    ],
+  );
+
+  /* Pointer interaction -------------------------------------------------- */
+
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
+      // The context menu handler owns right-click entirely.
+      if (event.button !== 0) return;
+
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
       const y = event.clientY - bounds.top;
@@ -199,7 +382,9 @@ export function Timeline(): JSX.Element {
   );
 
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
     dragRef.current = { kind: 'none' };
     setActiveSnap(null);
   }, []);
@@ -240,6 +425,17 @@ export function Timeline(): JSX.Element {
           >
             <Scissors size={14} />
             Split at playhead
+          </button>
+
+          <button
+            type="button"
+            title="Delete selected clips (Del)"
+            className="tool-button hover:text-red-400"
+            disabled={ui.selectedClipIds.length === 0}
+            onClick={() => store.getState().removeClips(ui.selectedClipIds)}
+          >
+            <Trash2 size={14} />
+            Delete
           </button>
 
           <button
@@ -301,13 +497,45 @@ export function Timeline(): JSX.Element {
           {tracks.map((track, index) => (
             <div
               key={track.id}
-              className="flex flex-col justify-center gap-1 border-b border-panel-800 px-2"
+              className="group flex flex-col justify-center gap-1 border-b border-panel-800 px-2 hover:bg-panel-800"
               style={{ height: TRACK_HEIGHT, marginTop: index === 0 ? 0 : TRACK_GAP }}
+              onContextMenu={(event) => openMenu(event, trackMenuItems(track))}
             >
-              <div className="flex items-center justify-between">
-                <span className="truncate text-xs text-slate-300">{track.name}</span>
-                <span className="text-2xs uppercase text-slate-600">{track.type}</span>
+              <div className="flex items-center justify-between gap-1">
+                {renamingTrackId === track.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={track.name}
+                    className="numeric-input h-6"
+                    onBlur={(event) => {
+                      const name = event.target.value.trim();
+                      if (name && name !== track.name) {
+                        store.getState().updateTrack(track.id, { name });
+                      }
+                      setRenamingTrackId(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') event.currentTarget.blur();
+                      if (event.key === 'Escape') setRenamingTrackId(null);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      title="Double-click to rename, right-click for more"
+                      className="min-w-0 flex-1 truncate text-left text-xs text-slate-300"
+                      onDoubleClick={() => setRenamingTrackId(track.id)}
+                    >
+                      {track.name}
+                    </button>
+                    <span className="shrink-0 text-2xs uppercase text-slate-600">
+                      {track.type}
+                    </span>
+                  </>
+                )}
               </div>
+
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -335,6 +563,18 @@ export function Timeline(): JSX.Element {
                 >
                   {track.locked ? <Lock size={13} /> : <LockOpen size={13} />}
                 </button>
+
+                <span className="flex-1" />
+
+                <button
+                  type="button"
+                  className="tool-button h-6 px-1.5 opacity-0 hover:text-red-400 group-hover:opacity-100"
+                  title="Delete track"
+                  disabled={tracks.length <= 1}
+                  onClick={() => store.getState().removeTrack(track.id)}
+                >
+                  <Trash2 size={13} />
+                </button>
               </div>
             </div>
           ))}
@@ -352,9 +592,12 @@ export function Timeline(): JSX.Element {
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onContextMenu={onCanvasContextMenu}
           />
         </div>
       </div>
+
+      {menu && <ContextMenu {...menu} onClose={closeMenu} />}
     </section>
   );
 }

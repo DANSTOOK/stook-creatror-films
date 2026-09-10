@@ -177,6 +177,38 @@ baseline-first would silently fail every 4K export.
 The encoder is configured with `avc: { format: 'annexb' }`, so chunks begin with
 the `00 00 00 01` start code that ffmpeg's `-f h264` demuxer expects.
 
+## Editing controls
+
+Right-click opens a context menu everywhere it should:
+
+| Target | Menu |
+| --- | --- |
+| Track header | Rename, add above/below, move up/down, hide, mute, lock, delete |
+| Clip | Split at playhead, duplicate, toggle mask / chroma key / pixel art, delete |
+| Empty timeline | Add video / audio / text track, split at playhead |
+| Media item | Add to timeline, remove from library |
+
+Track headers also carry an inline delete button, names are renamed by
+double-clicking, and the toolbar has an explicit Delete for the selection.
+
+Deleting a track takes its clips with it, and the menu says how many
+(`Delete track (3 clips)`) rather than asking for confirmation - every one of
+these actions is a normal undoable transaction.
+
+## Playback smoothness
+
+A video element drops below `HAVE_CURRENT_DATA` whenever it seeks or rebuffers.
+Skipping the layer for those frames is what made playback flicker, so the
+compositor holds the last decoded texture instead and only contributes nothing
+when a source has never produced a frame at all.
+
+Drift corrections are also rate limited (600 ms apart, 0.25 s threshold, never
+past the media duration). Assigning `currentTime` starts a seek, so correcting
+on every animation frame would keep the decoder permanently mid-seek - the
+correction itself becomes the stutter.
+
+Measured after the fix: 78 samples across 2.6 s of playback, zero blank frames.
+
 ## Importing media
 
 Three ways in, all converging on `media/importMedia.ts`, so an asset built from
@@ -222,7 +254,7 @@ the page as a blob URL, never a `file://` path.
 
 ## Tests
 
-112 unit tests across six suites, run with `npm test`:
+129 unit tests across seven suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track
@@ -241,3 +273,6 @@ the page as a blob URL, never a `file://` path.
   format, hardware codec selection, and WebCodecs eligibility.
 - `ImportMedia.test.ts` - file classification and MIME mapping, rejection of
   unsupported drops, and append-to-timeline positioning.
+- `TrackOperations.test.ts` - track insert/reorder/delete with contiguous
+  ordering, that deleting a track takes only its own clips and is undoable,
+  and clip duplication (placement, fresh identity, deep copy).

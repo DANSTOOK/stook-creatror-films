@@ -76,14 +76,20 @@ interface ProjectStore {
 
   /* Tracks --------------------------------------------------------------- */
   addTrack(type: TrackType, name?: string): void;
+  /** Insert a track at a specific position, for "add above / add below". */
+  addTrackAt(type: TrackType, order: number, name?: string): void;
   updateTrack(trackId: string, patch: Partial<Track>): void;
   removeTrack(trackId: string): void;
+  /** Move a track up (-1) or down (+1) in the stacking order. */
+  moveTrack(trackId: string, delta: number): void;
 
   /* Clips ---------------------------------------------------------------- */
   addClip(input: CreateClipInput): string;
   addAssetToTimeline(asset: MediaAsset, trackId: string, startFrame: number): string;
   updateClip(clipId: string, patch: Partial<Clip>, mergeKey?: string): void;
   removeClips(clipIds: string[]): void;
+  /** Copy a clip and drop the copy immediately after the original. */
+  duplicateClips(clipIds: string[]): void;
   moveClipTo(clipId: string, trackId: string, startFrame: number): void;
   trimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
   /** Razor tool: split at the playhead. */
@@ -102,6 +108,10 @@ interface ProjectStore {
   /* Export --------------------------------------------------------------- */
   setExportSettings(patch: Partial<ExportSettings>): void;
 }
+
+/** Reassign contiguous order values after an insert, move or delete. */
+const renumber = (tracks: Track[]): Track[] =>
+  tracks.map((track, index) => ({ ...track, order: index }));
 
 /** Keep `durationFrames` at least as long as the content plus a little tail. */
 function withContentLength(project: ProjectState): ProjectState {
@@ -234,6 +244,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }));
   },
 
+  addTrackAt(type, order, name) {
+    get().transact('Add track', (project) => {
+      const ordered = [...project.tracks].sort((a, b) => a.order - b.order);
+      const index = clamp(Math.round(order), 0, ordered.length);
+
+      ordered.splice(index, 0, createTrack(type, index, name));
+      return { ...project, tracks: renumber(ordered) };
+    });
+  },
+
   updateTrack(trackId, patch) {
     get().transact('Update track', (project) => ({
       ...project,
@@ -244,6 +264,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   removeTrack(trackId) {
+    // Deleting a track takes its clips with it. That is undoable like any other
+    // edit, which is why there is no confirmation prompt.
     get().transact('Delete track', (project) => {
       const clips = Object.fromEntries(
         Object.entries(project.clips).filter(([, clip]) => clip.trackId !== trackId),
@@ -251,10 +273,25 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return {
         ...project,
         clips,
-        tracks: project.tracks
-          .filter((track) => track.id !== trackId)
-          .map((track, index) => ({ ...track, order: index })),
+        tracks: renumber(
+          [...project.tracks].sort((a, b) => a.order - b.order).filter((t) => t.id !== trackId),
+        ),
       };
+    });
+    set({ ui: { ...get().ui, selectedClipIds: [], selectedTrackId: null } });
+  },
+
+  moveTrack(trackId, delta) {
+    get().transact('Reorder track', (project) => {
+      const ordered = [...project.tracks].sort((a, b) => a.order - b.order);
+      const index = ordered.findIndex((track) => track.id === trackId);
+      const target = index + delta;
+
+      if (index === -1 || target < 0 || target >= ordered.length) return project;
+
+      const [moved] = ordered.splice(index, 1);
+      ordered.splice(target, 0, moved);
+      return { ...project, tracks: renumber(ordered) };
     });
   },
 
@@ -303,6 +340,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       ),
     }));
     set({ ui: { ...get().ui, selectedClipIds: [] } });
+  },
+
+  duplicateClips(clipIds) {
+    if (clipIds.length === 0) return;
+
+    const copies: Clip[] = [];
+    get().transact('Duplicate clip', (project) => {
+      const clips = { ...project.clips };
+
+      for (const id of clipIds) {
+        const source = project.clips[id];
+        if (!source) continue;
+
+        // The copy lands directly after the original, which is where an editor
+        // expects a duplicate to appear.
+        const startFrame = source.startFrame + source.durationFrames;
+        const copy = moveClip({ ...structuredClone(source), id: createId('clip') }, startFrame);
+
+        clips[copy.id] = copy;
+        copies.push(copy);
+      }
+
+      return { ...project, clips };
+    });
+
+    set({ ui: { ...get().ui, selectedClipIds: copies.map((clip) => clip.id) } });
   },
 
   moveClipTo(clipId, trackId, startFrame) {
