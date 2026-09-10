@@ -1,0 +1,44 @@
+{
+  "name": "filmora-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production-ready desktop video editor with a WebGL2 compositing core, optimized for video editing and transparent sprite-sheet authoring for game engines (Godot).",
+  "main": "dist-electron/main/index.js",
+  "//scripts": "Tools are invoked through node on their real entry points rather than through node_modules/.bin. The generated .cmd/.ps1/sh shims split the path on spaces and on '&', so any checkout under a directory such as 'OneDrive - FEMSA Proximidad & Salud' breaks them. Going direct is shim-free and behaves the same on every platform.",
+  "scripts": {
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "npm run typecheck && node ./node_modules/vite/bin/vite.js build",
+    "dist": "npm run build && node ./node_modules/electron-builder/cli.js",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.node.json",
+    "preview": "node ./node_modules/vite/bin/vite.js preview",
+    "test": "node ./node_modules/vitest/vitest.mjs run",
+    "test:watch": "node ./node_modules/vitest/vitest.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/util": "^0.12.1",
+    "gl-matrix": "^3.4.3",
+    "lucide-react": "^0.446.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "twgl.js": "^5.5.4",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.0.5",
+    "ffmpeg-static": "^5.2.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.7",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^2.1.1"
+  }
+}

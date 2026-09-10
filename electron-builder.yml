@@ -1,0 +1,19 @@
+appId: com.filmoraengine.app
+productName: Filmora Engine
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+win:
+  target: [nsis]
+mac:
+  target: [dmg]
+  category: public.app-category.video
+linux:
+  target: [AppImage]
+  category: AudioVideo

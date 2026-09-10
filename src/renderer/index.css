@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  /* Dark scrollbars, so panels do not flash a light strip. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: theme('colors.panel.950');
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: theme('colors.panel.600');
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: theme('colors.panel.700');
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-panel-900 border border-panel-700 rounded-md overflow-hidden flex flex-col min-h-0;
+  }
+
+  .panel-header {
+    @apply flex items-center gap-2 px-3 h-9 shrink-0 text-xs font-medium uppercase tracking-wide
+           text-slate-400 bg-panel-800 border-b border-panel-700;
+  }
+
+  .tool-button {
+    @apply inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded text-xs
+           text-slate-300 hover:bg-panel-700 hover:text-slate-100
+           disabled:opacity-40 disabled:pointer-events-none transition-colors;
+  }
+
+  .tool-button-active {
+    @apply bg-accent/20 text-accent-hover ring-1 ring-accent/40;
+  }
+
+  .field-label {
+    @apply text-2xs uppercase tracking-wide text-slate-500;
+  }
+
+  .numeric-input {
+    @apply w-full h-7 px-2 rounded bg-panel-950 border border-panel-700 text-xs text-slate-200
+           focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+
+  /* The transparency checkerboard behind the viewport frame. */
+  .alpha-checkerboard {
+    background-color: #1a1f2e;
+    background-image:
+      linear-gradient(45deg, #232a3d 25%, transparent 25%),
+      linear-gradient(-45deg, #232a3d 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #232a3d 75%),
+      linear-gradient(-45deg, transparent 75%, #232a3d 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+}
