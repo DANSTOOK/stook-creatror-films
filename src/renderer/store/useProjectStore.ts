@@ -22,6 +22,7 @@ import {
 } from '@renderer/components/Timeline/timelineOps';
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
 import { settingsFromAsset } from '@renderer/media/importMedia';
+import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { createSnapshotCommand, useHistoryStore } from './useHistoryStore';
 import {
   DEFAULT_EXPORT_SETTINGS,
@@ -567,6 +568,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         fps,
         width: settings.width ?? project.width,
         height: settings.height ?? project.height,
+        // The bitrate has to follow the picture size, or a vertical phone clip
+        // inherits a figure meant for 1080p.
+        bitrateKbps: recommendedBitrateKbps(
+          settings.width ?? project.width,
+          settings.height ?? project.height,
+          fps,
+        ),
       },
       adoptedSettingsFrom: fresh[0]?.name ?? null,
     });

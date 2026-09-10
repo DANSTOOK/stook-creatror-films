@@ -6,6 +6,7 @@ import { mimeForFile, settingsFromAsset } from '@renderer/media/importMedia';
 import { probeMediaElement } from '@renderer/engine/probeMedia';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { createId } from '@shared/utils/id';
+import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 
 /**
  * End-to-end scenario: import, edit, export.
@@ -249,11 +250,15 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
       width,
       height,
       fps,
+      // Mirror what the export dialog does on open. Taking the default here
+      // would exercise a 1080p bitrate on whatever the project actually is.
+      bitrateKbps: recommendedBitrateKbps(width, height, fps),
       startFrame,
       endFrame,
       exportAlpha: false,
       pipeMode: 'rawvideo' as const,
     };
+    step(`bitrate: ${(baseSettings.bitrateKbps / 1000).toFixed(1)} Mbps for ${width}x${height}@${fps}`);
 
     // The dialog picks WebCodecs when the platform supports it; mirroring that
     // here is the difference between testing the export and testing a fallback.

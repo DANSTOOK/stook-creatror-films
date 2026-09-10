@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderOpen, Loader2, X } from 'lucide-react';
 import type { ExportFormat, ExportProgress, HardwareEncoder } from '@shared/types';
+import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -55,6 +56,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       fps: project.fps,
       endFrame: settings.endFrame || project.durationFrames,
       exportAlpha: settings.exportAlpha || project.hasAlphaBackground,
+      bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
     });
 
     void window.filmora.detectEncoders().then(setEncoders);
@@ -63,6 +65,18 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
   }, []);
 
   useEffect(() => window.filmora.onExportProgress(setProgress), []);
+
+  /** Resolution and bitrate move together; one without the other is a trap. */
+  const resize = useCallback(
+    (width: number, height: number) => {
+      setExportSettings({
+        width,
+        height,
+        bitrateKbps: recommendedBitrateKbps(width, height, settings.fps),
+      });
+    },
+    [setExportSettings, settings.fps],
+  );
 
   const chooseOutput = useCallback(async () => {
     const path = await window.filmora.chooseExportPath(settings.format);
@@ -229,7 +243,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
                 type="number"
                 className="numeric-input"
                 value={settings.width}
-                onChange={(event) => setExportSettings({ width: Number(event.target.value) })}
+                onChange={(event) => resize(Number(event.target.value), settings.height)}
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -238,7 +252,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
                 type="number"
                 className="numeric-input"
                 value={settings.height}
-                onChange={(event) => setExportSettings({ height: Number(event.target.value) })}
+                onChange={(event) => resize(settings.width, Number(event.target.value))}
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -260,6 +274,11 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
               />
             </label>
           </div>
+
+          <p className="text-2xs text-slate-500">
+            Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
+            {settings.width}x{settings.height} @ {settings.fps} fps.
+          </p>
 
           <label className="flex flex-col gap-1">
             <span className="field-label">Hardware encoder</span>

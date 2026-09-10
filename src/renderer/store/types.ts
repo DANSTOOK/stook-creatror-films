@@ -7,6 +7,7 @@ import type {
   TrackType,
 } from '@shared/types';
 import { createId } from '@shared/utils/id';
+import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 
 /**
  * Serializable project document plus the editor-only UI state that must NOT be
@@ -66,7 +67,8 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   exportAlpha: false,
   premultiplyAlpha: false,
   pixelArtScaling: false,
-  bitrateKbps: 12000,
+  // Derived from the project size rather than fixed; see recommendedBitrateKbps.
+  bitrateKbps: recommendedBitrateKbps(1920, 1080, 30),
   hardwareEncoder: 'none',
   // Replaced at export time when the platform offers a usable GPU encoder.
   pipeMode: 'rawvideo',
