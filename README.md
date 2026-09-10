@@ -252,6 +252,34 @@ renderer can only read files the user actually chose through a dialog - every
 path is added to an allowlist in the main process first. Imported media reaches
 the page as a blob URL, never a `file://` path.
 
+## End-to-end test
+
+```bash
+npm run test:e2e
+```
+
+Boots real Electron, renders through the real WebGL2 compositor, and pipes into
+the real bundled FFmpeg. Nothing is stubbed, and the runner does not trust the
+harness's own report - it probes the MP4 with ffmpeg and parses the PNG IHDR
+chunks byte by byte.
+
+The scenario imports a generated clip, trims both ends, razors the remainder in
+half, grades only the right half to greyscale, animates a transparent sprite
+across the frame with eased keyframes, then exports twice: an MP4, and a PNG
+sequence with the video track hidden (the Godot sprite path).
+
+13 checks: edit arithmetic, no blank composites, MP4 codec / resolution / fps /
+duration, PNG count / size / colour type 6, and surviving soft alpha edges.
+
+**It found a real bug on its first run.** Exactly half the frames composited
+blank - the graded half. `gl.getError()` returned `0x502`
+(`INVALID_OPERATION`): with no LUT loaded the colour-grading program never
+bound its `sampler3D`, leaving it defaulted to texture unit 0 where the
+`sampler2D` input already lived. WebGL2 rejects a draw whose samplers of
+different types share a unit, so the entire pass was silently dropped. The
+compositor now always binds a 1x1x1 identity texture to that unit. No unit test
+could have caught this: it needs a real GL context.
+
 ## Tests
 
 129 unit tests across seven suites, run with `npm test`:

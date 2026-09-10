@@ -138,6 +138,16 @@ export class Compositor {
   /** Straight-alpha result, the surface `readPixels` reads back. */
   private output: RenderTarget;
 
+  /**
+   * 1x1x1 identity stand-in for the LUT sampler.
+   *
+   * WebGL2 rejects a draw (INVALID_OPERATION) when two samplers of different
+   * types resolve to the same texture unit, and an unset sampler defaults to
+   * unit 0 - where the 2D input texture lives. So the colour-grading program
+   * must always have SOMETHING bound to its sampler3D, LUT or no LUT.
+   */
+  private readonly defaultLutTexture: WebGLTexture;
+
   private width: number;
   private height: number;
   private disposed = false;
@@ -188,6 +198,8 @@ export class Compositor {
     const hasFloatTargets = gl.getExtension('EXT_color_buffer_float') !== null;
     const format = hasFloatTargets ? gl.RGBA16F : gl.RGBA8;
 
+    this.defaultLutTexture = Compositor.createIdentityLutTexture(gl);
+
     this.ping = new RenderTarget(gl, this.width, this.height, format, 'ping');
     this.pong = new RenderTarget(gl, this.width, this.height, format, 'pong');
     this.scene = new RenderTarget(gl, this.width, this.height, format, 'scene');
@@ -217,6 +229,34 @@ export class Compositor {
 
     if (!gl) throw new Error('WebGL2 is not available in this context');
     return new Compositor(gl, width, height, lutLoader, options);
+  }
+
+  /** A single white texel, so sampling it never alters the graded colour. */
+  private static createIdentityLutTexture(gl: WebGL2RenderingContext): WebGLTexture {
+    const texture = gl.createTexture();
+    if (!texture) throw new Error('Failed to allocate the placeholder LUT texture');
+
+    gl.bindTexture(gl.TEXTURE_3D, texture);
+    gl.texImage3D(
+      gl.TEXTURE_3D,
+      0,
+      gl.RGB16F,
+      1,
+      1,
+      1,
+      0,
+      gl.RGB,
+      gl.FLOAT,
+      new Float32Array([1, 1, 1]),
+    );
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_3D, null);
+
+    return texture;
   }
 
   get context(): WebGL2RenderingContext {
@@ -385,12 +425,19 @@ export class Compositor {
         program.set('u_lutEnabled', loaded !== undefined);
         program.set('u_lutIntensity', grading.lutIntensity);
 
-        if (loaded) {
-          program.set('u_lutSize', loaded.lut.size);
-          program.set('u_lutDomainMin', new Float32Array(loaded.lut.domainMin));
-          program.set('u_lutDomainMax', new Float32Array(loaded.lut.domainMax));
-          program.setTexture('u_lutTexture', loaded.texture, 1, this.gl.TEXTURE_3D);
-        }
+        program.set('u_lutSize', loaded ? loaded.lut.size : 1);
+        program.set('u_lutDomainMin', new Float32Array(loaded ? loaded.lut.domainMin : [0, 0, 0]));
+        program.set('u_lutDomainMax', new Float32Array(loaded ? loaded.lut.domainMax : [1, 1, 1]));
+
+        // Always bind unit 1, even with no LUT: leaving the sampler3D unset
+        // would leave it pointing at unit 0 alongside the sampler2D, which is
+        // an INVALID_OPERATION that silently drops the entire draw.
+        program.setTexture(
+          'u_lutTexture',
+          loaded ? loaded.texture : this.defaultLutTexture,
+          1,
+          this.gl.TEXTURE_3D,
+        );
       });
     }
 
@@ -552,6 +599,7 @@ export class Compositor {
     this.vaos.clear();
 
     gl.deleteBuffer(this.vertexBuffer);
+    gl.deleteTexture(this.defaultLutTexture);
 
     for (const program of [
       this.transferProgram,

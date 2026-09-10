@@ -5,3 +5,5 @@ release/
 *.log
 .DS_Store
 .vite/
+.e2e-tmp/
+dist-e2e/

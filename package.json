@@ -12,7 +12,8 @@
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json && node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.node.json",
     "preview": "node ./node_modules/vite/bin/vite.js preview",
     "test": "node ./node_modules/vitest/vitest.mjs run",
-    "test:watch": "node ./node_modules/vitest/vitest.mjs"
+    "test:watch": "node ./node_modules/vitest/vitest.mjs",
+    "test:e2e": "node ./tests/e2e/run.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
