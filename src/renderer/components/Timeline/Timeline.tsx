@@ -41,7 +41,8 @@ type DragMode =
   | { kind: 'none' }
   | { kind: 'scrub' }
   | { kind: 'move'; clipId: string; grabOffsetFrames: number }
-  | { kind: 'trim'; clipId: string; edge: 'start' | 'end' };
+  | { kind: 'trim'; clipId: string; edge: 'start' | 'end' }
+  | { kind: 'pan'; startClientX: number; startScrollLeft: number };
 
 /** Multi-track timeline: track headers plus the canvas editing surface. */
 export function Timeline(): JSX.Element {
@@ -236,10 +237,11 @@ export function Timeline(): JSX.Element {
 
   const emptyAreaMenuItems = useCallback((): ContextMenuItem[] => {
     const state = store.getState();
+    // No "add text track": nothing renders text yet, so offering it would
+    // create a track that can never show anything.
     return [
       { label: 'Add video track', icon: Plus, onSelect: () => state.addTrack('video') },
       { label: 'Add audio track', icon: Plus, onSelect: () => state.addTrack('audio') },
-      { label: 'Add text track', icon: Plus, onSelect: () => state.addTrack('text') },
       { separator: true },
       {
         label: 'Split at playhead',
@@ -294,6 +296,17 @@ export function Timeline(): JSX.Element {
 
       const state = store.getState();
 
+      // The hand tool drags the view, so it takes precedence over everything -
+      // including the ruler, which would otherwise scrub out from under it.
+      if (state.ui.tool === 'hand') {
+        dragRef.current = {
+          kind: 'pan',
+          startClientX: event.clientX,
+          startScrollLeft: scrollRef.current?.scrollLeft ?? 0,
+        };
+        return;
+      }
+
       // Clicking the ruler always scrubs, whatever tool is active.
       if (y < RULER_HEIGHT) {
         dragRef.current = { kind: 'scrub' };
@@ -343,6 +356,15 @@ export function Timeline(): JSX.Element {
       const y = event.clientY - bounds.top;
       const state = store.getState();
       const frame = pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx);
+
+      if (drag.kind === 'pan') {
+        // Drag right, content moves right: the view scrolls the other way.
+        const container = scrollRef.current;
+        if (container) {
+          container.scrollLeft = drag.startScrollLeft - (event.clientX - drag.startClientX);
+        }
+        return;
+      }
 
       if (drag.kind === 'scrub') {
         state.setCurrentFrame(frame);

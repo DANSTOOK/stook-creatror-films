@@ -7,7 +7,7 @@ import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
-import { hasNativeBridge, rehydrateAssets } from './media/importMedia';
+import { hasNativeBridge, rehydrateDocument } from './media/importMedia';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import type { ProjectDocument } from './store/types';
@@ -48,10 +48,14 @@ export default function App(): JSX.Element {
     try {
       const document = JSON.parse(opened.contents) as ProjectDocument;
 
-      // Media has to be re-read from disk: the blob URLs a project was authored
-      // with no longer exist in this session.
-      const assets = await rehydrateAssets(document.assets ?? []);
-      useProjectStore.getState().loadDocument({ ...document, assets });
+      // Media and LUTs are re-read from disk and every clip is remapped onto
+      // the fresh URLs: the ones the project was authored with died with that
+      // session.
+      const { assets, project } = await rehydrateDocument(
+        document.assets ?? [],
+        document.project,
+      );
+      useProjectStore.getState().loadDocument({ ...document, assets, project });
 
       const missing = assets.filter((asset) => asset.missing);
       setStatus(

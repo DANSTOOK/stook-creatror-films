@@ -3,6 +3,7 @@ import { Diamond, FolderOpen, Trash2 } from 'lucide-react';
 import type { Clip, MaskConfig } from '@shared/types';
 import { evaluateNumber, evaluateVector } from '@renderer/engine/KeyframeEvaluator';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
+import { hasNativeBridge } from '@renderer/media/importMedia';
 import { useProjectStore, type NumberProperty, type VectorProperty } from '@renderer/store/useProjectStore';
 
 /**
@@ -116,13 +117,12 @@ export function Inspector(): JSX.Element {
    * Load a `.cube` file and upload it before it is referenced, so the very next
    * composited frame already has the look applied.
    */
-  const loadLut = useCallback(
-    async (file: File | undefined, clipId: string) => {
-      if (!file) return;
+  const applyLut = useCallback(
+    async (clipId: string, name: string, contents: string, sourcePath?: string) => {
       setLutError(null);
 
       try {
-        const uri = URL.createObjectURL(new Blob([await file.text()], { type: 'text/plain' }));
+        const uri = URL.createObjectURL(new Blob([contents], { type: 'text/plain' }));
         const renderer = getActiveFrameRenderer();
         // Parsing happens here, so a malformed file reports an error rather
         // than silently doing nothing when the frame is drawn.
@@ -132,13 +132,38 @@ export function Inspector(): JSX.Element {
         if (!current) return;
 
         useProjectStore.getState().updateClip(clipId, {
-          colorGrading: { ...current.colorGrading, enabled: true, lutUri: uri },
+          colorGrading: {
+            ...current.colorGrading,
+            enabled: true,
+            lutUri: uri,
+            lutName: name,
+            // Without the path the look is lost the moment the project is
+            // reopened, because the blob URL dies with the page.
+            ...(sourcePath ? { lutSourcePath: sourcePath } : {}),
+          },
         });
       } catch (error) {
         setLutError(error instanceof Error ? error.message : String(error));
       }
     },
     [],
+  );
+
+  /** Native dialog when it exists, so the LUT keeps a path it can be restored from. */
+  const pickLut = useCallback(
+    async (clipId: string) => {
+      if (!hasNativeBridge()) {
+        lutInputRef.current?.click();
+        return;
+      }
+
+      const picked = await window.filmora.openLut();
+      if (!picked) return;
+
+      const name = picked.path.split(/[\\/]/).pop() ?? 'LUT';
+      await applyLut(clipId, name, picked.contents, picked.path);
+    },
+    [applyLut],
   );
 
   const resolved = useMemo(() => {
@@ -384,7 +409,7 @@ export function Inspector(): JSX.Element {
             <button
               type="button"
               className="tool-button flex-1 justify-start"
-              onClick={() => lutInputRef.current?.click()}
+              onClick={() => void pickLut(clip.id)}
             >
               <FolderOpen size={13} />
               {clip.colorGrading.lutUri ? 'Replace LUT' : 'Load .cube LUT'}
@@ -396,7 +421,12 @@ export function Inspector(): JSX.Element {
                 className="tool-button hover:text-red-400"
                 onClick={() =>
                   updateClip(clip.id, {
-                    colorGrading: { ...clip.colorGrading, lutUri: undefined },
+                    colorGrading: {
+                      ...clip.colorGrading,
+                      lutUri: undefined,
+                      lutSourcePath: undefined,
+                      lutName: undefined,
+                    },
                   })
                 }
               >
@@ -410,13 +440,18 @@ export function Inspector(): JSX.Element {
             accept=".cube"
             className="hidden"
             onChange={(event) => {
-              void loadLut(event.target.files?.[0], clip.id);
+              const file = event.target.files?.[0];
               event.target.value = '';
+              if (file) void file.text().then((text) => applyLut(clip.id, file.name, text));
             }}
           />
           {lutError && <p className="text-2xs text-red-400">{lutError}</p>}
           <p className="truncate text-2xs text-slate-600">
-            {clip.colorGrading.lutUri ? 'LUT loaded' : 'No LUT loaded'}
+            {clip.colorGrading.lutUri
+              ? `${clip.colorGrading.lutName ?? 'LUT loaded'}${
+                  clip.colorGrading.lutSourcePath ? '' : ' (not saved with the project)'
+                }`
+              : 'No LUT loaded'}
           </p>
         </Section>
 

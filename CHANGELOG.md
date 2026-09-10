@@ -7,9 +7,53 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **176 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo** y **12/12 comprobaciones de interfaz**,
+Cifras de referencia al día de hoy: **184 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo** y **17/17 comprobaciones de interfaz**,
 todas contra un vídeo real.
+
+---
+
+## v0.9 — Que nada mienta
+`(en curso)` · 2026-09-10
+
+Repaso de todo lo que la interfaz ofrecía sin cumplir. Que un botón se ilumine
+y no haga nada es peor que no ofrecerlo.
+
+### Arreglado
+- **Guardar y reabrir un proyecto dejaba la línea de tiempo rota.** Este es el
+  grande, y lo encontró la nueva prueba de interfaz.
+  - Al reabrir, los medios se releen del disco y reciben URLs nuevas, pero
+    **los clips seguían apuntando a las de la sesión anterior**, ya muertas. Y
+    al guardar se borraba el `uri` del medio, así que en el archivo **no
+    quedaba ninguna forma de enlazar clip con medio**.
+  - El panel de medios se veía perfectamente sano —sin marca de «missing»— y
+    sin embargo el vídeo no se dibujaba y **las exportaciones salían mudas**.
+  - Ahora el `uri` guardado se conserva como clave, y cada clip se reasigna a
+    la URL nueva emparejando por identificador, no por posición.
+  - *Comprobado:* la prueba de interfaz carga, guarda, reabre y **exporta**;
+    el archivo pasó de 15.695 bytes sin audio a 29.216 con vídeo y audio.
+
+- **Los LUT se perdían al reabrir.** Mismo fallo de URLs efímeras que ya se
+  había corregido para los medios, pero sin cubrir aquí. Ahora se guarda la
+  ruta del `.cube` y se reconstruye al abrir.
+  - Se carga por diálogo nativo, que es lo que da la ruta; en navegador se
+    sigue usando el selector de archivos y el propio panel avisa de que ese LUT
+    **no se guardará con el proyecto**.
+  - *Comprobado:* cargar → guardar → reabrir → el nombre del LUT sigue ahí.
+
+- **La herramienta Mano no hacía nada.** Se iluminaba al seleccionarla y ya.
+  Ahora arrastra la vista de la línea de tiempo, con cursor de agarre.
+  - *Comprobado:* la prueba de interfaz arrastra y mide el desplazamiento real
+    (0 → 249,6 px).
+
+### Cambiado
+- **Quitada la opción «Add text track»** del menú contextual. Nada dibuja texto
+  todavía, así que solo servía para crear una pista que jamás mostraría nada.
+  - *Comprobado:* la prueba de interfaz lee el menú y falla si reaparece.
+- **La casilla «Transparent background» ya hace algo visible.** Antes solo
+  cambiaba un valor por defecto del diálogo de exportación, en silencio. Ahora
+  también muestra la cuadrícula de transparencia en el visor, y el texto de
+  ayuda dice exactamente lo que hace.
 
 ---
 
@@ -298,12 +342,7 @@ Cosas implementadas de las que **no puedo afirmar que funcionen**:
 
 Cosas que la interfaz ofrece y **no hacen nada**:
 
-- **Pistas de texto y de ajuste**: se pueden crear, nada las dibuja.
-- **Herramienta Mano/Pan**: se ilumina al seleccionarla, no mueve nada.
-- **Casilla «Transparent background»**: solo afecta al valor por defecto del
-  diálogo de exportación, no al render.
-- **Los LUT se pierden al reabrir un proyecto** (mismo fallo de URLs de blob que
-  se arregló para los medios, pero no se cubrió aquí).
+- **Pistas de ajuste**: existen en el esquema, nada las dibuja (ya no se pueden crear desde la interfaz).
 - **Marcadores**: se dibujan y el imán los usa, pero no hay forma de crear uno.
 - **Mezclador de audio**: hay ecualizador, panorama y volumen maestro en el
   motor; ninguna interfaz llega a ellos.

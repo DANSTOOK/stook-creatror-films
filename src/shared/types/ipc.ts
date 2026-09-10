@@ -4,6 +4,7 @@ import type { ExportProgress, ExportSettings, HardwareEncoder, MediaKind } from 
 export const IPC = {
   openMedia: 'dialog:open-media',
   openProject: 'dialog:open-project',
+  openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
   chooseExportPath: 'dialog:choose-export-path',
   readFile: 'fs:read-file',
@@ -50,6 +51,11 @@ export interface ExportStartResult {
 export interface FilmoraApi {
   openMedia(): Promise<PickedFile[]>;
   openProject(): Promise<{ path: string; contents: string } | null>;
+  /**
+   * Pick a `.cube` LUT. Returns the path as well as the contents, because the
+   * path is what lets the look survive saving and reopening the project.
+   */
+  openLut(): Promise<{ path: string; contents: string } | null>;
   saveProjectAs(contents: string, suggestedName?: string): Promise<string | null>;
   chooseExportPath(format: ExportSettings['format']): Promise<string | null>;
 

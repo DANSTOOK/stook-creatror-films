@@ -57,7 +57,15 @@ export interface ColorGradingConfig {
   saturation: number; // 0.0 to 2.0
   temperature: number; // -1.0 to 1.0
   tint: number; // -1.0 to 1.0
+  /** Blob URL for this session. Does not survive a reload. */
   lutUri?: string;
+  /**
+   * Path on disk the LUT came from. This is what makes a look survive being
+   * saved and reopened; `lutUri` is rebuilt from it.
+   */
+  lutSourcePath?: string;
+  /** Shown in the inspector so a loaded look is identifiable. */
+  lutName?: string;
   lutIntensity: number; // 0.0 to 1.0
 }
 

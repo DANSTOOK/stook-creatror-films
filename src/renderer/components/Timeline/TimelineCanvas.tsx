@@ -333,11 +333,15 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     return () => cancelAnimationFrame(handle);
   }, [paint]);
 
+  // The pointer should say what the active tool will do.
+  const cursor =
+    ui.tool === 'hand' ? 'cursor-grab active:cursor-grabbing' : 'cursor-default';
+
   return (
     <canvas
       ref={canvasRef}
       style={{ width, height }}
-      className="block cursor-default"
+      className={`block ${cursor}`}
       onPointerDown={props.onPointerDown}
       onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp}

@@ -173,6 +173,23 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return { path, contents: await readFile(path, 'utf8') };
   });
 
+  ipcMain.handle(IPC.openLut, async () => {
+    const window = getWindow();
+    if (!window) return null;
+
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Load a .cube LUT',
+      properties: ['openFile'],
+      filters: [{ name: 'Cube LUT', extensions: ['cube'] }],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const path = result.filePaths[0];
+    allowedPaths.add(path);
+    return { path, contents: await readFile(path, 'utf8') };
+  });
+
   ipcMain.handle(IPC.saveProjectAs, async (_event, contents: string, suggestedName?: string) => {
     const window = getWindow();
     if (!window) return null;

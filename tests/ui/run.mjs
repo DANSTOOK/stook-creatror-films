@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, rm, stat } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -32,6 +32,8 @@ const ffmpeg = require('ffmpeg-static');
 
 const sourceVideo = process.env.UI_SOURCE_VIDEO ?? join(workDir, 'source.mp4');
 const exportPath = join(workDir, 'ui-export.mp4');
+const lutPath = join(workDir, 'identity.cube');
+const projectPath = join(workDir, 'ui-project.fep');
 
 /** Frames the UI test asks the dialog to render. */
 const EXPORT_FRAMES = 12;
@@ -45,9 +47,20 @@ const check = (name, passed, detail = '') => {
 const run = (file, args) =>
   execFileAsync(file, args, { maxBuffer: 32 * 1024 * 1024 });
 
+/** A tiny identity .cube, enough to prove a look survives save and reopen. */
+async function writeIdentityLut(path) {
+  const size = 2;
+  const lines = ['TITLE "UI Test Identity"', `LUT_3D_SIZE ${size}`];
+  for (let b = 0; b < size; b += 1)
+    for (let g = 0; g < size; g += 1)
+      for (let r = 0; r < size; r += 1) lines.push(`${r} ${g} ${b}`);
+  await writeFile(path, `${lines.join('\n')}\n`, 'utf8');
+}
+
 async function prepare() {
   await rm(workDir, { recursive: true, force: true });
   await mkdir(workDir, { recursive: true });
+  await writeIdentityLut(lutPath);
 
   if (!process.env.UI_SOURCE_VIDEO) {
     // A short clip WITH audio, so the export exercises the mux too.
@@ -131,7 +144,78 @@ async function main() {
     const inspectorHasClip = await window.getByText('TRANSFORM').isVisible().catch(() => false);
     check('clip lands on the timeline and can be selected', inspectorHasClip);
 
+    /* The hand tool -------------------------------------------------------- */
+    const surface = window.locator('canvas').last();
+    await window.getByRole('button', { name: 'Pan' }).click();
+
+    const scrollBefore = await window.evaluate(() => {
+      const el = [...document.querySelectorAll('div')].find((d) => d.scrollWidth > d.clientWidth + 50);
+      return el ? el.scrollLeft : -1;
+    });
+    const box = await surface.boundingBox();
+    await window.mouse.move(box.x + 400, box.y + 100);
+    await window.mouse.down();
+    await window.mouse.move(box.x + 150, box.y + 100, { steps: 8 });
+    await window.mouse.up();
+    const scrollAfter = await window.evaluate(() => {
+      const el = [...document.querySelectorAll('div')].find((d) => d.scrollWidth > d.clientWidth + 50);
+      return el ? el.scrollLeft : -1;
+    });
+
+    check('hand tool actually pans the timeline', scrollAfter > scrollBefore,
+      `scrollLeft ${scrollBefore} -> ${scrollAfter}`);
+    await window.getByRole('button', { name: 'Select' }).click();
+
+    /* Context menu honesty --------------------------------------------------- */
+    await surface.click({ button: 'right', position: { x: 500, y: 200 } });
+    await window.waitForTimeout(300);
+    const menuItems = await window.locator('[role="menuitem"]').allInnerTexts();
+    check('no menu entry creates a track nothing can draw',
+      !menuItems.some((text) => /text track/i.test(text)),
+      menuItems.length ? menuItems.join(' / ') : 'no menu');
+    await window.keyboard.press('Escape');
+
+    /* LUT survives save and reopen ------------------------------------------- */
+    await surface.click({ position: { x: 60, y: 80 } });
+    await app.evaluate(({ dialog }, lut) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [lut] });
+    }, lutPath);
+
+    await window.getByRole('button', { name: /LUT/ }).first().click();
+    await window.getByText('identity.cube', { exact: false })
+      .waitFor({ state: 'visible', timeout: 15_000 });
+    check('LUT loads through the native dialog', true, 'identity.cube');
+
+    await app.evaluate(({ dialog }, project) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: project });
+    }, projectPath);
+    await window.getByRole('button', { name: 'Save' }).click();
+    await window.getByText('Saved to', { exact: false })
+      .waitFor({ state: 'visible', timeout: 15_000 });
+
+    await app.evaluate(({ dialog }, project) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+    }, projectPath);
+    await window.getByRole('button', { name: 'Open' }).click();
+    await window.getByText('Opened', { exact: false })
+      .waitFor({ state: 'visible', timeout: 30_000 });
+
+    // Reopening clears the selection, so the clip has to be picked again.
+    await surface.click({ position: { x: 60, y: 80 } });
+    const lutSurvived = await window.getByText('identity.cube', { exact: false })
+      .isVisible().catch(() => false);
+    check('LUT survives saving and reopening the project', lutSurvived);
+
+    const mediaMissing = await window.getByText('missing', { exact: false })
+      .isVisible().catch(() => false);
+    check('media survives saving and reopening the project', !mediaMissing);
+
     /* Export --------------------------------------------------------------- */
+    // Restore the export path stub, which the project dialogs overwrote.
+    await app.evaluate(({ dialog }, output) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: output });
+    }, exportPath);
+
     await window.getByRole('button', { name: 'Export' }).click();
     await window.getByText('Target bitrate', { exact: false })
       .waitFor({ state: 'visible', timeout: 10_000 });

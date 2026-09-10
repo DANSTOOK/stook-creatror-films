@@ -283,17 +283,21 @@ export function MediaLibrary(): JSX.Element {
             type="checkbox"
             className="accent-blue-500"
             checked={project.hasAlphaBackground}
-            onChange={(event) =>
-              useProjectStore
-                .getState()
-                .setProjectSettings({ hasAlphaBackground: event.target.checked })
-            }
+            onChange={(event) => {
+              const enabled = event.target.checked;
+              // Also reveal it in the viewport. The canvas is always cleared
+              // transparent, so without this the switch had no visible effect
+              // at all and only quietly changed an export default.
+              useProjectStore.getState().setProjectSettings({ hasAlphaBackground: enabled });
+              useProjectStore.getState().setUi({ showTransparencyGrid: enabled });
+            }}
           />
           Transparent background
         </label>
         <p className="mt-1 text-2xs leading-relaxed text-slate-600">
-          Keeps the project canvas transparent so sprites and UI elements export
-          straight to a game engine.
+          Shows the transparency checkerboard in the viewport and turns on
+          &ldquo;Export alpha channel&rdquo; by default, for sprites and UI
+          elements headed to a game engine.
         </p>
       </footer>
 

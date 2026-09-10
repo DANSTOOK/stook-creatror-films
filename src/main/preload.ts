@@ -12,6 +12,8 @@ const api: FilmoraApi = {
   openMedia: () => ipcRenderer.invoke(IPC.openMedia) as Promise<PickedFile[]>,
   openProject: () =>
     ipcRenderer.invoke(IPC.openProject) as Promise<{ path: string; contents: string } | null>,
+  openLut: () =>
+    ipcRenderer.invoke(IPC.openLut) as Promise<{ path: string; contents: string } | null>,
   saveProjectAs: (contents, suggestedName) =>
     ipcRenderer.invoke(IPC.saveProjectAs, contents, suggestedName) as Promise<string | null>,
   chooseExportPath: (format) =>

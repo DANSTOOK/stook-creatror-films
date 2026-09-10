@@ -247,6 +247,102 @@ export async function rehydrateAssets(assets: MediaAsset[]): Promise<MediaAsset[
   );
 }
 
+/**
+ * Rebuild a whole saved document.
+ *
+ * Rehydrating the assets alone is not enough, and getting this wrong is
+ * invisible in the media panel: clips reference their source by URL, so after
+ * reopening they still point at blob URLs that died with the previous session.
+ * The panel looks perfectly healthy while the timeline renders nothing and
+ * exports silently lose their audio.
+ *
+ * The old URL is the only link between a clip and its asset in a saved file, so
+ * it is kept as the key and every clip is remapped onto the new one.
+ */
+export function buildUriRemap(
+  before: readonly MediaAsset[],
+  after: readonly MediaAsset[],
+): Map<string, string> {
+  const remap = new Map<string, string>();
+
+  for (const restored of after) {
+    // Assets are matched by identity, not by position: an id survives the round
+    // trip through the file, and index order is not something to rely on.
+    const original = before.find((asset) => asset.id === restored.id);
+    if (original && original.uri && original.uri !== restored.uri) {
+      remap.set(original.uri, restored.uri);
+    }
+  }
+
+  return remap;
+}
+
+export function remapClipSources(
+  project: ProjectState,
+  remap: ReadonlyMap<string, string>,
+): ProjectState {
+  if (remap.size === 0) return project;
+
+  const clips = Object.fromEntries(
+    Object.entries(project.clips).map(([id, clip]) => {
+      const replacement = remap.get(clip.sourceUri);
+      return [id, replacement ? { ...clip, sourceUri: replacement } : clip];
+    }),
+  );
+
+  return { ...project, clips };
+}
+
+export async function rehydrateDocument(
+  assets: MediaAsset[],
+  project: ProjectState,
+): Promise<{ assets: MediaAsset[]; project: ProjectState }> {
+  const restored = await rehydrateAssets(assets);
+  const withLuts = await rehydrateLuts(project);
+
+  return {
+    assets: restored,
+    project: remapClipSources(withLuts, buildUriRemap(assets, restored)),
+  };
+}
+
+/**
+ * Rebuild LUT blob URLs for a reopened project.
+ *
+ * Same failure as media: a look loaded from a `.cube` file lives behind an
+ * object URL that dies with the page, so reopening a graded project silently
+ * dropped every LUT. The path is what survives; the URL is rebuilt from it.
+ */
+export async function rehydrateLuts(project: ProjectState): Promise<ProjectState> {
+  if (!hasNativeBridge()) return project;
+
+  const clips = { ...project.clips };
+  let changed = false;
+
+  await Promise.all(
+    Object.values(clips).map(async (clip) => {
+      const { lutSourcePath } = clip.colorGrading;
+      if (!lutSourcePath) return;
+
+      try {
+        const contents = await window.filmora.readTextFile(lutSourcePath);
+        const uri = URL.createObjectURL(new Blob([contents], { type: 'text/plain' }));
+        clips[clip.id] = { ...clip, colorGrading: { ...clip.colorGrading, lutUri: uri } };
+      } catch {
+        // Moved or deleted since the project was saved: drop the reference
+        // rather than leaving a URL that resolves to nothing.
+        clips[clip.id] = {
+          ...clip,
+          colorGrading: { ...clip.colorGrading, lutUri: undefined },
+        };
+      }
+      changed = true;
+    }),
+  );
+
+  return changed ? { ...project, clips } : project;
+}
+
 /** Append an asset after whatever already sits on a suitable track. */
 export function appendPosition(project: ProjectState, trackId: string): number {
   return Object.values(project.clips)
