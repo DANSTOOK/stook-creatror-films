@@ -5,7 +5,9 @@ import { Inspector } from './components/Inspector';
 import { MediaLibrary } from './components/MediaLibrary';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
+import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { useEditorShortcuts } from './hooks/useTransport';
+import { hasNativeBridge, rehydrateAssets } from './media/importMedia';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import type { ProjectDocument } from './store/types';
@@ -16,9 +18,14 @@ import type { ProjectDocument } from './store/types';
  */
 export default function App(): JSX.Element {
   useEditorShortcuts();
+  useAudioPlayback();
 
   const [exportOpen, setExportOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  // Saving, opening and exporting all go through the native bridge, so those
+  // controls are disabled rather than throwing when running in a browser.
+  const nativeAvailable = hasNativeBridge();
 
   const canUndo = useHistoryStore((state) => state.canUndo);
   const canRedo = useHistoryStore((state) => state.canRedo);
@@ -38,8 +45,18 @@ export default function App(): JSX.Element {
 
     try {
       const document = JSON.parse(opened.contents) as ProjectDocument;
-      useProjectStore.getState().loadDocument(document);
-      setStatus(`Opened ${opened.path}`);
+
+      // Media has to be re-read from disk: the blob URLs a project was authored
+      // with no longer exist in this session.
+      const assets = await rehydrateAssets(document.assets ?? []);
+      useProjectStore.getState().loadDocument({ ...document, assets });
+
+      const missing = assets.filter((asset) => asset.missing);
+      setStatus(
+        missing.length > 0
+          ? `Opened ${opened.path} - ${missing.length} media file(s) could not be found`
+          : `Opened ${opened.path}`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     }
@@ -58,11 +75,23 @@ export default function App(): JSX.Element {
           <FilePlus2 size={14} />
           New
         </button>
-        <button type="button" className="tool-button" onClick={() => void openProject()} title="Open project">
+        <button
+          type="button"
+          className="tool-button"
+          disabled={!nativeAvailable}
+          onClick={() => void openProject()}
+          title={nativeAvailable ? 'Open project' : 'Only available in the desktop app'}
+        >
           <FolderOpen size={14} />
           Open
         </button>
-        <button type="button" className="tool-button" onClick={() => void saveProject()} title="Save project">
+        <button
+          type="button"
+          className="tool-button"
+          disabled={!nativeAvailable}
+          onClick={() => void saveProject()}
+          title={nativeAvailable ? 'Save project' : 'Only available in the desktop app'}
+        >
           <Save size={14} />
           Save
         </button>
@@ -97,8 +126,13 @@ export default function App(): JSX.Element {
         <button
           type="button"
           className="tool-button tool-button-active"
+          disabled={!nativeAvailable}
           onClick={() => setExportOpen(true)}
-          title="Export video or sprite frames"
+          title={
+            nativeAvailable
+              ? 'Export video or sprite frames'
+              : 'Exporting needs the desktop app, which bundles FFmpeg'
+          }
         >
           <Share2 size={14} />
           Export

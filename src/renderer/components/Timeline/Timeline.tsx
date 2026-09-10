@@ -15,6 +15,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import type { Clip } from '@shared/types';
+import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsOnTrack } from './timelineOps';
 import { collectSnapTargets, pixelToFrame, snapClipMove, type SnapTarget } from './snapping';
@@ -40,6 +41,7 @@ type DragMode =
 export function Timeline(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const ui = useProjectStore((state) => state.ui);
+  const waveforms = useMediaStore((state) => state.waveforms);
   const store = useProjectStore;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -344,6 +346,7 @@ export function Timeline(): JSX.Element {
             ui={ui}
             tracks={tracks}
             activeSnap={activeSnap}
+            waveforms={waveforms}
             width={contentWidth}
             height={Math.max(canvasHeight, trackRowTop(tracks.length))}
             onPointerDown={onPointerDown}

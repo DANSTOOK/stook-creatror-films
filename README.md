@@ -70,9 +70,15 @@ src/
       WaveformExtractor.ts Async PCM peak computation
     components/
       MediaLibrary/  PreviewViewport/  Inspector/  Timeline/  ExportDialog/
+    media/
+      importMedia.ts       Dialog, drop and picker import; project rehydration
+    hooks/
+      useTransport.ts      Playback clock and keyboard shortcuts
+      useAudioPlayback.ts  Audio decode, scheduling and waveform extraction
     store/
       useProjectStore.ts   Single source of truth
       useHistoryStore.ts   Undo/redo via the Command pattern
+      useMediaStore.ts     Derived runtime caches (waveform peaks)
       types.ts             Serializable document schema and factories
   shared/
     types/                 Timeline, keyframe, IPC and shader types
@@ -171,6 +177,28 @@ baseline-first would silently fail every 4K export.
 The encoder is configured with `avc: { format: 'annexb' }`, so chunks begin with
 the `00 00 00 01` start code that ffmpeg's `-f h264` demuxer expects.
 
+## Importing media
+
+Three ways in, all converging on `media/importMedia.ts`, so an asset built from
+a drop is indistinguishable from one opened through Electron:
+
+- the native dialog (desktop app only),
+- a drag onto the media panel,
+- the file picker.
+
+The dialog is the only one that needs Electron, so the panel falls back to the
+picker in a browser rather than throwing. Save, Open and Export genuinely
+require the native bridge - those buttons are disabled with an explanatory
+tooltip instead of failing at click time.
+
+Unsupported files are reported by name and reason rather than silently ignored.
+
+**Reopening a project re-reads media from disk.** Object URLs die with the page,
+so `toDocument()` deliberately blanks `uri` and persists `sourcePath` instead;
+`rehydrateAssets` rebuilds the blobs on load. Anything it cannot restore - a
+moved file, or media dropped into a browser session that never had a path - is
+flagged `missing` in the panel instead of silently rendering nothing.
+
 ## Media probing
 
 `ffmpeg-static` bundles ffmpeg but **not** ffprobe, so on a machine with no
@@ -194,7 +222,7 @@ the page as a blob URL, never a `file://` path.
 
 ## Tests
 
-100 unit tests across five suites, run with `npm test`:
+112 unit tests across six suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track
@@ -211,3 +239,5 @@ the page as a blob URL, never a `file://` path.
 - `ExportPipeline.test.ts` - ffmpeg argument construction for both pipe modes
   (including that the WebCodecs path never re-encodes), alpha capability per
   format, hardware codec selection, and WebCodecs eligibility.
+- `ImportMedia.test.ts` - file classification and MIME mapping, rejection of
+  unsupported drops, and append-to-timeline positioning.

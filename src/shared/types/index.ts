@@ -126,14 +126,26 @@ export type MediaKind = 'video' | 'audio' | 'image';
 export interface MediaAsset {
   id: string;
   name: string;
+  /**
+   * Blob URL used by the renderer. Object URLs do not survive a reload, so this
+   * is rebuilt from `sourcePath` when a project is reopened.
+   */
   uri: string;
+  /**
+   * Absolute path on disk, when the file came in through a native dialog. This
+   * is what makes a saved project reopenable; files dropped into a browser have
+   * no path and are marked `missing` on reload.
+   */
+  sourcePath?: string;
   kind: MediaKind;
   durationFrames: number;
   width: number;
   height: number;
   hasAlphaChannel: boolean;
-  /** Object URL of a poster frame, when one has been decoded. */
+  /** Data URL of a poster frame, when one has been decoded. */
   thumbnailUri?: string;
+  /** Set when a reopened project could not restore this asset from disk. */
+  missing?: boolean;
 }
 
 /* -------------------------------------------------------------------------- */

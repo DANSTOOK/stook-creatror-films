@@ -155,7 +155,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       version: PROJECT_FILE_VERSION,
       savedAt: new Date().toISOString(),
       project,
-      assets,
+      // Blob URLs die with the page, so persisting one would guarantee a broken
+      // project on reopen. Only `sourcePath` survives; the URL is rebuilt then.
+      assets: assets.map((asset) => ({ ...asset, uri: '' })),
     };
   },
 

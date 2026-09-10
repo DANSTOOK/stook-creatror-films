@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Clip, ProjectState, Track } from '@shared/types';
 import { framesToShortLabel } from '@shared/utils/timecode';
+import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
 import type { EditorUiState } from '@renderer/store/types';
 import { clipEndFrame } from './timelineOps';
 import { frameToPixel, type SnapTarget } from './snapping';
@@ -30,6 +31,8 @@ export interface TimelineCanvasProps {
   tracks: Track[];
   /** Live snap indicator drawn during a drag. */
   activeSnap: SnapTarget | null;
+  /** Decoded peaks per source URI, for audio-bearing clips. */
+  waveforms: Record<string, WaveformPeaks>;
   width: number;
   height: number;
   onPointerDown(event: React.PointerEvent<HTMLCanvasElement>): void;
@@ -94,6 +97,62 @@ function drawRuler(
   }
 }
 
+/**
+ * Draw the waveform inside a clip body.
+ *
+ * Peaks span the whole source file, so the visible slice is the window the clip
+ * actually uses - which is what makes a trimmed clip show the right audio and a
+ * split show two different halves.
+ */
+function drawWaveform(
+  context: CanvasRenderingContext2D,
+  clip: Clip,
+  peaks: WaveformPeaks,
+  x: number,
+  clipWidth: number,
+  top: number,
+  fps: number,
+): void {
+  if (peaks.durationSeconds <= 0 || clipWidth < 4) return;
+
+  const sourceStart = clip.sourceOffsetFrames / fps;
+  const sourceEnd = sourceStart + clip.durationFrames / fps;
+
+  const firstBucket = Math.floor((sourceStart / peaks.durationSeconds) * peaks.bucketCount);
+  const lastBucket = Math.ceil((sourceEnd / peaks.durationSeconds) * peaks.bucketCount);
+  const span = lastBucket - firstBucket;
+  if (span <= 0) return;
+
+  const midY = top + TRACK_HEIGHT / 2;
+  const amplitude = (TRACK_HEIGHT - 18) / 2;
+
+  context.save();
+  context.beginPath();
+  context.rect(x, top + 2, clipWidth, TRACK_HEIGHT - 4);
+  context.clip();
+
+  context.strokeStyle = 'rgba(226, 232, 240, 0.55)';
+  context.lineWidth = 1;
+  context.beginPath();
+
+  // One vertical stroke per output pixel, never per bucket: at low zoom that is
+  // far fewer strokes than there are peaks.
+  const columns = Math.min(Math.ceil(clipWidth), span);
+  for (let column = 0; column <= columns; column += 1) {
+    const ratio = column / columns;
+    const bucket = Math.min(peaks.bucketCount - 1, Math.floor(firstBucket + ratio * span));
+    const min = peaks.peaks[bucket * 2];
+    const max = peaks.peaks[bucket * 2 + 1];
+
+    const columnX = Math.round(x + ratio * clipWidth) + 0.5;
+    context.moveTo(columnX, midY - max * amplitude);
+    context.lineTo(columnX, midY - min * amplitude);
+  }
+
+  context.stroke();
+  context.restore();
+}
+
 function drawClip(
   context: CanvasRenderingContext2D,
   clip: Clip,
@@ -101,6 +160,8 @@ function drawClip(
   top: number,
   ui: EditorUiState,
   selected: boolean,
+  peaks: WaveformPeaks | undefined,
+  fps: number,
 ): void {
   const x = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
   const clipWidth = Math.max(2, clip.durationFrames * ui.pixelsPerFrame);
@@ -119,6 +180,8 @@ function drawClip(
   context.lineWidth = selected ? 2 : 1;
   context.strokeStyle = selected ? '#60a5fa' : '#0d0f14';
   context.stroke();
+
+  if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps);
 
   // Alpha-bearing sources get a marker, since that is what decides whether a
   // clip can be exported as a transparent sprite.
@@ -184,7 +247,7 @@ function drawPlayhead(
 }
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
-  const { project, ui, tracks, activeSnap, width, height } = props;
+  const { project, ui, tracks, activeSnap, waveforms, width, height } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const paint = useCallback(() => {
@@ -226,7 +289,16 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
         const endX = frameToPixel(clipEndFrame(clip), ui.pixelsPerFrame, ui.scrollLeftPx);
         if (endX < 0 || startX > width) continue;
 
-        drawClip(context, clip, track, top, ui, selected.has(clip.id));
+        drawClip(
+          context,
+          clip,
+          track,
+          top,
+          ui,
+          selected.has(clip.id),
+          waveforms[clip.sourceUri],
+          project.fps,
+        );
       }
     });
 
@@ -253,7 +325,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
 
     drawRuler(context, project, ui, width);
     drawPlayhead(context, project, ui, height);
-  }, [project, ui, tracks, activeSnap, width, height]);
+  }, [project, ui, tracks, activeSnap, waveforms, width, height]);
 
   useEffect(() => {
     const handle = requestAnimationFrame(paint);

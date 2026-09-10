@@ -14,6 +14,8 @@ export interface ElementProbe {
   width: number;
   height: number;
   hasAlphaChannel: boolean;
+  /** Data URL poster frame, absent for audio and on decode failure. */
+  thumbnailUri?: string;
 }
 
 /** How long to wait for metadata before giving up on a source. */
@@ -70,8 +72,21 @@ function waitForMetadata(element: HTMLVideoElement | HTMLImageElement): Promise<
  * Downscaled to at most 128px on the long edge: a sprite with any transparency
  * at all has plenty of it, so a full-resolution readback would be wasted work.
  */
-function detectAlpha(source: CanvasImageSource, width: number, height: number): boolean {
-  if (width === 0 || height === 0) return false;
+interface FrameSample {
+  hasAlphaChannel: boolean;
+  thumbnailUri?: string;
+}
+
+/**
+ * Draw one frame once, and read both answers off it: whether the source carries
+ * real transparency, and a poster thumbnail for the media panel.
+ *
+ * Downscaled to at most 128px on the long edge - a sprite with any transparency
+ * at all has plenty of it, so a full-resolution readback would be wasted work,
+ * and that size doubles as a perfectly good thumbnail.
+ */
+function sampleFrame(source: CanvasImageSource, width: number, height: number): FrameSample {
+  if (width === 0 || height === 0) return { hasAlphaChannel: false };
 
   const scale = Math.min(1, 128 / Math.max(width, height));
   const sampleWidth = Math.max(1, Math.round(width * scale));
@@ -82,17 +97,20 @@ function detectAlpha(source: CanvasImageSource, width: number, height: number): 
   canvas.height = sampleHeight;
 
   const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) return false;
+  if (!context) return { hasAlphaChannel: false };
 
   // The canvas starts transparent, so anything the source does not paint over
   // stays transparent - which is exactly the signal we want.
   context.clearRect(0, 0, sampleWidth, sampleHeight);
   try {
     context.drawImage(source, 0, 0, sampleWidth, sampleHeight);
-    return hasTransparentPixels(context.getImageData(0, 0, sampleWidth, sampleHeight).data);
+    const hasAlphaChannel = hasTransparentPixels(
+      context.getImageData(0, 0, sampleWidth, sampleHeight).data,
+    );
+    return { hasAlphaChannel, thumbnailUri: canvas.toDataURL('image/png') };
   } catch {
     // A tainted canvas cannot be read; assume opaque rather than guessing.
-    return false;
+    return { hasAlphaChannel: false };
   }
 }
 
@@ -141,7 +159,7 @@ export async function probeMediaElement(uri: string, kind: MediaKind): Promise<E
       durationSeconds: 0,
       width: image.naturalWidth,
       height: image.naturalHeight,
-      hasAlphaChannel: detectAlpha(image, image.naturalWidth, image.naturalHeight),
+      ...sampleFrame(image, image.naturalWidth, image.naturalHeight),
     };
   }
 
@@ -152,10 +170,24 @@ export async function probeMediaElement(uri: string, kind: MediaKind): Promise<E
   video.src = uri;
   await waitForMetadata(video);
 
+  // Frame zero of a real clip is often black or a fade-in, so the poster comes
+  // from a little way in. A seek failure just leaves the first frame in place.
+  if (Number.isFinite(video.duration) && video.duration > 0.5) {
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(done, 3000);
+      video.addEventListener('seeked', done, { once: true });
+      video.currentTime = Math.min(video.duration * 0.1, 2);
+    });
+  }
+
   return {
     durationSeconds: Number.isFinite(video.duration) ? video.duration : 0,
     width: video.videoWidth,
     height: video.videoHeight,
-    hasAlphaChannel: detectAlpha(video, video.videoWidth, video.videoHeight),
+    ...sampleFrame(video, video.videoWidth, video.videoHeight),
   };
 }

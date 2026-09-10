@@ -1,15 +1,22 @@
-import { useCallback, useState } from 'react';
-import { FileVideo, Image as ImageIcon, Import, Music, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useRef, useState, type DragEvent } from 'react';
+import { AlertTriangle, FileVideo, Image as ImageIcon, Import, Music, Plus, Trash2, Upload } from 'lucide-react';
 import type { MediaAsset, MediaKind } from '@shared/types';
-import { createId } from '@shared/utils/id';
-import { probeMediaElement } from '@renderer/engine/probeMedia';
+import {
+  ACCEPT_ATTRIBUTE,
+  appendPosition,
+  hasNativeBridge,
+  importFromDialog,
+  importFromFiles,
+  type ImportOutcome,
+} from '@renderer/media/importMedia';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
 /**
  * Asset import and the transparent-asset toggle.
  *
- * Imported files are read through the IPC bridge and handed to the renderer as
- * blob URLs, so no `file://` path is ever loaded directly by the page.
+ * Three ways in - the native dialog, a drag onto the panel, and the file picker
+ * - because the dialog only exists under Electron and the editor has to remain
+ * usable in a plain browser.
  */
 
 const KIND_ICONS: Record<MediaKind, typeof FileVideo> = {
@@ -25,56 +32,85 @@ export function MediaLibrary(): JSX.Element {
   const removeAsset = useProjectStore((state) => state.removeAsset);
   const addAssetToTimeline = useProjectStore((state) => state.addAssetToTimeline);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const dragDepth = useRef(0);
 
-  const importMedia = useCallback(async () => {
-    setBusy(true);
-    setImportError(null);
+  const applyOutcome = useCallback(
+    (outcome: ImportOutcome) => {
+      addAssets(outcome.assets);
 
-    try {
-      const files = await window.filmora.openMedia();
-      const imported: MediaAsset[] = [];
-
-      for (const file of files) {
-        const [buffer, probe] = await Promise.all([
-          window.filmora.readFile(file.path),
-          // ffprobe is optional (ffmpeg-static does not ship it), so a failure
-          // here must not stop the import.
-          window.filmora.probeMedia(file.path).catch(() => null),
-        ]);
-
-        const uri = URL.createObjectURL(new Blob([buffer]));
-
-        // The browser decoder is the authoritative source for duration and
-        // dimensions; ffprobe only fills in what it happens to know.
-        const decoded = await probeMediaElement(uri, file.kind);
-
-        const durationSeconds = decoded.durationSeconds || probe?.durationSeconds || 0;
-        const durationFrames =
-          file.kind === 'image'
-            ? project.fps * 5 // Stills default to a five second clip.
-            : Math.max(1, Math.round(durationSeconds * project.fps));
-
-        imported.push({
-          id: createId('asset'),
-          name: file.name,
-          uri,
-          kind: file.kind,
-          durationFrames,
-          width: decoded.width || probe?.width || 0,
-          height: decoded.height || probe?.height || 0,
-          hasAlphaChannel: decoded.hasAlphaChannel || probe?.hasAlphaChannel === true,
-        });
+      if (outcome.rejected.length > 0) {
+        const detail = outcome.rejected
+          .map((entry) => `${entry.name} (${entry.reason})`)
+          .join(', ');
+        setNotice(`Could not import ${detail}`);
+      } else if (outcome.assets.length > 0) {
+        setNotice(null);
       }
+    },
+    [addAssets],
+  );
 
-      addAssets(imported);
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
+  const runImport = useCallback(
+    async (task: () => Promise<ImportOutcome>) => {
+      setBusy(true);
+      try {
+        applyOutcome(await task());
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : String(error));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [applyOutcome],
+  );
+
+  /** Native dialog under Electron, file picker everywhere else. */
+  const handleImportClick = useCallback(() => {
+    if (hasNativeBridge()) {
+      void runImport(() => importFromDialog(project.fps));
+      return;
     }
-  }, [addAssets, project.fps]);
+    fileInputRef.current?.click();
+  }, [project.fps, runImport]);
+
+  const handleFileInput = useCallback(
+    (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      void runImport(() => importFromFiles(Array.from(files), project.fps));
+    },
+    [project.fps, runImport],
+  );
+
+  // Drag tracking uses a depth counter: dragenter/dragleave fire for every
+  // child element, so a naive boolean flickers as the pointer moves inside.
+  const onDragEnter = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    dragDepth.current += 1;
+    if (event.dataTransfer.types.includes('Files')) setDragActive(true);
+  }, []);
+
+  const onDragLeave = useCallback((event: DragEvent<HTMLElement>) => {
+    event.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  }, []);
+
+  const onDrop = useCallback(
+    (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      dragDepth.current = 0;
+      setDragActive(false);
+
+      const files = Array.from(event.dataTransfer.files);
+      if (files.length === 0) return;
+      void runImport(() => importFromFiles(files, project.fps));
+    },
+    [project.fps, runImport],
+  );
 
   const appendToTimeline = useCallback(
     (asset: MediaAsset) => {
@@ -84,24 +120,25 @@ export function MediaLibrary(): JSX.Element {
         project.tracks[0];
       if (!track) return;
 
-      // Append after the last clip already on that track.
-      const end = Object.values(project.clips)
-        .filter((clip) => clip.trackId === track.id)
-        .reduce((longest, clip) => Math.max(longest, clip.startFrame + clip.durationFrames), 0);
-
-      addAssetToTimeline(asset, track.id, end);
+      addAssetToTimeline(asset, track.id, appendPosition(project, track.id));
     },
-    [addAssetToTimeline, project.clips, project.tracks],
+    [addAssetToTimeline, project],
   );
 
   return (
-    <aside className="panel w-[260px] shrink-0">
+    <aside
+      className={`panel w-[260px] shrink-0 relative ${dragActive ? 'ring-2 ring-accent' : ''}`}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={onDrop}
+    >
       <header className="panel-header justify-between">
         <span>Media</span>
         <button
           type="button"
           className="tool-button normal-case tracking-normal"
-          onClick={() => void importMedia()}
+          onClick={handleImportClick}
           disabled={busy}
         >
           <Import size={14} />
@@ -109,18 +146,39 @@ export function MediaLibrary(): JSX.Element {
         </button>
       </header>
 
-      {importError && (
-        <p className="border-b border-panel-700 bg-red-950/40 px-3 py-2 text-2xs text-red-300">
-          {importError}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPT_ATTRIBUTE}
+        className="hidden"
+        onChange={(event) => {
+          handleFileInput(event.target.files);
+          // Reset so picking the same file twice still fires a change event.
+          event.target.value = '';
+        }}
+      />
+
+      {notice && (
+        <p className="flex items-start gap-1.5 border-b border-panel-700 bg-amber-950/40 px-3 py-2 text-2xs text-amber-300">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          {notice}
         </p>
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {assets.length === 0 ? (
-          <p className="p-3 text-xs leading-relaxed text-slate-500">
-            No media yet. Import video, audio, or transparent PNG sprite sheets to
-            get started.
-          </p>
+          <button
+            type="button"
+            onClick={handleImportClick}
+            className="flex w-full flex-col items-center gap-2 rounded border border-dashed border-panel-600 p-6 text-center hover:border-accent hover:bg-panel-800"
+          >
+            <Upload size={20} className="text-slate-500" />
+            <span className="text-xs text-slate-300">Drop files here</span>
+            <span className="text-2xs leading-relaxed text-slate-500">
+              or click to browse. Video, audio, and transparent PNG sprite sheets.
+            </span>
+          </button>
         ) : (
           <ul className="flex flex-col gap-1">
             {assets.map((asset) => {
@@ -130,7 +188,17 @@ export function MediaLibrary(): JSX.Element {
                   key={asset.id}
                   className="group flex items-center gap-2 rounded border border-transparent px-2 py-2 hover:border-panel-600 hover:bg-panel-800"
                 >
-                  <Icon size={16} className="shrink-0 text-slate-500" />
+                  {asset.thumbnailUri ? (
+                    <img
+                      src={asset.thumbnailUri}
+                      alt=""
+                      className="h-8 w-12 shrink-0 rounded object-cover alpha-checkerboard"
+                    />
+                  ) : (
+                    <span className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-panel-950">
+                      <Icon size={16} className="text-slate-500" />
+                    </span>
+                  )}
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs text-slate-200">{asset.name}</p>
@@ -142,6 +210,11 @@ export function MediaLibrary(): JSX.Element {
                           alpha
                         </span>
                       )}
+                      {asset.missing && (
+                        <span className="ml-1 rounded bg-red-900/60 px-1 text-red-300">
+                          missing
+                        </span>
+                      )}
                     </p>
                   </div>
 
@@ -149,6 +222,7 @@ export function MediaLibrary(): JSX.Element {
                     type="button"
                     title="Add to timeline"
                     className="tool-button h-7 px-1.5 opacity-0 group-hover:opacity-100"
+                    disabled={asset.missing}
                     onClick={() => appendToTimeline(asset)}
                   >
                     <Plus size={14} />
@@ -167,6 +241,14 @@ export function MediaLibrary(): JSX.Element {
           </ul>
         )}
       </div>
+
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-panel-950/80">
+          <span className="rounded border border-accent px-3 py-2 text-xs text-accent-hover">
+            Drop to import
+          </span>
+        </div>
+      )}
 
       <footer className="border-t border-panel-700 px-3 py-2">
         <label className="flex items-center gap-2 text-xs text-slate-300">

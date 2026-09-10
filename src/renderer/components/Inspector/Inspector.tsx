@@ -1,7 +1,8 @@
-import { useMemo, type ChangeEvent } from 'react';
-import { Diamond, Trash2 } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Diamond, FolderOpen, Trash2 } from 'lucide-react';
 import type { Clip, MaskConfig } from '@shared/types';
 import { evaluateNumber, evaluateVector } from '@renderer/engine/KeyframeEvaluator';
+import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { useProjectStore, type NumberProperty, type VectorProperty } from '@renderer/store/useProjectStore';
 
 /**
@@ -107,6 +108,38 @@ export function Inspector(): JSX.Element {
 
   const clip: Clip | undefined = selectedIds.length === 1 ? project.clips[selectedIds[0]] : undefined;
   const frame = project.currentFrame;
+
+  const lutInputRef = useRef<HTMLInputElement>(null);
+  const [lutError, setLutError] = useState<string | null>(null);
+
+  /**
+   * Load a `.cube` file and upload it before it is referenced, so the very next
+   * composited frame already has the look applied.
+   */
+  const loadLut = useCallback(
+    async (file: File | undefined, clipId: string) => {
+      if (!file) return;
+      setLutError(null);
+
+      try {
+        const uri = URL.createObjectURL(new Blob([await file.text()], { type: 'text/plain' }));
+        const renderer = getActiveFrameRenderer();
+        // Parsing happens here, so a malformed file reports an error rather
+        // than silently doing nothing when the frame is drawn.
+        await renderer?.lutLoader.load(uri);
+
+        const current = useProjectStore.getState().project.clips[clipId];
+        if (!current) return;
+
+        useProjectStore.getState().updateClip(clipId, {
+          colorGrading: { ...current.colorGrading, enabled: true, lutUri: uri },
+        });
+      } catch (error) {
+        setLutError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [],
+  );
 
   const resolved = useMemo(() => {
     if (!clip) return null;
@@ -347,8 +380,43 @@ export function Inspector(): JSX.Element {
               updateClip(clip.id, { colorGrading: { ...clip.colorGrading, lutIntensity } }, `grade:${clip.id}`)
             }
           />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="tool-button flex-1 justify-start"
+              onClick={() => lutInputRef.current?.click()}
+            >
+              <FolderOpen size={13} />
+              {clip.colorGrading.lutUri ? 'Replace LUT' : 'Load .cube LUT'}
+            </button>
+            {clip.colorGrading.lutUri && (
+              <button
+                type="button"
+                title="Remove LUT"
+                className="tool-button hover:text-red-400"
+                onClick={() =>
+                  updateClip(clip.id, {
+                    colorGrading: { ...clip.colorGrading, lutUri: undefined },
+                  })
+                }
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
+          <input
+            ref={lutInputRef}
+            type="file"
+            accept=".cube"
+            className="hidden"
+            onChange={(event) => {
+              void loadLut(event.target.files?.[0], clip.id);
+              event.target.value = '';
+            }}
+          />
+          {lutError && <p className="text-2xs text-red-400">{lutError}</p>}
           <p className="truncate text-2xs text-slate-600">
-            LUT: {clip.colorGrading.lutUri ?? 'none loaded'}
+            {clip.colorGrading.lutUri ? 'LUT loaded' : 'No LUT loaded'}
           </p>
         </Section>
 
