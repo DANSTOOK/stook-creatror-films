@@ -84,16 +84,32 @@ async function probe(file) {
   }
 }
 
+/**
+ * Point the run at the packaged build instead of the development one.
+ *
+ * Worth having as a switch: packaging is where a dependency in the wrong
+ * section of package.json stops being harmless and starts shipping an app that
+ * cannot export.
+ */
+const packagedExe = process.env.UI_PACKAGED
+  ? join(projectRoot, 'release/win-unpacked/Filmora Engine.exe')
+  : null;
+
 async function main() {
   console.log('1. preparing media and building the app');
   await prepare();
-  await run(process.execPath, [
-    join(projectRoot, 'node_modules/vite/bin/vite.js'), 'build',
-  ]);
 
-  console.log('2. launching the real Electron app');
+  if (!packagedExe) {
+    await run(process.execPath, [
+      join(projectRoot, 'node_modules/vite/bin/vite.js'), 'build',
+    ]);
+  }
+
+  console.log(`2. launching the ${packagedExe ? 'PACKAGED' : 'development'} Electron app`);
   const app = await electron.launch({
-    args: [join(projectRoot, 'dist-electron/main/index.js')],
+    ...(packagedExe
+      ? { executablePath: packagedExe }
+      : { args: [join(projectRoot, 'dist-electron/main/index.js')] }),
     cwd: projectRoot,
     env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1' },
   });

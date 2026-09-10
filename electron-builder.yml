@@ -3,12 +3,22 @@ productName: Filmora Engine
 directories:
   output: release
   buildResources: build
+
+# The default file set is replaced by whatever is listed here, so node_modules
+# has to be named explicitly. Leaving it out silently shipped a build with no
+# ffmpeg in it at all - the app started and could not export a thing.
 files:
   - dist/**
   - dist-electron/**
   - package.json
+  - node_modules/**
+
+# ffmpeg is spawned as a child process, and a binary inside an asar archive
+# cannot be executed. resolveFfmpegPath() rewrites app.asar to
+# app.asar.unpacked, which only works if it is actually unpacked here.
 asarUnpack:
   - node_modules/ffmpeg-static/**
+
 win:
   target: [nsis]
 mac:

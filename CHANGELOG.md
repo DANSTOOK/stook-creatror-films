@@ -9,7 +9,65 @@ página se pueda leer sin tener que creerse nada por fe.
 
 Cifras de referencia al día de hoy: **184 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo** y **17/17 comprobaciones de interfaz**,
-todas contra un vídeo real.
+estas últimas verificadas también **contra el ejecutable empaquetado**.
+
+---
+
+## v1.0 — Empaquetado
+`(en curso)` · 2026-09-10
+
+Primera vez que se ejecuta `electron-builder`. Encontró un fallo que ninguna
+otra prueba podía encontrar, porque solo existe al empaquetar.
+
+### Arreglado
+- **La aplicación empaquetada no habría podido exportar nada: ffmpeg no iba
+  dentro.**
+  - `ffmpeg-static` estaba en `devDependencies`, y electron-builder solo
+    empaqueta dependencias de producción. Además la lista `files` de la
+    configuración **sustituye** al conjunto por omisión, y no incluía
+    `node_modules`.
+  - El paquete salía de 293 MB con un `app.asar` de 29 MB, cuando `ffmpeg.exe`
+    solo ya son 82. Arrancaba perfectamente y fallaba al exportar.
+  - Ahora está en `dependencies`, `node_modules` está en `files`, y `asarUnpack`
+    lo deja fuera del archivo — un binario dentro de un `.asar` no se puede
+    ejecutar, y `resolveFfmpegPath()` cuenta con ello.
+  - *Comprobado:* `ffmpeg.exe` aparece en
+    `resources/app.asar.unpacked/node_modules/ffmpeg-static/`, y el paquete
+    pasó a 373 MB.
+
+### Añadido
+- **La prueba de interfaz puede apuntar al ejecutable empaquetado**
+  (`UI_PACKAGED=1`), no solo a la compilación de desarrollo.
+  - **17/17 contra el `.exe` empaquetado**: importa, edita, carga un LUT,
+    guarda, reabre y **exporta con vídeo y audio**. Es la comprobación de que
+    el ffmpeg incluido funciona desde dentro del paquete.
+- `npm run dist:dir` para generar la carpeta ejecutable sin instalador.
+
+### Problema conocido: el instalador no se puede generar aquí
+`npm run dist` falla, y **no es culpa del proyecto**:
+
+```
+Cannot create symbolic link : El cliente no dispone de un privilegio requerido
+  winCodeSign\...\darwin\10.12\lib\libcrypto.dylib
+```
+
+electron-builder descarga un paquete de firma que contiene enlaces simbólicos
+de macOS. Crearlos en Windows exige permisos que esta sesión no tiene:
+
+- Modo Desarrollador: **desactivado**
+- Sesión de administrador: **no**
+
+Desactivar la firma (`CSC_IDENTITY_AUTO_DISCOVERY=false`) **no lo evita**:
+el paquete se descarga igualmente.
+
+**Para arreglarlo**, cualquiera de estas tres:
+1. Activar Modo Desarrollador en *Configuración → Privacidad y seguridad → Para
+   desarrolladores*. Es lo más sencillo y no requiere administrador.
+2. Ejecutar `npm run dist` desde una terminal como administrador.
+3. Generar el instalador en otra máquina o en integración continua.
+
+Mientras tanto, `npm run dist:dir` produce
+`release/win-unpacked/Filmora Engine.exe`, **que funciona y está verificado**.
 
 ---
 
@@ -336,7 +394,6 @@ Cosas implementadas de las que **no puedo afirmar que funcionen**:
 - **Menús contextuales y atajos de teclado dentro de Electron.** La prueba de
   interfaz cubre importar y exportar, pero no los menús con clic derecho ni los
   atajos.
-- **El empaquetado** (`npm run dist`, electron-builder). Nunca ejecutado.
 
 ## Problemas conocidos
 
