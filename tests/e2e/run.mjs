@@ -29,7 +29,11 @@ const paths = {
   sprite: join(workDir, 'sprite.png'),
   mp4: join(workDir, 'out.mp4'),
   png: join(workDir, 'frames'),
+  colour: join(workDir, 'colour'),
 };
+
+/** Frame used for the colour-fidelity comparison. */
+const COLOUR_FRAME = Number(process.env.E2E_COLOUR_FRAME ?? 45);
 
 const run = async (file, args, options = {}) =>
   execFileAsync(file, args, { maxBuffer: 32 * 1024 * 1024, ...options });
@@ -187,6 +191,54 @@ async function audioAlignment(sourceFile, exportFile, startSeconds, durationSeco
   return { correlation: denominator > 0 ? numerator / denominator : 0, samples: count };
 }
 
+/** Decode any image or video frame to a flat RGB byte buffer. */
+async function toRgb(file, extraArgs = []) {
+  const { stdout } = await execFileAsync(
+    ffmpeg,
+    ['-v', 'error', ...extraArgs, '-i', file, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+    { maxBuffer: 256 * 1024 * 1024, encoding: 'buffer' },
+  );
+  return stdout;
+}
+
+/**
+ * Compare the compositor's untouched render of a frame against ffmpeg's own
+ * decode of the same frame.
+ *
+ * This is the check no structural test can stand in for: a picture can be the
+ * right size, the right duration and perfectly decodable while every pixel sits
+ * a few levels off, because the colour primaries or the TV/full range were
+ * mishandled on the way through the GPU.
+ */
+async function colourDifference(referenceFile, renderedFile) {
+  const [reference, rendered] = await Promise.all([toRgb(referenceFile), toRgb(renderedFile)]);
+
+  const count = Math.min(reference.length, rendered.length);
+  if (count === 0) return null;
+
+  let absoluteTotal = 0;
+  let worst = 0;
+  const signed = [0, 0, 0];
+
+  for (let i = 0; i < count; i += 1) {
+    const delta = rendered[i] - reference[i];
+    const magnitude = Math.abs(delta);
+    absoluteTotal += magnitude;
+    if (magnitude > worst) worst = magnitude;
+    signed[i % 3] += delta;
+  }
+
+  const perChannel = count / 3;
+  return {
+    meanAbsolute: absoluteTotal / count,
+    worst,
+    // A systematic shift shows up here even when the mean absolute error is
+    // small: it means every pixel leans the same way.
+    meanSigned: signed.map((sum) => sum / perChannel),
+    bytesCompared: count,
+  };
+}
+
 /** Parse the stream description ffmpeg prints for a file. */
 async function probe(file) {
   let stderr = '';
@@ -245,6 +297,8 @@ function runElectron() {
         E2E_SPRITE: paths.sprite,
         E2E_MP4: paths.mp4,
         E2E_PNG: paths.png,
+        E2E_COLOUR_DIR: paths.colour,
+        E2E_COLOUR_FRAME: String(COLOUR_FRAME),
         ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       },
       // Inherit stdio for stderr so Electron's own warnings are visible.
@@ -391,6 +445,51 @@ async function main() {
   // frame rate in the finished file.
   check('no duplicated frames in the output', decoded.duplicates === 0,
     `${decoded.duplicates} of ${decoded.frames}`);
+
+  /* Colour fidelity ------------------------------------------------------- */
+  const colourFrames = (await readdir(paths.colour).catch(() => []))
+    .filter((f) => f.endsWith('.png'))
+    .sort();
+
+  if (colourFrames.length > 0) {
+    const referencePng = join(workDir, 'reference.png');
+    await run(ffmpeg, [
+      '-y', '-v', 'error', '-i', paths.video,
+      '-vf', `select=eq(n\\,${COLOUR_FRAME})`, '-vsync', '0', '-frames:v', '1', referencePng,
+    ]);
+
+    // Control: the SAME frame decoded by ffmpeg through a different path. On
+    // lossy footage this is not zero, and comparing the compositor against an
+    // absolute threshold rather than against this noise floor would be
+    // measuring the source's own decode variance.
+    const controlPng = join(workDir, 'reference-control.png');
+    await run(ffmpeg, [
+      '-y', '-v', 'error', '-ss', String(COLOUR_FRAME / expected.fps),
+      '-i', paths.video, '-frames:v', '1', controlPng,
+    ]);
+
+    const control = await colourDifference(referencePng, controlPng);
+    const diff = await colourDifference(referencePng, join(paths.colour, colourFrames[0]));
+
+    if (diff && control) {
+      console.log(
+        `   colour: mean |delta| ${diff.meanAbsolute.toFixed(2)}/255 ` +
+        `(ffmpeg-vs-itself control: ${control.meanAbsolute.toFixed(2)}), ` +
+        `signed R${diff.meanSigned[0].toFixed(2)} ` +
+        `G${diff.meanSigned[1].toFixed(2)} B${diff.meanSigned[2].toFixed(2)}`,
+      );
+
+      const budget = Math.max(8, control.meanAbsolute * 2.5);
+      check('render matches ffmpeg decode (colour)', diff.meanAbsolute < budget,
+        `${diff.meanAbsolute.toFixed(2)} vs budget ${budget.toFixed(2)}`);
+
+      // The load-bearing one. A consistent lean in one direction is the
+      // signature of a range, primaries or gamma mismatch, and it averages out
+      // of the absolute error - so it has to be checked separately.
+      const bias = Math.max(...diff.meanSigned.map(Math.abs));
+      check('no systematic colour shift', bias < 2, `worst channel bias ${bias.toFixed(2)}`);
+    }
+  }
 
   /* The PNG sequence ----------------------------------------------------- */
   const frames = (await readdir(paths.png).catch(() => []))

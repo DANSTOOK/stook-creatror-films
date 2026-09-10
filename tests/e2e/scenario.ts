@@ -32,6 +32,12 @@ export interface E2EInput {
   /** Frame range to export; defaults to the scripted 10-70. */
   startFrame?: number;
   endFrame?: number;
+  /**
+   * Directory for the colour-fidelity frame: one clip, no effects, no
+   * transform, rendered 1:1 so it can be diffed against ffmpeg's own decode.
+   */
+  colourFramePath?: string;
+  colourFrame?: number;
 }
 
 export interface E2EResult {
@@ -380,6 +386,48 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
       }
       await window.filmora.exportFinish(pngJob.jobId);
       step(`exported PNG sequence (${spriteAlphaPixels} partial-alpha pixels)`);
+    }
+
+    /* --- Colour fidelity ------------------------------------------------- */
+
+    // One clip, nothing applied to it, rendered at native size. Any difference
+    // against ffmpeg's decode of the same frame is the compositor's doing -
+    // colour primaries, TV/full range handling, or sampling.
+    if (input.colourFramePath) {
+      const colourFrame = input.colourFrame ?? 0;
+
+      // The clip must reference a track that exists in THIS project: a fresh
+      // project has fresh track ids, and a clip pointing at the old ones is
+      // filtered out as invisible, rendering a black frame.
+      const cleanBase = createEmptyProject(width, height, fps);
+      const cleanClip = createClip({
+        trackId: cleanBase.tracks[0].id,
+        name: video.name,
+        sourceUri: video.uri,
+        startFrame: 0,
+        durationFrames: video.durationFrames,
+      });
+
+      const cleanProject: ProjectState = {
+        ...cleanBase,
+        clips: { [cleanClip.id]: cleanClip },
+        durationFrames: video.durationFrames,
+      };
+
+      const colourJob = await window.filmora.exportStart({
+        ...baseSettings,
+        format: 'png-sequence' as const,
+        outputPath: input.colourFramePath,
+        exportAlpha: false,
+        startFrame: colourFrame,
+        endFrame: colourFrame + 1,
+        pipeMode: 'rawvideo' as ExportPipeMode,
+      });
+
+      const rgba = await renderer.renderExact(cleanProject, colourFrame, false);
+      await window.filmora.exportFrame(colourJob.jobId, rgba.buffer as ArrayBuffer);
+      await window.filmora.exportFinish(colourJob.jobId);
+      step(`colour reference frame ${colourFrame} rendered untouched at ${width}x${height}`);
     }
 
     renderer.dispose();

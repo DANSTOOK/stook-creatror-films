@@ -16,6 +16,8 @@ const inputs = {
   mp4Output: process.env.E2E_MP4 ?? '',
   pngOutput: process.env.E2E_PNG ?? '',
   useRealExportPath: process.env.E2E_REAL_EXPORT === '1',
+  colourFramePath: process.env.E2E_COLOUR_DIR ?? '',
+  colourFrame: Number(process.env.E2E_COLOUR_FRAME ?? 0),
   ...(process.env.E2E_START ? { startFrame: Number(process.env.E2E_START) } : {}),
   ...(process.env.E2E_END ? { endFrame: Number(process.env.E2E_END) } : {}),
 };
