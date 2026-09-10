@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderOpen, Loader2, X } from 'lucide-react';
 import type { ExportFormat, ExportProgress, HardwareEncoder } from '@shared/types';
-import { recommendedBitrateKbps } from '@shared/utils/bitrate';
+import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
+import { renderTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -36,6 +37,7 @@ export interface ExportDialogProps {
 
 export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
   const project = useProjectStore((state) => state.project);
+  const assets = useProjectStore((state) => state.assets);
   const settings = useProjectStore((state) => state.exportSettings);
   const setExportSettings = useProjectStore((state) => state.setExportSettings);
 
@@ -104,12 +106,36 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     try {
       await renderer.ensureLUTs(project);
 
+      // Render the audio mix first: ffmpeg needs it as a file input, so it has
+      // to exist before the encoder is spawned.
+      let audioPath: string | undefined;
+      let audioBitrateKbps: number | undefined;
+
+      if (settings.format !== 'png-sequence') {
+        setMessage('Rendering audio...');
+        const mix = await renderTimelineAudio(
+          project,
+          assets,
+          settings.startFrame,
+          settings.endFrame,
+        ).catch((error: unknown) => {
+          setMessage(`Audio mix failed, exporting without sound: ${String(error)}`);
+          return null;
+        });
+
+        if (mix) {
+          audioPath = await window.filmora.writeExportAudio(mix.wav);
+          audioBitrateKbps = recommendedAudioBitrateKbps(mix.channels);
+        }
+      }
+
       // Prefer GPU-side encoding when the format allows it: the frame never
       // leaves the GPU as raw pixels, so only compressed chunks cross IPC.
       const support = await detectCodecSupport(settings);
       const jobSettings = {
         ...settings,
         pipeMode: support ? support.pipeMode : ('rawvideo' as const),
+        ...(audioPath ? { audioPath, audioBitrateKbps } : {}),
       };
 
       const started = await window.filmora.exportStart(jobSettings);
@@ -157,7 +183,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     } finally {
       setRunning(false);
     }
-  }, [project, settings]);
+  }, [project, assets, settings]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const percent =

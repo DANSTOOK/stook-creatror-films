@@ -110,6 +110,83 @@ async function duplicateFramesIn(file) {
   return { frames: total, duplicates };
 }
 
+/**
+ * Decode the audio track and report its peak level.
+ *
+ * A file can carry a perfectly well-formed AAC stream that is pure silence,
+ * which every structural check would happily pass.
+ */
+async function audioPeak(file) {
+  try {
+    const { stdout } = await execFileAsync(
+      ffmpeg,
+      ['-v', 'error', '-i', file, '-vn', '-f', 'f32le', '-acodec', 'pcm_f32le', '-'],
+      { maxBuffer: 256 * 1024 * 1024, encoding: 'buffer' },
+    );
+
+    if (stdout.length < 4) return { samples: 0, peak: 0 };
+
+    let peak = 0;
+    for (let offset = 0; offset + 4 <= stdout.length; offset += 4) {
+      const magnitude = Math.abs(stdout.readFloatLE(offset));
+      if (magnitude > peak) peak = magnitude;
+    }
+    return { samples: stdout.length / 4, peak };
+  } catch {
+    return { samples: 0, peak: 0 };
+  }
+}
+
+/**
+ * Correlate the exported audio against the stretch of source it was cut from.
+ *
+ * "Has an audio stream" and "has the RIGHT audio, at the right offset" are very
+ * different claims. A mix that is a second out of step, or that starts from the
+ * top of the file instead of the trim point, passes every structural check.
+ */
+async function audioAlignment(sourceFile, exportFile, startSeconds, durationSeconds) {
+  const rate = 8000;
+  const pull = async (args) => {
+    const { stdout } = await execFileAsync(
+      ffmpeg,
+      [...args, '-vn', '-ac', '1', '-ar', String(rate), '-f', 'f32le', '-'],
+      { maxBuffer: 128 * 1024 * 1024, encoding: 'buffer' },
+    );
+    return stdout;
+  };
+
+  const source = await pull([
+    '-v', 'error', '-ss', String(startSeconds), '-t', String(durationSeconds), '-i', sourceFile,
+  ]);
+  const exported = await pull(['-v', 'error', '-i', exportFile]);
+
+  const count = Math.min(source.length, exported.length) / 4;
+  if (count < rate) return { correlation: 0, samples: count };
+
+  let meanA = 0;
+  let meanB = 0;
+  for (let i = 0; i < count; i += 1) {
+    meanA += source.readFloatLE(i * 4);
+    meanB += exported.readFloatLE(i * 4);
+  }
+  meanA /= count;
+  meanB /= count;
+
+  let numerator = 0;
+  let varA = 0;
+  let varB = 0;
+  for (let i = 0; i < count; i += 1) {
+    const a = source.readFloatLE(i * 4) - meanA;
+    const b = exported.readFloatLE(i * 4) - meanB;
+    numerator += a * b;
+    varA += a * a;
+    varB += b * b;
+  }
+
+  const denominator = Math.sqrt(varA * varB);
+  return { correlation: denominator > 0 ? numerator / denominator : 0, samples: count };
+}
+
 /** Parse the stream description ffmpeg prints for a file. */
 async function probe(file) {
   let stderr = '';
@@ -122,6 +199,7 @@ async function probe(file) {
 
   const duration = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(stderr);
   const video = /Video:\s*([a-z0-9]+).*?(\d{2,5})x(\d{2,5}).*?(\d+(?:\.\d+)?) fps/s.exec(stderr);
+  const audio = /Audio:\s*([a-z0-9]+).*?(\d+) Hz,\s*([a-z0-9.]+)/.exec(stderr);
 
   return {
     durationSeconds: duration
@@ -131,6 +209,9 @@ async function probe(file) {
     width: video ? Number(video[2]) : null,
     height: video ? Number(video[3]) : null,
     fps: video ? Number(video[4]) : null,
+    audioCodec: audio?.[1] ?? null,
+    audioSampleRate: audio ? Number(audio[2]) : null,
+    audioLayout: audio?.[3] ?? null,
     raw: stderr,
   };
 }
@@ -271,6 +352,32 @@ async function main() {
     : Math.abs(mp4.durationSeconds - expectedSeconds) / expectedSeconds;
   check('MP4 duration matches the exported range (within 1%)', drift < 0.01,
     `${mp4.durationSeconds}s vs ${expectedSeconds.toFixed(2)}s (${(drift * 100).toFixed(1)}% off)`);
+
+  /* Audio ---------------------------------------------------------------- */
+  check('MP4 carries an audio stream', mp4.audioCodec !== null, String(mp4.audioCodec));
+  check('audio is AAC at 48 kHz',
+    mp4.audioCodec === 'aac' && mp4.audioSampleRate === 48000,
+    `${mp4.audioCodec} @ ${mp4.audioSampleRate} Hz`);
+
+  const sound = await audioPeak(paths.mp4);
+  // A well-formed but silent track passes every structural check, so the level
+  // itself has to be measured.
+  check('audio is not silent', sound.peak > 0.001, `peak ${sound.peak.toFixed(4)}`);
+
+  const audioSeconds = mp4.audioSampleRate ? sound.samples / 2 / mp4.audioSampleRate : 0;
+  check('audio length matches the video',
+    Math.abs(audioSeconds - expectedSeconds) / expectedSeconds < 0.05,
+    `${audioSeconds.toFixed(2)}s vs ${expectedSeconds.toFixed(2)}s`);
+
+  // Only meaningful against a real source whose audio we can line up against.
+  if (sourceOverride && mp4.audioCodec) {
+    const startSeconds = Number(process.env.E2E_START ?? 0) / expected.fps;
+    const { correlation } = await audioAlignment(
+      sourceOverride, paths.mp4, startSeconds, expectedSeconds,
+    );
+    check('audio is the trimmed range, in sync', correlation > 0.8,
+      `correlation ${correlation.toFixed(4)} against source at +${startSeconds.toFixed(2)}s`);
+  }
 
   /* The finished file, decoded ------------------------------------------- */
   const integrity = await decodeIntegrity(paths.mp4);

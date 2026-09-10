@@ -207,6 +207,12 @@ export interface ExportSettings {
    * `rawvideo` is always the safe fallback.
    */
   pipeMode: ExportPipeMode;
+  /**
+   * Temporary WAV holding the rendered audio mix, muxed as a second input.
+   * Absent for a silent timeline or a format that carries no audio.
+   */
+  audioPath?: string;
+  audioBitrateKbps?: number;
 }
 
 export interface ExportProgress {

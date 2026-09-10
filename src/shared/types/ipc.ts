@@ -11,6 +11,7 @@ export const IPC = {
   writeTextFile: 'fs:write-text-file',
   probeMedia: 'media:probe',
   detectEncoders: 'export:detect-encoders',
+  writeExportAudio: 'export:write-audio',
   exportStart: 'export:start',
   exportFrame: 'export:frame',
   exportFinish: 'export:finish',
@@ -58,6 +59,13 @@ export interface FilmoraApi {
 
   probeMedia(path: string): Promise<MediaProbe>;
   detectEncoders(): Promise<HardwareEncoder[]>;
+
+  /**
+   * Stash the rendered audio mix as a temporary WAV and return its path, to be
+   * passed back as `ExportSettings.audioPath`. ffmpeg needs the audio as a file
+   * input, so it must exist before the encoder is spawned.
+   */
+  writeExportAudio(wav: ArrayBuffer): Promise<string>;
 
   /** Open an encoder and start accepting frames. */
   exportStart(settings: ExportSettings): Promise<ExportStartResult>;

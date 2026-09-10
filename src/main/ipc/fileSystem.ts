@@ -1,7 +1,9 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
-import { basename, extname } from 'node:path';
+import { basename, extname, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { ExportSettings, MediaKind } from '@shared/types';
 import { IPC, type MediaProbe, type PickedFile } from '@shared/types/ipc';
@@ -240,8 +242,18 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle(IPC.detectEncoders, () => detectHardwareEncoders());
 
+  ipcMain.handle(IPC.writeExportAudio, async (_event, wav: ArrayBuffer) => {
+    // ffmpeg takes audio as a file input, so the mix has to land on disk before
+    // the encoder is spawned. Temp files are cleaned up when the job finishes.
+    const path = join(tmpdir(), `filmora-mix-${randomUUID()}.wav`);
+    await writeFile(path, Buffer.from(wav));
+    allowedPaths.add(path);
+    return path;
+  });
+
   ipcMain.handle(IPC.exportStart, async (_event, settings: ExportSettings) => {
     assertAllowed(settings.outputPath);
+    if (settings.audioPath) assertAllowed(settings.audioPath);
     return { jobId: await pipeline.start(settings) };
   });
 

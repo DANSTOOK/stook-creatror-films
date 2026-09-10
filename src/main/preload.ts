@@ -25,6 +25,7 @@ const api: FilmoraApi = {
   probeMedia: (path) => ipcRenderer.invoke(IPC.probeMedia, path) as Promise<MediaProbe>,
   detectEncoders: () => ipcRenderer.invoke(IPC.detectEncoders) as Promise<HardwareEncoder[]>,
 
+  writeExportAudio: (wav) => ipcRenderer.invoke(IPC.writeExportAudio, wav) as Promise<string>,
   exportStart: (settings: ExportSettings) => ipcRenderer.invoke(IPC.exportStart, settings),
   exportFrame: (jobId, rgba) => ipcRenderer.invoke(IPC.exportFrame, jobId, rgba),
   exportFinish: (jobId) => ipcRenderer.invoke(IPC.exportFinish, jobId),

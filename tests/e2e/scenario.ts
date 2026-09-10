@@ -1,4 +1,4 @@
-import type { MediaAsset, ProjectState } from '@shared/types';
+import type { ExportPipeMode, MediaAsset, ProjectState } from '@shared/types';
 import { FrameRenderer } from '@renderer/engine/FrameRenderer';
 import { createClip, createEmptyProject, DEFAULT_EXPORT_SETTINGS } from '@renderer/store/types';
 import { splitClip, trimClipEnd, trimClipStart } from '@renderer/components/Timeline/timelineOps';
@@ -6,7 +6,8 @@ import { mimeForFile, settingsFromAsset } from '@renderer/media/importMedia';
 import { probeMediaElement } from '@renderer/engine/probeMedia';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { createId } from '@shared/utils/id';
-import { recommendedBitrateKbps } from '@shared/utils/bitrate';
+import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
+import { renderTimelineAudio } from '@renderer/audio/renderMix';
 
 /**
  * End-to-end scenario: import, edit, export.
@@ -256,14 +257,14 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
       startFrame,
       endFrame,
       exportAlpha: false,
-      pipeMode: 'rawvideo' as const,
+      pipeMode: 'rawvideo' as ExportPipeMode,
     };
     step(`bitrate: ${(baseSettings.bitrateKbps / 1000).toFixed(1)} Mbps for ${width}x${height}@${fps}`);
 
     // The dialog picks WebCodecs when the platform supports it; mirroring that
     // here is the difference between testing the export and testing a fallback.
     const support = input.useRealExportPath ? await detectCodecSupport(baseSettings) : null;
-    const settings = {
+    const settings: typeof baseSettings & { audioPath?: string; audioBitrateKbps?: number } = {
       ...baseSettings,
       pipeMode: support ? support.pipeMode : ('rawvideo' as const),
     };
@@ -281,6 +282,20 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
       }
       return hash >>> 0;
     };
+
+    // Render the audio mix first, exactly as the dialog does.
+    const mix = await renderTimelineAudio(project, [video], startFrame, endFrame);
+    if (mix) {
+      step(
+        `audio mix: ${mix.clipsMixed} clip(s), ${mix.channels}ch @ ${mix.sampleRate}Hz, ` +
+          `${mix.durationSeconds.toFixed(2)}s, peak ${mix.peak.toFixed(3)}`,
+      );
+      settings.audioPath = await window.filmora.writeExportAudio(mix.wav);
+      settings.audioBitrateKbps = recommendedAudioBitrateKbps(mix.channels);
+      step(`audio written to: ${settings.audioPath ?? '(nothing returned)'}`);
+    } else {
+      step('audio mix: nothing audible in range');
+    }
 
     const job = await window.filmora.exportStart(settings);
     const encoder = support

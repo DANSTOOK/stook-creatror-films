@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ExportProgress, ExportSettings } from '@shared/types';
@@ -58,6 +58,41 @@ export class EncoderPipeline {
 
     const preamble = ['-hide_banner', '-loglevel', 'error', '-stats_period', '0.5'];
 
+    // A PNG sequence is a pile of stills; there is nothing to attach audio to.
+    const withAudio = Boolean(settings.audioPath) && settings.format !== 'png-sequence';
+
+    /**
+     * Audio arrives as a second input rather than through the pipe, so the
+     * streams have to be mapped explicitly - otherwise ffmpeg picks one stream
+     * per type by its own rules.
+     *
+     * `-shortest` is deliberately NOT used. A WebCodecs Annex-B elementary
+     * stream carries no timestamps, so copied video packets reach the muxer
+     * with no PTS ("Timestamps are unset in a packet for stream 0"), and
+     * `-shortest` then resolves the video length as nothing and writes zero
+     * bytes of audio - producing a silent file with a perfectly well-formed
+     * AAC stream declared in its header.
+     *
+     * The mix is instead rendered to exactly the picture duration, so both
+     * inputs end together and no truncation flag is needed.
+     */
+    const audioArgs = withAudio
+      ? [
+          '-i',
+          settings.audioPath as string,
+          '-map',
+          '0:v:0',
+          '-map',
+          '1:a:0',
+          '-c:a',
+          'aac',
+          '-b:a',
+          `${settings.audioBitrateKbps ?? 256}k`,
+          '-ar',
+          '48000',
+        ]
+      : [];
+
     if (settings.pipeMode === 'annexb-h264' || settings.pipeMode === 'annexb-hevc') {
       const streamFormat = settings.pipeMode === 'annexb-h264' ? 'h264' : 'hevc';
       return [
@@ -68,6 +103,7 @@ export class EncoderPipeline {
         String(settings.fps),
         '-i',
         'pipe:0',
+        ...audioArgs,
         // The renderer already encoded these frames; re-encoding would throw
         // away the whole point of the WebCodecs path.
         '-c:v',
@@ -93,6 +129,7 @@ export class EncoderPipeline {
       String(settings.fps),
       '-i',
       'pipe:0',
+      ...audioArgs,
       ...scaleFilterArgs(settings),
       ...videoCodecArgs(settings),
       '-r',
@@ -144,6 +181,8 @@ export class EncoderPipeline {
 
       child.once('close', (code) => {
         this.jobs.delete(id);
+        // The mix was written to temp purely to be an ffmpeg input.
+        if (settings.audioPath) void rm(settings.audioPath, { force: true });
         if (job.cancelled) {
           resolve();
           return;
