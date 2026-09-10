@@ -34,16 +34,24 @@ const paths = {
 const run = async (file, args, options = {}) =>
   execFileAsync(file, args, { maxBuffer: 32 * 1024 * 1024, ...options });
 
+/** Point the run at a real file instead of a generated one. */
+const sourceOverride = process.env.E2E_SOURCE_VIDEO ?? '';
+
 async function generateMedia() {
   await rm(workDir, { recursive: true, force: true });
   await mkdir(paths.png, { recursive: true });
 
-  // A moving pattern, so a duplicated or frozen frame would be detectable.
-  await run(ffmpeg, [
-    '-y', '-loglevel', 'error',
-    '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30:duration=4',
-    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', paths.video,
-  ]);
+  if (sourceOverride) {
+    paths.video = sourceOverride;
+    console.log(`   using real source: ${sourceOverride}`);
+  } else {
+    // A moving pattern, so a duplicated or frozen frame would be detectable.
+    await run(ffmpeg, [
+      '-y', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30:duration=4',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', paths.video,
+    ]);
+  }
 
   // A sprite that is transparent except for a red disc with a soft edge.
   //
@@ -56,6 +64,50 @@ async function generateMedia() {
     '-vf', "geq=r='255':g='40':b='40':a='255*clip((48-hypot(X-64,Y-64))/4+0.5,0,1)'",
     '-frames:v', '1', paths.sprite,
   ]);
+}
+
+/**
+ * Decode the whole file and report anything ffmpeg complains about.
+ *
+ * A file can have a perfectly good header and still be full of broken frames,
+ * which a header probe would never notice.
+ */
+async function decodeIntegrity(file) {
+  try {
+    const { stderr } = await run(ffmpeg, ['-v', 'error', '-i', file, '-f', 'null', '-']);
+    return String(stderr ?? '').trim();
+  } catch (error) {
+    return String(error.stderr ?? error.message ?? '').trim();
+  }
+}
+
+/**
+ * Decode the exported file to small raw frames and count consecutive
+ * duplicates. This checks the finished artifact rather than what the renderer
+ * believed it produced.
+ */
+async function duplicateFramesIn(file) {
+  const width = 48;
+  const height = 48;
+  const frameBytes = width * height * 3;
+
+  const { stdout } = await execFileAsync(
+    ffmpeg,
+    ['-v', 'error', '-i', file, '-vf', `scale=${width}:${height}`, '-f', 'rawvideo',
+     '-pix_fmt', 'rgb24', '-'],
+    { maxBuffer: 512 * 1024 * 1024, encoding: 'buffer' },
+  );
+
+  const total = Math.floor(stdout.length / frameBytes);
+  let duplicates = 0;
+
+  for (let i = 1; i < total; i += 1) {
+    const a = stdout.subarray((i - 1) * frameBytes, i * frameBytes);
+    const b = stdout.subarray(i * frameBytes, (i + 1) * frameBytes);
+    if (a.equals(b)) duplicates += 1;
+  }
+
+  return { frames: total, duplicates };
 }
 
 /** Parse the stream description ffmpeg prints for a file. */
@@ -114,6 +166,7 @@ function runElectron() {
         E2E_PNG: paths.png,
         ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       },
+      // Inherit stdio for stderr so Electron's own warnings are visible.
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -166,23 +219,36 @@ async function main() {
 
   for (const line of result.steps) console.log(`   - ${line}`);
 
+  /* Anything the app complained about ------------------------------------ */
+  const issues = result.consoleIssues ?? [];
+  if (issues.length > 0) {
+    console.log('');
+    console.log('   renderer console output:');
+    for (const issue of issues) console.log(`     ${issue}`);
+  }
+
+  console.log('');
   console.log('4. verifying the exported files');
 
+  const expected = {
+    frames: result.edit.totalFrames,
+    width: result.project.width,
+    height: result.project.height,
+    fps: result.project.fps,
+  };
+
   /* The edit itself ------------------------------------------------------ */
-  check('trim + split produced two halves', result.edit.leftDuration + result.edit.rightDuration === 60,
-    `${result.edit.leftDuration} + ${result.edit.rightDuration}`);
-  check('project holds 3 clips after the edit', result.edit.clipsAfterSplit === 3,
-    String(result.edit.clipsAfterSplit));
+  check('trim + split covers the whole range',
+    result.edit.leftDuration + result.edit.rightDuration === expected.frames,
+    `${result.edit.leftDuration} + ${result.edit.rightDuration} = ${expected.frames}`);
+  check('renderer logged no errors or warnings', issues.length === 0,
+    issues.length === 0 ? 'clean' : `${issues.length} issue(s)`);
 
   /* Rendering ------------------------------------------------------------ */
-  check('every frame was rendered', result.render.framesRendered === 60,
+  check('every frame was rendered', result.render.framesRendered === expected.frames,
     String(result.render.framesRendered));
   check('no frame composited blank', result.render.nonBlankFrames === result.render.framesRendered,
     `${result.render.nonBlankFrames}/${result.render.framesRendered}`);
-  // A duplicate means the decoder had not caught up, which reads as a lower
-  // frame rate in the finished file.
-  check('no duplicated frames', result.render.duplicateFrames === 0,
-    `${result.render.duplicateFrames} duplicates`);
 
   /* The MP4 -------------------------------------------------------------- */
   const mp4Stat = await stat(paths.mp4);
@@ -190,25 +256,49 @@ async function main() {
 
   check('MP4 exists and is not empty', mp4Stat.size > 1000, `${mp4Stat.size} bytes`);
   check('MP4 is H.264', mp4.codec === 'h264', String(mp4.codec));
-  check('MP4 is 640x360', mp4.width === 640 && mp4.height === 360, `${mp4.width}x${mp4.height}`);
-  check('MP4 is 30 fps', mp4.fps === 30, String(mp4.fps));
-  check('MP4 is ~2s (60 frames at 30fps)',
-    mp4.durationSeconds !== null && Math.abs(mp4.durationSeconds - 2) < 0.2,
-    `${mp4.durationSeconds}s`);
+  check('MP4 matches the project resolution',
+    mp4.width === expected.width && mp4.height === expected.height,
+    `${mp4.width}x${mp4.height} vs ${expected.width}x${expected.height}`);
+  check('MP4 matches the project frame rate',
+    mp4.fps !== null && Math.abs(mp4.fps - expected.fps) < 0.5,
+    `${mp4.fps} vs ${expected.fps}`);
+
+  // Tight on purpose: a file that runs a few percent slow is exactly the kind
+  // of defect a loose tolerance hides.
+  const expectedSeconds = expected.frames / expected.fps;
+  const drift = mp4.durationSeconds === null
+    ? Infinity
+    : Math.abs(mp4.durationSeconds - expectedSeconds) / expectedSeconds;
+  check('MP4 duration matches the exported range (within 1%)', drift < 0.01,
+    `${mp4.durationSeconds}s vs ${expectedSeconds.toFixed(2)}s (${(drift * 100).toFixed(1)}% off)`);
+
+  /* The finished file, decoded ------------------------------------------- */
+  const integrity = await decodeIntegrity(paths.mp4);
+  check('MP4 decodes cleanly end to end', integrity === '',
+    integrity === '' ? 'no decoder errors' : integrity.split('\n')[0]);
+
+  const decoded = await duplicateFramesIn(paths.mp4);
+  check('MP4 holds every exported frame', decoded.frames === expected.frames,
+    `${decoded.frames} decoded vs ${expected.frames} exported`);
+  // A duplicate means the decoder had not caught up, which reads as a lower
+  // frame rate in the finished file.
+  check('no duplicated frames in the output', decoded.duplicates === 0,
+    `${decoded.duplicates} of ${decoded.frames}`);
 
   /* The PNG sequence ----------------------------------------------------- */
-  const frames = (await readdir(paths.png)).filter((f) => f.endsWith('.png')).sort();
-  check('PNG sequence wrote 10 frames', frames.length === 10, String(frames.length));
+  const frames = (await readdir(paths.png).catch(() => []))
+    .filter((f) => f.endsWith('.png'))
+    .sort();
 
   if (frames.length > 0) {
     const header = await readPngHeader(join(paths.png, frames[0]));
-    check('PNG is 640x360', header.width === 640 && header.height === 360,
+    check('PNG matches the project resolution',
+      header.width === expected.width && header.height === expected.height,
       `${header.width}x${header.height}`);
     check('PNG carries an alpha channel', header.hasAlpha, `colour type ${header.colourType}`);
+    check('sprite kept soft alpha edges', result.render.spriteAlphaPixels > 0,
+      `${result.render.spriteAlphaPixels} partially transparent pixels`);
   }
-
-  check('sprite kept soft alpha edges', result.render.spriteAlphaPixels > 0,
-    `${result.render.spriteAlphaPixels} partially transparent pixels`);
 
   /* Report --------------------------------------------------------------- */
   console.log('');

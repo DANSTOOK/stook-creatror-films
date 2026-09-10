@@ -1,4 +1,5 @@
 import type { MediaKind } from '@shared/types';
+import { snapFrameRate } from '@shared/utils/frameRate';
 
 /**
  * Renderer-side media probing.
@@ -20,29 +21,7 @@ export interface ElementProbe {
   fps?: number;
 }
 
-/** Frame rates worth snapping a noisy measurement onto. */
-const STANDARD_RATES = [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120];
-
-/**
- * Snap a measured rate to the nearest standard one, within 4%.
- *
- * Measuring from presentation timestamps is accurate but not exact, and a
- * project running at 29.9994 fps instead of 30 would drift against its audio.
- */
-export function snapFrameRate(measured: number): number {
-  if (!Number.isFinite(measured) || measured <= 0) return 0;
-
-  let best = measured;
-  let bestError = Infinity;
-  for (const rate of STANDARD_RATES) {
-    const error = Math.abs(rate - measured) / rate;
-    if (error < bestError) {
-      bestError = error;
-      best = rate;
-    }
-  }
-  return bestError <= 0.04 ? best : Math.round(measured * 1000) / 1000;
-}
+export { snapFrameRate } from '@shared/utils/frameRate';
 
 interface FrameMetadata {
   mediaTime: number;

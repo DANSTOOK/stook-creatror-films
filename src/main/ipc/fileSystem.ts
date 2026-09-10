@@ -5,6 +5,7 @@ import { basename, extname } from 'node:path';
 import { promisify } from 'node:util';
 import type { ExportSettings, MediaKind } from '@shared/types';
 import { IPC, type MediaProbe, type PickedFile } from '@shared/types/ipc';
+import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
 
@@ -57,9 +58,16 @@ export function parseFfmpegBanner(stderr: string, path: string): MediaProbe {
       stderr,
     );
   const fpsMatch = /,\s*(\d+(?:\.\d+)?)\s*fps/.exec(stderr);
+  const tbrMatch = /,\s*(\d+(?:\.\d+)?)k?\s*tbr/.exec(stderr);
   const audio = /Stream #\d+:\d+.*?: Audio:\s*([a-zA-Z0-9_]+)/.exec(stderr);
 
-  const fps = fpsMatch ? Number(fpsMatch[1]) : 30;
+  // ffmpeg prints the AVERAGE rate as "fps" and the nominal one as "tbr". A
+  // variable-frame-rate phone recording reads "29.99 fps, 30 tbr", and taking
+  // the average literally produces a project no container can represent -
+  // 180 frames at 29.99 fps muxes to a file that runs 3.5% slow. Snapping
+  // resolves it to the rate the footage actually is.
+  const rawFps = fpsMatch ? Number(fpsMatch[1]) : Number(tbrMatch?.[1] ?? 30);
+  const fps = snapFrameRate(rawFps);
 
   return {
     path,

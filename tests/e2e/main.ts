@@ -15,15 +15,24 @@ const inputs = {
   spritePath: process.env.E2E_SPRITE ?? '',
   mp4Output: process.env.E2E_MP4 ?? '',
   pngOutput: process.env.E2E_PNG ?? '',
+  useRealExportPath: process.env.E2E_REAL_EXPORT === '1',
+  ...(process.env.E2E_START ? { startFrame: Number(process.env.E2E_START) } : {}),
+  ...(process.env.E2E_END ? { endFrame: Number(process.env.E2E_END) } : {}),
 };
 
 // The renderer may only touch files that came from a dialog; in this harness
 // the harness itself vouches for them.
-for (const path of Object.values(inputs)) if (path) allowPath(path);
+for (const path of Object.values(inputs)) {
+  if (typeof path === 'string' && path) allowPath(path);
+}
 
-// Software rendering keeps the test reproducible on machines with no usable GPU.
-app.commandLine.appendSwitch('use-angle', 'swiftshader');
-app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+// Software rendering keeps the test reproducible on machines with no usable
+// GPU, but it also changes which codecs WebCodecs offers - so an audit of the
+// real export path runs on the real GPU instead.
+if (process.env.E2E_USE_GPU !== '1') {
+  app.commandLine.appendSwitch('use-angle', 'swiftshader');
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+}
 
 let window: BrowserWindow | null = null;
 let finished = false;

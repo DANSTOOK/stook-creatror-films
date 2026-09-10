@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { MediaAsset } from '@shared/types';
 import { parseFfmpegBanner } from '@main/ipc/fileSystem';
-import { snapFrameRate } from '@renderer/engine/probeMedia';
+import { snapFrameRate } from '@shared/utils/frameRate';
 import { settingsFromAsset } from '@renderer/media/importMedia';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
@@ -32,7 +32,30 @@ Input #0, matroska,webm, from 'sprite.webm':
   Stream #0:0: Video: vp9 (Profile 0), yuva420p(tv, progressive), 512x512, SAR 1:1 DAR 1:1, 25 fps, 25 tbr, 1k tbn (default)
 `;
 
+/**
+ * A real WhatsApp recording. Variable frame rate, so ffmpeg reports the average
+ * as "fps" and the nominal rate as "tbr". Taking 29.99 literally produced a
+ * project no MP4 could represent: 180 frames muxed to a 6.21s file instead of
+ * 6.00s, running 3.5% slow.
+ */
+const BANNER_VFR_PHONE = `
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'WhatsApp Video.mp4':
+  Duration: 00:00:43.50, start: 0.000000, bitrate: 1537 kb/s
+  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 474x850, 1379 kb/s, 29.99 fps, 30 tbr, 90k tbn (default)
+  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 156 kb/s (default)
+`;
+
 describe('parseFfmpegBanner', () => {
+  it('resolves a variable-rate average to the rate the footage really is', () => {
+    const probe = parseFfmpegBanner(BANNER_VFR_PHONE, 'WhatsApp Video.mp4');
+
+    expect(probe.fps).toBe(30);
+    expect(probe.width).toBe(474);
+    expect(probe.height).toBe(850);
+    expect(probe.hasAudio).toBe(true);
+    expect(probe.durationSeconds).toBeCloseTo(43.5, 1);
+  });
+
   it('reads resolution, codec, duration and frame rate', () => {
     const probe = parseFfmpegBanner(BANNER_30FPS, 'clip.mp4');
 
