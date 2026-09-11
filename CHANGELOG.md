@@ -15,6 +15,28 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.2.0-beta.3 — Cada fotograma en su sitio
+2026-09-10 · pre-release para probar
+
+### Arreglado
+- **Un fotograma de retraso donde cambia la imagen.** Probado con un vídeo
+  real del usuario (grabación de pantalla H.264 1280x720 a 30 fps, exportando
+  del segundo 30 al 40): 1 de cada 300 fotogramas mostraba el anterior,
+  justo en un cambio de imagen, con **los cuatro** codificadores por igual.
+  - *Causa:* la exportación saltaba al primer instante del fotograma
+    (`N / fps`); con las marcas de tiempo del contenedor redondeadas (ticks de
+    90 kHz), ese instante puede resolverse al fotograma anterior.
+  - *Arreglo:* se salta al **centro** del fotograma, `(N + 0,5) / fps`. La
+    clave de la caché de texturas pasa de `round` a `floor`, porque con
+    `round` el centro de N daba la clave de N+1 y la caché podía devolver la
+    textura de otro fotograma.
+  - *Comprobado:* el mismo tramo de 300 fotogramas con CPU, automático,
+    NVENC y Quick Sync: peor fotograma **1,09/255** en los cuatro (antes 5,0
+    en el fotograma del cambio), **0** fotogramas incorrectos y **0** píxeles
+    rosas. Sin regresiones: unitarias 267, E2E 22/22, UI 18/18, GPU 22/22.
+
+---
+
 ## v1.2.0-beta.2 — Sin destellos en la exportación
 2026-09-10 · pre-release para probar
 

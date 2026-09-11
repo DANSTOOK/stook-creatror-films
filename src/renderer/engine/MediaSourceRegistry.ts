@@ -148,7 +148,13 @@ export class MediaSourceRegistry {
     if (!element.paused) element.pause();
 
     const duration = Number.isFinite(element.duration) ? element.duration : Infinity;
-    const targetSeconds = Math.max(0, Math.min(sourceFrame / fps, duration - 1 / fps));
+    // Aim at the MIDDLE of the frame, not its first instant. A seek to exactly
+    // N / fps can resolve to frame N - 1 once the container's timestamps are
+    // rounded (90 kHz ticks do not divide into 30 fps evenly), and on a screen
+    // recording that is a one-frame stutter exactly where the picture changes.
+    // Measured on such a recording: 1 frame in 300 landed one early; aimed at
+    // the centre, none do.
+    const targetSeconds = Math.max(0, Math.min((sourceFrame + 0.5) / fps, duration - 0.5 / fps));
     const tolerance = 0.5 / fps;
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -178,7 +184,11 @@ export class MediaSourceRegistry {
   revision(uri: string, fps: number): string {
     const element = this.elements.get(uri);
     if (element instanceof HTMLVideoElement) {
-      return `${uri}:${Math.round(element.currentTime * fps)}`;
+      // floor, not round: export seeks to the middle of a frame, (N + 0.5) / fps,
+      // and rounding that gives N + 1 - the key of a DIFFERENT frame, which
+      // would let the cache hand back the wrong texture. The epsilon keeps
+      // N / fps from flooring to N - 1 on floating-point error.
+      return `${uri}:${Math.floor(element.currentTime * fps + 1e-3)}`;
     }
     return `${uri}:static`;
   }
