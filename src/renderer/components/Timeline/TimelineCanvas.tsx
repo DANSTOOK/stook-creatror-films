@@ -3,7 +3,7 @@ import type { Clip, Marker, ProjectState, Track } from '@shared/types';
 import { framesToShortLabel } from '@shared/utils/timecode';
 import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
 import type { EditorUiState } from '@renderer/store/types';
-import { clipEndFrame } from './timelineOps';
+import { clipEndFrame, clipsInPaintOrder } from './timelineOps';
 import { frameToPixel, type SnapTarget } from './snapping';
 
 /**
@@ -35,10 +35,85 @@ export interface TimelineCanvasProps {
   waveforms: Record<string, WaveformPeaks>;
   width: number;
   height: number;
+  /** Rubber band being dragged, in canvas coordinates. */
+  marquee?: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** Clip (and edge) under the pointer, which gets the trim handles. */
+  hover?: ClipHover | null;
+  /** Edge being dragged right now, drawn as held. */
+  activeTrim?: ClipHover | null;
+  /** CSS cursor for what a press would do here. */
+  cursor?: string;
   onPointerDown(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerMove(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerUp(event: React.PointerEvent<HTMLCanvasElement>): void;
+  onPointerLeave?(): void;
   onContextMenu(event: React.MouseEvent<HTMLCanvasElement>): void;
+}
+
+export interface ClipHover {
+  clipId: string;
+  edge: 'start' | 'end' | null;
+}
+
+/** How long the trim handles take to grow in, in milliseconds. */
+const HANDLE_ANIMATION_MS = 140;
+
+/**
+ * Trim handles on a clip's edges.
+ *
+ * Dragging an edge has always trimmed a clip, but nothing on screen said so:
+ * the edge looked like the rest of the clip and the cursor never changed. The
+ * handles grow in when the pointer reaches a clip (`progress` 0 -> 1), and the
+ * edge that a press would grab - or is grabbing - lights up.
+ */
+function drawTrimHandles(
+  context: CanvasRenderingContext2D,
+  x: number,
+  clipWidth: number,
+  top: number,
+  progress: number,
+  hotEdge: 'start' | 'end' | null,
+  held: boolean,
+): void {
+  if (clipWidth < 18 || progress <= 0) return;
+
+  const eased = 1 - (1 - progress) ** 3; // ease-out cubic
+  const handleWidth = 6 * eased;
+  const bodyTop = top + 2;
+  const bodyHeight = TRACK_HEIGHT - 4;
+
+  const drawEdge = (edge: 'start' | 'end'): void => {
+    const hot = hotEdge === edge;
+    const left = edge === 'start' ? x : x + clipWidth - handleWidth;
+
+    context.fillStyle = hot ? (held ? '#93c5fd' : '#60a5fa') : 'rgba(226, 232, 240, 0.35)';
+    context.beginPath();
+    context.roundRect(
+      left,
+      bodyTop,
+      handleWidth,
+      bodyHeight,
+      edge === 'start' ? [4, 0, 0, 4] : [0, 4, 4, 0],
+    );
+    context.fill();
+
+    // Two grip lines, the conventional "you can pull this" mark.
+    if (handleWidth > 3) {
+      context.strokeStyle = hot ? '#0d0f14' : 'rgba(13, 15, 20, 0.6)';
+      context.lineWidth = 1;
+      const mid = left + handleWidth / 2;
+      const gripTop = bodyTop + bodyHeight / 2 - 6;
+      context.beginPath();
+      context.moveTo(Math.round(mid - 1) + 0.5, gripTop);
+      context.lineTo(Math.round(mid - 1) + 0.5, gripTop + 12);
+      context.moveTo(Math.round(mid + 1) + 0.5, gripTop);
+      context.lineTo(Math.round(mid + 1) + 0.5, gripTop + 12);
+      context.stroke();
+    }
+  };
+
+  drawEdge('start');
+  drawEdge('end');
 }
 
 /** Vertical offset of a track row inside the canvas. */
@@ -340,9 +415,25 @@ function drawPlayhead(
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   const { project, ui, tracks, activeSnap, waveforms, width, height } = props;
+  const marquee = props.marquee ?? null;
+  const hover = props.hover ?? null;
+  const activeTrim = props.activeTrim ?? null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  // When the hovered clip changes, the handles start growing from zero.
+  const hoverKey = hover?.clipId ?? null;
+  const hoverStartedAt = useRef(0);
+  const lastHoverKey = useRef<string | null>(null);
+  if (hoverKey !== lastHoverKey.current) {
+    lastHoverKey.current = hoverKey;
+    hoverStartedAt.current = performance.now();
+  }
+  const animationFrame = useRef<number | null>(null);
+
   const paint = useCallback(() => {
+    const handleProgress = hoverKey
+      ? Math.min(1, (performance.now() - hoverStartedAt.current) / HANDLE_ANIMATION_MS)
+      : 0;
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
@@ -373,9 +464,9 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
         context.fillRect(0, top, width, TRACK_HEIGHT);
       }
 
-      for (const clip of Object.values(project.clips)) {
-        if (clip.trackId !== track.id) continue;
-
+      // Same order the pointer hit-tests in, reversed: what is drawn on top is
+      // what a click selects.
+      for (const clip of clipsInPaintOrder(project, track.id, selected)) {
         // Cull clips that are entirely off-screen before touching the 2D API.
         const startX = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
         const endX = frameToPixel(clipEndFrame(clip), ui.pixelsPerFrame, ui.scrollLeftPx);
@@ -392,8 +483,33 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           project.fps,
           width,
         );
+
+        const held = activeTrim?.clipId === clip.id;
+        if (held || hover?.clipId === clip.id) {
+          drawTrimHandles(
+            context,
+            startX,
+            endX - startX,
+            top,
+            held ? 1 : handleProgress,
+            held ? activeTrim.edge : (hover?.edge ?? null),
+            held,
+          );
+        }
       }
     });
+
+    if (marquee) {
+      const left = Math.min(marquee.x0, marquee.x1);
+      const topY = Math.max(RULER_HEIGHT, Math.min(marquee.y0, marquee.y1));
+      const boxWidth = Math.abs(marquee.x1 - marquee.x0);
+      const boxHeight = Math.max(marquee.y0, marquee.y1) - topY;
+      context.fillStyle = 'rgba(59, 130, 246, 0.15)';
+      context.fillRect(left, topY, boxWidth, boxHeight);
+      context.strokeStyle = '#60a5fa';
+      context.lineWidth = 1;
+      context.strokeRect(Math.round(left) + 0.5, Math.round(topY) + 0.5, Math.round(boxWidth), Math.round(boxHeight));
+    }
 
     for (const marker of project.markers) {
       const x = Math.round(frameToPixel(marker.frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
@@ -423,25 +539,34 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     drawRuler(context, project, ui, width);
     drawMarkerFlags(context, project, ui, width);
     drawPlayhead(context, project, ui, height);
-  }, [project, ui, tracks, activeSnap, waveforms, width, height]);
+
+    // Keep painting only while the handles are still growing in; a still
+    // timeline costs nothing.
+    if (handleProgress > 0 && handleProgress < 1) {
+      animationFrame.current = requestAnimationFrame(paint);
+    }
+  }, [project, ui, tracks, activeSnap, waveforms, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
-    const handle = requestAnimationFrame(paint);
-    return () => cancelAnimationFrame(handle);
+    animationFrame.current = requestAnimationFrame(paint);
+    return () => {
+      if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
+    };
   }, [paint]);
 
-  // The pointer should say what the active tool will do.
-  const cursor =
-    ui.tool === 'hand' ? 'cursor-grab active:cursor-grabbing' : 'cursor-default';
+  // The pointer says what a press would do: the parent works that out from
+  // what is under it (a trim edge, a clip, empty space) and the active tool.
+  const cursor = props.cursor ?? (ui.tool === 'hand' ? 'grab' : 'default');
 
   return (
     <canvas
       ref={canvasRef}
-      style={{ width, height }}
-      className={`block ${cursor}`}
+      style={{ width, height, cursor }}
+      className="block"
       onPointerDown={props.onPointerDown}
       onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp}
+      onPointerLeave={props.onPointerLeave}
       onContextMenu={props.onContextMenu}
     />
   );

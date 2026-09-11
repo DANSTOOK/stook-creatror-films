@@ -145,6 +145,12 @@ interface ProjectStore {
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
   moveClipTo(clipId: string, trackId: string, startFrame: number): void;
+  /**
+   * Put several clips at absolute start frames at once. A group drag calls
+   * this on every pointer move with the same `mergeKey`, so the whole drag is
+   * one undo step.
+   */
+  setClipStarts(starts: ReadonlyMap<string, number>, mergeKey?: string): void;
   trimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
   /** Razor tool: split at the playhead. */
   razorAtFrame(frame?: number, clipIds?: string[]): void;
@@ -676,6 +682,31 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         };
       },
       `move:${clipId}`,
+    );
+  },
+
+  setClipStarts(starts, mergeKey) {
+    get().transact(
+      'Move clips',
+      (project) => {
+        const locked = new Set(project.tracks.filter((t) => t.locked).map((t) => t.id));
+        const clips = { ...project.clips };
+        let changed = false;
+
+        for (const [id, start] of starts) {
+          const clip = clips[id];
+          if (!clip || locked.has(clip.trackId)) continue;
+          const next = Math.max(0, Math.round(start));
+          if (next === clip.startFrame) continue;
+          // moveClip, not a bare startFrame write: keyframes are stored in
+          // timeline time and have to travel with their clip.
+          clips[id] = moveClip(clip, next);
+          changed = true;
+        }
+
+        return changed ? { ...project, clips } : project;
+      },
+      mergeKey,
     );
   },
 

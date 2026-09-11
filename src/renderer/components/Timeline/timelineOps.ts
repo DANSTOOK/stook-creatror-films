@@ -254,3 +254,26 @@ export function retimeProject(project: ProjectState, nextFps: number): ProjectSt
     ),
   };
 }
+
+/**
+ * The order clips on one track are painted in - later ones on top, and the
+ * selection above everything else so the clip being worked on is never hidden.
+ *
+ * Hit-testing walks this same list BACKWARDS, so a click lands on the clip
+ * that is visibly on top. It used to walk clips by start frame and stop at the
+ * first match while painting in insertion order, so with two clips stacked
+ * only the one behind could ever be selected.
+ */
+export function clipsInPaintOrder(
+  project: ProjectState,
+  trackId: string,
+  selectedIds: Iterable<string> = [],
+): Clip[] {
+  const selected = new Set(selectedIds);
+  return Object.values(project.clips)
+    .filter((clip) => clip.trackId === trackId)
+    .sort((a, b) => {
+      const bySelection = Number(selected.has(a.id)) - Number(selected.has(b.id));
+      return bySelection !== 0 ? bySelection : a.startFrame - b.startFrame || a.id.localeCompare(b.id);
+    });
+}

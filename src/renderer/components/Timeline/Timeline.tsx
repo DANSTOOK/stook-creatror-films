@@ -27,11 +27,13 @@ import type { Clip, Marker, MediaAsset, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
-import { clipEndFrame, clipsOnTrack } from './timelineOps';
+import { clipEndFrame, clipsInPaintOrder, clipsOnTrack } from './timelineOps';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
+import { clipsInMarquee, groupMoveStarts } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
 import TimelineCanvas, {
+  type ClipHover,
   RULER_HEIGHT,
   TRACK_GAP,
   TRACK_HEIGHT,
@@ -49,7 +51,38 @@ type DragMode =
   | { kind: 'scrub' }
   | { kind: 'move'; clipId: string; grabOffsetFrames: number }
   | { kind: 'trim'; clipId: string; edge: 'start' | 'end' }
-  | { kind: 'pan'; startClientX: number; startScrollLeft: number };
+  | { kind: 'pan'; startClientX: number; startScrollLeft: number }
+  | {
+      /** Rubber band from an empty spot; a plain click still moves the playhead. */
+      kind: 'marquee';
+      /** Start in CONTENT space, so the band survives the view scrolling. */
+      startContentX: number;
+      startY: number;
+      /** Selection to add to (Shift / Ctrl), or empty for a fresh one. */
+      base: string[];
+      additive: boolean;
+      moved: boolean;
+    }
+  | {
+      /** Several selected clips dragged together. */
+      kind: 'group';
+      anchorId: string;
+      grabOffsetFrames: number;
+      origins: Map<string, number>;
+      /** A click (no drag) on a clip inside a selection narrows to that clip. */
+      collapseTo: string | null;
+      moved: boolean;
+    };
+
+/** Pointer travel, in pixels, before a press becomes a drag. */
+const DRAG_THRESHOLD_PX = 4;
+
+export interface MarqueeRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
 
 /** Multi-track timeline: track headers plus the canvas editing surface. */
 export function Timeline(): JSX.Element {
@@ -65,6 +98,8 @@ export function Timeline(): JSX.Element {
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renamingMarkerId, setRenamingMarkerId] = useState<string | null>(null);
   const [dropNotice, setDropNotice] = useState<string | null>(null);
+  const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
+  const [hover, setHover] = useState<ClipHover | null>(null);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
@@ -135,7 +170,10 @@ export function Timeline(): JSX.Element {
 
       const frame = (x + ui.scrollLeftPx) / ui.pixelsPerFrame;
 
-      for (const clip of clipsOnTrack(project, track.id)) {
+      // Topmost first: the reverse of the order the canvas paints in, so the
+      // clip a click selects is the one that is visibly on top.
+      const topmostFirst = clipsInPaintOrder(project, track.id, ui.selectedClipIds).reverse();
+      for (const clip of topmostFirst) {
         if (frame < clip.startFrame || frame > clipEndFrame(clip)) continue;
 
         const startX = clip.startFrame * ui.pixelsPerFrame - ui.scrollLeftPx;
@@ -147,7 +185,7 @@ export function Timeline(): JSX.Element {
       }
       return null;
     },
-    [project, tracks, ui.pixelsPerFrame, ui.scrollLeftPx],
+    [project, tracks, ui.pixelsPerFrame, ui.scrollLeftPx, ui.selectedClipIds],
   );
 
   /* Context menus -------------------------------------------------------- */
@@ -450,14 +488,39 @@ export function Timeline(): JSX.Element {
         return;
       }
 
+      const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+
       if (!hit) {
-        state.selectClips([]);
-        dragRef.current = { kind: 'scrub' };
-        state.setCurrentFrame(pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx));
+        // Nothing happens until the pointer moves: a drag draws a rubber band,
+        // a plain click (decided on release) still deselects and moves the
+        // playhead, as it always did.
+        dragRef.current = {
+          kind: 'marquee',
+          startContentX: x + ui.scrollLeftPx,
+          startY: y,
+          base: additive ? [...state.ui.selectedClipIds] : [],
+          additive,
+          moved: false,
+        };
         return;
       }
 
-      state.selectClips([hit.clip.id], event.shiftKey);
+      // Ctrl+click adds or removes one clip, like Ctrl+click in a file list.
+      if (event.ctrlKey || event.metaKey) {
+        const current = state.ui.selectedClipIds;
+        state.selectClips(
+          current.includes(hit.clip.id)
+            ? current.filter((id) => id !== hit.clip.id)
+            : [...current, hit.clip.id],
+        );
+        return;
+      }
+
+      const alreadySelected = state.ui.selectedClipIds.includes(hit.clip.id);
+      // Pressing on a clip that is already part of a selection keeps the
+      // selection, so the group can be dragged. It used to collapse to the one
+      // clip, which made moving several clips together impossible.
+      if (!alreadySelected) state.selectClips([hit.clip.id], event.shiftKey);
 
       if (hit.edge) {
         dragRef.current = { kind: 'trim', clipId: hit.clip.id, edge: hit.edge };
@@ -465,6 +528,25 @@ export function Timeline(): JSX.Element {
       }
 
       const pointerFrame = (x + ui.scrollLeftPx) / ui.pixelsPerFrame;
+      const selection = store.getState().ui.selectedClipIds;
+
+      if (selection.length > 1) {
+        const current = store.getState().project.clips;
+        dragRef.current = {
+          kind: 'group',
+          anchorId: hit.clip.id,
+          grabOffsetFrames: pointerFrame - hit.clip.startFrame,
+          origins: new Map(
+            selection
+              .filter((id) => current[id])
+              .map((id) => [id, current[id].startFrame] as [string, number]),
+          ),
+          collapseTo: alreadySelected && !event.shiftKey ? hit.clip.id : null,
+          moved: false,
+        };
+        return;
+      }
+
       dragRef.current = {
         kind: 'move',
         clipId: hit.clip.id,
@@ -477,11 +559,22 @@ export function Timeline(): JSX.Element {
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const drag = dragRef.current;
-      if (drag.kind === 'none') return;
-
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
       const y = event.clientY - bounds.top;
+
+      if (drag.kind === 'none') {
+        // Not dragging: track what is under the pointer, so the trim handles
+        // and the cursor can say what a press would do. Only on a change -
+        // pointermove fires far more often than this can matter.
+        const hit = store.getState().ui.tool === 'select' ? clipAtPoint(x, y) : null;
+        const next = hit ? { clipId: hit.clip.id, edge: hit.edge } : null;
+        setHover((previous) =>
+          previous?.clipId === next?.clipId && previous?.edge === next?.edge ? previous : next,
+        );
+        return;
+      }
+
       const state = store.getState();
       const frame = pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx);
 
@@ -501,6 +594,57 @@ export function Timeline(): JSX.Element {
 
       if (drag.kind === 'trim') {
         state.trimClip(drag.clipId, drag.edge, frame);
+        return;
+      }
+
+      if (drag.kind === 'marquee') {
+        const contentX = x + ui.scrollLeftPx;
+        if (
+          !drag.moved &&
+          Math.hypot(contentX - drag.startContentX, y - drag.startY) < DRAG_THRESHOLD_PX
+        ) {
+          return;
+        }
+        drag.moved = true;
+
+        // Rows are clamped, so a band dragged into the ruler or below the last
+        // track still covers the first or last track instead of nothing.
+        const rowAt = (py: number): number =>
+          Math.min(tracks.length - 1, Math.max(0, trackIndexAtY(Math.max(RULER_HEIGHT, py))));
+
+        const touched = clipsInMarquee(state.project, tracks, {
+          frameA: drag.startContentX / ui.pixelsPerFrame,
+          frameB: contentX / ui.pixelsPerFrame,
+          rowA: rowAt(drag.startY),
+          rowB: rowAt(y),
+        });
+        state.selectClips([...new Set([...drag.base, ...touched])]);
+        setMarquee({ x0: drag.startContentX - ui.scrollLeftPx, y0: drag.startY, x1: x, y1: y });
+        return;
+      }
+
+      if (drag.kind === 'group') {
+        const anchor = state.project.clips[drag.anchorId];
+        const anchorOrigin = drag.origins.get(drag.anchorId);
+        if (!anchor || anchorOrigin === undefined) return;
+
+        const rawStart = Math.max(
+          0,
+          (x + ui.scrollLeftPx) / ui.pixelsPerFrame - drag.grabOffsetFrames,
+        );
+        // The grabbed clip snaps; the rest keep their spacing around it. None
+        // of the moving clips is a snap target, or the group would snap to
+        // itself.
+        const targets = collectSnapTargets(state.project, { excludeClipIds: drag.origins.keys() });
+        const snap = snapClipMove(rawStart, anchor.durationFrames, targets, {
+          pixelsPerFrame: ui.pixelsPerFrame,
+          enabled: state.ui.snappingEnabled,
+        });
+
+        const delta = snap.frame - anchorOrigin;
+        if (delta !== 0) drag.moved = true;
+        setActiveSnap(snap.snapped ? (snap.target ?? null) : null);
+        state.setClipStarts(groupMoveStarts(drag.origins, delta), `move-group:${drag.anchorId}`);
         return;
       }
 
@@ -525,7 +669,7 @@ export function Timeline(): JSX.Element {
       setActiveSnap(snap.snapped ? (snap.target ?? null) : null);
       state.moveClipTo(clip.id, targetTrack.id, snap.frame);
     },
-    [store, tracks, ui.pixelsPerFrame, ui.scrollLeftPx],
+    [clipAtPoint, store, tracks, ui.pixelsPerFrame, ui.scrollLeftPx],
   );
 
   /* Drag and drop -------------------------------------------------------- */
@@ -614,13 +758,57 @@ export function Timeline(): JSX.Element {
     [dropTargetAt, store],
   );
 
-  const onPointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    dragRef.current = { kind: 'none' };
-    setActiveSnap(null);
-  }, []);
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      const drag = dragRef.current;
+      const state = store.getState();
+
+      // A press on empty space that never became a drag is a click: deselect
+      // (unless adding) and put the playhead there, as a click always did.
+      if (drag.kind === 'marquee' && !drag.moved) {
+        if (!drag.additive) state.selectClips([]);
+        const x = event.clientX - event.currentTarget.getBoundingClientRect().left;
+        state.setCurrentFrame(pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx));
+      }
+
+      // A click (no drag) on one clip of a selection narrows it to that clip.
+      if (drag.kind === 'group' && !drag.moved && drag.collapseTo) {
+        state.selectClips([drag.collapseTo]);
+      }
+
+      dragRef.current = { kind: 'none' };
+      setActiveSnap(null);
+      setMarquee(null);
+    },
+    [store, ui.pixelsPerFrame, ui.scrollLeftPx],
+  );
+
+  // Read straight off the live drag: every drag that matters changes the
+  // project or the marquee on each move, so this re-renders as it goes.
+  const drag = dragRef.current;
+  const activeTrim = drag.kind === 'trim' ? { clipId: drag.clipId, edge: drag.edge } : null;
+  const cursor =
+    ui.tool === 'hand'
+      ? drag.kind === 'pan'
+        ? 'grabbing'
+        : 'grab'
+      : ui.tool === 'razor'
+        ? 'crosshair'
+        : drag.kind === 'trim'
+          ? 'ew-resize'
+          : drag.kind === 'move' || drag.kind === 'group'
+            ? 'grabbing'
+            : drag.kind === 'marquee'
+              ? 'crosshair'
+              : hover?.edge
+                ? 'ew-resize'
+                : hover
+                  ? 'grab'
+                  : 'default';
 
   const toolButton = (
     tool: 'select' | 'razor' | 'hand',
@@ -884,6 +1072,11 @@ export function Timeline(): JSX.Element {
                 ui={ui}
                 tracks={tracks}
                 activeSnap={activeSnap}
+                marquee={marquee}
+                hover={hover}
+                activeTrim={activeTrim}
+                cursor={cursor}
+                onPointerLeave={() => setHover(null)}
                 waveforms={waveforms}
                 width={viewportWidth}
                 height={Math.max(canvasHeight, trackRowTop(tracks.length))}
