@@ -158,6 +158,19 @@ clips.
 awaits every contributing decoder before compositing; the viewport path happily
 draws a stale frame, which in a render would silently duplicate frames.
 
+**Export decodes forwards instead of seeking.** Seeking a `<video>` to every
+frame restarts its decoder at the previous keyframe, which held export at
+~12 fps with the GPU idle. During an export, `FrameRenderer` gives each clip a
+`SequentialVideoReader`: `engine/mp4.ts` reads the file's sample tables (stts,
+stsz, stsc, stco/co64, stss, ctts, edit list, avcC/hvcC) through `media://`
+Range reads, and a WebCodecs `VideoDecoder` decodes the samples in file order;
+each `VideoFrame` is uploaded straight to a texture. Going backwards or far
+ahead restarts at the nearest keyframe. Anything it cannot read - not MP4/MOV,
+not H.264/HEVC, no decoder - or a decoder that fails mid-render falls back to
+seeking for that clip. The end-of-stream flush is deliberately not awaited: a
+hardware decoder cannot put out its last frames while its few output buffers
+wait in the reader's queue, and awaiting it deadlocked on the last GOP.
+
 ## Export paths
 
 Two ways frames reach ffmpeg, chosen automatically per render:
@@ -446,10 +459,15 @@ depend on a file fitting in memory:
 `npm run test:long` imports a generated 45-minute, ~2 GB recording into the real
 app and checks import time, peak memory per process, canvas size, fit and an
 export from minute 30. Measured: import 2.2 s, main process peak 117 MB, page
-peak 1.75 GB (decoded audio included).
+peak 1.5-2.2 GB (decoded audio included; it varies run to run), export 105 fps.
+
+`npm run test:bench` (with `BENCH_SOURCE=<video>`) exports a whole real video
+both ways and compares them frame by frame. On a 91-second 720p30 screen
+recording: 346 fps decoding forwards against 12.6 fps seeking (27.5x), with
+every one of the 2786 frames identical between the two.
 
 Still to do: playback audio is a full `AudioBuffer` (~1 GB per 45 minutes of
-stereo), and export seeks the video element once per frame (~12 fps at 720p).
+stereo).
 
 ## End-to-end test
 
@@ -474,9 +492,8 @@ soft alpha edges.
 **Export throughput, measured** (640x360, software rendering under SwiftShader,
 so a floor rather than a typical figure): 17.2 fps, of which 52.1 ms/frame is
 the renderer and 5.7 ms/frame is the IPC and FFmpeg pipe together. The
-bottleneck is seeking an `HTMLVideoElement` once per frame, not encoding.
-Sequential decoding through a WebCodecs `VideoDecoder` is the real fix and has
-not been done.
+bottleneck was seeking an `HTMLVideoElement` once per frame, not encoding;
+export now decodes forwards (see Engine notes and Long footage).
 
 **It found a real bug on its first run.** Exactly half the frames composited
 blank - the graded half. `gl.getError()` returned `0x502`

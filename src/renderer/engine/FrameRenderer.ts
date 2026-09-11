@@ -2,6 +2,7 @@ import type { Clip, MediaAsset, ProjectState } from '@shared/types';
 import { Compositor, type ClipSource, type CompositorOptions } from './Compositor';
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
+import { SequentialVideoReader } from './SequentialVideoReader';
 import { TextureManager } from './TextureManager';
 
 /**
@@ -144,14 +145,86 @@ export class FrameRenderer {
     return this.compositor.context.canvas;
   }
 
+  /**
+   * In-order decoders, one per clip, while an export runs; null for a clip
+   * whose file has to use the seek path. See SequentialVideoReader.
+   */
+  private sequential: Map<string, Promise<SequentialVideoReader | null>> | null = null;
+
+  /** Frames decoded for the render in progress, by clip id. */
+  private readonly decodedFrames = new Map<string, VideoFrame>();
+
+  /** Decode forwards instead of seeking, until `stopSequentialDecode`. */
+  startSequentialDecode(): void {
+    this.stopSequentialDecode();
+    this.sequential = new Map();
+  }
+
+  stopSequentialDecode(): void {
+    const readers = this.sequential;
+    this.sequential = null;
+    this.decodedFrames.clear();
+    if (!readers) return;
+    for (const [clipId, reader] of readers) {
+      void reader.then((open) => open?.close());
+      this.textures.release(`clip:${clipId}`);
+    }
+  }
+
+  /** Close the decoders of clips the render has moved past. */
+  private retireReaders(visible: ReadonlySet<string>): void {
+    if (!this.sequential) return;
+    for (const [clipId, reader] of this.sequential) {
+      if (visible.has(clipId)) continue;
+      this.sequential.delete(clipId);
+      void reader.then((open) => open?.close());
+      this.textures.release(`clip:${clipId}`);
+    }
+  }
+
   /** Seek every source contributing to `frame` and wait for all of them. */
   private async seekSources(project: ProjectState, frame: number): Promise<void> {
+    this.decodedFrames.clear();
+    const clips = Compositor.visibleClips(project, frame);
+    this.retireReaders(new Set(clips.map((clip) => clip.id)));
+
     await Promise.all(
-      Compositor.visibleClips(project, frame).map(async (clip) => {
+      clips.map(async (clip) => {
         const sourceFrame = clip.sourceOffsetFrames + (frame - clip.startFrame);
+        if (this.sequential && this.media.get(clip.sourceUri) instanceof HTMLVideoElement) {
+          let reader = this.sequential.get(clip.id);
+          if (!reader) {
+            reader = SequentialVideoReader.open(clip.sourceUri).catch(() => null);
+            this.sequential.set(clip.id, reader);
+          }
+          const open = await reader;
+          if (open) {
+            try {
+              this.decodedFrames.set(clip.id, await open.frameAt(sourceFrame, project.fps));
+              return;
+            } catch (error) {
+              // A decoder that fails mid-render hands the clip to the seek path.
+              console.info(`[export] ${clip.name}: decoding forwards failed at frame ${sourceFrame}, seeking instead (${String(error)})`);
+              open.close();
+              this.sequential.set(clip.id, Promise.resolve(null));
+            }
+          }
+        }
         await this.media.seekExact(clip.sourceUri, sourceFrame, project.fps);
       }),
     );
+  }
+
+  /** The texture for a clip in an exact render: its decoded frame, or the element. */
+  private exactUploadFor(clip: Clip, fps: number): ClipSource | null {
+    const frame = this.decodedFrames.get(clip.id);
+    if (!frame) return this.uploadFor(clip, fps, false);
+
+    const key = `clip:${clip.id}`;
+    const texture = this.textures.upload(key, frame, `${frame.timestamp}`);
+    const gl = this.compositor.context;
+    this.textures.setFilter(key, clip.pixelArt.enabled ? gl.NEAREST : gl.LINEAR);
+    return { texture, flipY: true };
   }
 
   /**
@@ -166,7 +239,7 @@ export class FrameRenderer {
     this.compositor.renderFrame(
       project,
       frame,
-      (clip) => this.uploadFor(clip, project.fps, false),
+      (clip) => this.exactUploadFor(clip, project.fps),
       false,
     );
 
@@ -189,7 +262,7 @@ export class FrameRenderer {
       this.compositor.renderFrame(
         project,
         frame,
-        (clip) => this.uploadFor(clip, project.fps, false),
+        (clip) => this.exactUploadFor(clip, project.fps),
         true,
       );
     } finally {
@@ -198,6 +271,7 @@ export class FrameRenderer {
   }
 
   dispose(): void {
+    this.stopSequentialDecode();
     this.textures.dispose();
     this.lutLoader.dispose();
     this.media.dispose();

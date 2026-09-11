@@ -7,11 +7,81 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **306 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **22/22 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **340 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **28/28 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.5.0-beta.1 — STOOK CREATOR FILMS: exportación 27 veces más rápida
+2026-09-11 · pre-release para probar
+
+La app pasa a llamarse **STOOK CREATOR FILMS (SCF)**. Esta entrega junta lo
+pedido después de la v1.4: exportar más rápido, un inspector propio para el
+audio, opciones de exportación como las de otros editores y selección por
+arrastre en la línea de tiempo.
+
+### Arreglado
+- **Exportar era lentísimo incluso con vídeos cortos.** Por cada fotograma se
+  saltaba el vídeo a esa posición, y cada salto vuelve a decodificar desde el
+  fotograma clave anterior. Eso dejaba la exportación en ~12 fps con la GPU
+  parada. Ahora cada clip se decodifica **una sola vez, hacia delante**, con
+  el decodificador de vídeo por hardware (WebCodecs), y cada fotograma pasa
+  directo a la GPU. Para ello hay un lector propio de MP4/MOV (H.264 y HEVC).
+  Los archivos que no sabe leer siguen por el camino anterior.
+  - *Comprobado con tu vídeo* (`Actualizar Tipo de Cambio.mp4`, 91 s,
+    720p30): **8 s en lugar de 3 min 42 s**, 346 fps frente a 12,6 fps (27,5
+    veces más rápido). Las dos exportaciones son **idénticas fotograma a
+    fotograma** en los 2.786 fotogramas (`npm run test:bench`).
+  - *Comprobado* con 45 minutos: 10 s desde el minuto 30 en 2,9 s (105 fps;
+    antes ~12 fps). La prueba de interfaz sigue dando 60/60 fotogramas
+    exactos, y el E2E 22/22.
+  - Por el camino apareció un bloqueo al final de cada archivo: el
+    decodificador por hardware no suelta sus últimos fotogramas mientras el
+    lector espera a que termine. Se encontró con tu vídeo, se arregló y lo
+    cubre la misma prueba.
+- **Con dos clips superpuestos solo se podía seleccionar el de atrás.** Ahora
+  el clic elige el que se ve encima, y el seleccionado se dibuja arriba.
+  *Comprobado* con pruebas unitarias del orden de pintado y de selección.
+
+### Añadido
+- **Nuevo nombre: STOOK CREATOR FILMS (SCF)**, en la ventana, la cabecera y
+  el instalador (`SCF-Setup-<versión>.exe`). Los proyectos se guardan como
+  `.scf`, y siguen abriéndose los `.fep` y `.json` de antes.
+- **Inspector de audio.** Un clip de audio ya no muestra transformaciones,
+  color ni opciones de vídeo: solo volumen, panorama y ecualizador de tres
+  bandas (graves, medios, agudos), con un acceso al mezclador. *Comprobado*
+  con pruebas unitarias de qué clip cuenta como audio.
+- **Exportación:**
+  - Tamaños predefinidos **720p, 1080p, 2K y 4K**, que respetan el formato
+    del proyecto (un proyecto vertical sigue vertical).
+  - **Nombre del archivo** y carpeta de destino, con aviso si va a
+    reemplazar un archivo que ya existe.
+  - **Miniatura del vídeo**: el fotograma bajo el cursor de reproducción o
+    una imagen propia, incrustada como portada del MP4/MOV sin volver a
+    codificar el vídeo.
+  - El editor de fondo se **desenfoca** mientras está abierta la ventana (y
+    también con el mezclador y los ajustes del proyecto).
+  - *Comprobado* en la prueba de interfaz: tamaños ofrecidos, nombre
+    escrito = archivo creado, portada presente (`attached_pic`) y fondo
+    desenfocado.
+- **Selección por arrastre** en la línea de tiempo, como al seleccionar
+  texto: arrastra sobre un espacio vacío para seleccionar varios clips y
+  muévelos juntos. Ctrl+clic suma o quita clips. *Comprobado:* la prueba de
+  interfaz arrastra un recuadro y cuenta "2 clips selected".
+- **Bordes de recorte visibles:** al pasar el ratón por un borde de un clip
+  aparece un asa animada y el cursor cambia, para indicar que se puede
+  alargar o acortar.
+
+### Problemas conocidos
+- El audio de reproducción todavía se carga entero en memoria (~1 GB por 45
+  minutos estéreo). El pico de memoria de la página al importar 45 minutos
+  varía entre 1,5 y 2,2 GB según la ejecución.
+- Los puntos 5 a 10 del plan (arrastre del cursor con vídeo y audio en
+  tiempo real, cortes, multipista, imágenes en secuencia, imán y copiar /
+  pegar) llegan en las siguientes entregas.
 
 ---
 

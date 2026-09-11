@@ -221,6 +221,9 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     // drawing, it seeks them to the playhead mid-export, and the playhead's
     // picture lands in the render as a flash. It stands still until the end.
     renderer.beginExclusive();
+    // Decode each clip forwards once instead of seeking per frame. The flag
+    // forces the old seek path, for comparing the two in tests.
+    if (!(window as { __scfSeekExport?: boolean }).__scfSeekExport) renderer.startSequentialDecode();
 
     try {
       await renderer.ensureLUTs(project);
@@ -309,6 +312,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       encoder?.close();
       if (jobId) await window.filmora.exportCancel(jobId).catch(() => undefined);
     } finally {
+      renderer.stopSequentialDecode();
       renderer.endExclusive();
       setRunning(false);
     }

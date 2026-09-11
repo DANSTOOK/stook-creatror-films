@@ -11,3 +11,4 @@ dist-e2e/
 release/
 .gpu-tmp/
 .long-tmp/
+.bench-tmp/

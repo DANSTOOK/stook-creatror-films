@@ -1,6 +1,6 @@
 {
   "name": "filmora-engine",
-  "version": "1.4.0-beta.1",
+  "version": "1.5.0-beta.1",
   "private": true,
   "description": "Production-ready desktop video editor with a WebGL2 compositing core, optimized for video editing and transparent sprite-sheet authoring for game engines (Godot).",
   "repository": {
@@ -21,6 +21,7 @@
     "test:ui": "node ./tests/ui/run.mjs",
     "test:gpu": "node ./tests/gpu/run.mjs",
     "test:long": "node ./tests/long/run.mjs",
+    "test:bench": "node ./tests/bench/run.mjs",
     "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
     "release": "node ./scripts/release.mjs",
     "rollback": "node ./scripts/rollback.mjs"
