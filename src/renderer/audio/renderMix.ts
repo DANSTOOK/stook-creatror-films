@@ -55,7 +55,10 @@ async function decodeSources(
       .filter((asset) => uris.has(asset.uri) && !asset.missing && asset.kind !== 'image')
       .map(async (asset) => {
         try {
-          const bytes = await fetch(asset.uri).then((response) => response.arrayBuffer());
+          // The extracted audio track, not the (possibly multi-gigabyte) video.
+          const bytes = await fetch(asset.audioUri ?? asset.uri).then((response) =>
+            response.arrayBuffer(),
+          );
           decoded.set(asset.uri, await context.decodeAudioData(bytes));
         } catch {
           // A video with no audio track is the common case, not an error.

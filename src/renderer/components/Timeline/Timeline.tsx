@@ -12,6 +12,7 @@ import {
   Lock,
   LockOpen,
   Magnet,
+  Maximize2,
   MousePointer2,
   Pencil,
   Plus,
@@ -81,10 +82,38 @@ export function Timeline(): JSX.Element {
 
     const observer = new ResizeObserver(([entry]) => {
       setViewportWidth(entry.contentRect.width);
+      // The store fits and reveals content, so it needs the width too.
+      store.getState().setUi({ viewportWidthPx: entry.contentRect.width });
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [store]);
+
+  // Zoom and reveal set the scroll offset in the store; apply it to the
+  // element. After layout, so a zoom-out that shrinks the content has already
+  // shrunk it and the offset is not clamped against the old width.
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element && Math.abs(element.scrollLeft - ui.scrollLeftPx) > 1) {
+      element.scrollLeft = ui.scrollLeftPx;
+    }
+  }, [ui.scrollLeftPx, ui.pixelsPerFrame]);
+
+  // Ctrl+wheel zooms around the pointer, like every editor. Registered by hand
+  // because React's onWheel is passive and cannot stop the page from scrolling.
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+
+    const onWheel = (event: WheelEvent): void => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const anchor = event.clientX - element.getBoundingClientRect().left;
+      store.getState().zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25, anchor);
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => element.removeEventListener('wheel', onWheel);
+  }, [store]);
 
   // The canvas paints in scroll-space, so it needs the live scroll offset.
   useEffect(() => {
@@ -708,7 +737,7 @@ export function Timeline(): JSX.Element {
           </button>
           <button
             type="button"
-            title="Zoom out"
+            title="Zoom out (-, or Ctrl+wheel)"
             className="tool-button"
             onClick={() => store.getState().zoomBy(1 / 1.4)}
           >
@@ -716,11 +745,20 @@ export function Timeline(): JSX.Element {
           </button>
           <button
             type="button"
-            title="Zoom in"
+            title="Zoom in (=, or Ctrl+wheel)"
             className="tool-button"
             onClick={() => store.getState().zoomBy(1.4)}
           >
             <ZoomIn size={14} />
+          </button>
+          <button
+            type="button"
+            title="Fit the whole timeline in view (\)"
+            className="tool-button"
+            onClick={() => store.getState().zoomToFit()}
+          >
+            <Maximize2 size={14} />
+            Fit
           </button>
         </div>
       </header>
@@ -833,19 +871,28 @@ export function Timeline(): JSX.Element {
             onDragLeave={onDragLeave}
             onDrop={(event) => void onDrop(event)}
           >
-            <TimelineCanvas
-              project={project}
-              ui={ui}
-              tracks={tracks}
-              activeSnap={activeSnap}
-              waveforms={waveforms}
-              width={contentWidth}
-              height={Math.max(canvasHeight, trackRowTop(tracks.length))}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onContextMenu={onCanvasContextMenu}
-            />
+            {/* The canvas is the size of the VIEW and stays put while the
+                content scrolls under it; this div's full width only exists to
+                give the scrollbar its range. The canvas used to be as wide as
+                the whole timeline - hundreds of thousands of pixels for long
+                footage, past what a canvas can be - and it scrolled physically
+                while also subtracting the scroll when painting, so everything
+                moved at twice the scrollbar's speed. */}
+            <div className="sticky left-0" style={{ width: viewportWidth }}>
+              <TimelineCanvas
+                project={project}
+                ui={ui}
+                tracks={tracks}
+                activeSnap={activeSnap}
+                waveforms={waveforms}
+                width={viewportWidth}
+                height={Math.max(canvasHeight, trackRowTop(tracks.length))}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onContextMenu={onCanvasContextMenu}
+              />
+            </div>
 
             {renamingMarker && (
               <input

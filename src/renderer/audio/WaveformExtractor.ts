@@ -76,6 +76,19 @@ export function computeRmsEnvelope(
   return envelope;
 }
 
+/**
+ * Waveform resolution for a source of `seconds`.
+ *
+ * A fixed 2048 buckets gave a 45-minute source one bucket per 1.3 s - a smear
+ * at any useful zoom. 100 per second is finer than one per frame at 60 fps
+ * zoomed well in; the cap bounds memory (a million buckets is 8 MB of
+ * Float32 min/max pairs, reached at ~2.8 hours).
+ */
+export function bucketsFor(seconds: number): number {
+  if (!(seconds > 0)) return 2048;
+  return Math.min(1_000_000, Math.max(2048, Math.round(seconds * 100)));
+}
+
 export class WaveformExtractor {
   private readonly cache = new Map<string, WaveformPeaks>();
   private readonly pending = new Map<string, Promise<WaveformPeaks>>();
@@ -121,6 +134,34 @@ export class WaveformExtractor {
 
     this.pending.set(uri, request);
     return request;
+  }
+
+  /**
+   * Peaks from audio that is ALREADY decoded.
+   *
+   * Playback decodes every source anyway; decoding it a second time just to
+   * draw it doubled the memory held for audio, and for a 45-minute source
+   * that is another gigabyte for a moment. Buckets scale with duration
+   * (`peaksFor`), so a long source is not smeared into 2048 blocks.
+   */
+  fromBuffer(uri: string, buffer: AudioBuffer): WaveformPeaks {
+    const bucketCount = bucketsFor(buffer.duration);
+    const cached = this.cache.get(uri);
+    if (cached && cached.bucketCount === bucketCount) return cached;
+
+    const channels: Float32Array[] = [];
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      channels.push(buffer.getChannelData(channel));
+    }
+
+    const result: WaveformPeaks = {
+      peaks: computePeaks(channels, bucketCount),
+      bucketCount,
+      durationSeconds: buffer.duration,
+      sampleRate: buffer.sampleRate,
+    };
+    this.cache.set(uri, result);
+    return result;
   }
 
   clear(): void {

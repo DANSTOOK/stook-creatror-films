@@ -420,9 +420,36 @@ transparency.
 ## Security posture
 
 `contextIsolation` on, `nodeIntegration` off, a CSP in `index.html`, and the
-renderer can only read files the user actually chose through a dialog - every
-path is added to an allowlist in the main process first. Imported media reaches
-the page as a blob URL, never a `file://` path.
+renderer can only read files the user actually chose - through the Import
+dialog, a drop, or a project file that references them - every path is added
+to an allowlist in the main process first. Imported media reaches the page as
+`media://file/<random token>`, never as a path: only registered tokens
+resolve.
+
+## Long footage
+
+Real footage runs 40-50 minutes, so nothing on the import or timeline path may
+depend on a file fitting in memory:
+
+- **Video streams from disk.** `media://` (`main/ipc/mediaProtocol.ts`) answers
+  HTTP Range requests from a file read stream, so a `<video>` fetches only the
+  bytes it seeks to. Importing used to read the whole file into both processes
+  - ~6 GB each for a 45-minute, 1.9 GB recording.
+- **Audio is decoded from the audio alone.** ffmpeg pulls the audio track out
+  (stream-copied when possible) to a small temporary file, and the waveform is
+  computed from the same decoded buffer instead of a second decode. Waveforms
+  get 100 buckets per second, not a fixed 2048.
+- **The timeline canvas is the size of the view.** It sticks while the content
+  scrolls underneath, and clips and waveforms are drawn only where visible.
+  Zoom goes down to 0.002 px/frame - three hours of 60 fps in 1400 px.
+
+`npm run test:long` imports a generated 45-minute, ~2 GB recording into the real
+app and checks import time, peak memory per process, canvas size, fit and an
+export from minute 30. Measured: import 2.2 s, main process peak 117 MB, page
+peak 1.75 GB (decoded audio included).
+
+Still to do: playback audio is a full `AudioBuffer` (~1 GB per 45 minutes of
+stereo), and export seeks the video element once per frame (~12 fps at 720p).
 
 ## End-to-end test
 
@@ -472,7 +499,7 @@ re-mixed somebody's edit.
 
 ## Tests
 
-282 unit tests across seventeen suites, run with `npm test`:
+306 unit tests across eighteen suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track
@@ -523,3 +550,10 @@ re-mixed somebody's edit.
   floor; a multi-file drop as one undo step that also creates any missing
   track; and the first import keeping its real length when the project adopts
   a new frame rate.
+- `TimelineZoom.test.ts` - measured against a 45-minute timeline: fit, the
+  zoom floor (three hours at 60 fps), zooming around an anchor that stays put,
+  the playhead as anchor, revealing a span by scrolling first and zooming out
+  only when it cannot fit; "+" at the playhead that never covers a clip and
+  follows the selected clip's track, append and new-track alternatives, a
+  45-minute clip fitted on add; waveform resolution for long sources; and the
+  `media://` Range parser (open-ended, suffix, clamped, unsatisfiable).

@@ -234,7 +234,7 @@ async function main() {
     /* Add to the timeline -------------------------------------------------- */
     const assetRow = window.locator('li').filter({ hasText: assetName }).first();
     await assetRow.hover();
-    await assetRow.getByTitle('Add to timeline').click();
+    await assetRow.getByTitle(/Add at the playhead/).click();
 
     // The inspector is the observable proof a clip exists and is selectable.
     await window.locator('canvas').last().click({ position: { x: 60, y: 80 } });
@@ -330,6 +330,12 @@ async function main() {
       .getByText('drop.png', { exact: true }).first()
       .waitFor({ state: 'visible', timeout: 30_000 }).then(() => true).catch(() => false);
     check('dropping a file on the timeline puts a clip there and selects it', droppedOnTimeline);
+
+    // The drop revealed its clip, which may have scrolled the first clip out of
+    // view. "\" fits the whole timeline again - and is itself under test here:
+    // the first clip is only where the next click expects it if fit worked.
+    await window.keyboard.press('\\');
+    await window.waitForTimeout(300);
 
     /* LUT survives save and reopen ------------------------------------------- */
     await surface.click({ position: { x: 60, y: 80 } });
@@ -458,6 +464,37 @@ async function main() {
     check('a stray file cannot replace the editor', stillEditor, window.url());
   } finally {
     await app.close().catch(() => undefined);
+  }
+
+  /* A fresh session ---------------------------------------------------------- */
+  // Reopening inside the session that saved the project proves little: the
+  // read allowlist is in memory, and there it still holds every path. In a new
+  // process it starts empty - and a project saved one day reopened the next
+  // with EVERY clip missing. Only a second launch can see that.
+  console.log('4. reopening the project in a brand new session');
+  const second = await electron.launch({
+    ...(packagedExe
+      ? { executablePath: packagedExe }
+      : { args: [join(projectRoot, 'dist-electron/main/index.js')] }),
+    cwd: projectRoot,
+    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined },
+  });
+  try {
+    const window = await second.firstWindow();
+    await second.evaluate(({ dialog }, project) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
+    }, projectPath);
+    await window.getByRole('button', { name: 'Open' }).click();
+    const status = await window.getByText('Opened', { exact: false }).first()
+      .waitFor({ state: 'visible', timeout: 60_000 })
+      .then(() => window.getByText('Opened', { exact: false }).first().innerText())
+      .catch(() => 'did not open');
+    const missing = await window.getByText('missing', { exact: true }).count();
+    check('a saved project reopens in a NEW session with all its media',
+      missing === 0 && status.startsWith('Opened') && !/could not be found/.test(status),
+      missing > 0 ? `${missing} missing - ${status}` : 'all restored from disk');
+  } finally {
+    await second.close().catch(() => undefined);
   }
 
   const failures = checks.filter((entry) => !entry.passed).length;

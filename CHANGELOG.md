@@ -7,11 +7,93 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **282 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **21/21 comprobaciones de interfaz** (exactitud fotograma a fotograma y arrastrar y soltar incluidos) y
-**22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD),
+Cifras de referencia al día de hoy: **306 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **22/22 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar y reapertura en una sesión nueva) y
+**22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.4.0-beta.1 — Metraje largo, colocación y zoom
+2026-09-11 · pre-release para probar
+
+Punto 4, ampliado a petición del usuario: el metraje real dura 40-50 minutos,
+y la app tiene que aguantarlo con un uso eficiente de CPU, GPU y memoria.
+Todo se ha medido con una grabación de 45 minutos y 1,93 GB (1280x720, 30 fps,
+6 Mbps, como la del usuario).
+
+### Arreglado
+- **Importar un vídeo largo copiaba el archivo entero en memoria, varias
+  veces.** Con 45 minutos, el proceso principal y la página llegaban a
+  **~6 GB cada uno** durante la importación.
+  - El diálogo leía el archivo completo solo para saber su tamaño; ahora usa
+    `stat`.
+  - El vídeo ya no se copia a la página: se sirve desde el disco **por trozos**
+    con un protocolo propio `media://`, que atiende peticiones `Range` como un
+    servidor de vídeo. La página nunca ve rutas, solo un identificador opaco
+    por archivo autorizado.
+  - El audio ya no se decodifica desde el vídeo entero: ffmpeg extrae la pista
+    de audio (la copia sin recodificar cuando puede) a un archivo pequeño, y
+    la forma de onda sale del mismo audio decodificado en vez de decodificarlo
+    otra vez.
+  - *Comprobado* con `npm run test:long`: importación en **2,2 s** (antes
+    10,2 s), pico del proceso principal **117 MB** (antes 6.034 MB), pico de la
+    página **1,75 GB** con el audio incluido (antes ~6 GB).
+- **Un proyecto guardado se abría en otra sesión con todos los medios
+  perdidos.** La lista de archivos autorizados vive en memoria y empieza
+  vacía en cada sesión, y abrir un proyecto solo autorizaba el propio
+  proyecto. Venía de la v1.0: "guardar y reabrir" solo se había probado sin
+  cerrar la app. Ahora abrir un proyecto autoriza los medios y LUT que
+  referencia (solo archivos que existen, con extensión de medio o `.cube`).
+  - *Comprobado:* la prueba de interfaz abre ahora el proyecto en **una
+    segunda sesión**. Sin el arreglo falla ("3 media file(s) could not be
+    found"); con él pasa.
+- **La línea de tiempo se desplazaba al doble de velocidad que su barra.** El
+  canvas se movía con el scroll y además restaba el scroll al dibujar. Como
+  los clics compartían el mismo error, parecía coherente, pero no lo era (ver
+  punto 6). Ahora el canvas mide **lo que la ventana** y el contenido pasa por
+  debajo.
+  - Además, el canvas medía lo que todo el vídeo: con 45 minutos, cientos de
+    miles de píxeles, por encima de lo que admite un canvas. Ahora mide 1.482
+    px, lo mismo que la vista, y cada clip y su forma de onda se dibujan solo
+    en la parte visible.
+- **El zoom mínimo no dejaba ver un vídeo de 45 minutos entero** (solo los
+  primeros 16). El mínimo baja a 0,002 px/fotograma: caben tres horas a 60 fps.
+- **La forma de onda de un audio largo era un borrón**: 2048 muestras fijas, una
+  por cada 1,3 s en 45 minutos. Ahora son 100 por segundo (con tope de
+  memoria).
+
+### Añadido
+- **"+" coloca el clip en el cabezal**, como Filmora, no detrás del último clip
+  de la pista, que solía quedar fuera de la vista. Va a la pista del clip
+  seleccionado si le sirve y **nunca tapa** un clip existente. El menú
+  contextual ofrece también "Add to end of track" (lo de antes) y "Add on a
+  new track".
+- **Lo que se añade se muestra.** Si el clip nuevo queda fuera de la vista, la
+  línea de tiempo se desplaza hasta él, y solo aleja el zoom si no cabe. Un
+  vídeo de 45 minutos entra ya encajado en la ventana.
+- **Fit** (botón y tecla `\`, como Premiere) para ver toda la secuencia.
+- **Zoom anclado**: los botones y `=` / `-` mantienen quieto el cabezal; con
+  Ctrl + rueda queda quieto el punto bajo el ratón. Antes todo saltaba desde
+  el borde izquierdo.
+- Zoom inicial de ~25 s visibles en vez de 8.
+- **`npm run test:long`**: importa un vídeo de 45 minutos y 2 GB en la app
+  real y comprueba tiempo, picos de memoria, tamaño del canvas, encaje en
+  pantalla y exportación desde el minuto 30. *Comprobado:* 6/6.
+
+### Pendiente — eficiencia de CPU/GPU (propuesta, no hecho)
+- **El audio decodificado ocupa ~1 GB por cada 45 min** en la página, porque
+  la reproducción usa `AudioBuffer` completos. Con tres vídeos de 50 minutos
+  serían 3-4 GB. El arreglo de fondo es reproducir el audio en streaming
+  desde los propios archivos (`MediaElementAudioSourceNode`) y hacer la mezcla
+  de exportación con ffmpeg.
+- **Exportar va a ~12 fps a 720p**: cada fotograma se busca por separado en el
+  `<video>`. La GPU está casi ociosa. El arreglo de fondo es decodificar en
+  secuencia con WebCodecs `VideoDecoder`, que necesita un demuxer MP4.
+
+Pruebas: unitarias **306**, interfaz **22/22** (incluida la reapertura en una
+sesión nueva), E2E 22/22, GPU 22/22, metraje largo 6/6.
 
 ---
 

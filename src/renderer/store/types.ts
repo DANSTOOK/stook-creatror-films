@@ -55,6 +55,11 @@ export interface EditorUiState {
   /** Nearest-neighbour scaling in the WebGL viewport. */
   pixelArtViewport: boolean;
   showTransparencyGrid: boolean;
+  /**
+   * Width of the visible timeline area, measured by the Timeline. Kept here so
+   * store actions can fit or reveal content without reaching into the DOM.
+   */
+  viewportWidthPx: number;
   /** Marker the ruler is highlighting, for rename and delete. */
   selectedMarkerId: string | null;
 }
@@ -63,13 +68,16 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   selectedClipIds: [],
   selectedTrackId: null,
   tool: 'select',
-  pixelsPerFrame: 6,
+  // About 25 s of a 30 fps timeline in a typical window, instead of 8 s. It
+  // matters less than it did: the first clip added fits the view anyway.
+  pixelsPerFrame: 2,
   scrollLeftPx: 0,
   snappingEnabled: true,
   isPlaying: false,
   loopPlayback: false,
   pixelArtViewport: false,
   showTransparencyGrid: true,
+  viewportWidthPx: 0,
   selectedMarkerId: null,
 };
 

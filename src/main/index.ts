@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
+import { registerMediaProtocolHandler, registerMediaSchemeAsPrivileged } from './ipc/mediaProtocol';
 import type { EncoderPipeline } from './exporter/EncoderPipeline';
 
 /**
@@ -31,6 +32,7 @@ if (!app.requestSingleInstanceLock()) {
 // silently ignored - which is where the HEVC switch used to live, inside
 // whenReady, doing nothing.
 applyGpuPreferenceAtStartup();
+registerMediaSchemeAsPrivileged();
 // Hardware video decode keeps scrubbing responsive on large timelines.
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 
@@ -80,6 +82,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  registerMediaProtocolHandler();
   pipeline = registerFileSystemHandlers(() => mainWindow);
   createWindow();
 

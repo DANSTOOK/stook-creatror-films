@@ -13,6 +13,7 @@ import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareA
 import { isGpuPreference } from '../gpu/classify';
 import { getGpuReport } from '../gpu/gpuInventory';
 import { writeGpuPreference } from '../gpu/gpuSettings';
+import { mediaUrlFor } from './mediaProtocol';
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +31,9 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bm
 
 const allowedPaths = new Set<string>();
 
+/** Source path -> media:// URL of its extracted audio, for the session. */
+const extractedAudio = new Map<string, string>();
+
 function classify(path: string): MediaKind {
   const extension = extname(path).toLowerCase();
   if (AUDIO_EXTENSIONS.has(extension)) return 'audio';
@@ -41,6 +45,64 @@ function assertAllowed(path: string): void {
   if (!allowedPaths.has(path)) {
     throw new Error(`Access denied: "${path}" was not opened through a file dialog`);
   }
+}
+
+/**
+ * Allowlist the media and LUTs a project file points at.
+ *
+ * The allowlist lives in memory and starts empty in every session, and opening
+ * a project only allowlisted the project file itself - so a project saved
+ * yesterday reopened today with EVERY clip marked missing, although the files
+ * were exactly where it said. Saving and reopening only ever worked within one
+ * run of the app, which is also the only way it was ever tested.
+ *
+ * Choosing a project is as deliberate as choosing files in the Import dialog,
+ * so the files it references are allowed the same way - but only existing
+ * files with a media or `.cube` extension, so a crafted project file cannot be
+ * used to read anything else.
+ */
+export async function allowProjectReferences(contents: string): Promise<number> {
+  let document: unknown;
+  try {
+    document = JSON.parse(contents);
+  } catch {
+    return 0;
+  }
+
+  const candidates: string[] = [];
+  const doc = document as {
+    assets?: { sourcePath?: unknown }[];
+    project?: { clips?: Record<string, { colorGrading?: { lutSourcePath?: unknown } }> };
+  };
+
+  for (const asset of doc.assets ?? []) {
+    if (typeof asset?.sourcePath === 'string') candidates.push(asset.sourcePath);
+  }
+  for (const clip of Object.values(doc.project?.clips ?? {})) {
+    const lut = clip?.colorGrading?.lutSourcePath;
+    if (typeof lut === 'string') candidates.push(lut);
+  }
+
+  let allowed = 0;
+  await Promise.all(
+    candidates.map(async (path) => {
+      if (!isAbsolute(path)) return;
+      const extension = extname(path).toLowerCase();
+      const acceptable =
+        VIDEO_EXTENSIONS.has(extension) ||
+        AUDIO_EXTENSIONS.has(extension) ||
+        IMAGE_EXTENSIONS.has(extension) ||
+        extension === '.cube';
+      if (!acceptable) return;
+
+      const info = await stat(path).catch(() => null);
+      if (!info?.isFile()) return; // Moved or deleted: stays missing, honestly.
+
+      allowedPaths.add(path);
+      allowed += 1;
+    }),
+  );
+  return allowed;
 }
 
 /** Pixel formats whose names encode an alpha plane. */
@@ -158,6 +220,44 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return picked.filter((entry): entry is PickedFile => entry !== null);
   });
 
+  /** A streaming `media://` URL for an allowlisted file. */
+  ipcMain.handle(IPC.mediaUrl, (_event, path: string) => {
+    assertAllowed(path);
+    return mediaUrlFor(path);
+  });
+
+  /**
+   * The audio track alone, as a small file the page can decode.
+   *
+   * Decoding audio means handing the WHOLE encoded file to decodeAudioData,
+   * and for a 45-minute video that file is 1.9 GB of mostly pictures. ffmpeg
+   * pulls the audio out instead - copied without re-encoding when the codec
+   * allows (near instant), transcoded to AAC when it does not - and only that
+   * few-dozen-MB file is read by the page. Cached per source for the session.
+   */
+  ipcMain.handle(IPC.extractAudio, async (_event, path: string): Promise<string | null> => {
+    assertAllowed(path);
+
+    const cached = extractedAudio.get(path);
+    if (cached) return cached;
+
+    const target = join(tmpdir(), `filmora-audio-${randomUUID()}.m4a`);
+    const ffmpeg = resolveFfmpegPath();
+    const attempt = (codec: string[]): Promise<boolean> =>
+      execFileAsync(ffmpeg, ['-v', 'error', '-y', '-i', path, '-vn', '-map', '0:a:0', ...codec, target], {
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true,
+      }).then(() => true, () => false);
+
+    const ok = (await attempt(['-c:a', 'copy'])) || (await attempt(['-c:a', 'aac', '-b:a', '192k']));
+    if (!ok) return null; // No audio track: a silent video, or a still.
+
+    allowedPaths.add(target);
+    const url = mediaUrlFor(target);
+    extractedAudio.set(path, url);
+    return url;
+  });
+
   ipcMain.handle(IPC.openMedia, async (): Promise<PickedFile[]> => {
     const window = getWindow();
     if (!window) return [];
@@ -181,12 +281,14 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const files = await Promise.all(
       result.filePaths.map(async (path) => {
         allowedPaths.add(path);
-        const contents = await readFile(path);
+        // stat, not readFile: this used to read the ENTIRE file just to learn
+        // its size - 1.9 GB of a 45-minute recording, held in the main process.
+        const info = await stat(path);
         return {
           path,
           name: basename(path),
           kind: classify(path),
-          sizeBytes: contents.byteLength,
+          sizeBytes: info.size,
         };
       }),
     );
@@ -208,7 +310,9 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
     const path = result.filePaths[0];
     allowedPaths.add(path);
-    return { path, contents: await readFile(path, 'utf8') };
+    const contents = await readFile(path, 'utf8');
+    await allowProjectReferences(contents);
+    return { path, contents };
   });
 
   ipcMain.handle(IPC.openLut, async () => {

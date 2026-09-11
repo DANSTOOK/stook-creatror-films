@@ -1,10 +1,20 @@
 import { useCallback, useRef, useState, type DragEvent } from 'react';
-import { AlertTriangle, FileVideo, Image as ImageIcon, Import, Music, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRightToLine,
+  FileVideo,
+  Image as ImageIcon,
+  Import,
+  Music,
+  Plus,
+  Rows3,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import type { MediaAsset, MediaKind } from '@shared/types';
 import { ContextMenu, useContextMenu } from '@renderer/components/ContextMenu';
 import {
   ACCEPT_ATTRIBUTE,
-  appendPosition,
   hasNativeBridge,
   importFromDialog,
   importDroppedFiles,
@@ -33,7 +43,6 @@ export function MediaLibrary(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const addAssets = useProjectStore((state) => state.addAssets);
   const removeAsset = useProjectStore((state) => state.removeAsset);
-  const addAssetToTimeline = useProjectStore((state) => state.addAssetToTimeline);
   const adoptedFrom = useProjectStore((state) => state.adoptedSettingsFrom);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -119,17 +128,11 @@ export function MediaLibrary(): JSX.Element {
     [project.fps, runImport],
   );
 
-  const appendToTimeline = useCallback(
-    (asset: MediaAsset) => {
-      const wantedType = asset.kind === 'audio' ? 'audio' : 'video';
-      const track =
-        project.tracks.find((candidate) => candidate.type === wantedType && !candidate.locked) ??
-        project.tracks[0];
-      if (!track) return;
-
-      addAssetToTimeline(asset, track.id, appendPosition(project, track.id));
-    },
-    [addAssetToTimeline, project],
+  // "+" puts the clip at the playhead, the way Filmora does, instead of after
+  // the last clip on the track - which was usually far off screen.
+  const addAtPlayhead = useCallback(
+    (asset: MediaAsset) => useProjectStore.getState().addAssetAtPlayhead(asset),
+    [],
   );
 
   return (
@@ -210,10 +213,22 @@ export function MediaLibrary(): JSX.Element {
                   onContextMenu={(event) =>
                     openMenu(event, [
                       {
-                        label: 'Add to timeline',
+                        label: 'Add at playhead',
                         icon: Plus,
                         disabled: asset.missing,
-                        onSelect: () => appendToTimeline(asset),
+                        onSelect: () => addAtPlayhead(asset),
+                      },
+                      {
+                        label: 'Add to end of track',
+                        icon: ArrowRightToLine,
+                        disabled: asset.missing,
+                        onSelect: () => useProjectStore.getState().appendAsset(asset),
+                      },
+                      {
+                        label: 'Add on a new track',
+                        icon: Rows3,
+                        disabled: asset.missing,
+                        onSelect: () => useProjectStore.getState().addAssetOnNewTrack(asset),
                       },
                       { separator: true },
                       {
@@ -257,10 +272,10 @@ export function MediaLibrary(): JSX.Element {
 
                   <button
                     type="button"
-                    title="Add to timeline"
+                    title="Add at the playhead (right-click for more)"
                     className="tool-button h-7 px-1.5 opacity-0 group-hover:opacity-100"
                     disabled={asset.missing}
-                    onClick={() => appendToTimeline(asset)}
+                    onClick={() => addAtPlayhead(asset)}
                   >
                     <Plus size={14} />
                   </button>

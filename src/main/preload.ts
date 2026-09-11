@@ -18,6 +18,8 @@ const api: FilmoraApi = {
   // Paths are derived HERE, from the File objects themselves: getPathForFile
   // only knows the path of a file the OS handed over and returns '' for one
   // constructed in JavaScript, so page code cannot talk its way into a path.
+  mediaUrl: (path) => ipcRenderer.invoke(IPC.mediaUrl, path) as Promise<string>,
+  extractAudio: (path) => ipcRenderer.invoke(IPC.extractAudio, path) as Promise<string | null>,
   registerDroppedFiles: (files) =>
     ipcRenderer.invoke(
       IPC.registerDroppedFiles,

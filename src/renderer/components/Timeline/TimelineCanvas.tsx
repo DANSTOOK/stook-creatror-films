@@ -53,7 +53,9 @@ export function trackIndexAtY(y: number): number {
 
 /** Frame step between ruler ticks, chosen so labels never collide. */
 export function rulerStep(pixelsPerFrame: number, fps: number): number {
-  const candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+  // Up to two hours between ticks, so a feature-length timeline zoomed all
+  // the way out still gets readable labels instead of a smear.
+  const candidates = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600, 7200];
   const minimumPixels = 64;
   for (const seconds of candidates) {
     if (seconds * fps * pixelsPerFrame >= minimumPixels) return seconds * fps;
@@ -113,6 +115,7 @@ function drawWaveform(
   clipWidth: number,
   top: number,
   fps: number,
+  canvasWidth: number,
 ): void {
   if (peaks.durationSeconds <= 0 || clipWidth < 4) return;
 
@@ -127,25 +130,33 @@ function drawWaveform(
   const midY = top + TRACK_HEIGHT / 2;
   const amplitude = (TRACK_HEIGHT - 18) / 2;
 
+  // Only the on-screen slice of the clip is walked. A 45-minute clip zoomed in
+  // is millions of pixels wide, and iterating all of them every frame to draw
+  // the ~1500 that are visible is exactly the work that makes a long timeline
+  // stutter.
+  const firstPixel = Math.max(0, Math.floor(-x));
+  const lastPixel = Math.min(clipWidth, Math.ceil(canvasWidth - x));
+  if (lastPixel <= firstPixel) return;
+
   context.save();
   context.beginPath();
-  context.rect(x, top + 2, clipWidth, TRACK_HEIGHT - 4);
+  context.rect(x + firstPixel, top + 2, lastPixel - firstPixel, TRACK_HEIGHT - 4);
   context.clip();
 
   context.strokeStyle = 'rgba(226, 232, 240, 0.55)';
   context.lineWidth = 1;
   context.beginPath();
 
-  // One vertical stroke per output pixel, never per bucket: at low zoom that is
-  // far fewer strokes than there are peaks.
-  const columns = Math.min(Math.ceil(clipWidth), span);
-  for (let column = 0; column <= columns; column += 1) {
-    const ratio = column / columns;
+  // One vertical stroke per output pixel - or per bucket when there are fewer
+  // buckets than pixels, so a zoomed-in waveform is not drawn as a solid block.
+  const step = Math.max(1, clipWidth / span);
+  for (let pixel = firstPixel; pixel <= lastPixel; pixel += step) {
+    const ratio = pixel / clipWidth;
     const bucket = Math.min(peaks.bucketCount - 1, Math.floor(firstBucket + ratio * span));
     const min = peaks.peaks[bucket * 2];
     const max = peaks.peaks[bucket * 2 + 1];
 
-    const columnX = Math.round(x + ratio * clipWidth) + 0.5;
+    const columnX = Math.round(x + pixel) + 0.5;
     context.moveTo(columnX, midY - max * amplitude);
     context.lineTo(columnX, midY - min * amplitude);
   }
@@ -163,15 +174,24 @@ function drawClip(
   selected: boolean,
   peaks: WaveformPeaks | undefined,
   fps: number,
+  canvasWidth: number,
 ): void {
   const x = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
   const clipWidth = Math.max(2, clip.durationFrames * ui.pixelsPerFrame);
 
+  // The body is drawn clamped to the canvas (plus a margin that keeps an
+  // off-screen edge's rounded corners and stroke off screen). Coordinates in
+  // the millions are what a long clip at high zoom produces, and the 2D API
+  // has no reason to be handed them.
+  const bodyLeft = Math.max(x, -8);
+  const bodyRight = Math.min(x + clipWidth, canvasWidth + 8);
+  const bodyWidth = Math.max(2, bodyRight - bodyLeft);
+
   context.save();
 
-  const radius = Math.min(4, clipWidth / 2);
+  const radius = Math.min(4, bodyWidth / 2);
   context.beginPath();
-  context.roundRect(x, top + 2, clipWidth, TRACK_HEIGHT - 4, radius);
+  context.roundRect(bodyLeft, top + 2, bodyWidth, TRACK_HEIGHT - 4, radius);
 
   context.fillStyle = TRACK_COLORS[track.type];
   context.globalAlpha = track.visible ? 1 : 0.4;
@@ -182,7 +202,7 @@ function drawClip(
   context.strokeStyle = selected ? '#60a5fa' : '#0d0f14';
   context.stroke();
 
-  if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps);
+  if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps, canvasWidth);
 
   // Alpha-bearing sources get a marker, since that is what decides whether a
   // clip can be exported as a transparent sprite.
@@ -195,16 +215,20 @@ function drawClip(
     context.globalAlpha = 1;
   }
 
-  if (clipWidth > 42) {
+  if (bodyWidth > 42) {
     context.save();
     context.beginPath();
-    context.rect(x + 4, top, clipWidth - 8, TRACK_HEIGHT);
+    context.rect(bodyLeft + 4, top, bodyWidth - 8, TRACK_HEIGHT);
     context.clip();
+
+    // The label rides along the visible part of the clip, so a long clip that
+    // starts off screen still says what it is.
+    const labelX = Math.max(x, 0) + 7;
 
     context.fillStyle = '#e2e8f0';
     context.font = '11px system-ui, sans-serif';
     context.textBaseline = 'top';
-    context.fillText(clip.name, x + 7, top + 7);
+    context.fillText(clip.name, labelX, top + 7);
 
     const keyframeCount =
       clip.transform.position.length +
@@ -215,7 +239,7 @@ function drawClip(
     if (keyframeCount > 0) {
       context.fillStyle = '#cbd5f5';
       context.font = '9px system-ui, sans-serif';
-      context.fillText(`${keyframeCount} keyframes`, x + 7, top + 24);
+      context.fillText(`${keyframeCount} keyframes`, labelX, top + 24);
     }
     context.restore();
   }
@@ -366,6 +390,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           selected.has(clip.id),
           waveforms[clip.sourceUri],
           project.fps,
+          width,
         );
       }
     });

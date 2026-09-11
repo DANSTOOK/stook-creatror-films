@@ -24,7 +24,8 @@ import {
   trimClipStart,
 } from '@renderer/components/Timeline/timelineOps';
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
-import type { DropPlacement } from '@renderer/components/Timeline/dropPlacement';
+import { planDrop, type DropPlacement } from '@renderer/components/Timeline/dropPlacement';
+import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import { settingsFromAsset } from '@renderer/media/importMedia';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { createSnapshotCommand, useHistoryStore } from './useHistoryStore';
@@ -101,7 +102,15 @@ interface ProjectStore {
   setUi(patch: Partial<EditorUiState>): void;
   setTool(tool: TimelineTool): void;
   selectClips(clipIds: string[], additive?: boolean): void;
-  zoomBy(factor: number): void;
+  /**
+   * Zoom by `factor` around `anchorPx` (a position in the viewport); without an
+   * anchor, around the playhead when it is on screen.
+   */
+  zoomBy(factor: number, anchorPx?: number): void;
+  /** Zoom so every clip is visible - Premiere's "\". */
+  zoomToFit(): void;
+  /** Show `[start, end)`: scroll to it, zooming out only if it cannot fit. */
+  revealFrames(start: number, end: number): void;
 
   /* Tracks --------------------------------------------------------------- */
   addTrack(type: TrackType, name?: string): void;
@@ -121,6 +130,16 @@ interface ProjectStore {
    * Placements with no track get a new track of the right type.
    */
   placeAssets(assets: readonly MediaAsset[], placements: readonly DropPlacement[]): string[];
+  /**
+   * The media panel's "+": put the asset at the PLAYHEAD - where Filmora puts
+   * it - on the selected clip's track when that can take it, else the first
+   * suitable one, pushed past anything it would cover.
+   */
+  addAssetAtPlayhead(asset: MediaAsset): string | null;
+  /** Put the asset after the last clip on a suitable track. */
+  appendAsset(asset: MediaAsset): string | null;
+  /** Put the asset at the playhead on a brand new track of its own. */
+  addAssetOnNewTrack(asset: MediaAsset): string | null;
   updateClip(clipId: string, patch: Partial<Clip>, mergeKey?: string): void;
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
@@ -169,7 +188,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({
       project: createEmptyProject(width, height, fps),
       assets: [],
-      ui: { ...DEFAULT_UI_STATE },
+      // The viewport's measured width is a fact about the window, not the
+      // project, and fitting depends on it.
+      ui: { ...DEFAULT_UI_STATE, viewportWidthPx: get().ui.viewportWidthPx },
       exportSettings: { ...DEFAULT_EXPORT_SETTINGS, width, height, fps },
     });
   },
@@ -186,7 +207,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // means nothing downstream has to defend against a missing field.
       project: normalizeProject(document.project),
       assets: document.assets,
-      ui: { ...DEFAULT_UI_STATE },
+      // The viewport's measured width is a fact about the window, not the
+      // project, and fitting depends on it.
+      ui: { ...DEFAULT_UI_STATE, viewportWidthPx: get().ui.viewportWidthPx },
       exportSettings: {
         ...DEFAULT_EXPORT_SETTINGS,
         width: document.project.width,
@@ -385,9 +408,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ ui: { ...get().ui, selectedClipIds: next } });
   },
 
-  zoomBy(factor) {
-    const { ui } = get();
-    set({ ui: { ...ui, pixelsPerFrame: clamp(ui.pixelsPerFrame * factor, 0.05, 60) } });
+  zoomBy(factor, anchorPx) {
+    const { ui, project } = get();
+    const view = { pixelsPerFrame: ui.pixelsPerFrame, scrollLeftPx: ui.scrollLeftPx };
+    const anchor = anchorPx ?? playheadAnchor(view, project.currentFrame, ui.viewportWidthPx);
+    set({ ui: { ...ui, ...zoomAround(view, factor, anchor) } });
+  },
+
+  zoomToFit() {
+    const { ui, project } = get();
+    // An empty timeline fits its first half minute rather than nothing.
+    const frames = projectContentLength(project) || project.fps * 30;
+    const pixelsPerFrame = fitZoom(frames, ui.viewportWidthPx);
+    if (pixelsPerFrame === null) return;
+    set({ ui: { ...ui, pixelsPerFrame, scrollLeftPx: 0 } });
+  },
+
+  revealFrames(start, end) {
+    const { ui, project } = get();
+    const next = revealSpan(
+      { pixelsPerFrame: ui.pixelsPerFrame, scrollLeftPx: ui.scrollLeftPx },
+      start,
+      end,
+      projectContentLength(project),
+      ui.viewportWidthPx,
+    );
+    set({ ui: { ...ui, ...next } });
   },
 
   /* Tracks --------------------------------------------------------------- */
@@ -512,8 +558,46 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return created.length > 0 ? { ...project, tracks, clips } : project;
     });
 
-    if (created.length > 0) set({ ui: { ...get().ui, selectedClipIds: created } });
+    if (created.length > 0) {
+      set({ ui: { ...get().ui, selectedClipIds: created } });
+
+      // Whatever was just added is shown. It used to land wherever it landed,
+      // often far off to the right, and the editor had to go and find it.
+      const starts = placements.map((placement) => placement.startFrame);
+      const ends = placements.map((placement) => placement.startFrame + placement.durationFrames);
+      get().revealFrames(Math.min(...starts), Math.max(...ends));
+    }
     return created;
+  },
+
+  addAssetAtPlayhead(asset) {
+    const { project, ui } = get();
+    const selected = ui.selectedClipIds.map((id) => project.clips[id]).find(Boolean);
+    const placements = planDrop(project, [asset], selected?.trackId ?? null, project.currentFrame);
+    return get().placeAssets([asset], placements)[0] ?? null;
+  },
+
+  appendAsset(asset) {
+    const { project } = get();
+    // Plan once to learn which track it goes on, then again at that track's end.
+    const [probe] = planDrop(project, [asset], null, 0);
+    const end = probe.trackId
+      ? Object.values(project.clips)
+          .filter((clip) => clip.trackId === probe.trackId)
+          .reduce((latest, clip) => Math.max(latest, clipEndFrame(clip)), 0)
+      : 0;
+    return get().placeAssets([asset], planDrop(project, [asset], probe.trackId, end))[0] ?? null;
+  },
+
+  addAssetOnNewTrack(asset) {
+    const { project } = get();
+    const [placement] = planDrop(project, [asset], null, project.currentFrame);
+    // A new track is empty, so the playhead position is free by definition.
+    return (
+      get().placeAssets([asset], [
+        { ...placement, trackId: null, startFrame: project.currentFrame },
+      ])[0] ?? null
+    );
   },
 
   updateClip(clipId, patch, mergeKey) {

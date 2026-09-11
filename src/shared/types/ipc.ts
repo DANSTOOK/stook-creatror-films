@@ -11,6 +11,8 @@ import type {
 export const IPC = {
   openMedia: 'dialog:open-media',
   registerDroppedFiles: 'drop:register-files',
+  mediaUrl: 'media:url',
+  extractAudio: 'media:extract-audio',
   openProject: 'dialog:open-project',
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
@@ -68,6 +70,13 @@ export interface FilmoraApi {
    * Files with no path on disk are left out of the result.
    */
   registerDroppedFiles(files: File[]): Promise<PickedFile[]>;
+  /** A `media://` URL that streams an allowlisted file from disk by ranges. */
+  mediaUrl(path: string): Promise<string>;
+  /**
+   * The file's audio track alone, as a small `media://` file for decoding, or
+   * null when there is none.
+   */
+  extractAudio(path: string): Promise<string | null>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /**
    * Pick a `.cube` LUT. Returns the path as well as the contents, because the

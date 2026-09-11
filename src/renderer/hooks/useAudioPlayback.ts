@@ -114,13 +114,16 @@ export function useAudioPlayback(): void {
         media.beginAnalysis(asset.uri);
 
         try {
-          const bytes = await fetch(asset.uri).then((response) => response.arrayBuffer());
+          // The extracted audio track when there is one: megabytes, where the
+          // source file can be gigabytes of pictures. Buffers stay keyed by the
+          // asset's URI, which is what clips reference.
+          const bytes = await fetch(asset.audioUri ?? asset.uri).then((response) =>
+            response.arrayBuffer(),
+          );
 
-          // decodeAudioData detaches its input, so each consumer needs a copy.
-          const [, peaks] = await Promise.all([
-            engine.registerSource(asset.uri, bytes.slice(0)),
-            extractor.extract(asset.uri, bytes),
-          ]);
+          // Decoded once, and the waveform is read off that same buffer.
+          const buffer = await engine.registerSource(asset.uri, bytes);
+          const peaks = extractor.fromBuffer(asset.uri, buffer);
 
           if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
         } catch {

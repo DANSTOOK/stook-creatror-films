@@ -78,7 +78,11 @@ export const hasNativeBridge = (): boolean =>
 
 export interface RawImport {
   name: string;
-  blob: Blob;
+  /** Bytes in memory - the browser path, for files with no path on disk. */
+  blob?: Blob;
+  /** A streaming URL - the desktop path; the file never enters memory. */
+  uri?: string;
+  audioUri?: string;
   sourcePath?: string;
   /** Frame rate from ffmpeg, which is more authoritative than measuring. */
   hintFps?: number;
@@ -92,7 +96,8 @@ export interface RawImport {
  */
 export async function buildAsset(input: RawImport, fps: number): Promise<MediaAsset> {
   const kind = classifyFile(input.name);
-  const uri = URL.createObjectURL(input.blob);
+  const uri = input.uri ?? (input.blob ? URL.createObjectURL(input.blob) : '');
+  if (!uri) throw new Error(`Nothing to import for ${input.name}`);
 
   const probe = await probeMediaElement(uri, kind);
 
@@ -113,6 +118,7 @@ export async function buildAsset(input: RawImport, fps: number): Promise<MediaAs
     hasAlphaChannel: probe.hasAlphaChannel,
     ...(input.hintFps || probe.fps ? { sourceFps: input.hintFps ?? probe.fps } : {}),
     ...(probe.thumbnailUri ? { thumbnailUri: probe.thumbnailUri } : {}),
+    ...(input.audioUri ? { audioUri: input.audioUri } : {}),
   };
 }
 
@@ -234,19 +240,23 @@ async function importPickedFiles(
 
   for (const file of picked) {
     try {
-      const [bytes, probe] = await Promise.all([
-        window.filmora.readFile(file.path),
+      // Streamed from disk by ranges, never read into memory: a 45-minute file
+      // used to cost ~6 GB in each process while importing.
+      const kind = classifyFile(file.name);
+      const [uri, probe, audioUri] = await Promise.all([
+        window.filmora.mediaUrl(file.path),
         // ffmpeg knows the exact rate; measuring is the fallback for drops.
         window.filmora.probeMedia(file.path).catch(() => null),
+        kind === 'image' ? Promise.resolve(null) : window.filmora.extractAudio(file.path).catch(() => null),
       ]);
-      const blob = new Blob([bytes], { type: mimeForFile(file.name) });
 
       assets.push(
         await buildAsset(
           {
             name: file.name,
-            blob,
+            uri,
             sourcePath: file.path,
+            ...(audioUri ? { audioUri } : {}),
             ...(probe?.fps ? { hintFps: probe.fps } : {}),
           },
           fps,
@@ -280,9 +290,15 @@ export async function rehydrateAssets(assets: MediaAsset[]): Promise<MediaAsset[
       if (!asset.sourcePath) return { ...asset, missing: true };
 
       try {
-        const bytes = await window.filmora.readFile(asset.sourcePath);
-        const blob = new Blob([bytes], { type: mimeForFile(asset.name) });
-        return { ...asset, uri: URL.createObjectURL(blob), missing: false };
+        const [uri, audioUri] = await Promise.all([
+          window.filmora.mediaUrl(asset.sourcePath),
+          asset.kind === 'image'
+            ? Promise.resolve(null)
+            : window.filmora.extractAudio(asset.sourcePath).catch(() => null),
+        ]);
+        const { audioUri: _stale, ...rest } = asset;
+        void _stale;
+        return { ...rest, uri, ...(audioUri ? { audioUri } : {}), missing: false };
       } catch {
         // The file was moved or deleted since the project was saved.
         return { ...asset, missing: true };

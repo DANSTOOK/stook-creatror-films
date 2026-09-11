@@ -264,6 +264,12 @@ export interface MediaAsset {
   sourceFps?: number;
   /** Data URL of a poster frame, when one has been decoded. */
   thumbnailUri?: string;
+  /**
+   * The audio track alone, extracted by ffmpeg, for decoding. Decoding needs
+   * the whole encoded file in memory, and for a long video the whole file is
+   * gigabytes of pictures; this is megabytes. Session-only, like `uri`.
+   */
+  audioUri?: string;
   /** Set when a reopened project could not restore this asset from disk. */
   missing?: boolean;
 }

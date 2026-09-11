@@ -204,6 +204,21 @@ export function useEditorShortcuts(): void {
           event.preventDefault();
           transport.seek(store.project.durationFrames);
           return;
+        // Premiere's keys: "\" shows the whole sequence, = and - zoom around
+        // the playhead.
+        case '\\':
+          event.preventDefault();
+          store.zoomToFit();
+          return;
+        case '=':
+        case '+':
+          event.preventDefault();
+          store.zoomBy(1.4);
+          return;
+        case '-':
+          event.preventDefault();
+          store.zoomBy(1 / 1.4);
+          return;
         case 'Delete':
         case 'Backspace':
           if (store.ui.selectedClipIds.length > 0) {
