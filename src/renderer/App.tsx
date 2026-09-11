@@ -1,8 +1,19 @@
 import { useCallback, useState } from 'react';
-import { FilePlus2, FolderOpen, Redo2, Save, Share2, Undo2 } from 'lucide-react';
+import {
+  FilePlus2,
+  FolderOpen,
+  Headphones,
+  Redo2,
+  Save,
+  Settings2,
+  Share2,
+  Undo2,
+} from 'lucide-react';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
 import { MediaLibrary } from './components/MediaLibrary';
+import { Mixer } from './components/Mixer';
+import { ProjectSettings } from './components/ProjectSettings';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
@@ -23,6 +34,8 @@ export default function App(): JSX.Element {
   useAudioPlayback();
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [mixerOpen, setMixerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   // Saving, opening and exporting all go through the native bridge, so those
@@ -125,6 +138,27 @@ export default function App(): JSX.Element {
           Redo
         </button>
 
+        <span className="mx-1 h-5 w-px bg-panel-600" />
+
+        <button
+          type="button"
+          className="tool-button"
+          onClick={() => setMixerOpen(true)}
+          title="Mixer - levels, pan, EQ and auto ducking"
+        >
+          <Headphones size={14} />
+          Mixer
+        </button>
+        <button
+          type="button"
+          className="tool-button"
+          onClick={() => setSettingsOpen(true)}
+          title="Project settings - frame rate, resolution and duration"
+        >
+          <Settings2 size={14} />
+          Settings
+        </button>
+
         <div className="flex-1" />
 
         {status && <span className="truncate px-2 text-2xs text-slate-500">{status}</span>}
@@ -156,6 +190,8 @@ export default function App(): JSX.Element {
       </div>
 
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
+      {mixerOpen && <Mixer onClose={() => setMixerOpen(false)} />}
+      {settingsOpen && <ProjectSettings onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }

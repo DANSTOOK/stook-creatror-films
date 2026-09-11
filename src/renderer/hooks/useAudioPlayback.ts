@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { MediaAsset } from '@shared/types';
 import { AudioEngine } from '@renderer/audio/AudioEngine';
+import { DynamicDucking } from '@renderer/audio/DynamicDucking';
+import { mixSignature } from '@renderer/audio/mixRouting';
 import { WaveformExtractor } from '@renderer/audio/WaveformExtractor';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -21,11 +23,16 @@ const RESYNC_THRESHOLD_SECONDS = 0.35;
 export function useAudioPlayback(): void {
   const engineRef = useRef<AudioEngine | null>(null);
   const extractorRef = useRef<WaveformExtractor | null>(null);
+  const duckingRef = useRef<DynamicDucking | null>(null);
   const registered = useRef(new Set<string>());
   const rafRef = useRef<number | null>(null);
 
   const assets = useProjectStore((state) => state.assets);
   const isPlaying = useProjectStore((state) => state.ui.isPlaying);
+  // Only the mixer-relevant part of the project, as a comparable string: the
+  // project object itself is replaced on every scrub, and rebuilding the audio
+  // graph once per frame of playhead movement is not something to do.
+  const mixKey = useProjectStore((state) => mixSignature(state.project));
 
   // The AudioContext starts suspended until a gesture resumes it, so creating
   // it up front costs nothing and keeps the decode path simple.
@@ -36,6 +43,8 @@ export function useAudioPlayback(): void {
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
+      duckingRef.current?.dispose();
+      duckingRef.current = null;
       void engineRef.current?.dispose();
       engineRef.current = null;
       extractorRef.current = null;
@@ -43,6 +52,47 @@ export function useAudioPlayback(): void {
       useMediaStore.getState().clear();
     };
   }, []);
+
+  /**
+   * Push the mixer into the live graph.
+   *
+   * Auto-ducking is created and torn down here rather than living for the whole
+   * session: it holds a `requestAnimationFrame` loop writing to the music bus,
+   * and leaving that running with the feature switched off would keep the bus
+   * gain under its control forever.
+   */
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    const { project, ui } = useProjectStore.getState();
+
+    // A track that changed bus cannot be re-pointed live, so the schedule is
+    // rebuilt - but only then, since rebuilding restarts every source.
+    if (ui.isPlaying && engine.needsRebuild(project)) {
+      engine.play(project, project.currentFrame);
+    }
+
+    engine.applyMix(project);
+
+    const ducking = project.audio.ducking;
+    if (ducking.enabled) {
+      if (!duckingRef.current) {
+        duckingRef.current = new DynamicDucking(
+          engine.context,
+          engine.dialogueBus,
+          engine.musicBus,
+          ducking,
+        );
+        duckingRef.current.start();
+      } else {
+        duckingRef.current.params = ducking;
+      }
+    } else if (duckingRef.current) {
+      duckingRef.current.dispose();
+      duckingRef.current = null;
+    }
+  }, [mixKey]);
 
   // Decode newly imported assets once: samples for playback, peaks for drawing.
   useEffect(() => {

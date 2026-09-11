@@ -232,6 +232,10 @@ export function useEditorShortcuts(): void {
         case 's':
           store.setUi({ snappingEnabled: !store.ui.snappingEnabled });
           return;
+        case 'm':
+          // Drop a marker at the playhead, the way every NLE spells it.
+          store.addMarker();
+          return;
         default:
           break;
       }

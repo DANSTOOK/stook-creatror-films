@@ -1,23 +1,28 @@
-import type { Clip, ProjectState } from '@shared/types';
+import type { AudioBus, Clip, EqSettings, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
+import { clipGain, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
 
 /**
  * Web Audio subsystem.
  *
- * One `AudioContext` drives every audio-bearing clip. Each clip gets its own
- * strip - gain -> 3-band EQ -> panner - feeding a master bus, which mirrors the
- * mixer layout the inspector exposes.
+ * One `AudioContext` drives every audio-bearing clip, through the signal path
+ * the mixer draws:
+ *
+ *   clip: gain -> low -> mid -> high -> panner
+ *   track: gain -> panner
+ *   bus:   music | dialogue
+ *   master
+ *
+ * The track strip is what makes a track fader mean anything, and the two buses
+ * are what auto-ducking keys off: the dialogue bus is the sidechain, the music
+ * bus is what gets pulled down.
  */
 
-export interface EqSettings {
-  low: number; // dB at 120 Hz (low shelf)
-  mid: number; // dB at 1 kHz (peaking)
-  high: number; // dB at 8 kHz (high shelf)
-}
-
-export const NEUTRAL_EQ: EqSettings = { low: 0, mid: 0, high: 0 };
+export type { EqSettings } from '@shared/types';
+export { NEUTRAL_EQ } from '@shared/types';
 
 interface ClipStrip {
+  trackId: string;
   source: AudioBufferSourceNode | null;
   gain: GainNode;
   panner: StereoPannerNode;
@@ -25,6 +30,12 @@ interface ClipStrip {
   mid: BiquadFilterNode;
   high: BiquadFilterNode;
   buffer: AudioBuffer;
+}
+
+interface TrackStrip {
+  gain: GainNode;
+  panner: StereoPannerNode;
+  bus: AudioBus;
 }
 
 export class AudioEngine {
@@ -35,6 +46,7 @@ export class AudioEngine {
   readonly dialogueBus: GainNode;
 
   private readonly strips = new Map<string, ClipStrip>();
+  private readonly trackStrips = new Map<string, TrackStrip>();
   private readonly buffers = new Map<string, AudioBuffer>();
   private startedAtContextTime = 0;
   private startedAtSeconds = 0;
@@ -82,7 +94,46 @@ export class AudioEngine {
     return this.buffers.get(uri);
   }
 
-  private createStrip(buffer: AudioBuffer, bus: GainNode): ClipStrip {
+  /** The music or dialogue bus node, by name. */
+  private busNode(bus: AudioBus): GainNode {
+    return bus === 'dialogue' ? this.dialogueBus : this.musicBus;
+  }
+
+  /**
+   * Build (or rebuild) the strip for a track.
+   *
+   * Rebuilt rather than re-pointed when the bus assignment changes: moving a
+   * live node between buses means disconnecting mid-playback, and a fresh strip
+   * is both simpler and click-free, since the old one is torn down with it.
+   */
+  private ensureTrackStrip(track: Track, anySolo: boolean): TrackStrip {
+    const existing = this.trackStrips.get(track.id);
+    if (existing && existing.bus === track.bus) {
+      existing.gain.gain.value = trackGain(track, anySolo);
+      existing.panner.pan.value = panPosition(track.pan);
+      return existing;
+    }
+
+    if (existing) {
+      existing.gain.disconnect();
+      existing.panner.disconnect();
+    }
+
+    const gain = this.context.createGain();
+    gain.gain.value = trackGain(track, anySolo);
+
+    const panner = this.context.createStereoPanner();
+    panner.pan.value = panPosition(track.pan);
+
+    gain.connect(panner);
+    panner.connect(this.busNode(track.bus));
+
+    const strip: TrackStrip = { gain, panner, bus: track.bus };
+    this.trackStrips.set(track.id, strip);
+    return strip;
+  }
+
+  private createStrip(buffer: AudioBuffer, bus: AudioNode, trackId: string): ClipStrip {
     const { context } = this;
 
     const gain = context.createGain();
@@ -108,7 +159,7 @@ export class AudioEngine {
     high.connect(panner);
     panner.connect(bus);
 
-    return { source: null, gain, panner, low, mid, high, buffer };
+    return { trackId, source: null, gain, panner, low, mid, high, buffer };
   }
 
   setClipEq(clipId: string, eq: EqSettings): void {
@@ -143,12 +194,18 @@ export class AudioEngine {
 
     const fps = project.fps;
     const startSeconds = fromFrame / fps;
+    const anySolo = hasSoloedTrack(project);
+
+    this.master.gain.value = clamp(project.audio.masterVolume, 0, 2);
 
     const trackById = new Map(project.tracks.map((track) => [track.id, track]));
 
     for (const clip of Object.values(project.clips)) {
       const track = trackById.get(clip.trackId);
-      if (!track || track.muted) continue;
+      // A muted or un-soloed track is still scheduled, at zero gain, so that
+      // un-muting it mid-playback takes effect immediately instead of waiting
+      // for the next seek.
+      if (!track) continue;
 
       const buffer = this.buffers.get(clip.sourceUri);
       if (!buffer) continue;
@@ -157,9 +214,13 @@ export class AudioEngine {
       const clipEnd = (clip.startFrame + clip.durationFrames) / fps;
       if (clipEnd <= startSeconds) continue;
 
-      const bus = track.name.toLowerCase().includes('dialog') ? this.dialogueBus : this.musicBus;
-      const strip = this.createStrip(buffer, bus);
-      strip.gain.gain.value = clamp(clip.volume, 0, 2);
+      const trackStrip = this.ensureTrackStrip(track, anySolo);
+      const strip = this.createStrip(buffer, trackStrip.gain, track.id);
+      strip.gain.gain.value = clipGain(clip);
+      strip.panner.pan.value = panPosition(clip.pan);
+      strip.low.gain.value = clip.eq.low;
+      strip.mid.gain.value = clip.eq.mid;
+      strip.high.gain.value = clip.eq.high;
 
       const source = this.context.createBufferSource();
       source.buffer = buffer;
@@ -198,10 +259,58 @@ export class AudioEngine {
     }
     this.strips.clear();
 
+    for (const strip of this.trackStrips.values()) {
+      strip.gain.disconnect();
+      strip.panner.disconnect();
+    }
+    this.trackStrips.clear();
+
     if (this.playing) {
       this.startedAtSeconds = this.positionSeconds;
       this.playing = false;
     }
+  }
+
+  /**
+   * Push the project's mixer values into the live graph.
+   *
+   * Nothing is rescheduled: a fader moved during playback has to be audible on
+   * the next buffer, not after a seek. Ramps are short but not instant, because
+   * stepping a gain discontinuously is a click.
+   */
+  applyMix(project: ProjectState): void {
+    const now = this.context.currentTime;
+    const anySolo = hasSoloedTrack(project);
+
+    this.master.gain.setTargetAtTime(clamp(project.audio.masterVolume, 0, 2), now, 0.01);
+
+    for (const track of project.tracks) {
+      const strip = this.trackStrips.get(track.id);
+      if (!strip) continue;
+      strip.gain.gain.setTargetAtTime(trackGain(track, anySolo), now, 0.01);
+      strip.panner.pan.setTargetAtTime(panPosition(track.pan), now, 0.01);
+    }
+
+    for (const clip of Object.values(project.clips)) {
+      const strip = this.strips.get(clip.id);
+      if (!strip) continue;
+      strip.gain.gain.setTargetAtTime(clipGain(clip), now, 0.01);
+      strip.panner.pan.setTargetAtTime(panPosition(clip.pan), now, 0.01);
+      strip.low.gain.setTargetAtTime(clip.eq.low, now, 0.01);
+      strip.mid.gain.setTargetAtTime(clip.eq.mid, now, 0.01);
+      strip.high.gain.setTargetAtTime(clip.eq.high, now, 0.01);
+    }
+  }
+
+  /**
+   * True when a bus reassignment or a newly scheduled clip needs a full
+   * rebuild rather than a parameter update.
+   */
+  needsRebuild(project: ProjectState): boolean {
+    return project.tracks.some((track) => {
+      const strip = this.trackStrips.get(track.id);
+      return strip !== undefined && strip.bus !== track.bus;
+    });
   }
 
   seek(frame: number, fps: number): void {

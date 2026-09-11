@@ -39,7 +39,7 @@ export interface SnapOptions {
  */
 export function collectSnapTargets(
   project: ProjectState,
-  options: { excludeClipIds?: Iterable<string>; markers?: number[] } = {},
+  options: { excludeClipIds?: Iterable<string> } = {},
 ): SnapTarget[] {
   const excluded = new Set(options.excludeClipIds ?? []);
   const targets: SnapTarget[] = [
@@ -53,8 +53,11 @@ export function collectSnapTargets(
     targets.push({ frame: clipEndFrame(clip), kind: 'clip-end', clipId: clip.id });
   }
 
-  for (const marker of options.markers ?? []) {
-    targets.push({ frame: marker, kind: 'marker' });
+  // Markers come from the project, not from a caller-supplied list: they are
+  // saved content, so every snap consumer sees the same set without having to
+  // remember to pass it.
+  for (const marker of project.markers ?? []) {
+    targets.push({ frame: marker.frame, kind: 'marker' });
   }
 
   return targets;

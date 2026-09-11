@@ -65,11 +65,15 @@ src/
       shaders/             BaseVertex, MaskingSDF, ColorGrading, ChromaKey,
                            PixelArtFilter
     audio/
-      AudioEngine.ts       Master gain, per-clip EQ, panning, scheduling
+      AudioEngine.ts       Clip and track strips, buses, master, scheduling
       DynamicDucking.ts    Sidechain compression (realtime + offline)
+      mixRouting.ts        Mute/solo/gain rules shared by playback and export
+      renderMix.ts         Offline mix for export, including baked ducking
       WaveformExtractor.ts Async PCM peak computation
     components/
       MediaLibrary/  PreviewViewport/  Inspector/  Timeline/  ExportDialog/
+      Mixer/               Faders, pan, EQ, buses, auto ducking
+      ProjectSettings/     Frame rate, resolution, duration, alpha background
     media/
       importMedia.ts       Dialog, drop and picker import; project rehydration
     hooks/
@@ -87,9 +91,9 @@ tests/                     Vitest unit suite
 ```
 
 Files beyond the original specification (`GLProgram.ts`, `FrameRenderer.ts`,
-`MediaSourceRegistry.ts`, `timelineOps.ts`, `snapping.ts`, `ExportDialog/`,
-`hooks/`) exist so the GPU wrappers, the pure timeline logic and the export
-driver are each testable in isolation.
+`MediaSourceRegistry.ts`, `timelineOps.ts`, `snapping.ts`, `mixRouting.ts`,
+`ExportDialog/`, `hooks/`) exist so the GPU wrappers, the pure timeline logic,
+the mixing rules and the export driver are each testable in isolation.
 
 ## Alpha handling
 
@@ -176,6 +180,83 @@ baseline-first would silently fail every 4K export.
 
 The encoder is configured with `avc: { format: 'annexb' }`, so chunks begin with
 the `00 00 00 01` start code that ffmpeg's `-f h264` demuxer expects.
+
+## Audio mixing
+
+The engine has always had gain, a three-band EQ, panning, two buses and a
+sidechain compressor. None of it was reachable from the interface, which in
+practice meant none of it existed. The **Mixer** is that interface.
+
+Signal path, identical in the monitor and in the render:
+
+```
+clip:   gain -> low shelf 120 Hz -> peak 1 kHz -> high shelf 8 kHz -> pan
+track:  gain -> pan
+bus:    music | dialogue
+master: gain
+```
+
+**Mute and solo are separate states.** While anything is soloed, non-soloed
+tracks are silent *without* being muted, so clearing the solo restores exactly
+the mute states the user set rather than a flattened version of them. Mute wins
+over solo on the same track.
+
+**Bus assignment is explicit.** It used to be sniffed from the track name at
+playback time (anything containing "dialog"), so renaming a track silently
+re-routed it and a track called "VO" could never drive the sidechain. The name
+now only picks the *default* at creation; after that it is a property in the
+mixer.
+
+**The export applies the same mix.** `AudioEngine` (realtime) and `renderMix`
+(offline) are two separate graphs - one scheduled against an `AudioContext`
+clock, one rendered as fast as `OfflineAudioContext` can go - and they read
+their numbers from the same module, `mixRouting.ts`. A fader that moved only
+the monitor would be worse than no fader at all.
+
+**Auto ducking** runs two different ways for the same reason. Live, an
+`AnalyserNode` on the dialogue bus drives the music bus gain. Offline, there is
+no realtime graph to analyse, so the music and dialogue buses are rendered
+separately, the dialogue is reduced to a per-block RMS envelope, the gain curve
+is computed from it and baked into the music, and the two are summed. The
+second render is skipped entirely when no track feeds the dialogue bus, since
+it could only ever produce a gain of exactly 1 - and the mixer says so rather
+than leaving a switch that appears to work.
+
+Gains are interpolated across each 128-sample block rather than stepped: a gain
+that jumps between blocks is a 375 Hz buzz at 48 kHz, which is a far worse
+artefact than the ducking it implements.
+
+## Project settings
+
+Frame rate, resolution, duration and the transparent background are editable
+after the fact, not only adopted from the first import.
+
+The frame rate is the one with a real decision behind it. Frame numbers are
+meaningless without the rate that reads them, so changing `fps` by assignment
+silently re-times the edit: a cut authored at second 4 on a 24 fps timeline
+lands at second 1.6 once the project is read as 60 fps. **Keep the edit at the
+same times** is on by default and rescales every frame-valued field - clip
+starts, durations, source offsets, keyframes, markers, the playhead and the
+project length - so only the grid changes. Turning it off keeps the frame
+numbers and lets the edit play faster or slower, which is what you want when
+the timeline was authored against frame counts.
+
+Durations are floored at one frame: rounding a 1-frame clip of 60 fps material
+down to 0 at 24 fps would delete it outright.
+
+## Markers
+
+Markers were drawable, and the magnet already snapped to them, but nothing
+could create one. They are now project data rather than editor UI state, which
+is what makes them saved, undoable and visible to every snap consumer without
+being passed around.
+
+`M` drops one at the playhead, ready to be named. The ruler's context menu adds
+one under the pointer, renames, moves to the playhead, deletes and clears all;
+clicking a flag selects it and jumps there, and the chevrons beside the Marker
+button step between them. One marker per frame - a second one on the same frame
+would be drawn exactly on top of the first, so it could never be clicked and
+therefore never deleted.
 
 ## Editing controls
 
@@ -324,9 +405,19 @@ different types share a unit, so the entire pass was silently dropped. The
 compositor now always binds a 1x1x1 identity texture to that unit. No unit test
 could have caught this: it needs a real GL context.
 
+## Project file
+
+`PROJECT_FILE_VERSION` is 2. Version 1 files still open: `normalizeProject`
+fills the fields that did not exist then - track volume, pan, solo and bus,
+clip pan and EQ, the markers list and the master/ducking block - with the
+values that reproduce version 1 behaviour exactly, including deriving the bus
+from the track name the way playback used to. Reopening an old project has to
+sound identical to how it sounded when it was saved, or the mixer has quietly
+re-mixed somebody's edit.
+
 ## Tests
 
-155 unit tests across nine suites, run with `npm test`:
+243 unit tests across fifteen suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track
@@ -348,3 +439,18 @@ could have caught this: it needs a real GL context.
 - `TrackOperations.test.ts` - track insert/reorder/delete with contiguous
   ordering, that deleting a track takes only its own clips and is undoable,
   and clip duplication (placement, fresh identity, deep copy).
+- `Mixer.test.ts` - mute/solo resolution including mute winning over solo,
+  gain and pan clamping, bus assignment being decided once at creation rather
+  than re-sniffed on rename, the mix signature ignoring playhead movement while
+  catching a fader, the ducking envelope (unity while silent, floor honoured,
+  recovery after speech), and the offline path: block RMS, interpolated gain
+  curve, ducking landing where the dialogue is, and reporting a gain of exactly
+  1 when there is no dialogue to duck against.
+- `Markers.test.ts` - creation at the playhead and at a frame, sort order,
+  refusal to stack two markers on one frame, rename without moving, re-sorting
+  on a move, undo/redo, snap targets, and surviving the document round trip.
+- `ProjectSettings.test.ts` - retiming: wall-clock positions and lengths held
+  across a rate change, source offsets and keyframes and markers carried, a
+  1-frame clip never rounded away, no-op and nonsense rates refused; plus the
+  store wiring (export settings kept in step, undoable) and the version 1
+  migration.

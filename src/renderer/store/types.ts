@@ -1,10 +1,20 @@
 import type {
+  AudioBus,
   Clip,
+  EqSettings,
   ExportSettings,
+  Marker,
   MediaAsset,
+  ProjectAudioState,
   ProjectState,
   Track,
   TrackType,
+} from '@shared/types';
+import {
+  DEFAULT_DUCKING,
+  DEFAULT_MARKER_COLOR,
+  DEFAULT_PROJECT_AUDIO,
+  NEUTRAL_EQ,
 } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
@@ -15,7 +25,13 @@ import { recommendedBitrateKbps } from '@shared/utils/bitrate';
  * transport, and so on).
  */
 
-export const PROJECT_FILE_VERSION = 1;
+/**
+ * Bumped to 2 when the mixer and markers landed: tracks gained volume, pan,
+ * solo and a bus, clips gained pan and EQ, and the project gained markers and
+ * a master/ducking block. Version 1 files still open - `normalizeProject` fills
+ * the new fields with the values that reproduce v1 behaviour exactly.
+ */
+export const PROJECT_FILE_VERSION = 2;
 
 export interface ProjectDocument {
   version: number;
@@ -39,7 +55,8 @@ export interface EditorUiState {
   /** Nearest-neighbour scaling in the WebGL viewport. */
   pixelArtViewport: boolean;
   showTransparencyGrid: boolean;
-  markers: number[];
+  /** Marker the ruler is highlighting, for rename and delete. */
+  selectedMarkerId: string | null;
 }
 
 export const DEFAULT_UI_STATE: EditorUiState = {
@@ -53,7 +70,7 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   loopPlayback: false,
   pixelArtViewport: false,
   showTransparencyGrid: true,
-  markers: [],
+  selectedMarkerId: null,
 };
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -78,15 +95,41 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
 /* Factories                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Which bus a track feeds by default.
+ *
+ * Name sniffing used to happen at playback time, on every scheduled clip. It
+ * happens once, here, so the routing is visible in the mixer and editable -
+ * and renaming a track no longer re-routes it behind the user's back.
+ */
+export function defaultBusForName(name: string): AudioBus {
+  return /dialog|dialogue|voice|voix|voz|vo\b|narrat/i.test(name) ? 'dialogue' : 'music';
+}
+
 export function createTrack(type: TrackType, order: number, name?: string): Track {
+  const resolved = name ?? `${type[0].toUpperCase()}${type.slice(1)} ${order + 1}`;
   return {
     id: createId('track'),
-    name: name ?? `${type[0].toUpperCase()}${type.slice(1)} ${order + 1}`,
+    name: resolved,
     type,
     muted: false,
     locked: false,
     visible: true,
     order,
+    volume: 1,
+    pan: 0,
+    solo: false,
+    bus: defaultBusForName(resolved),
+  };
+}
+
+export function createMarker(frame: number, label?: string, color?: string): Marker {
+  const rounded = Math.max(0, Math.round(frame));
+  return {
+    id: createId('marker'),
+    frame: rounded,
+    label: label ?? `Marker ${rounded}`,
+    color: color ?? DEFAULT_MARKER_COLOR,
   };
 }
 
@@ -150,6 +193,8 @@ export function createClip(input: CreateClipInput): Clip {
       alphaThreshold: 0.5,
     },
     volume: 1,
+    pan: 0,
+    eq: { ...NEUTRAL_EQ },
   };
 }
 
@@ -173,5 +218,78 @@ export function createEmptyProject(
     tracks,
     clips: {},
     hasAlphaBackground: false,
+    markers: [],
+    audio: { ...DEFAULT_PROJECT_AUDIO, ducking: { ...DEFAULT_PROJECT_AUDIO.ducking } },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Migration                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const finite = (value: unknown, fallback: number): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+function normalizeEq(eq: unknown): EqSettings {
+  const source = (eq ?? {}) as Partial<EqSettings>;
+  return {
+    low: finite(source.low, 0),
+    mid: finite(source.mid, 0),
+    high: finite(source.high, 0),
+  };
+}
+
+function normalizeAudio(audio: unknown): ProjectAudioState {
+  const source = (audio ?? {}) as Partial<ProjectAudioState>;
+  const ducking = (source.ducking ?? {}) as Partial<ProjectAudioState['ducking']>;
+
+  return {
+    masterVolume: finite(source.masterVolume, 1),
+    ducking: {
+      enabled: ducking.enabled === true,
+      thresholdDb: finite(ducking.thresholdDb, DEFAULT_DUCKING.thresholdDb),
+      rangeDb: finite(ducking.rangeDb, DEFAULT_DUCKING.rangeDb),
+      attackSeconds: finite(ducking.attackSeconds, DEFAULT_DUCKING.attackSeconds),
+      releaseSeconds: finite(ducking.releaseSeconds, DEFAULT_DUCKING.releaseSeconds),
+    },
+  };
+}
+
+/**
+ * Fill in everything a project saved by an older build has no field for.
+ *
+ * The defaults are chosen to reproduce the old behaviour rather than to be
+ * tidy: unity gain, centre pan, nothing soloed, ducking off, and the bus
+ * derived from the track name - which is exactly what version 1 did at
+ * playback time. Reopening a v1 project must sound identical to how it sounded
+ * when it was saved, or the mixer has quietly re-mixed somebody's edit.
+ */
+export function normalizeProject(project: ProjectState): ProjectState {
+  const markers = (Array.isArray(project.markers) ? project.markers : [])
+    .map((marker, index) => ({
+      id: marker?.id ?? createId('marker'),
+      frame: Math.max(0, Math.round(finite(marker?.frame, 0))),
+      label: marker?.label ?? `Marker ${index + 1}`,
+      color: marker?.color ?? DEFAULT_MARKER_COLOR,
+    }))
+    .sort((a, b) => a.frame - b.frame);
+
+  return {
+    ...project,
+    markers,
+    audio: normalizeAudio(project.audio),
+    tracks: project.tracks.map((track) => ({
+      ...track,
+      volume: finite(track.volume, 1),
+      pan: finite(track.pan, 0),
+      solo: track.solo === true,
+      bus: track.bus === 'dialogue' || track.bus === 'music' ? track.bus : defaultBusForName(track.name),
+    })),
+    clips: Object.fromEntries(
+      Object.entries(project.clips).map(([id, clip]) => [
+        id,
+        { ...clip, volume: finite(clip.volume, 1), pan: finite(clip.pan, 0), eq: normalizeEq(clip.eq) },
+      ]),
+    ),
   };
 }

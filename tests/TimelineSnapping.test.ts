@@ -120,7 +120,10 @@ describe('collectSnapTargets', () => {
   });
 
   it('includes markers when provided', () => {
-    const targets = collectSnapTargets(makeProject([]), { markers: [7] });
+    const targets = collectSnapTargets({
+      ...makeProject([]),
+      markers: [{ id: 'marker-1', frame: 7, label: 'Beat', color: '#facc15' }],
+    });
     expect(targets.some((target) => target.kind === 'marker' && target.frame === 7)).toBe(true);
   });
 });

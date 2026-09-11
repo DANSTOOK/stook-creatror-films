@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import type {
   Clip,
+  DuckingSettings,
   ExportSettings,
   Keyframe,
+  Marker,
   MediaAsset,
   ProjectState,
   Track,
@@ -16,6 +18,7 @@ import {
   clipEndFrame,
   moveClip,
   projectContentLength,
+  retimeProject,
   splitClip,
   trimClipEnd,
   trimClipStart,
@@ -30,7 +33,9 @@ import {
   PROJECT_FILE_VERSION,
   createClip,
   createEmptyProject,
+  createMarker,
   createTrack,
+  normalizeProject,
   type CreateClipInput,
   type EditorUiState,
   type ProjectDocument,
@@ -70,7 +75,26 @@ interface ProjectStore {
   setCurrentFrame(frame: number): void;
   stepFrames(delta: number): void;
   setPlaying(playing: boolean): void;
-  setProjectSettings(settings: Partial<Pick<ProjectState, 'fps' | 'width' | 'height' | 'durationFrames' | 'hasAlphaBackground'>>): void;
+  setProjectSettings(
+    settings: Partial<
+      Pick<ProjectState, 'fps' | 'width' | 'height' | 'durationFrames' | 'hasAlphaBackground'>
+    >,
+    /** Rescale the edit so it keeps its wall-clock timing when `fps` changes. */
+    retime?: boolean,
+  ): void;
+
+  /* Markers -------------------------------------------------------------- */
+  /** Drop a marker at `frame`, defaulting to the playhead. Returns its id. */
+  addMarker(frame?: number, label?: string): string | null;
+  updateMarker(markerId: string, patch: Partial<Omit<Marker, 'id'>>): void;
+  removeMarker(markerId: string): void;
+  clearMarkers(): void;
+  /** Move the playhead to the nearest marker in `direction`. */
+  goToMarker(direction: -1 | 1): void;
+
+  /* Mixer ---------------------------------------------------------------- */
+  setMasterVolume(volume: number): void;
+  setDucking(patch: Partial<DuckingSettings>): void;
 
   /* UI ------------------------------------------------------------------- */
   setUi(patch: Partial<EditorUiState>): void;
@@ -151,7 +175,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }
     useHistoryStore.getState().clear();
     set({
-      project: document.project,
+      // Older files predate the mixer and markers; normalizing on the way in
+      // means nothing downstream has to defend against a missing field.
+      project: normalizeProject(document.project),
       assets: document.assets,
       ui: { ...DEFAULT_UI_STATE },
       exportSettings: {
@@ -216,8 +242,124 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ ui: { ...get().ui, isPlaying: playing } });
   },
 
-  setProjectSettings(settings) {
-    get().transact('Project settings', (project) => ({ ...project, ...settings }));
+  setProjectSettings(settings, retime = true) {
+    get().transact('Project settings', (project) => {
+      // A frame rate change reinterprets every frame number in the document, so
+      // it is applied through `retimeProject` rather than by assignment: the
+      // edit keeps its wall-clock timing and only the grid underneath changes.
+      const rated =
+        settings.fps !== undefined && settings.fps !== project.fps && retime
+          ? retimeProject(project, settings.fps)
+          : project;
+
+      return { ...rated, ...settings };
+    });
+
+    // The export settings mirror the project, and a stale resolution here is
+    // how a 1080p project ends up rendering at whatever the last import was.
+    const project = get().project;
+    get().setExportSettings({
+      width: project.width,
+      height: project.height,
+      fps: project.fps,
+      bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
+    });
+  },
+
+  /* Markers -------------------------------------------------------------- */
+
+  addMarker(frame, label) {
+    const { project } = get();
+    const target = Math.max(0, Math.round(frame ?? project.currentFrame));
+
+    // One marker per frame: a second one at the same spot is invisible on the
+    // ruler and would be undeletable from the UI.
+    const existing = project.markers.find((marker) => marker.frame === target);
+    if (existing) {
+      set({ ui: { ...get().ui, selectedMarkerId: existing.id } });
+      return null;
+    }
+
+    const marker = createMarker(target, label);
+    get().transact('Add marker', (current) => ({
+      ...current,
+      markers: [...current.markers, marker].sort((a, b) => a.frame - b.frame),
+    }));
+    set({ ui: { ...get().ui, selectedMarkerId: marker.id } });
+    return marker.id;
+  },
+
+  updateMarker(markerId, patch) {
+    get().transact('Edit marker', (project) => {
+      const markers = project.markers
+        .map((marker) =>
+          marker.id === markerId
+            ? {
+                ...marker,
+                ...patch,
+                frame:
+                  patch.frame === undefined
+                    ? marker.frame
+                    : Math.max(0, Math.round(patch.frame)),
+              }
+            : marker,
+        )
+        .sort((a, b) => a.frame - b.frame);
+
+      return { ...project, markers };
+    });
+  },
+
+  removeMarker(markerId) {
+    get().transact('Delete marker', (project) => ({
+      ...project,
+      markers: project.markers.filter((marker) => marker.id !== markerId),
+    }));
+    set({ ui: { ...get().ui, selectedMarkerId: null } });
+  },
+
+  clearMarkers() {
+    if (get().project.markers.length === 0) return;
+    get().transact('Clear markers', (project) => ({ ...project, markers: [] }));
+    set({ ui: { ...get().ui, selectedMarkerId: null } });
+  },
+
+  goToMarker(direction) {
+    const { project } = get();
+    const here = project.currentFrame;
+
+    const candidate =
+      direction === 1
+        ? project.markers.find((marker) => marker.frame > here)
+        : [...project.markers].reverse().find((marker) => marker.frame < here);
+
+    if (!candidate) return;
+    get().setCurrentFrame(candidate.frame);
+    set({ ui: { ...get().ui, selectedMarkerId: candidate.id } });
+  },
+
+  /* Mixer ---------------------------------------------------------------- */
+
+  setMasterVolume(volume) {
+    get().transact(
+      'Master volume',
+      (project) => ({
+        ...project,
+        audio: { ...project.audio, masterVolume: clamp(volume, 0, 2) },
+      }),
+      'master-volume',
+    );
+  },
+
+  setDucking(patch) {
+    get().transact(
+      'Auto ducking',
+      (project) => ({
+        ...project,
+        audio: { ...project.audio, ducking: { ...project.audio.ducking, ...patch } },
+      }),
+      'ducking',
+    );
   },
 
   /* UI ------------------------------------------------------------------- */
@@ -379,7 +521,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const clip = project.clips[clipId];
     if (!clip) return;
 
-    const targets = collectSnapTargets(project, { excludeClipIds: [clipId], markers: ui.markers });
+    const targets = collectSnapTargets(project, { excludeClipIds: [clipId] });
     const snap = snapClipMove(startFrame, clip.durationFrames, targets, {
       pixelsPerFrame: ui.pixelsPerFrame,
       enabled: ui.snappingEnabled,
@@ -407,7 +549,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const clip = project.clips[clipId];
     if (!clip) return;
 
-    const targets = collectSnapTargets(project, { excludeClipIds: [clipId], markers: ui.markers });
+    const targets = collectSnapTargets(project, { excludeClipIds: [clipId] });
     const snapped = snapFrame(frame, targets, {
       pixelsPerFrame: ui.pixelsPerFrame,
       enabled: ui.snappingEnabled,

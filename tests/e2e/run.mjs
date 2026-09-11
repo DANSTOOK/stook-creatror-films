@@ -300,6 +300,11 @@ function runElectron() {
         E2E_COLOUR_DIR: paths.colour,
         E2E_COLOUR_FRAME: String(COLOUR_FRAME),
         ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+        // The child has to be Electron, not Node. If this runner was itself
+        // started by an Electron binary in Node mode, the inherited variable
+        // would make the harness start as plain Node, where `app` does not
+        // exist and the run dies before it renders anything.
+        ELECTRON_RUN_AS_NODE: undefined,
       },
       // Inherit stdio for stderr so Electron's own warnings are visible.
       stdio: ['ignore', 'pipe', 'pipe'],

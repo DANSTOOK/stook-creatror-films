@@ -3,8 +3,11 @@ import {
   ArrowDown,
   ArrowUp,
   Copy,
+  ChevronLeft,
+  ChevronRight,
   Eye,
   EyeOff,
+  Flag,
   Hand,
   Lock,
   LockOpen,
@@ -19,7 +22,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import type { Clip, Track } from '@shared/types';
+import type { Clip, Marker, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -29,6 +32,7 @@ import TimelineCanvas, {
   RULER_HEIGHT,
   TRACK_GAP,
   TRACK_HEIGHT,
+  markerAtPixel,
   trackIndexAtY,
   trackRowTop,
 } from './TimelineCanvas';
@@ -56,10 +60,12 @@ export function Timeline(): JSX.Element {
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
+  const [renamingMarkerId, setRenamingMarkerId] = useState<string | null>(null);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const tracks = [...project.tracks].sort((a, b) => a.order - b.order);
+  const renamingMarker = project.markers.find((marker) => marker.id === renamingMarkerId);
   const contentWidth = Math.max(
     viewportWidth,
     (project.durationFrames + project.fps * 5) * ui.pixelsPerFrame,
@@ -252,11 +258,91 @@ export function Timeline(): JSX.Element {
     ];
   }, [store]);
 
+  /**
+   * The ruler's own menu.
+   *
+   * Markers were drawable and snappable long before anything could create one,
+   * which is the same as not having them. This is where they get created,
+   * named and removed.
+   */
+  const rulerMenuItems = useCallback(
+    (frame: number, marker: Marker | undefined): ContextMenuItem[] => {
+      const state = store.getState();
+      const markerCount = state.project.markers.length;
+
+      if (marker) {
+        return [
+          {
+            label: 'Rename marker',
+            icon: Pencil,
+            onSelect: () => {
+              state.setUi({ selectedMarkerId: marker.id });
+              setRenamingMarkerId(marker.id);
+            },
+          },
+          {
+            label: 'Move to playhead',
+            icon: Flag,
+            disabled: marker.frame === state.project.currentFrame,
+            onSelect: () => state.updateMarker(marker.id, { frame: state.project.currentFrame }),
+          },
+          { separator: true },
+          {
+            label: 'Delete marker',
+            icon: Trash2,
+            danger: true,
+            onSelect: () => state.removeMarker(marker.id),
+          },
+        ];
+      }
+
+      return [
+        {
+          label: 'Add marker here',
+          icon: Flag,
+          onSelect: () => {
+            const id = state.addMarker(frame);
+            if (id) setRenamingMarkerId(id);
+          },
+        },
+        {
+          label: 'Add marker at playhead',
+          icon: Flag,
+          shortcut: 'M',
+          onSelect: () => {
+            const id = state.addMarker();
+            if (id) setRenamingMarkerId(id);
+          },
+        },
+        { separator: true },
+        {
+          label: markerCount > 0 ? `Clear all markers (${markerCount})` : 'Clear all markers',
+          icon: Trash2,
+          danger: true,
+          disabled: markerCount === 0,
+          onSelect: () => state.clearMarkers(),
+        },
+      ];
+    },
+    [store],
+  );
+
   const onCanvasContextMenu = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
       const y = event.clientY - bounds.top;
+
+      if (y < RULER_HEIGHT) {
+        openMenu(
+          event,
+          rulerMenuItems(
+            pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx),
+            markerAtPixel(project, ui, x),
+          ),
+        );
+        return;
+      }
 
       const hit = clipAtPoint(x, y);
       if (hit) {
@@ -276,9 +362,10 @@ export function Timeline(): JSX.Element {
       clipMenuItems,
       emptyAreaMenuItems,
       openMenu,
-      project.currentFrame,
+      project,
+      rulerMenuItems,
       store,
-      ui.selectedClipIds,
+      ui,
     ],
   );
 
@@ -307,8 +394,17 @@ export function Timeline(): JSX.Element {
         return;
       }
 
-      // Clicking the ruler always scrubs, whatever tool is active.
+      // Clicking the ruler always scrubs, whatever tool is active - unless it
+      // lands on a marker flag, which selects the marker and jumps to it.
       if (y < RULER_HEIGHT) {
+        const marker = markerAtPixel(state.project, state.ui, x);
+        if (marker) {
+          state.setUi({ selectedMarkerId: marker.id });
+          state.setCurrentFrame(marker.frame);
+          return;
+        }
+
+        if (state.ui.selectedMarkerId) state.setUi({ selectedMarkerId: null });
         dragRef.current = { kind: 'scrub' };
         state.setCurrentFrame(pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx));
         return;
@@ -388,10 +484,7 @@ export function Timeline(): JSX.Element {
       const targetTrack = tracks[trackIndexAtY(y)] ?? tracks.find((t) => t.id === clip.trackId);
       if (!targetTrack || targetTrack.locked) return;
 
-      const targets = collectSnapTargets(state.project, {
-        excludeClipIds: [clip.id],
-        markers: state.ui.markers,
-      });
+      const targets = collectSnapTargets(state.project, { excludeClipIds: [clip.id] });
       const snap = snapClipMove(rawStart, clip.durationFrames, targets, {
         pixelsPerFrame: ui.pixelsPerFrame,
         enabled: state.ui.snappingEnabled,
@@ -469,6 +562,39 @@ export function Timeline(): JSX.Element {
           >
             <Magnet size={14} />
             Snap
+          </button>
+
+          <span className="mx-1 h-5 w-px bg-panel-600" />
+
+          <button
+            type="button"
+            title="Add marker at the playhead (M)"
+            className="tool-button"
+            onClick={() => {
+              const id = store.getState().addMarker();
+              if (id) setRenamingMarkerId(id);
+            }}
+          >
+            <Flag size={14} />
+            Marker
+          </button>
+          <button
+            type="button"
+            title="Previous marker"
+            className="tool-button"
+            disabled={project.markers.length === 0}
+            onClick={() => store.getState().goToMarker(-1)}
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            type="button"
+            title="Next marker"
+            className="tool-button"
+            disabled={project.markers.length === 0}
+            onClick={() => store.getState().goToMarker(1)}
+          >
+            <ChevronRight size={14} />
           </button>
         </div>
 
@@ -603,19 +729,47 @@ export function Timeline(): JSX.Element {
         </div>
 
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
-          <TimelineCanvas
-            project={project}
-            ui={ui}
-            tracks={tracks}
-            activeSnap={activeSnap}
-            waveforms={waveforms}
-            width={contentWidth}
-            height={Math.max(canvasHeight, trackRowTop(tracks.length))}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onContextMenu={onCanvasContextMenu}
-          />
+          {/* Positioned in CONTENT space, so the rename field rides the scroll
+              with its marker instead of needing scroll arithmetic. */}
+          <div className="relative" style={{ width: contentWidth }}>
+            <TimelineCanvas
+              project={project}
+              ui={ui}
+              tracks={tracks}
+              activeSnap={activeSnap}
+              waveforms={waveforms}
+              width={contentWidth}
+              height={Math.max(canvasHeight, trackRowTop(tracks.length))}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onContextMenu={onCanvasContextMenu}
+            />
+
+            {renamingMarker && (
+              <input
+                autoFocus
+                defaultValue={renamingMarker.label}
+                className="numeric-input absolute h-6 w-36"
+                style={{
+                  left: Math.max(0, renamingMarker.frame * ui.pixelsPerFrame + 6),
+                  top: 0,
+                }}
+                onFocus={(event) => event.currentTarget.select()}
+                onBlur={(event) => {
+                  const label = event.target.value.trim();
+                  if (label && label !== renamingMarker.label) {
+                    store.getState().updateMarker(renamingMarker.id, { label });
+                  }
+                  setRenamingMarkerId(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                  if (event.key === 'Escape') setRenamingMarkerId(null);
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
 

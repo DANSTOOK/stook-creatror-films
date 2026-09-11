@@ -86,6 +86,85 @@ export interface PixelArtConfig {
   alphaThreshold: number; // Alpha below this is cut to 0 to keep sprites crisp
 }
 
+/* -------------------------------------------------------------------------- */
+/* Audio                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Three-band shelving/peaking EQ, in dB of gain per band. */
+export interface EqSettings {
+  low: number; // dB at 120 Hz (low shelf)
+  mid: number; // dB at 1 kHz (peaking)
+  high: number; // dB at 8 kHz (high shelf)
+}
+
+export const NEUTRAL_EQ: EqSettings = { low: 0, mid: 0, high: 0 };
+
+/**
+ * Which sub-bus a track feeds.
+ *
+ * This used to be sniffed from the track name (anything containing "dialog"
+ * went to the dialogue bus), which meant renaming a track silently re-routed
+ * it and there was no way to duck against a track called "VO". It is an
+ * explicit property now.
+ */
+export type AudioBus = 'music' | 'dialogue';
+
+/** Sidechain compression ("auto ducking") parameters. */
+export interface DuckingParams {
+  /** Level above which ducking engages, in dBFS. */
+  thresholdDb: number;
+  /** How far the music is pulled down at full duck, in dB (positive number). */
+  rangeDb: number;
+  /** Seconds to reach full duck. */
+  attackSeconds: number;
+  /** Seconds to recover to unity. */
+  releaseSeconds: number;
+}
+
+export const DEFAULT_DUCKING: DuckingParams = {
+  thresholdDb: -32,
+  rangeDb: 12,
+  attackSeconds: 0.08,
+  releaseSeconds: 0.45,
+};
+
+export interface DuckingSettings extends DuckingParams {
+  enabled: boolean;
+}
+
+/** Mixer state that belongs to the project rather than to the session. */
+export interface ProjectAudioState {
+  /** Linear gain on the master bus, 0.0 to 2.0. */
+  masterVolume: number;
+  ducking: DuckingSettings;
+}
+
+export const DEFAULT_PROJECT_AUDIO: ProjectAudioState = {
+  masterVolume: 1,
+  ducking: { ...DEFAULT_DUCKING, enabled: false },
+};
+
+/* -------------------------------------------------------------------------- */
+/* Timeline                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A named point on the timeline.
+ *
+ * Markers live in the project, not in the editor's UI state: they are authored
+ * content, they survive a save, and moving one is an undoable edit like any
+ * other.
+ */
+export interface Marker {
+  id: string;
+  frame: number;
+  label: string;
+  /** Hex colour of the ruler flag. */
+  color: string;
+}
+
+export const DEFAULT_MARKER_COLOR = '#facc15';
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -102,6 +181,10 @@ export interface Clip {
   pixelArt: PixelArtConfig;
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;
+  /** Stereo position, -1 hard left to +1 hard right. */
+  pan: number;
+  /** Per-clip corrective EQ, applied before the track strip. */
+  eq: EqSettings;
 }
 
 export interface Track {
@@ -112,6 +195,18 @@ export interface Track {
   locked: boolean;
   visible: boolean;
   order: number;
+  /** Linear gain of the track strip, 0.0 to 2.0. */
+  volume: number;
+  /** Stereo position of the track strip, -1 to +1. */
+  pan: number;
+  /**
+   * Solo. When any track is soloed, every non-soloed track is silent - which
+   * is a different thing from being muted, and has to stay separate so
+   * un-soloing restores the mute states the user actually set.
+   */
+  solo: boolean;
+  /** Sub-bus this track feeds, which is what the ducking sidechain keys off. */
+  bus: AudioBus;
 }
 
 /** Frame rates offered in the project settings UI. */
@@ -134,6 +229,10 @@ export interface ProjectState {
   tracks: Track[];
   clips: Record<string, Clip>;
   hasAlphaBackground: boolean; // Transparent Canvas for Godot Sprite Exports
+  /** Named points on the timeline. Sorted by frame. */
+  markers: Marker[];
+  /** Master bus and auto-ducking, i.e. everything the mixer owns. */
+  audio: ProjectAudioState;
 }
 
 /* -------------------------------------------------------------------------- */

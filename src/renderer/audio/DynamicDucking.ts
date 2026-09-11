@@ -1,3 +1,5 @@
+import type { DuckingParams } from '@shared/types';
+import { DEFAULT_DUCKING } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 
 /**
@@ -11,23 +13,11 @@ import { clamp } from '@shared/utils/math';
  * audio graph to analyse.
  */
 
-export interface DuckingParams {
-  /** Level above which ducking engages, in dBFS. */
-  thresholdDb: number;
-  /** How far the music is pulled down at full duck, in dB (positive number). */
-  rangeDb: number;
-  /** Seconds to reach full duck. */
-  attackSeconds: number;
-  /** Seconds to recover to unity. */
-  releaseSeconds: number;
-}
-
-export const DEFAULT_DUCKING: DuckingParams = {
-  thresholdDb: -32,
-  rangeDb: 12,
-  attackSeconds: 0.08,
-  releaseSeconds: 0.45,
-};
+// The parameters are part of the saved project, so they are declared with the
+// rest of the document schema; re-exported here because this is where they are
+// interpreted.
+export type { DuckingParams } from '@shared/types';
+export { DEFAULT_DUCKING } from '@shared/types';
 
 export const linearToDb = (linear: number): number =>
   20 * Math.log10(Math.max(linear, 1e-6));
@@ -134,4 +124,100 @@ export class DynamicDucking {
     this.stop();
     this.analyser.disconnect();
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Offline ducking                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Block size used to turn a rendered bus into a sidechain envelope.
+ *
+ * 128 samples is one render quantum: at 48 kHz that is 2.7 ms, short enough to
+ * catch a speech onset and long enough that the envelope is a level rather than
+ * a waveform.
+ */
+export const ENVELOPE_BLOCK = 128;
+
+/**
+ * Per-block RMS of a rendered signal, summed across channels.
+ *
+ * This is the offline equivalent of the realtime `AnalyserNode`: it is what the
+ * dialogue bus "looks like" to the sidechain.
+ */
+export function blockRms(
+  channels: readonly Float32Array[],
+  block: number = ENVELOPE_BLOCK,
+): Float32Array {
+  const length = channels[0]?.length ?? 0;
+  const blocks = Math.ceil(length / block);
+  const envelope = new Float32Array(blocks);
+
+  for (let index = 0; index < blocks; index += 1) {
+    const start = index * block;
+    const end = Math.min(start + block, length);
+    let sum = 0;
+    let count = 0;
+
+    for (const channel of channels) {
+      for (let i = start; i < end; i += 1) {
+        sum += channel[i] * channel[i];
+        count += 1;
+      }
+    }
+
+    envelope[index] = count === 0 ? 0 : Math.sqrt(sum / count);
+  }
+
+  return envelope;
+}
+
+/**
+ * Apply a per-block gain curve to a signal, in place.
+ *
+ * Gains are interpolated across each block rather than stepped: a gain that
+ * jumps between blocks is a 366 Hz buzz at 48 kHz, which is a much worse
+ * artefact than the ducking it is implementing.
+ */
+export function applyGainCurve(
+  channels: readonly Float32Array[],
+  gains: ArrayLike<number>,
+  block: number = ENVELOPE_BLOCK,
+): void {
+  const length = channels[0]?.length ?? 0;
+
+  for (let i = 0; i < length; i += 1) {
+    const position = i / block;
+    const index = Math.min(gains.length - 1, Math.floor(position));
+    const next = Math.min(gains.length - 1, index + 1);
+    const fraction = position - index;
+    const gain = gains[index] + (gains[next] - gains[index]) * fraction;
+
+    for (const channel of channels) channel[i] *= gain;
+  }
+}
+
+/**
+ * Bake the ducking curve for an offline mix.
+ *
+ * `music` is modified in place. Returns the smallest gain the curve reached, so
+ * a caller can report whether ducking actually did anything - "enabled" and
+ * "audible" are different claims.
+ */
+export function duckOffline(
+  music: readonly Float32Array[],
+  dialogue: readonly Float32Array[],
+  sampleRate: number,
+  params: DuckingParams = DEFAULT_DUCKING,
+  block: number = ENVELOPE_BLOCK,
+): number {
+  const envelope = blockRms(dialogue, block);
+  if (envelope.length === 0) return 1;
+
+  const gains = computeDuckingEnvelope(envelope, sampleRate / block, params);
+  applyGainCurve(music, gains, block);
+
+  let lowest = 1;
+  for (const gain of gains) if (gain < lowest) lowest = gain;
+  return lowest;
 }

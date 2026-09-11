@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import type { Clip, ProjectState, Track } from '@shared/types';
+import type { Clip, Marker, ProjectState, Track } from '@shared/types';
 import { framesToShortLabel } from '@shared/utils/timecode';
 import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
 import type { EditorUiState } from '@renderer/store/types';
@@ -223,6 +223,73 @@ function drawClip(
   context.restore();
 }
 
+/** Half-width of a marker's clickable zone on the ruler, in pixels. */
+export const MARKER_HIT_PX = 6;
+
+/**
+ * The marker under an x coordinate on the ruler, if any.
+ *
+ * Later markers win a tie, so the one drawn on top is the one that is hit -
+ * which is the only resolution that does not feel broken when two markers sit
+ * a frame apart at low zoom.
+ */
+export function markerAtPixel(
+  project: ProjectState,
+  ui: EditorUiState,
+  x: number,
+): Marker | undefined {
+  let found: Marker | undefined;
+  for (const marker of project.markers) {
+    const markerX = frameToPixel(marker.frame, ui.pixelsPerFrame, ui.scrollLeftPx);
+    if (Math.abs(x - markerX) <= MARKER_HIT_PX) found = marker;
+  }
+  return found;
+}
+
+/**
+ * Marker flags, drawn over the ruler.
+ *
+ * They go on top of the ruler rather than under it because the ruler paints its
+ * own background - a flag drawn before it is simply erased.
+ */
+function drawMarkerFlags(
+  context: CanvasRenderingContext2D,
+  project: ProjectState,
+  ui: EditorUiState,
+  width: number,
+): void {
+  context.font = '9px system-ui, sans-serif';
+  context.textBaseline = 'middle';
+
+  for (const marker of project.markers) {
+    const x = Math.round(frameToPixel(marker.frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
+    if (x < -40 || x > width + 40) continue;
+
+    const selected = marker.id === ui.selectedMarkerId;
+
+    context.fillStyle = marker.color;
+    context.beginPath();
+    context.moveTo(x - 4, 2);
+    context.lineTo(x + 4, 2);
+    context.lineTo(x + 4, 9);
+    context.lineTo(x, 13);
+    context.lineTo(x - 4, 9);
+    context.closePath();
+    context.fill();
+
+    if (selected) {
+      context.strokeStyle = '#f8fafc';
+      context.lineWidth = 1;
+      context.stroke();
+    }
+
+    if (marker.label) {
+      context.fillStyle = selected ? '#f8fafc' : '#cbd5f5';
+      context.fillText(marker.label, x + 7, 7);
+    }
+  }
+}
+
 function drawPlayhead(
   context: CanvasRenderingContext2D,
   project: ProjectState,
@@ -303,15 +370,19 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       }
     });
 
-    for (const marker of ui.markers) {
-      const x = Math.round(frameToPixel(marker, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
-      context.strokeStyle = '#facc15';
+    for (const marker of project.markers) {
+      const x = Math.round(frameToPixel(marker.frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
+      if (x < -MARKER_HIT_PX || x > width + 200) continue;
+
+      context.strokeStyle = marker.color;
+      context.globalAlpha = marker.id === ui.selectedMarkerId ? 0.9 : 0.5;
       context.setLineDash([3, 3]);
       context.beginPath();
       context.moveTo(x, RULER_HEIGHT);
       context.lineTo(x, height);
       context.stroke();
       context.setLineDash([]);
+      context.globalAlpha = 1;
     }
 
     if (activeSnap) {
@@ -325,6 +396,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     }
 
     drawRuler(context, project, ui, width);
+    drawMarkerFlags(context, project, ui, width);
     drawPlayhead(context, project, ui, height);
   }, [project, ui, tracks, activeSnap, waveforms, width, height]);
 

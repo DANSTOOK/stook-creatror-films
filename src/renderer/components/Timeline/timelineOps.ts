@@ -203,3 +203,54 @@ export function projectContentLength(project: ProjectState): number {
   }
   return longest;
 }
+
+/**
+ * Re-express a whole project on a different frame rate.
+ *
+ * Frame numbers are meaningless without the rate that interprets them, so
+ * changing `fps` without touching anything else silently re-times the edit: a
+ * cut authored at second 4 on a 24 fps timeline lands at second 1.6 once the
+ * project is read as 60 fps. Every frame-valued field is therefore rescaled by
+ * `next / previous`, which keeps the edit at the same WALL-CLOCK positions and
+ * only changes the grid it is measured on.
+ *
+ * Durations are floored at one frame: rounding 1 frame of 60 fps material down
+ * to 0 at 24 fps would delete the clip outright.
+ */
+export function retimeProject(project: ProjectState, nextFps: number): ProjectState {
+  const previous = project.fps;
+  if (!Number.isFinite(nextFps) || nextFps <= 0 || nextFps === previous) {
+    return { ...project, fps: Number.isFinite(nextFps) && nextFps > 0 ? nextFps : previous };
+  }
+
+  const ratio = nextFps / previous;
+  const scale = (frames: number): number => Math.round(frames * ratio);
+  const scaleKeyframes = <T extends KeyframeValue>(track: Keyframe<T>[]): Keyframe<T>[] =>
+    track.map((keyframe) => ({ ...keyframe, frame: scale(keyframe.frame) }));
+
+  return {
+    ...project,
+    fps: nextFps,
+    durationFrames: Math.max(1, scale(project.durationFrames)),
+    currentFrame: scale(project.currentFrame),
+    markers: project.markers.map((marker) => ({ ...marker, frame: scale(marker.frame) })),
+    clips: Object.fromEntries(
+      Object.entries(project.clips).map(([id, clip]) => [
+        id,
+        {
+          ...clip,
+          startFrame: scale(clip.startFrame),
+          durationFrames: Math.max(1, scale(clip.durationFrames)),
+          sourceOffsetFrames: scale(clip.sourceOffsetFrames),
+          transform: {
+            ...clip.transform,
+            position: scaleKeyframes(clip.transform.position),
+            scale: scaleKeyframes(clip.transform.scale),
+            rotation: scaleKeyframes(clip.transform.rotation),
+            opacity: scaleKeyframes(clip.transform.opacity),
+          },
+        },
+      ]),
+    ),
+  };
+}

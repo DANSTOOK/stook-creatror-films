@@ -530,6 +530,16 @@ export function Inspector(): JSX.Element {
             max={2}
             onChange={(volume) => updateClip(clip.id, { volume }, `volume:${clip.id}`)}
           />
+          <SliderField
+            label="Pan"
+            value={clip.pan}
+            min={-1}
+            max={1}
+            onChange={(pan) => updateClip(clip.id, { pan }, `pan:${clip.id}`)}
+          />
+          <p className="text-2xs text-slate-600">
+            EQ, track faders, solo and auto ducking live in the mixer.
+          </p>
         </Section>
       </div>
     </aside>
