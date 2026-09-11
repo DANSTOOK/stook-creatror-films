@@ -2,6 +2,7 @@ import type { Clip, MediaAsset, ProjectState } from '@shared/types';
 import { Compositor, type ClipSource, type CompositorOptions } from './Compositor';
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
+import { ScrubDecoder } from './ScrubDecoder';
 import { SequentialVideoReader } from './SequentialVideoReader';
 import { TextureManager } from './TextureManager';
 
@@ -37,6 +38,8 @@ export class FrameRenderer {
   /** Freeze the viewport for the duration of an export. Pair with `endExclusive`. */
   beginExclusive(): void {
     this.exclusiveHolds += 1;
+    // The export's own decoders need the hardware more than a paused preview.
+    this.closeScrubbers();
   }
 
   endExclusive(): void {
@@ -124,17 +127,95 @@ export class FrameRenderer {
     return { texture, flipY: true };
   }
 
+  /** Forward decoders for a paused playhead, by clip and file. See ScrubDecoder. */
+  private readonly scrubbers = new Map<string, ScrubDecoder>();
+
+  private static scrubKey(clip: Clip): string {
+    return `${clip.id}|${clip.sourceUri}`;
+  }
+
+  private closeScrubbers(keep: ReadonlySet<string> = new Set()): void {
+    for (const [key, scrubber] of this.scrubbers) {
+      if (keep.has(key)) continue;
+      scrubber.close();
+      this.scrubbers.delete(key);
+    }
+  }
+
+  /**
+   * A paused clip's picture: from the forward decoder when it has the frame or
+   * can walk to it cheaply, otherwise from a seek - whichever lands, the
+   * texture keeps the last good picture until then.
+   */
+  private scrubUploadFor(clip: Clip, sourceFrame: number, fps: number, pixelArtViewport: boolean): ClipSource | null {
+    // Keyed by the file too: a relinked clip must not keep the old file's decoder.
+    const key = FrameRenderer.scrubKey(clip);
+    let scrubber = this.scrubbers.get(key);
+    if (!scrubber) {
+      scrubber = new ScrubDecoder(clip.sourceUri, fps, () => undefined);
+      this.scrubbers.set(key, scrubber);
+    }
+
+    const gl = this.compositor.context;
+    const filter = clip.pixelArt.enabled || pixelArtViewport ? gl.NEAREST : gl.LINEAR;
+    const revision = `${clip.sourceUri}:${sourceFrame}`;
+
+    const decoded = scrubber.frameFor(sourceFrame);
+    if (decoded) {
+      const texture = this.textures.upload(clip.sourceUri, decoded, revision);
+      this.textures.setFilter(clip.sourceUri, filter);
+      return { texture, flipY: true };
+    }
+
+    if (!scrubber.canReachCheaply(sourceFrame)) {
+      // Too far for a walk: the element seeks, as it always did, and the
+      // decoder follows once the playhead rests.
+      scrubber.requestWhenSettled(sourceFrame, performance.now());
+      this.media.syncToFrame(clip.sourceUri, sourceFrame, fps, false);
+      return this.uploadFor(clip, fps, pixelArtViewport);
+    }
+    scrubber.request(sourceFrame);
+
+    // A few milliseconds away: hold the current picture rather than start a
+    // seek that would land later than the decoder does.
+    const held = this.textures.get(clip.sourceUri);
+    if (!held) return this.uploadFor(clip, fps, pixelArtViewport);
+    this.textures.setFilter(clip.sourceUri, filter);
+    return { texture: held, flipY: true };
+  }
+
   /** Non-blocking viewport draw. */
   drawViewport(project: ProjectState, playing: boolean, pixelArtViewport: boolean): void {
     // An export owns the video elements and the canvas right now.
     if (this.isExclusive) return;
 
+    // Playback runs on the elements; the forward decoders are only for a
+    // paused playhead, and hold a hardware decoder each, so they go.
+    const scrubbing = !playing && !(window as { __scfNoScrubDecoder?: boolean }).__scfNoScrubDecoder;
+    if (!scrubbing) this.closeScrubbers();
+    else this.closeScrubbers(new Set(Compositor.visibleClips(project, project.currentFrame).map(FrameRenderer.scrubKey)));
+
     this.compositor.renderFrame(
       project,
       project.currentFrame,
       (clip, sourceFrame) => {
-        this.media.syncToFrame(clip.sourceUri, sourceFrame, project.fps, playing);
-        return this.uploadFor(clip, project.fps, pixelArtViewport);
+        const isVideo = this.media.get(clip.sourceUri) instanceof HTMLVideoElement;
+        let source: ClipSource | null;
+        if (scrubbing && isVideo) {
+          source = this.scrubUploadFor(clip, sourceFrame, project.fps, pixelArtViewport);
+        } else {
+          this.media.syncToFrame(clip.sourceUri, sourceFrame, project.fps, playing);
+          source = this.uploadFor(clip, project.fps, pixelArtViewport);
+        }
+
+        // Test instrumentation: how often a paused preview shows exactly the
+        // frame under the playhead. Off unless a test asks for it.
+        const stats = (window as { __scfViewportStats?: { draws: number; exact: number } }).__scfViewportStats;
+        if (stats && isVideo && !playing) {
+          stats.draws += 1;
+          if (this.textures.revisionOf(clip.sourceUri) === `${clip.sourceUri}:${sourceFrame}`) stats.exact += 1;
+        }
+        return source;
       },
       true,
     );
@@ -271,6 +352,7 @@ export class FrameRenderer {
   }
 
   dispose(): void {
+    this.closeScrubbers();
     this.stopSequentialDecode();
     this.textures.dispose();
     this.lutLoader.dispose();

@@ -27,16 +27,18 @@ import type { Clip, Marker, MediaAsset, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
-import { clipEndFrame, clipsInPaintOrder, clipsOnTrack } from './timelineOps';
+import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
 import { clipsInMarquee, groupMoveStarts } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
+import { emitScrub } from '@renderer/audio/scrubAudio';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
   TRACK_GAP,
   TRACK_HEIGHT,
+  hitsPlayheadScissors,
   markerAtPixel,
   trackIndexAtY,
   trackRowTop,
@@ -49,7 +51,9 @@ const HEADER_WIDTH = 168;
 type DragMode =
   | { kind: 'none' }
   | { kind: 'scrub' }
-  | { kind: 'move'; clipId: string; grabOffsetFrames: number }
+  /** Pressed the scissors on the playhead: a click cuts, a drag scrubs. */
+  | { kind: 'scissors'; startClientX: number }
+  | { kind: 'move';clipId: string; grabOffsetFrames: number }
   | { kind: 'trim'; clipId: string; edge: 'start' | 'end' }
   | { kind: 'pan'; startClientX: number; startScrollLeft: number }
   | {
@@ -100,6 +104,7 @@ export function Timeline(): JSX.Element {
   const [dropNotice, setDropNotice] = useState<string | null>(null);
   const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
   const [hover, setHover] = useState<ClipHover | null>(null);
+  const [overScissors, setOverScissors] = useState(false);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
@@ -467,6 +472,11 @@ export function Timeline(): JSX.Element {
       // Clicking the ruler always scrubs, whatever tool is active - unless it
       // lands on a marker flag, which selects the marker and jumps to it.
       if (y < RULER_HEIGHT) {
+        if (hitsPlayheadScissors(state.project, state.ui, x, y)) {
+          dragRef.current = { kind: 'scissors', startClientX: event.clientX };
+          return;
+        }
+
         const marker = markerAtPixel(state.project, state.ui, x);
         if (marker) {
           state.setUi({ selectedMarkerId: marker.id });
@@ -477,14 +487,20 @@ export function Timeline(): JSX.Element {
         if (state.ui.selectedMarkerId) state.setUi({ selectedMarkerId: null });
         dragRef.current = { kind: 'scrub' };
         state.setCurrentFrame(pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx));
+        emitScrub(store.getState().project.currentFrame);
         return;
       }
 
       const hit = clipAtPoint(x, y);
 
       if (state.ui.tool === 'razor') {
-        const frame = pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx);
-        state.razorAtFrame(frame, hit ? [hit.clip.id] : undefined);
+        const action = razorClick(
+          hit?.clip ?? null,
+          pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx),
+          state.project.currentFrame,
+        );
+        if (action.kind === 'cut') state.razorAtFrame(action.frame, [action.clipId]);
+        else state.setCurrentFrame(action.frame);
         return;
       }
 
@@ -572,6 +588,8 @@ export function Timeline(): JSX.Element {
         setHover((previous) =>
           previous?.clipId === next?.clipId && previous?.edge === next?.edge ? previous : next,
         );
+        const current = store.getState();
+        setOverScissors(y < RULER_HEIGHT && hitsPlayheadScissors(current.project, current.ui, x, y));
         return;
       }
 
@@ -587,8 +605,17 @@ export function Timeline(): JSX.Element {
         return;
       }
 
-      if (drag.kind === 'scrub') {
+      if (drag.kind === 'scissors' || drag.kind === 'scrub') {
+        if (drag.kind === 'scissors') {
+          // Grabbing the playhead by its scissors and moving is a scrub.
+          if (Math.abs(event.clientX - drag.startClientX) < DRAG_THRESHOLD_PX) return;
+          dragRef.current = { kind: 'scrub' };
+        }
+        const before = state.project.currentFrame;
         state.setCurrentFrame(frame);
+        // Only a real move sounds: pointermove also fires for sub-frame jitter.
+        const after = store.getState().project.currentFrame;
+        if (after !== before) emitScrub(after);
         return;
       }
 
@@ -767,6 +794,13 @@ export function Timeline(): JSX.Element {
       const drag = dragRef.current;
       const state = store.getState();
 
+      // The scissors on the playhead, clicked: cut at the line. The selected
+      // clips if there are any, otherwise everything the playhead crosses.
+      if (drag.kind === 'scissors') {
+        const selected = state.ui.selectedClipIds;
+        state.razorAtFrame(state.project.currentFrame, selected.length > 0 ? selected : undefined);
+      }
+
       // A press on empty space that never became a drag is a click: deselect
       // (unless adding) and put the playhead there, as a click always did.
       if (drag.kind === 'marquee' && !drag.moved) {
@@ -792,7 +826,9 @@ export function Timeline(): JSX.Element {
   const drag = dragRef.current;
   const activeTrim = drag.kind === 'trim' ? { clipId: drag.clipId, edge: drag.edge } : null;
   const cursor =
-    ui.tool === 'hand'
+    overScissors && ui.tool !== 'hand' && drag.kind === 'none'
+      ? 'pointer'
+      : ui.tool === 'hand'
       ? drag.kind === 'pan'
         ? 'grabbing'
         : 'grab'
@@ -833,7 +869,7 @@ export function Timeline(): JSX.Element {
       <header className="panel-header justify-between">
         <div className="flex items-center gap-1 normal-case tracking-normal">
           {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
-          {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to split it', Scissors)}
+          {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to cut it at the playhead', Scissors)}
           {toolButton('hand', 'Pan', 'Hand tool (H)', Hand)}
 
           <span className="mx-1 h-5 w-px bg-panel-600" />

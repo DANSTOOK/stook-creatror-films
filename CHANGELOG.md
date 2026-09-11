@@ -7,11 +7,63 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **340 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **28/28 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, opciones de exportación y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **352 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **32/32 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.6.0-beta.1 — Arrastre del cursor en tiempo real y cortes en el cursor
+2026-09-11 · pre-release para probar
+
+Puntos 5 y 6 del plan.
+
+### Añadido
+- **Sonido al arrastrar el cursor de reproducción** (punto 5). Con la
+  reproducción en pausa, al arrastrar el cursor por la regla o la barra de la
+  vista previa, o al avanzar fotograma a fotograma con las flechas, suena lo
+  que hay debajo en fragmentos cortos (~85 ms), como en Premiere o Filmora.
+  Pasa por el mismo volumen, panorama, ecualizador, silencio y solo que la
+  reproducción normal, y cada fragmento entra y sale con un fundido corto
+  para que no haya chasquidos.
+  - *Comprobado:* 6 pruebas unitarias (qué clips suenan, desde qué punto del
+    archivo contando recortes, que no suene lo recortado, silencio y solo) y
+    la prueba de interfaz arrastra la regla y cuenta los fragmentos (28).
+- **Tijeras en el cursor de reproducción** (punto 6), como en Filmora: un
+  clic corta en la línea. Corta los clips seleccionados o, si no hay
+  ninguno, todo lo que cruza el cursor. Si en vez de hacer clic se arrastra,
+  mueve el cursor como siempre.
+
+### Cambiado
+- **La cuchilla corta en el cursor, no donde se hace clic** (punto 6). Con la
+  cuchilla, un clic sobre un clip que cruza el cursor lo corta justo en la
+  línea roja, se haga clic donde se haga. Si el cursor no está sobre ese
+  clip, el clic solo lleva el cursor ahí, para que se vea dónde caerá el
+  corte antes de hacerlo.
+  - *Comprobado* en la prueba de interfaz: con el cursor en el fotograma 30
+    y el clic en el 72, el corte cae en el 30. Las tijeras del cursor cortan
+    en la línea (2 → 3 clips). Además, 6 pruebas unitarias.
+
+### Arreglado
+- **La imagen iba a trompicones al arrastrar el cursor.** Cada movimiento
+  saltaba el vídeo a esa posición, y en tu vídeo (un fotograma clave cada
+  ~7 s) cada salto tarda 110-150 ms. Al arrastrar hacia delante ahora sigue
+  decodificando desde donde está, que cuesta milisegundos.
+  - *Comprobado con tu vídeo* (`npm run test:bench:scrub`): arrastrando
+    hacia delante, la vista previa muestra **el fotograma exacto bajo el
+    cursor el 81% del tiempo, frente al 8% de antes**.
+
+### Problemas conocidos
+- **Arrastrar hacia atrás sigue igual que antes** (el fotograma exacto ~7%
+  del tiempo en tu vídeo). Ir hacia atrás obliga a decodificar desde el
+  fotograma clave anterior. Es lo mismo en cualquier editor con vídeos de
+  fotogramas clave lejanos, y se resuelve con proxies, que aún no existen.
+- El audio de reproducción sigue cargado entero en memoria (~1 GB por 45
+  minutos). El pico de la página al importar 45 minutos varía entre 1,5 y
+  2,2 GB; el límite de la prueba pasa a 2,5 GB, muy por debajo de los ~6 GB
+  del error que vigila. El decodificador del arrastre suma ~40-60 MB.
 
 ---
 

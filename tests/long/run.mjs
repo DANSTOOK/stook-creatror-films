@@ -16,7 +16,8 @@ import { _electron as electron } from 'playwright';
  *
  * The limits are generous on purpose - they catch a regression back to
  * reading whole files into memory (gigabytes), not the ordinary cost of
- * decoded audio (about 1 GB per 45 minutes of stereo, which is expected).
+ * decoded audio (about 1 GB per 45 minutes of stereo, which is expected until
+ * playback audio streams).
  *
  * The source is generated once and kept in .long-tmp, because producing 45
  * minutes of video takes a minute or two even with a hardware encoder.
@@ -86,6 +87,8 @@ async function main() {
 
   try {
     const window = await app.firstWindow();
+    // For comparisons: run with the paused-preview forward decoder switched off.
+    if (process.env.NO_SCRUB_DECODER) await window.evaluate(() => { window.__scfNoScrubDecoder = true; });
     await app.evaluate(({ dialog }, video) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [video] });
     }, source);
@@ -122,7 +125,11 @@ async function main() {
 
     check('imports a 45-minute file in under 30 s', importSeconds < 30, `${importSeconds.toFixed(1)} s`);
     check('the main process never holds the file (peak < 600 MB)', peakBrowser < 600, `${peakBrowser} MB`);
-    check('the page never holds the file (peak < 2 GB, audio included)', peakTab < 2048, `${peakTab} MB`);
+    // The peak is the 45 minutes of audio decoded into one float32 AudioBuffer
+    // (~1 GB, plus the decoder's working memory), and it swings between 1.5
+    // and 2.2 GB from run to run. The limit is above that noise and far below
+    // the ~6 GB of the old read-the-whole-file import, which is what it guards.
+    check('the page never holds the file (peak < 2.5 GB, audio included)', peakTab < 2560, `${peakTab} MB`);
 
     const canvas = await window.evaluate(() => {
       const element = [...document.querySelectorAll('canvas')].at(-1);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { emitScrub } from '@renderer/audio/scrubAudio';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
 /**
@@ -17,6 +18,8 @@ export interface Transport {
   toggle(): void;
   seek(frame: number): void;
   step(delta: number): void;
+  /** Move the playhead by hand, with sound: a drag or a click on a scrubber. */
+  scrub(frame: number): void;
 }
 
 /** Commands only. No effects, no timers - safe to call anywhere. */
@@ -28,9 +31,16 @@ export function useTransport(): Transport {
     setPlaying(!ui.isPlaying);
   }, []);
   const seek = useCallback((frame: number) => useProjectStore.getState().setCurrentFrame(frame), []);
-  const step = useCallback((delta: number) => useProjectStore.getState().stepFrames(delta), []);
+  const step = useCallback((delta: number) => {
+    useProjectStore.getState().stepFrames(delta);
+    emitScrub(useProjectStore.getState().project.currentFrame);
+  }, []);
+  const scrub = useCallback((frame: number) => {
+    useProjectStore.getState().setCurrentFrame(frame);
+    emitScrub(useProjectStore.getState().project.currentFrame);
+  }, []);
 
-  return { play, pause, toggle, seek, step };
+  return { play, pause, toggle, seek, step, scrub };
 }
 
 export interface ClockTick {

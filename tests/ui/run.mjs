@@ -355,6 +355,80 @@ async function main() {
       .isVisible().catch(() => false);
     check('dragging a band over the timeline selects several clips', bandSelected);
 
+    /* Scrubbing: picture and sound follow a dragged playhead ----------------- */
+    // Park the playhead, let the forward decoder settle there, then drag the
+    // ruler forwards the way a hand does: a move every 16 ms.
+    await window.evaluate(() => {
+      window.__scfScrubStats = { grains: 0 };
+    });
+    const rulerY = bandBox.y + 8;
+    await window.mouse.click(bandBox.x + 4, rulerY);
+    await window.waitForTimeout(700);
+    await window.evaluate(() => {
+      window.__scfViewportStats = { draws: 0, exact: 0 };
+    });
+    await window.mouse.move(bandBox.x + 4, rulerY);
+    await window.mouse.down();
+    for (let i = 1; i <= 40; i += 1) {
+      await window.mouse.move(bandBox.x + 4 + i * 3, rulerY);
+      await window.waitForTimeout(16);
+    }
+    await window.mouse.up();
+    const scrub = await window.evaluate(() => ({ ...window.__scfViewportStats, ...window.__scfScrubStats }));
+    await window.evaluate(() => {
+      delete window.__scfViewportStats;
+      delete window.__scfScrubStats;
+    });
+    check('dragging the playhead plays the sound under it', scrub.grains > 5, `${scrub.grains} grains`);
+    const exactShare = scrub.exact / Math.max(1, scrub.draws);
+    check('dragging the playhead forwards shows the frame under it', exactShare >= 0.5,
+      `exact frame on ${Math.round(exactShare * 100)}% of ${scrub.draws} draws`);
+
+    /* Point 6: cuts land on the playhead line, not where the pointer is ------ */
+    const clipsNow = () => window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return { frame: project.currentFrame, clips: Object.values(project.clips).map((c) => [c.trackId, c.startFrame, c.durationFrames]) };
+    });
+    // Put the playhead a third of the way into the video clip via the ruler.
+    const videoClip = await window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      const video = project.tracks.find((t) => t.type === 'video');
+      return Object.values(project.clips).filter((c) => c.trackId === video.id).sort((a, b) => b.durationFrames - a.durationFrames)[0];
+    });
+    const ppf = await window.evaluate(() => window.__scfStore.getState().ui.pixelsPerFrame);
+    const scroll = await window.evaluate(() => window.__scfStore.getState().ui.scrollLeftPx);
+    const frameX = (f) => bandBox.x + f * ppf - scroll;
+    const cutAt = videoClip.startFrame + Math.round(videoClip.durationFrames / 3);
+    await window.mouse.click(frameX(cutAt), rulerY);
+    const placed = (await clipsNow()).frame;
+
+    // Razor, then click the clip well away from the playhead.
+    await window.keyboard.press('Escape');
+    await window.getByTitle(/Razor tool/).first().click();
+    const videoRow = await window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return project.tracks.filter((t) => t.type === 'video').length;
+    });
+    const beforeCut = (await clipsNow()).clips.length;
+    await window.mouse.click(frameX(videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)), bandBox.y + 24 + 20);
+    const afterRazor = await clipsNow();
+    const halves = afterRazor.clips.filter((c) => c[0] === videoClip.trackId).sort((a, b) => a[1] - b[1]);
+    const boundary = halves.find((c) => c[1] > videoClip.startFrame)?.[1];
+    check('a razor click cuts at the playhead, not where it clicked',
+      afterRazor.clips.length === beforeCut + 1 && boundary === placed,
+      `cut at frame ${boundary}, playhead at ${placed}, click at ${videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)} (${videoRow} video track)`);
+    await window.keyboard.press('Control+z');
+    await window.getByTitle(/Selection tool/).first().click();
+
+    // The scissors on the playhead cut at the line too.
+    const beforeScissors = (await clipsNow()).clips.length;
+    await window.mouse.click(frameX(placed), bandBox.y + 16);
+    const afterScissors = await clipsNow();
+    check('the scissors on the playhead cut at the line',
+      afterScissors.clips.length > beforeScissors && afterScissors.clips.some((c) => c[1] === placed),
+      `${beforeScissors} -> ${afterScissors.clips.length} clips`);
+    await window.keyboard.press('Control+z');
+
     /* LUT survives save and reopen ------------------------------------------- */
     await surface.click({ position: { x: 60, y: 80 } });
     await app.evaluate(({ dialog }, lut) => {

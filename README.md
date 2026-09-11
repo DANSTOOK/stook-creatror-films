@@ -372,6 +372,39 @@ correction itself becomes the stutter.
 
 Measured after the fix: 78 samples across 2.6 s of playback, zero blank frames.
 
+## Scrubbing
+
+A paused playhead that is dragged (ruler, preview bar, arrow keys) gets both
+picture and sound:
+
+- **Picture.** Seeking a `<video>` restarts decoding at the previous keyframe:
+  110-150 ms per move on a screen recording with a keyframe every ~7 s. While
+  paused, each visible clip gets a `ScrubDecoder` (`engine/ScrubDecoder.ts`),
+  the export's `SequentialVideoReader` kept at the playhead. A move forwards
+  within 45 frames is a short walk for it; anything else - backwards, far
+  ahead - still seeks the element, and the decoder repositions once the
+  playhead has rested 150 ms (chasing every backwards step kept it restarting
+  and fought the element for the hardware). Both write into the same texture
+  with the same revision key, so whichever lands first is shown and the last
+  good picture holds in between. The decoders close when playback starts or
+  an export begins. `npm run test:bench:scrub` with a real video: exact frame
+  under a forwards drag 81% of the time, against 8% seeking.
+- **Sound.** `emitScrub` (`audio/scrubAudio.ts`) marks a move made by hand.
+  `planScrubGrains` picks what sounds - clips under the playhead on audible
+  tracks, from their trimmed offset, cut at the clip end - and
+  `AudioEngine.scrub` plays ~85 ms grains through the normal clip and track
+  strips, ramped in and out over 6 ms, at most one per 45 ms, with the last
+  position of a drag always sounding.
+
+## Cutting
+
+Cuts land on the playhead line (`razorClick` in `timelineOps.ts`). A razor
+click on a clip the playhead crosses cuts that clip at the playhead, wherever
+the click was; elsewhere it only moves the playhead, so the line shows the cut
+before it is made. The playhead carries scissors in the ruler: a click cuts
+the selection, or everything under the line; a drag from them scrubs. `B` and
+**Split at playhead** do the same from the keyboard and the toolbar.
+
 ## Importing media
 
 Four ways in, all converging on `media/importMedia.ts`, so an asset built from
@@ -459,7 +492,8 @@ depend on a file fitting in memory:
 `npm run test:long` imports a generated 45-minute, ~2 GB recording into the real
 app and checks import time, peak memory per process, canvas size, fit and an
 export from minute 30. Measured: import 2.2 s, main process peak 117 MB, page
-peak 1.5-2.2 GB (decoded audio included; it varies run to run), export 105 fps.
+peak 1.5-2.2 GB (decoded audio included; it varies run to run, and the limit
+is 2.5 GB), export 88-105 fps.
 
 `npm run test:bench` (with `BENCH_SOURCE=<video>`) exports a whole real video
 both ways and compares them frame by frame. On a 91-second 720p30 screen

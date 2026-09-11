@@ -3,6 +3,7 @@ import type { MediaAsset } from '@shared/types';
 import { AudioEngine } from '@renderer/audio/AudioEngine';
 import { DynamicDucking } from '@renderer/audio/DynamicDucking';
 import { mixSignature } from '@renderer/audio/mixRouting';
+import { GRAIN_INTERVAL_MS, onScrub, planScrubGrains } from '@renderer/audio/scrubAudio';
 import { WaveformExtractor } from '@renderer/audio/WaveformExtractor';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -139,6 +140,47 @@ export function useAudioPlayback(): void {
       cancelled = true;
     };
   }, [assets]);
+
+  // Sound under a dragged playhead. At most one grain per GRAIN_INTERVAL_MS:
+  // pointer events come faster than grains can be heard, so a burst only
+  // moves where the next grain plays from - and the last position of a drag
+  // always sounds, even if it arrived inside the interval.
+  useEffect(() => {
+    let lastGrainAt = -Infinity;
+    let pendingFrame: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const play = (frame: number): void => {
+      const engine = engineRef.current;
+      const { project, ui } = useProjectStore.getState();
+      if (!engine || ui.isPlaying) return;
+      lastGrainAt = performance.now();
+      const grains = planScrubGrains(project, frame, (uri) => engine.getBuffer(uri) !== undefined);
+      engine.scrub(project, grains);
+      // Test instrumentation, off unless a test asks for it.
+      const stats = (window as { __scfScrubStats?: { grains: number } }).__scfScrubStats;
+      if (stats) stats.grains += grains.length;
+    };
+
+    const off = onScrub((frame) => {
+      const wait = GRAIN_INTERVAL_MS - (performance.now() - lastGrainAt);
+      if (wait <= 0) {
+        play(frame);
+        return;
+      }
+      pendingFrame = frame;
+      timer ??= setTimeout(() => {
+        timer = null;
+        if (pendingFrame !== null) play(pendingFrame);
+        pendingFrame = null;
+      }, wait);
+    });
+
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // Start and stop with the transport, and recover from scrubs.
   useEffect(() => {

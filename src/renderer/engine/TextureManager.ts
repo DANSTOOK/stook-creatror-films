@@ -141,6 +141,11 @@ export class TextureManager {
     return entry.texture;
   }
 
+  /** Which decoded frame a key currently holds, as passed to `upload`. */
+  revisionOf(key: string): string | undefined {
+    return this.cache.get(key)?.revision;
+  }
+
   /** Nearest-neighbour sampling for pixel-art sources. */
   setFilter(key: string, filter: number): void {
     const entry = this.cache.get(key);

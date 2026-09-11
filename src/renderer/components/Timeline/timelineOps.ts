@@ -17,7 +17,26 @@ export const clipEndFrame = (clip: Clip): number => clip.startFrame + clip.durat
 export const clipContainsFrame = (clip: Clip, frame: number): boolean =>
   frame >= clip.startFrame && frame < clipEndFrame(clip);
 
-export const clipsOverlap = (a: Clip, b: Clip): boolean =>
+/**
+ * What a razor click does (point 6: cuts happen at the playhead, not where
+ * the pointer happens to be).
+ *
+ * A click on a clip the playhead crosses cuts THAT clip at the playhead - the
+ * line on screen is where the cut lands, whatever pixel was clicked. A click
+ * anywhere else only brings the playhead to the pointer, so the line shows
+ * where the next click will cut before anything is cut.
+ */
+export type RazorAction = { kind: 'cut'; frame: number; clipId: string } | { kind: 'move-playhead'; frame: number };
+
+export function razorClick(clickedClip: Clip | null, clickFrame: number, playheadFrame: number): RazorAction {
+  // Cutting on a clip's first frame would leave an empty left half.
+  if (clickedClip && playheadFrame > clickedClip.startFrame && playheadFrame < clipEndFrame(clickedClip)) {
+    return { kind: 'cut', frame: playheadFrame, clipId: clickedClip.id };
+  }
+  return { kind: 'move-playhead', frame: clickFrame };
+}
+
+export const clipsOverlap =(a: Clip, b: Clip): boolean =>
   a.trackId === b.trackId && a.startFrame < clipEndFrame(b) && b.startFrame < clipEndFrame(a);
 
 function cloneValue<T extends KeyframeValue>(value: T): T {

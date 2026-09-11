@@ -85,7 +85,7 @@ export function PreviewViewport(): JSX.Element {
           min={0}
           max={Math.max(1, project.durationFrames)}
           value={project.currentFrame}
-          onChange={(event) => transport.seek(Number(event.target.value))}
+          onChange={(event) => transport.scrub(Number(event.target.value))}
           className="w-full accent-blue-500"
           aria-label="Playhead"
         />

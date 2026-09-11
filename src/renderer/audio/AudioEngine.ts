@@ -1,6 +1,7 @@
 import type { AudioBus, Clip, EqSettings, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { clipGain, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
+import type { ScrubGrain } from './scrubAudio';
 
 /**
  * Web Audio subsystem.
@@ -311,6 +312,72 @@ export class AudioEngine {
       const strip = this.trackStrips.get(track.id);
       return strip !== undefined && strip.bus !== track.bus;
     });
+  }
+
+  /** Grains still sounding from the last scrub, faded out by the next one. */
+  private scrubVoices: { source: AudioBufferSourceNode; strip: ClipStrip }[] = [];
+
+  /**
+   * Play one grain per planned clip, through the same clip and track strips
+   * as playback. Each grain ramps in and out over a few milliseconds - a
+   * grain that starts or stops on a non-zero sample is a click, and a drag
+   * would turn those into a buzz.
+   */
+  scrub(project: ProjectState, grains: readonly ScrubGrain[]): void {
+    if (this.playing) return;
+    void this.context.resume();
+
+    const now = this.context.currentTime;
+    const FADE = 0.006;
+
+    for (const voice of this.scrubVoices) {
+      voice.strip.gain.gain.cancelScheduledValues(now);
+      voice.strip.gain.gain.setTargetAtTime(0, now, FADE / 3);
+      try {
+        voice.source.stop(now + FADE * 2);
+      } catch {
+        // Already stopped.
+      }
+    }
+    this.scrubVoices = [];
+
+    const anySolo = hasSoloedTrack(project);
+    const tracks = new Map(project.tracks.map((track) => [track.id, track]));
+
+    for (const grain of grains) {
+      const buffer = this.buffers.get(grain.sourceUri);
+      const track = tracks.get(grain.trackId);
+      const clip = project.clips[grain.clipId];
+      if (!buffer || !track || !clip || grain.offsetSeconds >= buffer.duration) continue;
+
+      const trackStrip = this.ensureTrackStrip(track, anySolo);
+      const strip = this.createStrip(buffer, trackStrip.gain, track.id);
+      strip.panner.pan.value = panPosition(clip.pan);
+      strip.low.gain.value = clip.eq.low;
+      strip.mid.gain.value = clip.eq.mid;
+      strip.high.gain.value = clip.eq.high;
+
+      const level = clipGain(clip);
+      const end = now + grain.durationSeconds;
+      strip.gain.gain.setValueAtTime(0, now);
+      strip.gain.gain.linearRampToValueAtTime(level, now + FADE);
+      strip.gain.gain.setValueAtTime(level, Math.max(now + FADE, end - FADE));
+      strip.gain.gain.linearRampToValueAtTime(0, end);
+
+      const source = this.context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(strip.gain);
+      source.onended = () => {
+        source.disconnect();
+        strip.gain.disconnect();
+        strip.low.disconnect();
+        strip.mid.disconnect();
+        strip.high.disconnect();
+        strip.panner.disconnect();
+      };
+      source.start(now, grain.offsetSeconds, grain.durationSeconds + 0.01);
+      this.scrubVoices.push({ source, strip });
+    }
   }
 
   seek(frame: number, fps: number): void {

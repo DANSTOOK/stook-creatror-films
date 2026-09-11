@@ -389,6 +389,16 @@ function drawMarkerFlags(
   }
 }
 
+/** The scissors badge on the playhead, in the ruler: centre and half size. */
+const SCISSORS_Y = 16;
+const SCISSORS_HALF = 7;
+
+/** Whether a ruler press lands on the playhead's scissors. */
+export function hitsPlayheadScissors(project: ProjectState, ui: EditorUiState, x: number, y: number): boolean {
+  const playheadX = frameToPixel(project.currentFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
+  return Math.abs(x - playheadX) <= SCISSORS_HALF + 1 && Math.abs(y - SCISSORS_Y) <= SCISSORS_HALF + 1;
+}
+
 function drawPlayhead(
   context: CanvasRenderingContext2D,
   project: ProjectState,
@@ -397,10 +407,23 @@ function drawPlayhead(
 ): void {
   const x = Math.round(frameToPixel(project.currentFrame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
 
+  // Scissors on the playhead, as in Filmora: a click cuts at this line.
+  context.fillStyle = '#f87171';
+  context.beginPath();
+  context.roundRect(x - SCISSORS_HALF, SCISSORS_Y - SCISSORS_HALF, SCISSORS_HALF * 2, SCISSORS_HALF * 2, 3);
+  context.fill();
+  context.fillStyle = '#1a1a1f';
+  context.font = '11px sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText('✂', x, SCISSORS_Y + 0.5);
+  context.textAlign = 'start';
+  context.textBaseline = 'alphabetic';
+
   context.strokeStyle = '#f87171';
   context.lineWidth = 1;
   context.beginPath();
-  context.moveTo(x, 0);
+  context.moveTo(x, SCISSORS_Y + SCISSORS_HALF);
   context.lineTo(x, height);
   context.stroke();
 
