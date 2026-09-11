@@ -15,6 +15,15 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.3.0 — Arrastrar y soltar
+2026-09-10 · estable
+
+La beta.1 sin cambios de código, aprobada por el usuario tras probarla en su
+equipo arrastrando desde el Explorador de Windows — lo que la prueba
+automática no podía cubrir.
+
+---
+
 ## v1.3.0-beta.1 — Arrastrar y soltar
 2026-09-10 · pre-release para probar
 
