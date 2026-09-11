@@ -5,6 +5,8 @@ import {
   Copy,
   ChevronLeft,
   ChevronRight,
+  ClipboardPaste,
+  Crosshair,
   Eye,
   EyeOff,
   Flag,
@@ -294,6 +296,32 @@ export function Timeline(): JSX.Element {
         },
         { separator: true },
         {
+          label: 'Cut',
+          icon: Scissors,
+          shortcut: 'Ctrl+X',
+          onSelect: () => {
+            state.selectClips(selected);
+            state.cutSelection();
+          },
+        },
+        {
+          label: 'Copy',
+          icon: Copy,
+          shortcut: 'Ctrl+C',
+          onSelect: () => {
+            state.selectClips(selected);
+            state.copySelection();
+          },
+        },
+        {
+          label: 'Paste at playhead',
+          icon: ClipboardPaste,
+          shortcut: 'Ctrl+V',
+          disabled: !state.clipboard,
+          onSelect: () => state.paste(),
+        },
+        { separator: true },
+        {
           label: clip.mask.enabled ? 'Disable mask' : 'Enable mask',
           onSelect: () =>
             state.updateClip(clip.id, { mask: { ...clip.mask, enabled: !clip.mask.enabled } }),
@@ -338,6 +366,13 @@ export function Timeline(): JSX.Element {
         icon: Scissors,
         shortcut: 'B',
         onSelect: () => state.razorAtFrame(),
+      },
+      {
+        label: 'Paste at playhead',
+        icon: ClipboardPaste,
+        shortcut: 'Ctrl+V',
+        disabled: !state.clipboard,
+        onSelect: () => state.paste(),
       },
     ];
   }, [store]);
@@ -908,13 +943,24 @@ export function Timeline(): JSX.Element {
 
           <button
             type="button"
-            title="Magnetic snapping (S)"
+            title="Snap to clip edges, the playhead and markers (S)"
             aria-pressed={ui.snappingEnabled}
             className={`tool-button ${ui.snappingEnabled ? 'tool-button-active' : ''}`}
             onClick={() => store.getState().setUi({ snappingEnabled: !ui.snappingEnabled })}
           >
-            <Magnet size={14} />
+            <Crosshair size={14} />
             Snap
+          </button>
+
+          <button
+            type="button"
+            title="Magnet (N): deleting, moving or trimming a clip closes the gap it leaves"
+            aria-pressed={ui.rippleEnabled}
+            className={`tool-button ${ui.rippleEnabled ? 'tool-button-active' : ''}`}
+            onClick={() => store.getState().setUi({ rippleEnabled: !ui.rippleEnabled })}
+          >
+            <Magnet size={14} />
+            Magnet
           </button>
 
           <span className="mx-1 h-5 w-px bg-panel-600" />

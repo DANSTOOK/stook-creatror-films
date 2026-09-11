@@ -433,6 +433,33 @@ async function main() {
     check('the scissors on the playhead cut at the line',
       afterScissors.clips.length > beforeScissors && afterScissors.clips.some((c) => c[1] === placed),
       `${beforeScissors} -> ${afterScissors.clips.length} clips`);
+
+    /* Point 9: the magnet closes the hole a deleted clip leaves -------------- */
+    // Select the left half of the cut and press Delete: the right half has to
+    // move up to where the left half began.
+    await window.mouse.click(frameX(videoClip.startFrame + 2), bandBox.y + VIDEO1_ROW_Y);
+    await window.keyboard.press('Delete');
+    const afterDelete = await clipsNow();
+    const survivor = afterDelete.clips.filter((c) => c[0] === videoClip.trackId);
+    check('deleting a clip closes the gap it leaves (magnet)',
+      survivor.length === 1 && survivor[0][1] === videoClip.startFrame,
+      `the rest now starts at ${survivor[0]?.[1]}, was ${placed}`);
+    await window.keyboard.press('Control+z');
+    await window.keyboard.press('Control+z');
+
+    /* Point 10: Ctrl+C / Ctrl+V with the real keys --------------------------- */
+    await window.mouse.click(frameX(videoClip.startFrame + 5), bandBox.y + VIDEO1_ROW_Y);
+    await window.keyboard.press('Control+c');
+    const toolAfterCopy = await window.evaluate(() => window.__scfStore.getState().ui.tool);
+    const pasteAt = videoClip.startFrame + videoClip.durationFrames + 10;
+    await window.mouse.click(frameX(pasteAt), rulerY);
+    const beforePaste = (await clipsNow()).clips.length;
+    await window.keyboard.press('Control+v');
+    const afterPaste = await clipsNow();
+    const pastedHere = afterPaste.clips.some((c) => c[0] === videoClip.trackId && c[1] === afterPaste.frame - videoClip.durationFrames);
+    check('Ctrl+C then Ctrl+V pastes the clip at the playhead',
+      afterPaste.clips.length === beforePaste + 1 && pastedHere && toolAfterCopy === 'select',
+      `${beforePaste} -> ${afterPaste.clips.length} clips; tool after Ctrl+C: ${toolAfterCopy}`);
     await window.keyboard.press('Control+z');
 
     /* LUT survives save and reopen ------------------------------------------- */

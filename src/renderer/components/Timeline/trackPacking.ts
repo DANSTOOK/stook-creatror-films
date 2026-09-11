@@ -78,6 +78,54 @@ export function groupMoveCollides(clips: Record<string, Clip>, starts: ReadonlyM
 }
 
 /**
+ * The magnet (point 9): close the hole `[gapStart, gapStart + length)` left on
+ * a track, by moving every clip at or after it left by `length`.
+ *
+ * Only the hole this edit made closes. A gap the editor left on purpose
+ * elsewhere - before the removed clip, or further along - is still there
+ * afterwards, because everything after the hole moves by the same amount.
+ * `exclude` keeps the clip being edited itself out of it.
+ */
+export function closeGap(
+  clips: Record<string, Clip>,
+  trackId: string,
+  gapStart: number,
+  length: number,
+  exclude: ReadonlySet<string> = new Set(),
+): Map<string, number> {
+  const shifts = new Map<string, number>();
+  if (length <= 0) return shifts;
+  for (const clip of Object.values(clips)) {
+    if (clip.trackId !== trackId || exclude.has(clip.id) || clip.startFrame < gapStart) continue;
+    shifts.set(clip.id, Math.max(0, clip.startFrame - length));
+  }
+  return shifts;
+}
+
+/**
+ * Delete with the magnet: remove the clips and close each hole on its track.
+ * Holes are closed from the last one back, so an earlier hole's shift never
+ * changes where a later one is.
+ */
+export function rippleDelete(clips: Record<string, Clip>, ids: ReadonlySet<string>): Map<string, number> {
+  const doomed = Object.values(clips)
+    .filter((clip) => ids.has(clip.id))
+    .sort((a, b) => b.startFrame - a.startFrame);
+
+  const starts = new Map<string, number>();
+  const current = (clip: Clip): Clip => ({ ...clip, startFrame: starts.get(clip.id) ?? clip.startFrame });
+  const survivors = Object.fromEntries(Object.entries(clips).filter(([id]) => !ids.has(id)));
+
+  for (const gone of doomed) {
+    const live = Object.fromEntries(Object.entries(survivors).map(([id, clip]) => [id, current(clip)]));
+    for (const [id, start] of closeGap(live, gone.trackId, clipEndFrame(gone), gone.durationFrames)) {
+      starts.set(id, start);
+    }
+  }
+  return starts;
+}
+
+/**
  * How far a trimmed edge may go before it runs into a neighbour on its track:
  * the end of the clip before (for the start edge) or the start of the clip
  * after (for the end edge).

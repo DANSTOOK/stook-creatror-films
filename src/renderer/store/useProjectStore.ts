@@ -34,10 +34,13 @@ import {
   trackAccepts,
   withRowOrders,
 } from '@renderer/components/Timeline/trackRows';
+import { copyClips, pasteClips, type ClipboardContent } from '@renderer/components/Timeline/clipboard';
 import {
   clipsOnTrackExcept,
+  closeGap,
   groupMoveCollides,
   insertIntoTrack,
+  rippleDelete,
   trimLimit,
 } from '@renderer/components/Timeline/trackPacking';
 import { settingsFromAsset } from '@renderer/media/importMedia';
@@ -74,6 +77,8 @@ interface ProjectStore {
   assets: MediaAsset[];
   ui: EditorUiState;
   exportSettings: ExportSettings;
+  /** Clips copied with Ctrl+C or Ctrl+X (point 10). Not saved with the project. */
+  clipboard: ClipboardContent | null;
   /** Name of the clip whose settings the project adopted, for the UI to report. */
   adoptedSettingsFrom: string | null;
 
@@ -161,6 +166,12 @@ interface ProjectStore {
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
+  /** Ctrl+C: copy the selected clips. */
+  copySelection(): void;
+  /** Ctrl+X: copy the selected clips and delete them (the magnet applies). */
+  cutSelection(): void;
+  /** Ctrl+V: paste at the playhead, select the result, playhead to its end. */
+  paste(): void;
   /**
    * Move a clip, inserting it where it lands: clips it would cover on that
    * track move along. `base` is the clips as they were when a drag began, so
@@ -204,6 +215,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   assets: [],
   ui: { ...DEFAULT_UI_STATE },
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
+  clipboard: null,
   adoptedSettingsFrom: null,
 
   /* Document ------------------------------------------------------------- */
@@ -644,13 +656,47 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (clipIds.length === 0) return;
     const doomed = new Set(clipIds);
 
-    get().transact('Delete clip', (project) => ({
-      ...project,
-      clips: Object.fromEntries(
-        Object.entries(project.clips).filter(([id]) => !doomed.has(id)),
-      ),
-    }));
+    const ripple = get().ui.rippleEnabled;
+    get().transact('Delete clip', (project) => {
+      const clips = Object.fromEntries(Object.entries(project.clips).filter(([id]) => !doomed.has(id)));
+      // The magnet: what came after a deleted clip closes up behind it.
+      if (ripple) {
+        for (const [id, start] of rippleDelete(project.clips, doomed)) clips[id] = moveClip(clips[id], start);
+      }
+      return { ...project, clips };
+    });
     set({ ui: { ...get().ui, selectedClipIds: [] } });
+  },
+
+  copySelection() {
+    const { project, ui } = get();
+    const content = copyClips(project, ui.selectedClipIds);
+    if (content) set({ clipboard: content });
+  },
+
+  cutSelection() {
+    const { ui } = get();
+    if (ui.selectedClipIds.length === 0) return;
+    get().copySelection();
+    get().removeClips(ui.selectedClipIds);
+  },
+
+  paste() {
+    const { clipboard, assets } = get();
+    if (!clipboard) return;
+
+    let result: ReturnType<typeof pasteClips> | null = null;
+    get().transact('Paste', (project) => {
+      result = pasteClips(project, clipboard, project.currentFrame, assets);
+      return result.pastedIds.length > 0 ? { ...project, clips: result.clips } : project;
+    });
+
+    const pasted = result as ReturnType<typeof pasteClips> | null;
+    if (!pasted || pasted.pastedIds.length === 0) return;
+    // Pasted clips are selected, and the playhead moves past them, so pressing
+    // Ctrl+V again lays the next copy right after this one.
+    set({ ui: { ...get().ui, selectedClipIds: pasted.pastedIds } });
+    get().setCurrentFrame(pasted.endFrame);
   },
 
   duplicateClips(clipIds) {
@@ -717,6 +763,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           for (const [id, original] of Object.entries(base)) if (id !== clipId && clips[id]) clips[id] = original;
         }
 
+        // The magnet (point 9): the hole the clip leaves where it was closes
+        // up, before it is inserted where it lands. Worked out from where it
+        // started, so on its own track this reorders clips without gaps.
+        const origin = base?.[clipId] ?? moving;
+        if (ui.rippleEnabled) {
+          for (const [id, start] of closeGap(clips, origin.trackId, clipEndFrame(origin), origin.durationFrames, new Set([clipId]))) {
+            clips[id] = moveClip(clips[id], start);
+          }
+        }
+
         // Inserted where it lands; whatever it would cover moves along (point 8).
         const insertion = insertIntoTrack(
           clipsOnTrackExcept(clips, trackId, new Set([clipId])),
@@ -771,10 +827,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       enabled: ui.snappingEnabled,
     }).frame;
 
-    // An edge stops at its neighbour: a trimmed clip never grows over the next
-    // one on its track (point 8 - clips on a track never overlap).
-    const limit = trimLimit(project.clips, clip, edge);
-    snapped = edge === 'start' ? Math.max(snapped, limit) : Math.min(snapped, limit);
+    // With the magnet, trimming the end carries the rest of the track along
+    // (a ripple trim), so it neither leaves a hole nor runs into the next clip.
+    const rippleEnd = edge === 'end' && ui.rippleEnabled;
+
+    // Otherwise an edge stops at its neighbour: a trimmed clip never grows
+    // over the next one on its track (point 8 - clips never overlap).
+    if (!rippleEnd) {
+      const limit = trimLimit(project.clips, clip, edge);
+      snapped = edge === 'start' ? Math.max(snapped, limit) : Math.min(snapped, limit);
+    }
 
     get().transact(
       edge === 'start' ? 'Trim clip in' : 'Trim clip out',
@@ -783,7 +845,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         if (!target) return current;
         const trimmed =
           edge === 'start' ? trimClipStart(target, snapped) : trimClipEnd(target, snapped);
-        return { ...current, clips: { ...current.clips, [clipId]: trimmed } };
+        const clips = { ...current.clips, [clipId]: trimmed };
+
+        if (rippleEnd) {
+          // Everything after the old end moves by exactly what the end moved.
+          const delta = clipEndFrame(trimmed) - clipEndFrame(target);
+          for (const other of Object.values(current.clips)) {
+            if (other.id === clipId || other.trackId !== target.trackId) continue;
+            if (other.startFrame < clipEndFrame(target)) continue;
+            clips[other.id] = moveClip(other, Math.max(0, other.startFrame + delta));
+          }
+        }
+        return { ...current, clips };
       },
       `trim:${clipId}:${edge}`,
     );

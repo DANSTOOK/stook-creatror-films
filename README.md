@@ -419,6 +419,27 @@ out from the clips as they were when it began, so a clip pushed aside goes
 back once the drag moves on. Trims stop at the neighbour (`trimLimit`), and a
 group move stops against clips that are not moving (`groupMoveCollides`).
 
+## The magnet
+
+With **Magnet** on (the default, `N`), an edit that leaves a hole on a track
+closes it (`closeGap` / `rippleDelete` in `trackPacking.ts`): deleting, moving
+a clip away (worked out from the drag's starting clips, so a drag along its
+own track reorders without gaps), and trimming a clip's end, which carries
+the rest of the track by exactly the change (a ripple trim). Only the hole
+the edit made closes; gaps left elsewhere and other tracks are untouched.
+Off, deletes leave the hole and trims stop at the neighbour.
+
+## Copy, cut and paste
+
+`components/Timeline/clipboard.ts`. Ctrl+C takes a deep snapshot of the
+selected clips; Ctrl+X does the same and deletes them (the magnet applies).
+Ctrl+V pastes at the playhead with the earliest clip there, keeping the
+spacing and tracks of what was copied; a track that is gone, locked or of the
+wrong kind falls back to the first one that can take the clip. Each clip is
+inserted (`insertIntoTrack`), the paste is selected and the playhead moves
+past it, so repeated pastes line up. Ctrl combinations are handled before the
+single-letter tool keys - Ctrl+C used to select the razor.
+
 ## Cutting
 
 Cuts land on the playhead line (`razorClick` in `timelineOps.ts`). A razor

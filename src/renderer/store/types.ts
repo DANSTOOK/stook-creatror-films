@@ -50,6 +50,11 @@ export interface EditorUiState {
   pixelsPerFrame: number;
   scrollLeftPx: number;
   snappingEnabled: boolean;
+  /**
+   * The magnet (point 9): deleting, moving or trimming a clip closes the gap
+   * it leaves on its track, instead of leaving a hole in the edit.
+   */
+  rippleEnabled: boolean;
   isPlaying: boolean;
   loopPlayback: boolean;
   /** Nearest-neighbour scaling in the WebGL viewport. */
@@ -73,6 +78,7 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   pixelsPerFrame: 2,
   scrollLeftPx: 0,
   snappingEnabled: true,
+  rippleEnabled: true,
   isPlaying: false,
   loopPlayback: false,
   pixelArtViewport: false,

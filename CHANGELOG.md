@@ -7,11 +7,56 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **374 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **34/34 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, opciones de exportación y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **395 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.8.0-beta.1 — Imán y copiar, cortar y pegar
+2026-09-11 · pre-release para probar
+
+Puntos 9 y 10 del plan. Con esta entrega están hechos los diez.
+
+### Añadido
+- **Imán** (punto 9): un botón nuevo junto a *Snap*, activado de serie
+  (tecla `N`). Cuando algo deja un hueco en una pista, lo que venía detrás
+  se junta:
+  - **Borrar** un clip, o varios, cierra su hueco.
+  - **Mover** un clip cierra el hueco donde estaba. Si lo arrastras por su
+    propia pista, los clips se reordenan sin dejar espacios.
+  - **Recortar el final** de un clip arrastra el resto de la pista con él:
+    si lo acortas, lo de detrás se acerca; si lo alargas, se aparta.
+  - Solo se cierra el hueco que acabas de crear. Una pausa que dejaste a
+    propósito en otro sitio se mantiene, y las demás pistas no se tocan.
+  - Con el imán apagado, todo funciona como antes: borrar deja el hueco y
+    recortar se detiene en el clip vecino.
+  - *Comprobado:* 12 pruebas en `Magnet.test.ts`, y la prueba de interfaz
+    borra la mitad izquierda de un corte: la derecha pasa del fotograma 30
+    al 0.
+- **Ctrl+C, Ctrl+X y Ctrl+V** (punto 10), también en el menú del botón
+  derecho (*Cortar*, *Copiar*, *Pegar en el cursor*):
+  - Pegar pone la copia **en el cursor de reproducción**, en la misma pista
+    y con la misma separación entre clips si copiaste varios (vídeo, títulos
+    y música juntos, por ejemplo).
+  - La copia **se inserta**: lo que había ahí se desplaza (punto 8).
+  - Después de pegar, el cursor salta al final de lo pegado, así que otro
+    Ctrl+V pone la siguiente copia justo detrás.
+  - Ctrl+X corta y el imán cierra el hueco. Lo copiado es una foto de ese
+    momento: editar el original después no cambia lo que pegas.
+  - Si la pista original ya no existe, pega en otra del mismo tipo.
+  - Ctrl+Y también rehace, además de Ctrl+Shift+Z.
+  - *Comprobado:* 9 pruebas en `Clipboard.test.ts`, y la prueba de interfaz
+    usa las teclas de verdad.
+
+### Arreglado
+- **Ctrl+C activaba la cuchilla.** El atajo leía la tecla C sin fijarse en
+  Ctrl. Ahora las combinaciones con Ctrl nunca activan las herramientas de
+  una sola tecla. *Comprobado* en la prueba de interfaz: tras Ctrl+C la
+  herramienta sigue siendo *Select*.
+- El botón *Snap* ya no usa el icono del imán, que ahora es de *Magnet*.
 
 ---
 

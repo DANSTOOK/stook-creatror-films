@@ -193,6 +193,33 @@ export function useEditorShortcuts(): void {
         return;
       }
 
+      // Copy, cut and paste clips (point 10). Handled here, before the single
+      // letters below: Ctrl+C used to fall through to "C" and pick the razor.
+      if (modifier) {
+        switch (event.key.toLowerCase()) {
+          case 'c':
+            event.preventDefault();
+            store.copySelection();
+            return;
+          case 'x':
+            event.preventDefault();
+            store.cutSelection();
+            return;
+          case 'v':
+            event.preventDefault();
+            store.paste();
+            return;
+          case 'y':
+            event.preventDefault();
+            store.redo();
+            return;
+          default:
+            // Any other Ctrl combination belongs to the app or the system, not
+            // to the single-letter tool keys.
+            return;
+        }
+      }
+
       switch (event.key) {
         case ' ':
           event.preventDefault();
@@ -256,6 +283,10 @@ export function useEditorShortcuts(): void {
           return;
         case 's':
           store.setUi({ snappingEnabled: !store.ui.snappingEnabled });
+          return;
+        case 'n':
+          // The magnet: close gaps left by deleting, moving or trimming.
+          store.setUi({ rippleEnabled: !store.ui.rippleEnabled });
           return;
         case 'm':
           // Drop a marker at the playhead, the way every NLE spells it.
