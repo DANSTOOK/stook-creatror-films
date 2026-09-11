@@ -15,6 +15,25 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.2.0 — Exportación por GPU
+2026-09-10 · estable
+
+Reúne las tres betas, sin cambios de código respecto a la beta.3. Aprobada por
+el usuario tras probarla en su equipo (RTX 4060 Laptop + Intel UHD) con su
+propio vídeo.
+
+- Elegir la GPU que compone (dedicada / integrada) y el codificador (NVENC,
+  Quick Sync, CPU o automático), ofreciendo solo lo que funciona de verdad en
+  el equipo — ver *beta.1*.
+- Sin destellos: la vista previa ya no mete sus fotogramas en la exportación
+  — ver *beta.2*.
+- Cada fotograma en su sitio, también en los cambios de imagen — ver *beta.3*.
+
+Comprobado: unitarias 267, E2E 22/22, interfaz 18/18, GPU 22/22, y el vídeo del
+usuario con los cuatro codificadores sin ningún fotograma incorrecto.
+
+---
+
 ## v1.2.0-beta.3 — Cada fotograma en su sitio
 2026-09-10 · pre-release para probar
 
