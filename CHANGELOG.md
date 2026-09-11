@@ -7,9 +7,103 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **184 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo** y **18/18 comprobaciones de interfaz**,
-estas últimas verificadas **contra el ejecutable empaquetado y sin red**.
+Cifras de referencia al día de hoy: **243 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo** y **17/17 comprobaciones de interfaz**
+contra la compilación de desarrollo. Las 18/18 contra el ejecutable empaquetado
+y sin red son de la v1.0 y no se han repetido tras la v1.1.
+
+---
+
+## v1.1.0 — El audio se mezcla, el proyecto se ajusta
+2026-09-10
+
+Tres cosas que la interfaz ofrecía o que el motor tenía y nadie podía usar.
+
+### Añadido
+- **Mezclador** (botón *Mixer*): nivel maestro; por pista nivel, panorama,
+  mute, solo y bus (música / diálogo); por clip nivel, panorama y ecualizador
+  de tres bandas; y ducking automático con umbral, rango, ataque y liberación.
+  - El bus ya no se adivina por el nombre de la pista en cada reproducción: se
+    decide al crearla y luego es editable. Renombrar una pista ya no la
+    re-enruta.
+  - Mute y solo son estados separados: al quitar el solo vuelven exactamente
+    los mutes que había.
+  - **La exportación suena igual que el monitor.** `renderMix` aplica la misma
+    mezcla que `AudioEngine`, y ambos leen sus números de `mixRouting.ts`. El
+    ducking se hornea offline: se renderizan música y diálogo por separado, se
+    calcula la envolvente del diálogo por bloques de 128 muestras y se aplica
+    interpolada a la música.
+  - *Comprobado:* 28 pruebas en `Mixer.test.ts` (reglas de mute/solo, límites,
+    firma de mezcla, envolvente y ducking offline). **E2E 22/22** con un origen
+    de ruido rosa: la mezcla sale con 2 clips, 48 kHz, no silenciosa, de la
+    duración correcta y **correlación 0,9997** con el tramo recortado del
+    origen.
+- **Ajustes de proyecto** (botón *Settings*): fps (comunes o personalizado),
+  resolución con preajustes, duración y fondo transparente.
+  - Cambiar los fps **re-temporiza la edición** por defecto: cortes, recortes,
+    fotogramas clave, marcadores y cabezal se reescalan para mantener los
+    mismos segundos. Se puede desactivar. Ningún clip se redondea a 0
+    fotogramas.
+  - *Comprobado:* 15 pruebas en `ProjectSettings.test.ts`.
+- **Marcadores**: `M` en el cabezal, menú contextual en la regla (añadir aquí,
+  renombrar, mover al cabezal, borrar, borrar todos), clic en la bandera para
+  saltar, flechas para ir al anterior/siguiente. Ahora viven en el proyecto:
+  se guardan y se deshacen. Uno por fotograma.
+  - *Comprobado:* 16 pruebas en `Markers.test.ts`.
+
+### Cambiado
+- **Formato de proyecto v2.** Los archivos v1 siguen abriéndose:
+  `normalizeProject` rellena los campos nuevos con valores que reproducen el
+  comportamiento de v1 (ganancia 1, centro, sin solo, ducking apagado, bus por
+  nombre). *Comprobado:* pruebas de migración, y la prueba de interfaz guarda y
+  reabre un proyecto.
+- Las pistas silenciadas se programan a ganancia 0 en vez de omitirse, para que
+  quitar el mute durante la reproducción se oiga al instante.
+
+### Arreglado
+- Los ejecutores `tests/e2e/run.mjs` y `tests/ui/run.mjs` borran
+  `ELECTRON_RUN_AS_NODE` antes de lanzar Electron. Si se invocaban desde un
+  Electron en modo Node, el arnés arrancaba como Node y moría sin `app`.
+  *Comprobado:* es como se ejecutaron las pruebas de esta entrega, en una
+  máquina sin Node instalado (`electron.exe` con `ELECTRON_RUN_AS_NODE=1`).
+
+### Limpieza hecha
+- Quitados `@ffmpeg/ffmpeg` y `@ffmpeg/util` (ffmpeg.wasm), que no se
+  importaban en ningún sitio. *Comprobado:* sin referencias en `src/` ni
+  `tests/`; `package.json` y `package-lock.json` validados como JSON.
+
+### Sin verificar
+- **Que se oiga.** Mezclador y ducking están medidos (envolventes, correlación,
+  picos), no escuchados.
+- **La reproducción en vivo del ducking** (`DynamicDucking` en tiempo real):
+  la ruta offline está probada; la del monitor, no.
+- **Los paneles nuevos no tienen prueba de interfaz propia.** La prueba de UI
+  pasa, pero no abre el mezclador, los ajustes ni los marcadores.
+
+### Arreglado — dependencias
+- **El lockfile marcaba `ffmpeg-static` como dependencia de desarrollo**
+  desde la v1.0, aunque `package.json` ya lo tenía en `dependencies`. Con eso
+  `npm ci` no reproduce la instalación que se probó. Se recalcularon los flags
+  `dev` con el criterio de npm (solo es `dev` lo que no se alcanza desde
+  producción). *Comprobado:* cambian exactamente los 20 paquetes del subárbol
+  de `ffmpeg-static` y nada más. **No comprobado con `npm ci`**, porque esta
+  máquina no tiene npm: lo comprueba el CI en el primer push.
+
+### Añadido — publicación
+- **Repositorio en GitHub**: `DANSTOOK/stook-creatror-films`.
+- **CI** (`.github/workflows/ci.yml`): typecheck y pruebas unitarias en cada
+  push y pull request.
+- **Releases** (`.github/workflows/release.yml`): al subir una etiqueta
+  `vX.Y.Z` se pasan las pruebas, se genera el instalador de Windows y se
+  publica como GitHub Release, con la sección del CHANGELOG como notas. Las
+  etiquetas con guion (`v1.2.0-beta.1`) salen como pre-release.
+- **`npm run release -- X.Y.Z [--push]`** y **`npm run rollback -- vX.Y.Z`**,
+  descritos en `RELEASING.md`. El rollback nunca reescribe la historia.
+
+### Problema conocido
+- Las 4 comprobaciones de audio del E2E **fallan con el vídeo generado por
+  defecto**, porque no lleva pista de audio. Pasan con `E2E_SOURCE_VIDEO`
+  apuntando a un origen con sonido y `E2E_START=10 E2E_END=70`.
 
 ---
 
@@ -422,11 +516,8 @@ Cosas implementadas de las que **no puedo afirmar que funcionen**:
 Cosas que la interfaz ofrece y **no hacen nada**:
 
 - **Pistas de ajuste**: existen en el esquema, nada las dibuja (ya no se pueden crear desde la interfaz).
-- **Marcadores**: se dibujan y el imán los usa, pero no hay forma de crear uno.
-- **Mezclador de audio**: hay ecualizador, panorama y volumen maestro en el
-  motor; ninguna interfaz llega a ellos.
-- **Ducking dinámico**: escrito, nunca instanciado.
-- **Ajustes de proyecto**: no hay panel; solo se adoptan al importar.
+
+Resueltos en la v1.1.0: marcadores, mezclador, ducking y ajustes de proyecto.
 
 ## Rendimiento medido
 

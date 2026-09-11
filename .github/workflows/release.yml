@@ -1,0 +1,59 @@
+# Pushing a tag like v1.2.0 builds the Windows installer and publishes it as a
+# GitHub Release. Nothing else creates releases.
+#
+# electron-builder runs with --publish never on purpose: it publishes on its own
+# whenever it detects a tag in CI, and then two things would be racing to
+# create the same release. The release is made here, with gh, instead.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # A release is never cut from a red build.
+      - run: npm run typecheck
+      - run: npm test
+
+      # The tag and package.json must agree, or the installer is named after
+      # a version that is not the one being released.
+      - name: Check tag matches package.json
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - name: Build installer
+        run: npm run build && node ./node_modules/electron-builder/cli.js --win --publish never
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Tags with a hyphen (v1.2.0-beta.1) are published as pre-releases.
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-from-tag \
+            $flags \
+            release/*.exe

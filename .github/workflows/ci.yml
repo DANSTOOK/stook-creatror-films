@@ -1,0 +1,27 @@
+# Every push and pull request: the typecheck and the unit suite.
+#
+# The e2e and UI suites are not run here - they need a real Electron window and
+# take minutes. They are run locally before tagging a release (see RELEASING.md).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test

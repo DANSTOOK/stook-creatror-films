@@ -1,8 +1,12 @@
 {
   "name": "filmora-engine",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Production-ready desktop video editor with a WebGL2 compositing core, optimized for video editing and transparent sprite-sheet authoring for game engines (Godot).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DANSTOOK/stook-creatror-films.git"
+  },
   "main": "dist-electron/main/index.js",
   "//scripts": "Tools are invoked through node on their real entry points rather than through node_modules/.bin. The generated .cmd/.ps1/sh shims split the path on spaces and on '&', so any checkout under a directory such as 'OneDrive - FEMSA Proximidad & Salud' breaks them. Going direct is shim-free and behaves the same on every platform.",
   "scripts": {
@@ -15,11 +19,11 @@
     "test:watch": "node ./node_modules/vitest/vitest.mjs",
     "test:e2e": "node ./tests/e2e/run.mjs",
     "test:ui": "node ./tests/ui/run.mjs",
-    "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir"
+    "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
+    "release": "node ./scripts/release.mjs",
+    "rollback": "node ./scripts/rollback.mjs"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "^0.12.10",
-    "@ffmpeg/util": "^0.12.1",
     "ffmpeg-static": "^5.2.0",
     "gl-matrix": "^3.4.3",
     "lucide-react": "^0.446.0",
