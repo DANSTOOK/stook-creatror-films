@@ -15,6 +15,28 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.8.0 — STOOK CREATOR FILMS, los diez puntos del plan
+2026-09-11 · versión estable
+
+Estable de todo lo probado en las betas v1.5.0-beta.1 a v1.8.0-beta.1, sin
+cambios de código respecto a v1.8.0-beta.1:
+
+- Nombre nuevo, STOOK CREATOR FILMS (SCF).
+- Exportación unas 27 veces más rápida, idéntica fotograma a fotograma.
+- Inspector propio para el audio.
+- Opciones de exportación: resoluciones, nombre del archivo y miniatura.
+- Arrastre del cursor con imagen y sonido.
+- Cortes en el cursor y tijeras sobre el cursor.
+- Pistas ordenadas como en cualquier editor.
+- Clips sin superponerse en una misma pista.
+- Imán.
+- Ctrl+C / Ctrl+X / Ctrl+V.
+
+Los detalles, cómo se comprobó cada cosa y los problemas conocidos están en
+las entradas de cada beta, más abajo.
+
+---
+
 ## v1.8.0-beta.1 — Imán y copiar, cortar y pegar
 2026-09-11 · pre-release para probar
 
