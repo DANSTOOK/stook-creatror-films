@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   FilePlus2,
   FolderOpen,
@@ -32,6 +32,25 @@ export default function App(): JSX.Element {
   usePlaybackClock();
   useEditorShortcuts();
   useAudioPlayback();
+
+  // Swallow drops that land outside a drop zone. Chromium's default is to open
+  // the dropped file in the window - the whole editor replaced by a video
+  // player, with every unsaved edit gone. Zones that accept drops cancel the
+  // event first; anything still uncancelled here gets the "not allowed" cursor
+  // and no default action. The main process blocks navigation as a backstop.
+  useEffect(() => {
+    const refuse = (event: DragEvent): void => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+    };
+    window.addEventListener('dragover', refuse);
+    window.addEventListener('drop', refuse);
+    return () => {
+      window.removeEventListener('dragover', refuse);
+      window.removeEventListener('drop', refuse);
+    };
+  }, []);
 
   const [exportOpen, setExportOpen] = useState(false);
   const [mixerOpen, setMixerOpen] = useState(false);

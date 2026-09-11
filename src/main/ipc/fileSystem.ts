@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -121,6 +121,41 @@ async function probeMedia(path: string): Promise<MediaProbe> {
 export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null): EncoderPipeline {
   const pipeline = new EncoderPipeline((progress) => {
     getWindow()?.webContents.send(IPC.exportProgress, progress);
+  });
+
+  /**
+   * Files dropped onto the window.
+   *
+   * A drop is as deliberate a choice as the open dialog, so these paths join the
+   * allowlist the same way. The paths do not come from page code: the preload
+   * derives them with `webUtils.getPathForFile`, which only yields a path for a
+   * File the OS handed over, and returns '' for one built in JavaScript. On top
+   * of that, only existing regular files with a media extension are accepted,
+   * so even a hostile caller could not use this to open anything else.
+   */
+  ipcMain.handle(IPC.registerDroppedFiles, async (_event, paths: unknown): Promise<PickedFile[]> => {
+    if (!Array.isArray(paths)) return [];
+
+    const picked = await Promise.all(
+      paths.map(async (path): Promise<PickedFile | null> => {
+        if (typeof path !== 'string' || !isAbsolute(path)) return null;
+
+        const extension = extname(path).toLowerCase();
+        const isMedia =
+          VIDEO_EXTENSIONS.has(extension) ||
+          AUDIO_EXTENSIONS.has(extension) ||
+          IMAGE_EXTENSIONS.has(extension);
+        if (!isMedia) return null;
+
+        const info = await stat(path).catch(() => null);
+        if (!info?.isFile()) return null;
+
+        allowedPaths.add(path);
+        return { path, name: basename(path), kind: classify(path), sizeBytes: info.size };
+      }),
+    );
+
+    return picked.filter((entry): entry is PickedFile => entry !== null);
   });
 
   ipcMain.handle(IPC.openMedia, async (): Promise<PickedFile[]> => {

@@ -10,6 +10,7 @@ import type {
 /** Channel names shared by the main process and the preload bridge. */
 export const IPC = {
   openMedia: 'dialog:open-media',
+  registerDroppedFiles: 'drop:register-files',
   openProject: 'dialog:open-project',
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
@@ -60,6 +61,13 @@ export interface ExportStartResult {
  */
 export interface FilmoraApi {
   openMedia(): Promise<PickedFile[]>;
+  /**
+   * Files dropped onto the window, resolved to their paths on disk and added
+   * to the read allowlist - so a drop is as good as the open dialog: the
+   * project can be saved and reopened, and ffmpeg can probe the exact rate.
+   * Files with no path on disk are left out of the result.
+   */
+  registerDroppedFiles(files: File[]): Promise<PickedFile[]>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /**
    * Pick a `.cube` LUT. Returns the path as well as the contents, because the

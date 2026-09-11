@@ -7,17 +7,19 @@ import {
   appendPosition,
   hasNativeBridge,
   importFromDialog,
+  importDroppedFiles,
   importFromFiles,
   type ImportOutcome,
 } from '@renderer/media/importMedia';
+import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
 /**
  * Asset import and the transparent-asset toggle.
  *
- * Three ways in - the native dialog, a drag onto the panel, and the file picker
- * - because the dialog only exists under Electron and the editor has to remain
- * usable in a plain browser.
+ * Four ways in - the native dialog, a drag onto the panel or onto the timeline,
+ * and the file picker - because the dialog only exists under Electron and the
+ * editor has to remain usable in a plain browser.
  */
 
 const KIND_ICONS: Record<MediaKind, typeof FileVideo> = {
@@ -110,7 +112,9 @@ export function MediaLibrary(): JSX.Element {
 
       const files = Array.from(event.dataTransfer.files);
       if (files.length === 0) return;
-      void runImport(() => importFromFiles(files, project.fps));
+      // Same path as the Import dialog under Electron: the dropped file keeps
+      // its location on disk, so the project reopens with it.
+      void runImport(() => importDroppedFiles(files, project.fps));
     },
     [project.fps, runImport],
   );
@@ -196,7 +200,13 @@ export function MediaLibrary(): JSX.Element {
               return (
                 <li
                   key={asset.id}
-                  className="group flex items-center gap-2 rounded border border-transparent px-2 py-2 hover:border-panel-600 hover:bg-panel-800"
+                  draggable={!asset.missing}
+                  title={asset.missing ? undefined : 'Drag onto the timeline, or use + to add it'}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
+                    event.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  className="group flex cursor-grab items-center gap-2 rounded border border-transparent px-2 py-2 hover:border-panel-600 hover:bg-panel-800 active:cursor-grabbing"
                   onContextMenu={(event) =>
                     openMenu(event, [
                       {

@@ -184,7 +184,51 @@ export async function importFromDialog(fps: number): Promise<ImportOutcome> {
     throw new Error('The native file dialog is only available in the desktop app');
   }
 
-  const picked = await window.filmora.openMedia();
+  return importPickedFiles(await window.filmora.openMedia(), fps);
+}
+
+/**
+ * Import files dropped onto the window.
+ *
+ * Under Electron a drop goes through the same path as the open dialog: the
+ * file's real path is resolved and allowlisted, so the asset keeps its
+ * `sourcePath` (the project reopens with it instead of flagging it missing)
+ * and ffmpeg supplies the exact frame rate. Dropping used to skip all of that
+ * and import an anonymous blob. In a plain browser, or for anything with no
+ * path on disk, the blob import is still the fallback.
+ */
+export async function importDroppedFiles(files: File[], fps: number): Promise<ImportOutcome> {
+  if (!hasNativeBridge() || typeof window.filmora.registerDroppedFiles !== 'function') {
+    return importFromFiles(files, fps);
+  }
+
+  const supported = files.filter((file) => isSupportedFile(file.name));
+  const unsupported = files
+    .filter((file) => !isSupportedFile(file.name))
+    .map((file) => ({ name: file.name, reason: 'Unsupported file type' }));
+
+  const picked = await window.filmora.registerDroppedFiles(supported);
+  const pickedNames = new Set(picked.map((entry) => entry.name));
+
+  // Anything the main process could not resolve to a file on disk.
+  const pathless = supported.filter((file) => !pickedNames.has(file.name));
+
+  const [fromDisk, fromBlobs] = await Promise.all([
+    importPickedFiles(picked, fps),
+    pathless.length > 0 ? importFromFiles(pathless, fps) : Promise.resolve({ assets: [], rejected: [] }),
+  ]);
+
+  return {
+    assets: [...fromDisk.assets, ...fromBlobs.assets],
+    rejected: [...unsupported, ...fromDisk.rejected, ...fromBlobs.rejected],
+  };
+}
+
+/** Read, probe and build assets for files that have a real path on disk. */
+async function importPickedFiles(
+  picked: readonly { path: string; name: string }[],
+  fps: number,
+): Promise<ImportOutcome> {
   const assets: MediaAsset[] = [];
   const rejected: ImportOutcome['rejected'] = [];
 

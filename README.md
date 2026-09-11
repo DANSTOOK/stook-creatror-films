@@ -361,12 +361,34 @@ Measured after the fix: 78 samples across 2.6 s of playback, zero blank frames.
 
 ## Importing media
 
-Three ways in, all converging on `media/importMedia.ts`, so an asset built from
+Four ways in, all converging on `media/importMedia.ts`, so an asset built from
 a drop is indistinguishable from one opened through Electron:
 
 - the native dialog (desktop app only),
 - a drag onto the media panel,
+- a drag onto the timeline, which also places the clip,
 - the file picker.
+
+**A drop is as good as the dialog.** Under Electron the dropped file's real
+path is resolved with `webUtils.getPathForFile` (the replacement for the
+`File.path` Electron 32 removed) and joins the read allowlist, so the asset
+keeps its `sourcePath` - the project reopens with it - and ffmpeg supplies the
+exact frame rate. `getPathForFile` returns '' for a File built in JavaScript,
+so page code cannot manufacture a path, and the main process only accepts
+existing absolute paths with a media extension.
+
+**Dropping on the timeline** lands the clip on the track and frame under the
+pointer, snapped, and selects it (`Timeline/dropPlacement.ts`, pure and unit
+tested). Video and stills go to a video track and audio to an audio track -
+the first suitable one if the track under the pointer is not, a new one if
+there is none. Several files follow one another, and a drop is pushed past any
+clip it would overlap rather than covering it. The whole drop is one undo step.
+Assets can also be dragged from the media panel onto the timeline.
+
+**Stray drops do nothing.** Chromium's default for a file dropped where no one
+handles it is to open it in the window - the editor replaced by a video player,
+unsaved work gone. The app refuses such drops, and the main process blocks
+navigation (`will-navigate`) as a backstop.
 
 The dialog is the only one that needs Electron, so the panel falls back to the
 picker in a browser rather than throwing. Save, Open and Export genuinely
@@ -450,7 +472,7 @@ re-mixed somebody's edit.
 
 ## Tests
 
-267 unit tests across sixteen suites, run with `npm test`:
+282 unit tests across seventeen suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track
@@ -494,3 +516,10 @@ re-mixed somebody's edit.
   an explicit encoder beats WebCodecs, the CPU is honoured, automatic follows
   the compositor's GPU, an unavailable saved encoder is reported, and alpha or
   non-MP4 formats stay on the CPU.
+- `DragAndDrop.test.ts` - where a drop lands: under the pointer, stills on
+  video tracks, audio rerouted to an audio track, several files in sequence,
+  never covering an existing clip (and slipping into a gap only if it fits),
+  locked tracks skipped, a new track asked for when none fits, frame 0 as the
+  floor; a multi-file drop as one undo step that also creates any missing
+  track; and the first import keeping its real length when the project adopts
+  a new frame rate.

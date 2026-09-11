@@ -24,6 +24,7 @@ import {
   trimClipStart,
 } from '@renderer/components/Timeline/timelineOps';
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
+import type { DropPlacement } from '@renderer/components/Timeline/dropPlacement';
 import { settingsFromAsset } from '@renderer/media/importMedia';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { createSnapshotCommand, useHistoryStore } from './useHistoryStore';
@@ -114,6 +115,12 @@ interface ProjectStore {
   /* Clips ---------------------------------------------------------------- */
   addClip(input: CreateClipInput): string;
   addAssetToTimeline(asset: MediaAsset, trackId: string, startFrame: number): string;
+  /**
+   * Put dropped media on the timeline at the positions `planDrop` chose, as ONE
+   * undoable edit - a drop of five files is one gesture, so it is one undo.
+   * Placements with no track get a new track of the right type.
+   */
+  placeAssets(assets: readonly MediaAsset[], placements: readonly DropPlacement[]): string[];
   updateClip(clipId: string, patch: Partial<Clip>, mergeKey?: string): void;
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
@@ -465,6 +472,50 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
   },
 
+  placeAssets(assets, placements) {
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+    const created: string[] = [];
+
+    get().transact('Add clips', (project) => {
+      const tracks = [...project.tracks];
+      const clips = { ...project.clips };
+      const newTracks = new Map<Track['type'], string>();
+
+      for (const placement of placements) {
+        const asset = byId.get(placement.assetId);
+        if (!asset) continue;
+
+        let trackId = placement.trackId;
+        if (!trackId) {
+          // One new track per type, shared by every placement that needs it.
+          trackId = newTracks.get(placement.trackType) ?? null;
+          if (!trackId) {
+            const track = createTrack(placement.trackType, tracks.length);
+            tracks.push(track);
+            newTracks.set(placement.trackType, track.id);
+            trackId = track.id;
+          }
+        }
+
+        const clip = createClip({
+          trackId,
+          name: asset.name,
+          sourceUri: asset.uri,
+          startFrame: placement.startFrame,
+          durationFrames: placement.durationFrames,
+          hasAlphaChannel: asset.hasAlphaChannel,
+        });
+        clips[clip.id] = clip;
+        created.push(clip.id);
+      }
+
+      return created.length > 0 ? { ...project, tracks, clips } : project;
+    });
+
+    if (created.length > 0) set({ ui: { ...get().ui, selectedClipIds: created } });
+    return created;
+  },
+
   updateClip(clipId, patch, mergeKey) {
     get().transact(
       'Edit clip',
@@ -696,6 +747,21 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
     const project = get().project;
     const fps = settings.fps ?? project.fps;
+
+    // The assets were measured in frames at the OLD rate, because the import
+    // ran before the project adopted the new one. Left alone, a 60 fps clip in
+    // a project that was at 30 would land on the timeline at half its length.
+    const ratio = fps / project.fps;
+    if (ratio !== 1) {
+      const rescaled = new Set(fresh.map((asset) => asset.id));
+      set({
+        assets: get().assets.map((asset) =>
+          rescaled.has(asset.id)
+            ? { ...asset, durationFrames: Math.max(1, Math.round(asset.durationFrames * ratio)) }
+            : asset,
+        ),
+      });
+    }
 
     set({
       project: {

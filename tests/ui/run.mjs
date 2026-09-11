@@ -33,6 +33,8 @@ const ffmpeg = require('ffmpeg-static');
 const sourceVideo = process.env.UI_SOURCE_VIDEO ?? join(workDir, 'source.mp4');
 const exportPath = join(workDir, 'ui-export.mp4');
 const lutPath = join(workDir, 'identity.cube');
+const panelDropImage = join(workDir, 'panel-drop.png');
+const timelineDropImage = join(workDir, 'drop.png');
 const projectPath = join(workDir, 'ui-project.fep');
 
 // Two seconds, so the export crosses a change of testsrc's seconds counter: a
@@ -62,6 +64,14 @@ async function prepare() {
   await rm(workDir, { recursive: true, force: true });
   await mkdir(workDir, { recursive: true });
   await writeIdentityLut(lutPath);
+
+  // Stills for the drag-and-drop checks.
+  for (const path of [panelDropImage, timelineDropImage]) {
+    await run(ffmpeg, [
+      '-y', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'testsrc=size=160x120:rate=1', '-frames:v', '1', path,
+    ]);
+  }
 
   if (!process.env.UI_SOURCE_VIDEO) {
     // A short clip WITH audio, so the export exercises the mux too.
@@ -262,6 +272,65 @@ async function main() {
       menuItems.length ? menuItems.join(' / ') : 'no menu');
     await window.keyboard.press('Escape');
 
+    /* Drag and drop ---------------------------------------------------------- */
+    // A synthetic drop normally carries JS-built Files with no path on disk,
+    // which would test the fallback, not the real thing. Playwright fills a
+    // file input with REAL files from disk; those same File objects are then
+    // re-dispatched in the drop, so webUtils.getPathForFile resolves them
+    // exactly as it does for a drag out of Explorer.
+    const dropFiles = async (paths, target, offset) => {
+      await window.evaluate(() => {
+        if (document.getElementById('__ui_drop')) return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.id = '__ui_drop';
+        input.style.display = 'none';
+        document.body.appendChild(input);
+      });
+      await window.setInputFiles('#__ui_drop', paths);
+      await window.evaluate(({ target, offset }) => {
+        const element = target === 'media'
+          ? [...document.querySelectorAll('aside')].find((el) => el.textContent.includes('Media'))
+          : [...document.querySelectorAll('canvas')].at(-1).parentElement;
+        const rect = element.getBoundingClientRect();
+        const dataTransfer = new DataTransfer();
+        for (const file of document.getElementById('__ui_drop').files) dataTransfer.items.add(file);
+        const init = {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer,
+          clientX: rect.left + offset.x,
+          clientY: rect.top + offset.y,
+        };
+        for (const type of ['dragenter', 'dragover', 'drop']) {
+          element.dispatchEvent(new DragEvent(type, init));
+        }
+      }, { target, offset });
+    };
+
+    // Onto the media panel.
+    await dropFiles(
+      [panelDropImage],
+      'media',
+      { x: 100, y: 200 },
+    );
+    const panelDropped = await window.getByText('panel-drop.png').first()
+      .waitFor({ state: 'visible', timeout: 30_000 }).then(() => true).catch(() => false);
+    check('dropping a file on the media panel imports it', panelDropped);
+
+    // Onto the timeline, on the second track, well past the export range so the
+    // frame-accuracy check below still compares the source video alone.
+    await dropFiles(
+      [timelineDropImage],
+      'timeline',
+      { x: 1100, y: 24 + 58 + 20 },
+    );
+    const droppedOnTimeline = await window.locator('aside').filter({ hasText: 'TRANSFORM' })
+      .getByText('drop.png', { exact: true }).first()
+      .waitFor({ state: 'visible', timeout: 30_000 }).then(() => true).catch(() => false);
+    check('dropping a file on the timeline puts a clip there and selects it', droppedOnTimeline);
+
     /* LUT survives save and reopen ------------------------------------------- */
     await surface.click({ position: { x: 60, y: 80 } });
     await app.evaluate(({ dialog }, lut) => {
@@ -293,9 +362,15 @@ async function main() {
       .isVisible().catch(() => false);
     check('LUT survives saving and reopening the project', lutSurvived);
 
-    const mediaMissing = await window.getByText('missing', { exact: false })
-      .isVisible().catch(() => false);
-    check('media survives saving and reopening the project', !mediaMissing);
+    // Counted, not tested with isVisible(): with two missing assets there are
+    // two badges, isVisible() throws a strict-mode violation, and the catch
+    // turned that into "nothing missing". The check only ever worked for
+    // exactly one missing file - it passed with both dropped files lost.
+    const missingBadges = await window.getByText('missing', { exact: true }).count();
+    const statusLine = await window.getByText('Opened', { exact: false }).first().innerText();
+    check('media survives saving and reopening the project (dropped files too)',
+      missingBadges === 0 && !/could not be found/.test(statusLine),
+      missingBadges > 0 ? `${missingBadges} missing - ${statusLine}` : 'all restored from disk');
 
     /* Export --------------------------------------------------------------- */
     // Restore the export path stub, which the project dialogs overwrote.
@@ -367,6 +442,20 @@ async function main() {
 
     check('no console errors during the whole session', consoleIssues.length === 0,
       consoleIssues.length ? consoleIssues[0] : 'clean');
+
+    // Last on purpose: Playwright keeps waiting for the navigation it saw start,
+    // even though the app cancelled it, so nothing can run after this.
+    // The main process refuses navigation: this is the backstop for a file
+    // dropped outside any drop zone, which Chromium would otherwise open in the
+    // window, replacing the editor.
+    const urlBefore = window.url();
+    await window.evaluate((path) => {
+      window.location.href = `file:///${path.replace(/\\/g, '/')}`;
+    }, timelineDropImage).catch(() => undefined);
+    await window.waitForTimeout(1000);
+    const stillEditor = window.url() === urlBefore
+      && await window.getByRole('button', { name: 'Import' }).isVisible().catch(() => false);
+    check('a stray file cannot replace the editor', stillEditor, window.url());
   } finally {
     await app.close().catch(() => undefined);
   }

@@ -22,12 +22,14 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import type { Clip, Marker, Track } from '@shared/types';
+import type { Clip, Marker, MediaAsset, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsOnTrack } from './timelineOps';
-import { collectSnapTargets, pixelToFrame, snapClipMove, type SnapTarget } from './snapping';
+import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
+import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
+import { importDroppedFiles } from '@renderer/media/importMedia';
 import TimelineCanvas, {
   RULER_HEIGHT,
   TRACK_GAP,
@@ -61,6 +63,7 @@ export function Timeline(): JSX.Element {
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renamingMarkerId, setRenamingMarkerId] = useState<string | null>(null);
+  const [dropNotice, setDropNotice] = useState<string | null>(null);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
@@ -496,6 +499,92 @@ export function Timeline(): JSX.Element {
     [store, tracks, ui.pixelsPerFrame, ui.scrollLeftPx],
   );
 
+  /* Drag and drop -------------------------------------------------------- */
+
+  /** Frame and track under a drag, in content space, snapped like a move. */
+  const dropTargetAt = useCallback(
+    (event: React.DragEvent<HTMLDivElement>): { frame: number; trackId: string | null; snap: SnapTarget | null } => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      // The element scrolls with its content, so this x is already content space.
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      const state = store.getState();
+
+      const raw = Math.max(0, Math.round(x / state.ui.pixelsPerFrame));
+      const snap = snapFrame(raw, collectSnapTargets(state.project), {
+        pixelsPerFrame: state.ui.pixelsPerFrame,
+        enabled: state.ui.snappingEnabled,
+      });
+
+      return {
+        frame: snap.frame,
+        trackId: tracks[trackIndexAtY(y)]?.id ?? null,
+        snap: { frame: snap.frame, kind: snap.target?.kind ?? 'playhead' },
+      };
+    },
+    [store, tracks],
+  );
+
+  const acceptsDrag = (event: React.DragEvent): boolean =>
+    event.dataTransfer.types.includes('Files') || event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
+
+  const onDragOver = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (!acceptsDrag(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      setActiveSnap(dropTargetAt(event).snap);
+    },
+    [dropTargetAt],
+  );
+
+  const onDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    // dragleave also fires when moving onto a child; only clear on a real exit.
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActiveSnap(null);
+  }, []);
+
+  const onDrop = useCallback(
+    async (event: React.DragEvent<HTMLDivElement>) => {
+      if (!acceptsDrag(event)) return;
+      event.preventDefault();
+      setActiveSnap(null);
+
+      const { frame, trackId } = dropTargetAt(event);
+      const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
+      const files = Array.from(event.dataTransfer.files);
+      const state = store.getState();
+
+      let assets: MediaAsset[] = [];
+      if (assetId) {
+        const asset = state.assets.find((candidate) => candidate.id === assetId);
+        if (asset && !asset.missing) assets = [asset];
+      } else if (files.length > 0) {
+        setDropNotice('Importing...');
+        const outcome = await importDroppedFiles(files, state.project.fps).catch((error: unknown) => ({
+          assets: [],
+          rejected: [{ name: 'drop', reason: error instanceof Error ? error.message : String(error) }],
+        }));
+        store.getState().addAssets(outcome.assets);
+        // addAssets may adopt the first import's frame rate and rescale the
+        // assets with it, so read them back rather than using the originals.
+        const ids = new Set(outcome.assets.map((asset) => asset.id));
+        assets = store.getState().assets.filter((asset) => ids.has(asset.id));
+
+        setDropNotice(
+          outcome.rejected.length > 0
+            ? `Could not import ${outcome.rejected.map((entry) => `${entry.name} (${entry.reason})`).join(', ')}`
+            : null,
+        );
+      }
+
+      if (assets.length === 0) return;
+
+      const current = store.getState();
+      current.placeAssets(assets, planDrop(current.project, assets, trackId, frame));
+    },
+    [dropTargetAt, store],
+  );
+
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -636,6 +725,12 @@ export function Timeline(): JSX.Element {
         </div>
       </header>
 
+      {dropNotice && (
+        <p className="border-b border-panel-700 bg-amber-950/40 px-3 py-1.5 text-2xs text-amber-300">
+          {dropNotice}
+        </p>
+      )}
+
       <div className="flex min-h-0 flex-1">
         <div
           className="shrink-0 overflow-hidden border-r border-panel-700 bg-panel-900"
@@ -731,7 +826,13 @@ export function Timeline(): JSX.Element {
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
           {/* Positioned in CONTENT space, so the rename field rides the scroll
               with its marker instead of needing scroll arithmetic. */}
-          <div className="relative" style={{ width: contentWidth }}>
+          <div
+            className="relative"
+            style={{ width: contentWidth }}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={(event) => void onDrop(event)}
+          >
             <TimelineCanvas
               project={project}
               ui={ui}

@@ -7,11 +7,73 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **267 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **18/18 comprobaciones de interfaz** (incluida la exactitud fotograma a fotograma) y
+Cifras de referencia al día de hoy: **282 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **21/21 comprobaciones de interfaz** (exactitud fotograma a fotograma y arrastrar y soltar incluidos) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.3.0-beta.1 — Arrastrar y soltar
+2026-09-10 · pre-release para probar
+
+### Añadido
+- **Soltar archivos en la línea de tiempo.** El clip cae en la pista y el
+  fotograma bajo el puntero, con imán, y queda seleccionado. Mientras se
+  arrastra, una línea marca dónde caerá.
+  - Vídeo e imagen van a una pista de vídeo, audio a una de audio; si la pista
+    bajo el puntero no sirve o está bloqueada, se usa la primera que sí, y si
+    no hay ninguna, se crea.
+  - Varios archivos a la vez se colocan uno detrás de otro.
+  - **Nunca tapa un clip existente**: si choca, se desplaza al final de ese
+    clip.
+  - Soltar cinco archivos es **un solo** paso de deshacer.
+- **Arrastrar un elemento del panel de medios a la línea de tiempo.** El botón
+  **+** sigue igual.
+- *Comprobado:* 15 pruebas nuevas en `DragAndDrop.test.ts`, y la prueba de
+  interfaz suelta un archivo real en el panel y otro en la línea de tiempo.
+
+### Arreglado
+- **Los archivos soltados se perdían al reabrir el proyecto.** Entraban como
+  un blob anónimo, sin ruta en disco, así que al reabrir salían como
+  *missing*; tampoco pasaban por ffmpeg para leer los fps exactos. Ahora
+  soltar sigue el mismo camino que el diálogo *Import*.
+  - La ruta se obtiene con `webUtils.getPathForFile`, que sustituye a
+    `File.path` (eliminado en Electron 32) y devuelve una cadena vacía para
+    archivos creados en JavaScript: la página no puede inventarse una ruta
+    para leer archivos que el usuario no eligió. El proceso principal además
+    solo acepta rutas absolutas a archivos multimedia que existen.
+  - *Comprobado:* la prueba de interfaz guarda y reabre el proyecto con los
+    archivos soltados, que vuelven desde el disco. Con la resolución de rutas
+    desactivada, la misma prueba **falla** ("2 media file(s) could not be
+    found").
+- **Soltar un archivo fuera de una zona de destino sustituía el editor por el
+  vídeo.** Es lo que hace Chromium por defecto, y se perdía todo lo no
+  guardado. Ahora esas zonas rechazan el archivo (cursor de prohibido) y el
+  proceso principal bloquea la navegación (`will-navigate`), como recomienda
+  la guía de seguridad de Electron. *Comprobado:* la prueba de interfaz
+  intenta navegar y el editor sigue ahí.
+- **El primer vídeo importado podía entrar a mitad de duración.** Su duración
+  se medía en fotogramas con los fps del proyecto *antes* de que adoptara los
+  del vídeo: uno de 60 fps en un proyecto a 30 quedaba a la mitad. Afectaba
+  también al botón **+**. *Comprobado:* prueba unitaria, que falla sin el
+  arreglo (120 en vez de 240 fotogramas).
+- **La comprobación "media survives saving and reopening" de la prueba de
+  interfaz no detectaba nada si faltaba más de un archivo.** Con dos
+  etiquetas *missing*, `isVisible()` lanzaba un error de modo estricto y el
+  `catch` lo convertía en "no falta nada". Ahora cuenta las etiquetas y lee
+  el mensaje de estado.
+
+### Sin verificar
+- **Un arrastre real con el ratón desde el Explorador de Windows.** La prueba
+  de interfaz dispara el `drop` con archivos reales del disco (los mismos
+  objetos `File` que entrega el sistema, con su ruta), pero no mueve el ratón
+  del sistema operativo. Lo que no cubre es el tramo del sistema operativo
+  hasta Chromium.
+- El cursor de "prohibido" al pasar un archivo por una zona que no lo acepta.
+
+Pruebas: unitarias **282**, interfaz **21/21**, E2E 22/22.
 
 ---
 

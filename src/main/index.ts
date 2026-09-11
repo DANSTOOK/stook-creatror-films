@@ -61,6 +61,12 @@ function createWindow(): void {
     return { action: 'deny' };
   });
 
+  // The editor never navigates. Chromium's default for a file dropped anywhere
+  // that does not handle it is to OPEN it - replacing the whole editor with a
+  // video player and taking every unsaved edit with it. The renderer swallows
+  // stray drops, and this is the backstop if one ever gets through.
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+
   if (devServerUrl) {
     void mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
