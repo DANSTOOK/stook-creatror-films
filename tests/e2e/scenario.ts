@@ -1,4 +1,4 @@
-import type { ExportPipeMode, MediaAsset, ProjectState } from '@shared/types';
+import type { ExportPipeMode, HardwareEncoder, MediaAsset, ProjectState } from '@shared/types';
 import { FrameRenderer } from '@renderer/engine/FrameRenderer';
 import { createClip, createEmptyProject, DEFAULT_EXPORT_SETTINGS } from '@renderer/store/types';
 import { splitClip, trimClipEnd, trimClipStart } from '@renderer/components/Timeline/timelineOps';
@@ -29,6 +29,8 @@ export interface E2EInput {
    * rather than forcing the raw RGBA pipe.
    */
   useRealExportPath?: boolean;
+  /** Force one ffmpeg encoder instead of the default; empty keeps the default. */
+  encoder?: string;
   /** Frame range to export; defaults to the scripted 10-70. */
   startFrame?: number;
   endFrame?: number;
@@ -264,7 +266,9 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
       endFrame,
       exportAlpha: false,
       pipeMode: 'rawvideo' as ExportPipeMode,
+      ...(input.encoder ? { hardwareEncoder: input.encoder as HardwareEncoder } : {}),
     };
+    step(`encoder: ${input.encoder || 'default'}`);
     step(`bitrate: ${(baseSettings.bitrateKbps / 1000).toFixed(1)} Mbps for ${width}x${height}@${fps}`);
 
     // The dialog picks WebCodecs when the platform supports it; mirroring that

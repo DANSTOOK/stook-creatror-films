@@ -17,6 +17,26 @@ const MAX_DRIFT_SECONDS = 0.25;
 /** Minimum gap between two drift corrections on the same element. */
 const MIN_CORRECTION_INTERVAL_MS = 600;
 
+/** How long to wait for one seek before giving up and drawing what we have. */
+const SEEK_TIMEOUT_MS = 4000;
+
+/** Resolve once the element has a decoded frame and is not seeking. */
+export function waitForSeek(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState >= 2 && !video.seeking) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const done = (): void => {
+      video.removeEventListener('seeked', done);
+      video.removeEventListener('loadeddata', done);
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, SEEK_TIMEOUT_MS);
+    video.addEventListener('seeked', done, { once: true });
+    video.addEventListener('loadeddata', done, { once: true });
+  });
+}
+
 export class MediaSourceRegistry {
   private readonly elements = new Map<string, MediaElement>();
   private readonly kinds = new Map<string, MediaAsset['kind']>();
@@ -109,6 +129,38 @@ export class MediaSourceRegistry {
     if (Math.abs(element.currentTime - targetSeconds) > MAX_DRIFT_SECONDS) {
       element.currentTime = targetSeconds;
       this.lastCorrection.set(uri, performance.now());
+    }
+  }
+
+  /**
+   * Put a video on exactly `sourceFrame`, and do not return until it is there.
+   *
+   * `syncToFrame` is best effort by design, and it skips the seek entirely if
+   * the element is already mid-seek. For export that is wrong twice over: the
+   * seek in flight may be someone else's, and "a seeked event fired" is not the
+   * same as "the element shows the frame asked for". So this checks where the
+   * element actually landed and seeks again if it is not there.
+   */
+  async seekExact(uri: string, sourceFrame: number, fps: number): Promise<void> {
+    const element = this.elements.get(uri);
+    if (!(element instanceof HTMLVideoElement)) return;
+
+    if (!element.paused) element.pause();
+
+    const duration = Number.isFinite(element.duration) ? element.duration : Infinity;
+    const targetSeconds = Math.max(0, Math.min(sourceFrame / fps, duration - 1 / fps));
+    const tolerance = 0.5 / fps;
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      // Let a seek already in flight land before judging where the element is.
+      if (element.seeking) await waitForSeek(element);
+
+      if (Math.abs(element.currentTime - targetSeconds) <= tolerance && element.readyState >= 2) {
+        return;
+      }
+
+      element.currentTime = targetSeconds;
+      await waitForSeek(element);
     }
   }
 

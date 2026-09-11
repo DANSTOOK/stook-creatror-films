@@ -142,6 +142,11 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     let jobId: string | null = null;
     let encoder: WebCodecsEncoder | null = null;
 
+    // The viewport shares this renderer's video elements and canvas. Left
+    // drawing, it seeks them to the playhead mid-export, and the playhead's
+    // picture lands in the render as a flash. It stands still until the end.
+    renderer.beginExclusive();
+
     try {
       await renderer.ensureLUTs(project);
 
@@ -228,6 +233,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       encoder?.close();
       if (jobId) await window.filmora.exportCancel(jobId).catch(() => undefined);
     } finally {
+      renderer.endExclusive();
       setRunning(false);
     }
   }, [project, assets, settings, gpu, activeGpu]);

@@ -16,30 +16,35 @@ import { TextureManager } from './TextureManager';
  * would silently duplicate frames.
  */
 
-/** How long to wait for one seek before giving up and drawing what we have. */
-const SEEK_TIMEOUT_MS = 4000;
-
-function waitForSeek(video: HTMLVideoElement): Promise<void> {
-  if (video.readyState >= 2 && !video.seeking) return Promise.resolve();
-
-  return new Promise((resolve) => {
-    const done = (): void => {
-      video.removeEventListener('seeked', done);
-      video.removeEventListener('loadeddata', done);
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(done, SEEK_TIMEOUT_MS);
-    video.addEventListener('seeked', done, { once: true });
-    video.addEventListener('loadeddata', done, { once: true });
-  });
-}
-
 export class FrameRenderer {
   readonly compositor: Compositor;
   readonly textures: TextureManager;
   readonly media = new MediaSourceRegistry();
   readonly lutLoader: LUTLoader;
+
+  /**
+   * Nesting count of exports holding the renderer.
+   *
+   * The export borrows THIS renderer - the viewport's - for its GL context and
+   * warm caches. While it runs, the viewport's own draw loop must stand still:
+   * it seeks the same video elements to the playhead and draws into the same
+   * canvas, so left running it put the playhead's picture into roughly every
+   * other exported frame. Those were the flashes in the render.
+   */
+  private exclusiveHolds = 0;
+
+  /** Freeze the viewport for the duration of an export. Pair with `endExclusive`. */
+  beginExclusive(): void {
+    this.exclusiveHolds += 1;
+  }
+
+  endExclusive(): void {
+    this.exclusiveHolds = Math.max(0, this.exclusiveHolds - 1);
+  }
+
+  get isExclusive(): boolean {
+    return this.exclusiveHolds > 0;
+  }
 
   constructor(
     canvas: HTMLCanvasElement | OffscreenCanvas,
@@ -120,6 +125,9 @@ export class FrameRenderer {
 
   /** Non-blocking viewport draw. */
   drawViewport(project: ProjectState, playing: boolean, pixelArtViewport: boolean): void {
+    // An export owns the video elements and the canvas right now.
+    if (this.isExclusive) return;
+
     this.compositor.renderFrame(
       project,
       project.currentFrame,
@@ -141,10 +149,7 @@ export class FrameRenderer {
     await Promise.all(
       Compositor.visibleClips(project, frame).map(async (clip) => {
         const sourceFrame = clip.sourceOffsetFrames + (frame - clip.startFrame);
-        this.media.syncToFrame(clip.sourceUri, sourceFrame, project.fps, false);
-
-        const element = this.media.get(clip.sourceUri);
-        if (element instanceof HTMLVideoElement) await waitForSeek(element);
+        await this.media.seekExact(clip.sourceUri, sourceFrame, project.fps);
       }),
     );
   }

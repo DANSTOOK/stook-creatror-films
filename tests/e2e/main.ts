@@ -16,6 +16,8 @@ const inputs = {
   mp4Output: process.env.E2E_MP4 ?? '',
   pngOutput: process.env.E2E_PNG ?? '',
   useRealExportPath: process.env.E2E_REAL_EXPORT === '1',
+  // Force one ffmpeg encoder (nvenc, qsv, amf, none) instead of the default.
+  encoder: process.env.E2E_ENCODER ?? '',
   colourFramePath: process.env.E2E_COLOUR_DIR ?? '',
   colourFrame: Number(process.env.E2E_COLOUR_FRAME ?? 0),
   ...(process.env.E2E_START ? { startFrame: Number(process.env.E2E_START) } : {}),

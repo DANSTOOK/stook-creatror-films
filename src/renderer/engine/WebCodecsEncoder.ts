@@ -149,18 +149,22 @@ export class WebCodecsEncoder {
   async encodeCanvas(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<void> {
     if (this.failure) throw this.failure;
 
-    // Backpressure: let the encoder drain before queuing more work.
-    while (this.encoder.encodeQueueSize > MAX_QUEUE_DEPTH) {
-      await new Promise((resolve) => setTimeout(resolve, 4));
-      if (this.failure) throw this.failure;
-    }
-
+    // Snapshot the canvas FIRST, synchronously, while it still holds the frame
+    // that was just rendered. Waiting on backpressure before the snapshot
+    // yields to the event loop, and anything that draws into the canvas in that
+    // gap - the viewport, for one - becomes this frame instead.
     const frame = new VideoFrame(canvas as CanvasImageSource, {
       timestamp: this.timestampFor(this.frameIndex),
       duration: Math.round(1_000_000 / this.settings.fps),
     });
 
     try {
+      // Backpressure: let the encoder drain before queuing more work.
+      while (this.encoder.encodeQueueSize > MAX_QUEUE_DEPTH) {
+        await new Promise((resolve) => setTimeout(resolve, 4));
+        if (this.failure) throw this.failure;
+      }
+
       this.encoder.encode(frame, {
         keyFrame: this.frameIndex % this.keyFrameInterval === 0,
       });

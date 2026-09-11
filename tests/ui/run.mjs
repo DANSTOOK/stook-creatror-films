@@ -35,8 +35,9 @@ const exportPath = join(workDir, 'ui-export.mp4');
 const lutPath = join(workDir, 'identity.cube');
 const projectPath = join(workDir, 'ui-project.fep');
 
-/** Frames the UI test asks the dialog to render. */
-const EXPORT_FRAMES = 12;
+// Two seconds, so the export crosses a change of testsrc's seconds counter: a
+// picture from the wrong moment is then unmistakable.
+const EXPORT_FRAMES = 60;
 
 const checks = [];
 const check = (name, passed, detail = '') => {
@@ -72,6 +73,43 @@ async function prepare() {
       sourceVideo,
     ]);
   }
+}
+
+/** Decode the first `frames` frames of a file to RGB at a fixed small size. */
+async function decodeFrames(file, frames) {
+  const { stdout } = await execFileAsync(
+    ffmpeg,
+    ['-v', 'error', '-i', file, '-frames:v', String(frames), '-vf', 'scale=160:120',
+      '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+    { maxBuffer: 256 * 1024 * 1024, encoding: 'buffer' },
+  );
+  return stdout;
+}
+
+/**
+ * Compare every exported frame with the source frame it should be.
+ *
+ * "The file has the right duration" says nothing about WHICH picture sits at
+ * each frame. The export borrows the viewport's renderer, and the viewport's
+ * own draw loop kept seeking the shared video element to the playhead while
+ * the export was seeking it to frame N - so roughly every other exported frame
+ * was really the playhead's frame. It showed up as flashes in the render, and
+ * no structural check could see it.
+ */
+async function frameAccuracy(exported, source, frames) {
+  const size = 160 * 120 * 3;
+  const [a, b] = await Promise.all([decodeFrames(exported, frames), decodeFrames(source, frames)]);
+  const count = Math.min(a.length, b.length) / size;
+  const wrong = [];
+
+  for (let frame = 0; frame < count; frame += 1) {
+    let sum = 0;
+    for (let i = 0; i < size; i += 1) sum += Math.abs(a[frame * size + i] - b[frame * size + i]);
+    // Honest lossy re-encoding lands around 1-3; a picture from another moment
+    // of testsrc (different counter digit, moved gradient) is well above 8.
+    if (sum / size > 8) wrong.push(frame);
+  }
+  return { count, wrong };
 }
 
 /** Read the stream summary ffmpeg prints for a file. */
@@ -312,6 +350,13 @@ async function main() {
       check('exported only the requested range',
         Math.abs(seconds - expected) < 0.2,
         `${seconds.toFixed(2)}s vs ${expected.toFixed(2)}s requested`);
+
+      const accuracy = await frameAccuracy(exportPath, sourceVideo, EXPORT_FRAMES);
+      check('every exported frame is the right picture',
+        accuracy.count === EXPORT_FRAMES && accuracy.wrong.length === 0,
+        accuracy.wrong.length
+          ? `${accuracy.wrong.length}/${accuracy.count} wrong, e.g. frame ${accuracy.wrong.slice(0, 5).join(', ')}`
+          : `${accuracy.count}/${EXPORT_FRAMES} match the source`);
     }
 
     if (offline) {

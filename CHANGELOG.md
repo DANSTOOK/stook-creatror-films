@@ -8,10 +8,43 @@ Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
 Cifras de referencia al día de hoy: **267 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **17/17 comprobaciones de interfaz** y
+comprobaciones de extremo a extremo**, **18/18 comprobaciones de interfaz** (incluida la exactitud fotograma a fotograma) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.2.0-beta.2 — Sin destellos en la exportación
+2026-09-10 · pre-release para probar
+
+### Arreglado
+- **Destellos en los vídeos exportados**: fotogramas sueltos de otro momento
+  del vídeo metidos en la exportación, que se veían como destellos (rosas en el
+  patrón de prueba, por sus barras magenta). Pasaba **con cualquier
+  codificador**, CPU incluida; la GPU no tenía nada que ver.
+  - *Causa:* la exportación toma prestado el renderizador de la vista previa, y
+    el bucle de dibujo de la vista previa seguía corriendo: en cada animación
+    llevaba el mismo `<video>` a la posición del cabezal mientras la
+    exportación lo llevaba al fotograma N. Además la espera aceptaba
+    **cualquier** evento `seeked`, también el del salto de la vista previa. En
+    la exportación entraba la imagen del cabezal más o menos uno de cada dos
+    fotogramas del tramo final.
+  - *Arreglo:* la vista previa se congela mientras dura una exportación; cada
+    salto de exportación comprueba dónde ha caído de verdad el vídeo y repite
+    si no es el fotograma pedido; y WebCodecs captura el canvas antes de ceder
+    el hilo, no después.
+  - *Comprobado:* exportando desde el diálogo real con CPU, automático
+    (WebCodecs), NVENC y Quick Sync, y comparando cada fotograma con el origen
+    píxel a píxel: antes, error medio 29/255 y ~4000 píxeles rosas en el peor
+    fotograma de **todas**; ahora, peor fotograma 1,7/255 y **cero** en las
+    cuatro.
+- **Ninguna prueba podía verlo.** La E2E corre sin vista previa; `test:gpu`
+  usaba fotogramas sintéticos; la de interfaz solo miraba duración y códec.
+  - La prueba de interfaz exporta ahora 2 segundos y **compara cada fotograma
+    exportado con el del origen**. *Comprobado:* con el código anterior falla
+    (7/60 fotogramas equivocados); con el arreglo, 60/60.
+  - La E2E acepta `E2E_ENCODER=nvenc|qsv|amf|none` para forzar un codificador.
 
 ---
 
