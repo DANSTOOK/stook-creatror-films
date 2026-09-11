@@ -1,5 +1,7 @@
-appId: com.filmoraengine.app
-productName: Filmora Engine
+appId: com.stook.creatorfilms
+productName: STOOK CREATOR FILMS
+# No spaces in the installer file name: it becomes a download URL.
+artifactName: SCF-Setup-${version}.${ext}
 directories:
   output: release
   buildResources: build

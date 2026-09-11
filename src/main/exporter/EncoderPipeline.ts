@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, rename, rm } from 'node:fs/promises';
+import { dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ExportProgress, ExportSettings } from '@shared/types';
 import {
@@ -259,6 +259,60 @@ export class EncoderPipeline {
 
     await new Promise<void>((resolve) => job.process.stdin.end(resolve));
     await job.completion;
+
+    const { thumbnailPath, outputPath, format } = job.settings;
+    if (thumbnailPath && EncoderPipeline.supportsCoverArt(format)) {
+      await EncoderPipeline.attachCoverArt(outputPath, thumbnailPath);
+    }
+  }
+
+  /** Containers that carry a cover image players and Explorer show. */
+  static supportsCoverArt(format: ExportSettings['format']): boolean {
+    return format === 'mp4-h264' || format === 'mp4-h265' || format === 'prores4444';
+  }
+
+  /**
+   * ffmpeg arguments that copy `input` untouched and add `image` as its cover.
+   *
+   * A second pass rather than a second input to the main encode: the main
+   * encode sets `-c:v` for every video stream, so a cover added there would be
+   * encoded as H.264 with the film. Here every existing stream is stream-copied
+   * (fast, lossless) and only the image is encoded, as JPEG, scaled down to at
+   * most 1280 px wide, and marked `attached_pic` - the flag that makes it a
+   * thumbnail rather than a second video track.
+   */
+  static coverArtArgs(input: string, image: string, output: string): string[] {
+    return [
+      '-v', 'error', '-y',
+      '-i', input,
+      '-i', image,
+      '-map', '0',
+      '-map', '1:v:0',
+      '-c', 'copy',
+      '-c:v:1', 'mjpeg',
+      '-filter:v:1', "scale='min(1280,iw)':-2",
+      '-disposition:v:1', 'attached_pic',
+      output,
+    ];
+  }
+
+  static async attachCoverArt(outputPath: string, image: string): Promise<void> {
+    const temporary = `${outputPath}.cover${extname(outputPath)}`;
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(resolveFfmpegPath(), EncoderPipeline.coverArtArgs(outputPath, image, temporary), {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', reject);
+      child.on('close', (code) =>
+        code === 0 ? resolve() : reject(new Error(`Adding the thumbnail failed: ${stderr.trim().slice(0, 300)}`)),
+      );
+    });
+    await rename(temporary, outputPath);
   }
 
   async cancel(jobId: string): Promise<void> {

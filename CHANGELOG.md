@@ -1,4 +1,4 @@
-# Filmora Engine — Registro de cambios
+# STOOK CREATOR FILMS (SCF) — Registro de cambios
 
 Notas de cada entrega, al estilo de un parche de Steam.
 

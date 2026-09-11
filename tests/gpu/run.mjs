@@ -112,7 +112,8 @@ async function runPreference(preference) {
   console.log(`\n-- FILMORA_GPU=${preference}`);
 
   const app = await electron.launch({
-    args: [join(projectRoot, 'dist-electron/main/index.js')],
+    // Own profile: runs beside an open copy of the app, never touches its settings.
+    args: [`--user-data-dir=${join(workDir, 'profile')}`, join(projectRoot, 'dist-electron/main/index.js')],
     cwd: projectRoot,
     env: {
       ...process.env,

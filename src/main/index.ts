@@ -44,7 +44,7 @@ function createWindow(): void {
     minHeight: 700,
     show: false,
     backgroundColor: '#0d0f14',
-    title: 'Filmora Engine',
+    title: 'STOOK CREATOR FILMS',
     autoHideMenuBar: true,
     webPreferences: {
       preload: PRELOAD,

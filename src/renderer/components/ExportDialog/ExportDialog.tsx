@@ -6,12 +6,14 @@ import type {
   GpuPreference,
   GpuReport,
   HardwareEncoder,
+  MediaAsset,
 } from '@shared/types';
 import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPlan';
 import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { renderTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
+import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
@@ -36,6 +38,15 @@ const PREFERENCE_LABELS: Record<GpuPreference, string> = {
   'high-performance': 'Dedicated GPU',
   'low-power': 'Integrated GPU',
 };
+
+/** Containers that can carry a cover image. */
+const COVER_ART_FORMATS = new Set<ExportFormat>(['mp4-h264', 'mp4-h265', 'prores4444']);
+
+/** The first video's name without its extension, else "export". */
+function defaultFileName(assets: readonly MediaAsset[]): string {
+  const first = assets.find((asset) => asset.kind === 'video') ?? assets[0];
+  return first ? first.name.replace(/\.[^.]+$/, '') : 'export';
+}
 
 export interface ExportDialogProps {
   onClose(): void;
@@ -119,10 +130,74 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     [setExportSettings, settings.fps],
   );
 
-  const chooseOutput = useCallback(async () => {
-    const path = await window.filmora.chooseExportPath(settings.format);
-    if (path) setExportSettings({ outputPath: path });
-  }, [settings.format, setExportSettings]);
+  /* Where the file goes, and what it is called ----------------------------- */
+
+  // Folder and name are separate, the way other editors do it: the name is
+  // typed here instead of being buried in a save dialog.
+  const [folder, setFolder] = useState<string | null>(null);
+  const [fileName, setFileName] = useState(() => defaultFileName(assets));
+  const [targetExists, setTargetExists] = useState(false);
+
+  const chooseFolder = useCallback(async () => {
+    const picked = await window.filmora.chooseExportFolder();
+    if (picked) setFolder(picked);
+  }, []);
+
+  // Every change of folder, name or format resolves the real target path in
+  // the main process, which cleans the name and applies the extension.
+  useEffect(() => {
+    if (!folder) return;
+    let cancelled = false;
+    void window.filmora.resolveExportTarget(folder, fileName, settings.format).then((target) => {
+      if (cancelled) return;
+      setExportSettings({ outputPath: target.path });
+      setTargetExists(target.exists);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [folder, fileName, settings.format, setExportSettings]);
+
+  /* Thumbnail --------------------------------------------------------------- */
+
+  const [thumbnailPath, setThumbnailPath] = useState<string | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const coverArt = COVER_ART_FORMATS.has(settings.format);
+
+  /** The frame under the playhead, rendered exactly as the export will be. */
+  const captureCurrentFrame = useCallback(async () => {
+    const renderer = getActiveFrameRenderer();
+    if (!renderer) return;
+
+    renderer.beginExclusive();
+    try {
+      const rgba = await renderer.renderExact(project, project.currentFrame, false);
+      const canvas = document.createElement('canvas');
+      canvas.width = project.width;
+      canvas.height = project.height;
+      canvas.getContext('2d')?.putImageData(
+        new ImageData(new Uint8ClampedArray(rgba), project.width, project.height),
+        0,
+        0,
+      );
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) return;
+      setThumbnailPath(await window.filmora.writeThumbnail(await blob.arrayBuffer()));
+      setThumbnailPreview(canvas.toDataURL('image/jpeg', 0.7));
+    } finally {
+      renderer.endExclusive();
+    }
+  }, [project]);
+
+  const chooseThumbnail = useCallback(async () => {
+    const path = await window.filmora.chooseThumbnail();
+    if (!path) return;
+    setThumbnailPath(path);
+    setThumbnailPreview(await window.filmora.mediaUrl(path));
+  }, []);
+
+  const presets = resolutionPresets(project.width, project.height);
+  const activePreset = matchPreset(presets, settings.width, settings.height);
 
   const startExport = useCallback(async () => {
     const renderer = getActiveFrameRenderer();
@@ -130,8 +205,8 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       setMessage('The compositor is not ready yet.');
       return;
     }
-    if (!settings.outputPath) {
-      setMessage('Choose an output location first.');
+    if (!folder || !settings.outputPath) {
+      setMessage('Choose the folder to save into first.');
       return;
     }
 
@@ -188,6 +263,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
         pipeMode: jobPlan.pipeMode,
         hardwareEncoder: jobPlan.hardwareEncoder,
         ...(audioPath ? { audioPath, audioBitrateKbps } : {}),
+        ...(thumbnailPath && coverArt ? { thumbnailPath } : {}),
       };
 
       const started = await window.filmora.exportStart(jobSettings);
@@ -236,7 +312,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, settings, gpu, activeGpu]);
+  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const percent =
@@ -245,7 +321,8 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    // The editor behind is blurred, so the dialog is the only thing in focus.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="panel w-[520px] max-h-[86vh]">
         <header className="panel-header justify-between">
           <span>Export</span>
@@ -314,6 +391,31 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
               </p>
             )}
           </div>
+
+          <label className="flex flex-col gap-1">
+            <span className="field-label">Resolution</span>
+            <select
+              className="numeric-input"
+              value={activePreset?.id ?? 'custom'}
+              onChange={(event) => {
+                const preset = presets.find((candidate) => candidate.id === event.target.value);
+                if (preset) resize(preset.width, preset.height);
+              }}
+            >
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+              {!activePreset && <option value="custom">Custom ({settings.width}x{settings.height})</option>}
+            </select>
+            {settings.width * settings.height > project.width * project.height * 1.01 && (
+              <span className="text-2xs text-amber-300">
+                Larger than the project ({project.width}x{project.height}): the picture is
+                scaled up, which adds pixels but not detail.
+              </span>
+            )}
+          </label>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
@@ -445,23 +547,75 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
             )}
           </div>
 
+          <label className="flex flex-col gap-1">
+            <span className="field-label">File name</span>
+            <div className="flex items-center gap-1">
+              <input
+                className="numeric-input"
+                value={fileName}
+                spellCheck={false}
+                onChange={(event) => setFileName(event.target.value)}
+              />
+              <span className="shrink-0 text-2xs text-slate-500">
+                {settings.format === 'png-sequence' ? '/ (folder)' : `.${settings.format === 'prores4444' ? 'mov' : settings.format === 'webm-vp9' ? 'webm' : 'mp4'}`}
+              </span>
+            </div>
+          </label>
+
           <div className="flex items-end gap-2">
             <label className="flex flex-1 flex-col gap-1">
-              <span className="field-label">
-                Output {settings.format === 'png-sequence' ? 'folder' : 'file'}
-              </span>
-              <input
-                readOnly
-                className="numeric-input"
-                value={settings.outputPath}
-                placeholder="Not chosen"
-              />
+              <span className="field-label">Save in</span>
+              <input readOnly className="numeric-input" value={folder ?? ''} placeholder="Not chosen" />
             </label>
-            <button type="button" className="tool-button" onClick={() => void chooseOutput()}>
+            <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
               <FolderOpen size={14} />
               Browse
             </button>
           </div>
+          {folder && settings.outputPath && (
+            <p className={`text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-500'}`}>
+              {targetExists ? 'Will replace the existing ' : 'Will save as '}
+              <span className="text-slate-300">{settings.outputPath}</span>
+            </p>
+          )}
+
+          {coverArt && (
+            <div className="rounded border border-panel-700 bg-panel-950 p-3">
+              <span className="field-label">Thumbnail</span>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-panel-700 bg-panel-900">
+                  {thumbnailPreview ? (
+                    <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-2xs text-slate-600">None</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void captureCurrentFrame()}>
+                    Use the frame at the playhead
+                  </button>
+                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void chooseThumbnail()}>
+                    Choose an image...
+                  </button>
+                  {thumbnailPath && (
+                    <button
+                      type="button"
+                      className="tool-button h-7 justify-start text-slate-500"
+                      onClick={() => {
+                        setThumbnailPath(null);
+                        setThumbnailPreview(null);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="mt-2 text-2xs text-slate-600">
+                Embedded as the file&apos;s cover - what Explorer and video players show.
+              </p>
+            </div>
+          )}
 
           {(running || progress) && (
             <div>

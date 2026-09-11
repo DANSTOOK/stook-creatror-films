@@ -31,6 +31,11 @@ const api: FilmoraApi = {
     ipcRenderer.invoke(IPC.openLut) as Promise<{ path: string; contents: string } | null>,
   saveProjectAs: (contents, suggestedName) =>
     ipcRenderer.invoke(IPC.saveProjectAs, contents, suggestedName) as Promise<string | null>,
+  chooseExportFolder: () => ipcRenderer.invoke(IPC.chooseExportFolder) as Promise<string | null>,
+  resolveExportTarget: (folder, name, format) =>
+    ipcRenderer.invoke(IPC.resolveExportTarget, folder, name, format) as Promise<{ path: string; exists: boolean }>,
+  chooseThumbnail: () => ipcRenderer.invoke(IPC.chooseThumbnail) as Promise<string | null>,
+  writeThumbnail: (png) => ipcRenderer.invoke(IPC.writeThumbnail, png) as Promise<string>,
   chooseExportPath: (format) =>
     ipcRenderer.invoke(IPC.chooseExportPath, format) as Promise<string | null>,
 

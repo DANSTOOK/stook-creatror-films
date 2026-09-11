@@ -1,4 +1,4 @@
-# Filmora Engine
+# STOOK CREATOR FILMS (SCF)
 
 Desktop video editor with a WebGL2 compositing core, built for two jobs at once:
 conventional video editing, and authoring transparent sprite/UI assets for game

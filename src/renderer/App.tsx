@@ -103,8 +103,9 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-full flex-col gap-1.5 bg-panel-950 p-1.5">
       <header className="flex h-10 shrink-0 items-center gap-1 rounded-md border border-panel-700 bg-panel-900 px-2">
-        <span className="px-2 text-sm font-semibold tracking-tight text-slate-200">
-          Filmora Engine
+        <span className="flex items-baseline gap-2 px-2">
+          <span className="text-sm font-semibold tracking-wide text-slate-100">STOOK CREATOR FILMS</span>
+          <span className="rounded bg-accent/20 px-1.5 text-2xs font-semibold text-accent-hover">SCF</span>
         </span>
 
         <span className="mx-1 h-5 w-px bg-panel-600" />

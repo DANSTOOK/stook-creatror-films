@@ -17,6 +17,10 @@ export const IPC = {
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
   chooseExportPath: 'dialog:choose-export-path',
+  chooseExportFolder: 'dialog:choose-export-folder',
+  resolveExportTarget: 'export:resolve-target',
+  chooseThumbnail: 'dialog:choose-thumbnail',
+  writeThumbnail: 'export:write-thumbnail',
   readFile: 'fs:read-file',
   readTextFile: 'fs:read-text-file',
   writeTextFile: 'fs:write-text-file',
@@ -85,6 +89,21 @@ export interface FilmoraApi {
   openLut(): Promise<{ path: string; contents: string } | null>;
   saveProjectAs(contents: string, suggestedName?: string): Promise<string | null>;
   chooseExportPath(format: ExportSettings['format']): Promise<string | null>;
+  /** Pick the folder an export is written into. */
+  chooseExportFolder(): Promise<string | null>;
+  /**
+   * Join an allowlisted folder and a typed file name into the export target,
+   * with the right extension, and say whether it already exists.
+   */
+  resolveExportTarget(
+    folder: string,
+    name: string,
+    format: ExportSettings['format'],
+  ): Promise<{ path: string; exists: boolean }>;
+  /** Pick an image to use as the video's thumbnail. */
+  chooseThumbnail(): Promise<string | null>;
+  /** Store a PNG (e.g. the current frame) as a thumbnail and return its path. */
+  writeThumbnail(png: ArrayBuffer): Promise<string>;
 
   readFile(path: string): Promise<ArrayBuffer>;
   readTextFile(path: string): Promise<string>;

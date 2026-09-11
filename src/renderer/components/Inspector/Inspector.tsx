@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Diamond, FolderOpen, Trash2 } from 'lucide-react';
-import type { Clip, MaskConfig } from '@shared/types';
+import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { evaluateNumber, evaluateVector } from '@renderer/engine/KeyframeEvaluator';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { hasNativeBridge } from '@renderer/media/importMedia';
@@ -99,8 +99,23 @@ const MASK_TYPES: { value: MaskConfig['type']; label: string }[] = [
   { value: 2, label: 'Ellipse' },
 ];
 
+/**
+ * True for a clip whose source is audio only: it sits on an audio track, or
+ * its media is an audio file wherever it sits.
+ */
+export function isAudioClip(
+  clip: Clip,
+  project: ProjectState,
+  assets: readonly MediaAsset[],
+): boolean {
+  const track = project.tracks.find((candidate) => candidate.id === clip.trackId);
+  if (track?.type === 'audio') return true;
+  return assets.find((asset) => asset.uri === clip.sourceUri)?.kind === 'audio';
+}
+
 export function Inspector(): JSX.Element {
   const project = useProjectStore((state) => state.project);
+  const assets = useProjectStore((state) => state.assets);
   const selectedIds = useProjectStore((state) => state.ui.selectedClipIds);
   const updateClip = useProjectStore((state) => state.updateClip);
   const setVectorKeyframe = useProjectStore((state) => state.setVectorKeyframe);
@@ -185,6 +200,63 @@ export function Inspector(): JSX.Element {
             ? `${selectedIds.length} clips selected. Select a single clip to edit its properties.`
             : 'Select a clip on the timeline to edit its properties.'}
         </p>
+      </aside>
+    );
+  }
+
+  // An audio clip has no picture: transform, mask, grading, chroma key and
+  // pixel art mean nothing for it, and showing them - as the inspector did -
+  // only buries the controls that do apply.
+  if (isAudioClip(clip, project, assets)) {
+    const eq = clip.eq;
+    const setEq = (patch: Partial<typeof eq>): void =>
+      updateClip(clip.id, { eq: { ...eq, ...patch } }, `eq:${clip.id}`);
+
+    return (
+      <aside className="panel w-[300px] shrink-0">
+        <header className="panel-header justify-between">
+          <span className="truncate">{clip.name}</span>
+          <span className="normal-case tracking-normal text-slate-500">Audio</span>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Section title="Level">
+            <SliderField
+              label="Volume"
+              value={clip.volume}
+              max={2}
+              onChange={(volume) => updateClip(clip.id, { volume }, `volume:${clip.id}`)}
+            />
+            <SliderField
+              label="Pan"
+              value={clip.pan}
+              min={-1}
+              max={1}
+              onChange={(pan) => updateClip(clip.id, { pan }, `pan:${clip.id}`)}
+            />
+          </Section>
+
+          <Section
+            title="Equalizer"
+            right={
+              <button
+                type="button"
+                className="text-2xs text-slate-500 hover:text-slate-300"
+                onClick={() => updateClip(clip.id, { eq: { low: 0, mid: 0, high: 0 } }, `eq:${clip.id}`)}
+              >
+                Reset
+              </button>
+            }
+          >
+            <SliderField label="Low (120 Hz, dB)" value={eq.low} min={-24} max={24} step={0.5} onChange={(low) => setEq({ low })} />
+            <SliderField label="Mid (1 kHz, dB)" value={eq.mid} min={-24} max={24} step={0.5} onChange={(mid) => setEq({ mid })} />
+            <SliderField label="High (8 kHz, dB)" value={eq.high} min={-24} max={24} step={0.5} onChange={(high) => setEq({ high })} />
+          </Section>
+
+          <p className="px-3 py-3 text-2xs text-slate-600">
+            Track faders, solo, buses and auto ducking are in the Mixer.
+          </p>
+        </div>
       </aside>
     );
   }

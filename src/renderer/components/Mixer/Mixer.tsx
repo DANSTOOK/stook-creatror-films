@@ -228,7 +228,7 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
   const dialogueTracks = tracks.filter((track) => track.bus === 'dialogue');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="panel w-[560px] max-h-[86vh]">
         <header className="panel-header justify-between">
           <span className="flex items-center gap-2">

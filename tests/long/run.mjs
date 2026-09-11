@@ -70,7 +70,8 @@ async function main() {
   }
 
   const app = await electron.launch({
-    args: [join(projectRoot, 'dist-electron/main/index.js')],
+    // Own profile: runs beside an open copy of the app, never touches its settings.
+    args: [`--user-data-dir=${join(workDir, 'profile')}`, join(projectRoot, 'dist-electron/main/index.js')],
     cwd: projectRoot,
     env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined },
   });
@@ -143,17 +144,17 @@ async function main() {
       `${scroll.scrollWidth} px of scroll for a ${scroll.clientWidth} px view`);
 
     // Export 10 s from minute 30, where a wrong-frame bug would show.
-    const output = join(workDir, 'long-export.mp4');
-    await app.evaluate(({ dialog }, path) => {
-      dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
-    }, output);
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, workDir);
     await window.getByRole('button', { name: 'Export' }).click();
     const dialog = window.locator('.panel').filter({ hasText: 'Target bitrate' }).first();
     await dialog.getByText('This render:').waitFor({ timeout: 60_000 });
     await dialog.getByLabel('Start frame').fill(String(30 * 60 * FPS));
     await dialog.getByLabel('End frame').fill(String(30 * 60 * FPS + 10 * FPS));
+    await dialog.getByLabel('File name').fill('long-export');
     await dialog.getByRole('button', { name: 'Browse' }).click();
-    await window.waitForTimeout(300);
+    await dialog.getByText('Will ', { exact: false }).first().waitFor({ timeout: 10_000 });
     const exportStarted = Date.now();
     await dialog.getByRole('button', { name: 'Start export' }).click();
     const finished = await window.getByText(/Export finished|Export failed/).first()

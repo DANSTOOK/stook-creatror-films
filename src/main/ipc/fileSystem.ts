@@ -105,6 +105,32 @@ export async function allowProjectReferences(contents: string): Promise<number> 
   return allowed;
 }
 
+/** Folders the user picked as export destinations. */
+const allowedFolders = new Set<string>();
+
+export function extensionFor(format: ExportSettings['format']): string {
+  return format === 'prores4444' ? 'mov' : format === 'webm-vp9' ? 'webm' : 'mp4';
+}
+
+/**
+ * Make a typed name safe as a Windows file name inside the chosen folder.
+ *
+ * Exported for tests. Separators and the characters Windows forbids become
+ * `_`, so a name can never climb out of the folder; trailing dots and spaces
+ * (which Windows silently strips, renaming the file behind your back) go; a
+ * typed extension is dropped because the format decides it; reserved device
+ * names (CON, NUL, COM1...) get a suffix, because Windows cannot create them.
+ */
+export function sanitizeFileName(name: string): string {
+  let cleaned = name
+    .replace(/[\\/:*?"<>|\x00-\x1f]/g, '_')
+    .replace(/\.(mp4|mov|webm|png)$/i, '')
+    .replace(/[. ]+$/, '')
+    .trim();
+  if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(cleaned)) cleaned = `${cleaned}_`;
+  return cleaned.slice(0, 180);
+}
+
 /** Pixel formats whose names encode an alpha plane. */
 const hasAlphaPixelFormat = (pixelFormat: string | undefined): boolean =>
   pixelFormat !== undefined && /a$|^(yuva|rgba|bgra|argb|abgr|gbrap|pal8)/i.test(pixelFormat);
@@ -303,7 +329,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const result = await dialog.showOpenDialog(window, {
       title: 'Open project',
       properties: ['openFile'],
-      filters: [{ name: 'Filmora Engine project', extensions: ['fep', 'json'] }],
+      // .scf is the project format since the rename; .fep files from before open too.
+      filters: [{ name: 'STOOK CREATOR FILMS project', extensions: ['scf', 'fep', 'json'] }],
     });
 
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -338,8 +365,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
     const result = await dialog.showSaveDialog(window, {
       title: 'Save project',
-      defaultPath: suggestedName ?? 'untitled.fep',
-      filters: [{ name: 'Filmora Engine project', extensions: ['fep'] }],
+      defaultPath: suggestedName ?? 'untitled.scf',
+      filters: [{ name: 'STOOK CREATOR FILMS project', extensions: ['scf'] }],
     });
 
     if (result.canceled || !result.filePath) return null;
@@ -380,6 +407,58 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       return result.filePath;
     },
   );
+
+  ipcMain.handle(IPC.chooseExportFolder, async (): Promise<string | null> => {
+    const window = getWindow();
+    if (!window) return null;
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Choose where to save the export',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    allowedFolders.add(result.filePaths[0]);
+    return result.filePaths[0];
+  });
+
+  /**
+   * Folder + typed name -> the export target.
+   *
+   * The name comes from a text field, so it is cleaned rather than trusted:
+   * characters Windows forbids in file names are replaced, a path separator
+   * cannot climb out of the chosen folder, and the extension is the format's -
+   * whatever was typed. Only a folder the user picked in the dialog is valid.
+   */
+  ipcMain.handle(
+    IPC.resolveExportTarget,
+    async (_event, folder: string, name: string, format: ExportSettings['format']) => {
+      if (!allowedFolders.has(folder)) throw new Error('Choose the export folder first');
+      const base = sanitizeFileName(name) || 'export';
+      const path = join(folder, format === 'png-sequence' ? base : `${base}.${extensionFor(format)}`);
+      allowedPaths.add(path);
+      const exists = Boolean(await stat(path).catch(() => null));
+      return { path, exists };
+    },
+  );
+
+  ipcMain.handle(IPC.chooseThumbnail, async (): Promise<string | null> => {
+    const window = getWindow();
+    if (!window) return null;
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Choose a thumbnail image',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    allowedPaths.add(result.filePaths[0]);
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle(IPC.writeThumbnail, async (_event, png: ArrayBuffer) => {
+    const path = join(tmpdir(), `scf-thumbnail-${randomUUID()}.png`);
+    await writeFile(path, Buffer.from(png));
+    allowedPaths.add(path);
+    return path;
+  });
 
   ipcMain.handle(IPC.readFile, async (_event, path: string) => {
     assertAllowed(path);
@@ -427,6 +506,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.exportStart, async (_event, settings: ExportSettings) => {
     assertAllowed(settings.outputPath);
     if (settings.audioPath) assertAllowed(settings.audioPath);
+    if (settings.thumbnailPath) assertAllowed(settings.thumbnailPath);
     return { jobId: await pipeline.start(settings) };
   });
 

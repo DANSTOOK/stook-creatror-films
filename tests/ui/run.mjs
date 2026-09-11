@@ -35,7 +35,12 @@ const exportPath = join(workDir, 'ui-export.mp4');
 const lutPath = join(workDir, 'identity.cube');
 const panelDropImage = join(workDir, 'panel-drop.png');
 const timelineDropImage = join(workDir, 'drop.png');
-const projectPath = join(workDir, 'ui-project.fep');
+const projectPath = join(workDir, 'ui-project.scf');
+
+// A profile of its own: the run must work beside a copy of the app the user
+// has open (the app allows one instance per profile), and must not read or
+// write the user's settings, such as the saved GPU choice.
+const profileArg = `--user-data-dir=${join(workDir, 'profile')}`;
 
 // Two seconds, so the export crosses a change of testsrc's seconds counter: a
 // picture from the wrong moment is then unmistakable.
@@ -89,7 +94,8 @@ async function prepare() {
 async function decodeFrames(file, frames) {
   const { stdout } = await execFileAsync(
     ffmpeg,
-    ['-v', 'error', '-i', file, '-frames:v', String(frames), '-vf', 'scale=160:120',
+    // -map 0:v:0: the film, never the cover image, which is a video stream too.
+    ['-v', 'error', '-i', file, '-map', '0:v:0', '-frames:v', String(frames), '-vf', 'scale=160:120',
       '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
     { maxBuffer: 256 * 1024 * 1024, encoding: 'buffer' },
   );
@@ -140,7 +146,7 @@ async function probe(file) {
  * cannot export.
  */
 const packagedExe = process.env.UI_PACKAGED
-  ? join(projectRoot, 'release/win-unpacked/Filmora Engine.exe')
+  ? join(projectRoot, 'release/win-unpacked/STOOK CREATOR FILMS.exe')
   : null;
 
 /**
@@ -163,8 +169,8 @@ async function main() {
   console.log(`2. launching the ${packagedExe ? 'PACKAGED' : 'development'} Electron app`);
   const app = await electron.launch({
     ...(packagedExe
-      ? { executablePath: packagedExe }
-      : { args: [join(projectRoot, 'dist-electron/main/index.js')] }),
+      ? { executablePath: packagedExe, args: [profileArg] }
+      : { args: [profileArg, join(projectRoot, 'dist-electron/main/index.js')] }),
     cwd: projectRoot,
     // ELECTRON_RUN_AS_NODE is cleared for the same reason as in the e2e runner:
     // the child must start as Electron even when this script was launched by an
@@ -211,7 +217,7 @@ async function main() {
     console.log('3. driving the interface');
 
     check('window opens with the app title', (await app.evaluate(async ({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0]?.getTitle())) === 'Filmora Engine');
+      BrowserWindow.getAllWindows()[0]?.getTitle())) === 'STOOK CREATOR FILMS');
 
     check('media panel starts empty',
       await window.getByText('Drop files here').isVisible());
@@ -337,6 +343,18 @@ async function main() {
     await window.keyboard.press('\\');
     await window.waitForTimeout(300);
 
+    // Rubber band: from empty space at the bottom right to the top left of the
+    // tracks - both clips on the timeline (the video and the dropped still).
+    const bandBox = await surface.boundingBox();
+    await window.mouse.move(bandBox.x + bandBox.width - 6, bandBox.y + 24 + 58 * 2 + 30);
+    await window.mouse.down();
+    await window.mouse.move(bandBox.x + bandBox.width / 2, bandBox.y + 60, { steps: 6 });
+    await window.mouse.move(bandBox.x + 3, bandBox.y + 26, { steps: 6 });
+    await window.mouse.up();
+    const bandSelected = await window.getByText('2 clips selected', { exact: false })
+      .isVisible().catch(() => false);
+    check('dragging a band over the timeline selects several clips', bandSelected);
+
     /* LUT survives save and reopen ------------------------------------------- */
     await surface.click({ position: { x: 60, y: 80 } });
     await app.evaluate(({ dialog }, lut) => {
@@ -379,10 +397,11 @@ async function main() {
       missingBadges > 0 ? `${missingBadges} missing - ${statusLine}` : 'all restored from disk');
 
     /* Export --------------------------------------------------------------- */
-    // Restore the export path stub, which the project dialogs overwrote.
-    await app.evaluate(({ dialog }, output) => {
-      dialog.showSaveDialog = async () => ({ canceled: false, filePath: output });
-    }, exportPath);
+    // The export picks a FOLDER in a dialog and takes the name from a text
+    // field, so the folder dialog is what gets stubbed.
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, workDir);
 
     await window.getByRole('button', { name: 'Export' }).click();
     await window.getByText('Target bitrate', { exact: false })
@@ -403,8 +422,27 @@ async function main() {
     check('export range fields accept input',
       (await dialog.getByLabel('End frame').inputValue()) === String(EXPORT_FRAMES));
 
+    const resolutionOptions = await dialog.locator('select').filter({ hasText: '4K UHD' }).first()
+      .locator('option').allInnerTexts().catch(() => []);
+    check('the export offers 720p, 1080p, 2K and 4K presets',
+      ['720p', '1080p', '2K', '4K'].every((name) => resolutionOptions.some((text) => text.includes(name))),
+      resolutionOptions.join(' / '));
+
+    await dialog.getByLabel('File name').fill('ui-export');
     await dialog.getByRole('button', { name: 'Browse' }).click();
-    await window.waitForTimeout(500);
+    await dialog.getByText('Will save as', { exact: false }).waitFor({ state: 'visible', timeout: 10_000 });
+    const target = await dialog.getByText('Will save as', { exact: false }).innerText();
+    check('the typed file name decides the output file', target.includes('ui-export.mp4'), target);
+
+    // The thumbnail: the frame under the playhead, embedded as cover art.
+    await dialog.getByRole('button', { name: 'Use the frame at the playhead' }).click();
+    const thumbnailShown = await dialog.getByAltText('Thumbnail')
+      .waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false);
+    check('a thumbnail can be taken from the playhead', thumbnailShown);
+
+    const blurred = await window.evaluate(() =>
+      [...document.querySelectorAll('div')].some((el) => getComputedStyle(el).backdropFilter.includes('blur')));
+    check('the editor behind the export dialog is blurred', blurred);
 
     await dialog.getByRole('button', { name: 'Start export' }).click();
     await window.getByText('Export finished', { exact: false })
@@ -420,6 +458,8 @@ async function main() {
       const summary = await probe(exportPath);
       check('exported file has a video stream', /Video: h264/.test(summary));
       check('exported file has an audio stream', /Audio: aac/.test(summary));
+      check('the thumbnail is embedded as the file cover', /(attached pic)/.test(summary),
+        /(attached pic)/.test(summary) ? 'attached_pic stream present' : 'no cover stream');
 
       // Without this the range fields could silently do nothing and every other
       // check would still pass - it did exactly that once.
@@ -474,8 +514,8 @@ async function main() {
   console.log('4. reopening the project in a brand new session');
   const second = await electron.launch({
     ...(packagedExe
-      ? { executablePath: packagedExe }
-      : { args: [join(projectRoot, 'dist-electron/main/index.js')] }),
+      ? { executablePath: packagedExe, args: [profileArg] }
+      : { args: [profileArg, join(projectRoot, 'dist-electron/main/index.js')] }),
     cwd: projectRoot,
     env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined },
   });

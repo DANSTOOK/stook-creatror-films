@@ -377,6 +377,11 @@ export interface ExportSettings {
    */
   audioPath?: string;
   audioBitrateKbps?: number;
+  /**
+   * Image embedded as the file's cover (MP4 / MOV), the thumbnail players and
+   * Explorer show. Added after the encode by a stream-copy pass.
+   */
+  thumbnailPath?: string;
 }
 
 export interface ExportProgress {
