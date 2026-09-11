@@ -26,6 +26,20 @@ import {
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
 import { planDrop, type DropPlacement } from '@renderer/components/Timeline/dropPlacement';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
+import {
+  insertionRow,
+  moveTrackRow,
+  nextTrackName,
+  timelineRows,
+  trackAccepts,
+  withRowOrders,
+} from '@renderer/components/Timeline/trackRows';
+import {
+  clipsOnTrackExcept,
+  groupMoveCollides,
+  insertIntoTrack,
+  trimLimit,
+} from '@renderer/components/Timeline/trackPacking';
 import { settingsFromAsset } from '@renderer/media/importMedia';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { createSnapshotCommand, useHistoryStore } from './useHistoryStore';
@@ -114,11 +128,14 @@ interface ProjectStore {
 
   /* Tracks --------------------------------------------------------------- */
   addTrack(type: TrackType, name?: string): void;
-  /** Insert a track at a specific position, for "add above / add below". */
-  addTrackAt(type: TrackType, order: number, name?: string): void;
+  /**
+   * Insert a track at a timeline ROW (0 = top), for "add above / add below".
+   * Clamped into its group: picture tracks above, audio below.
+   */
+  addTrackAt(type: TrackType, row?: number, name?: string): void;
   updateTrack(trackId: string, patch: Partial<Track>): void;
   removeTrack(trackId: string): void;
-  /** Move a track up (-1) or down (+1) in the stacking order. */
+  /** Move a track one row up (-1) or down (+1) on screen, within its group. */
   moveTrack(trackId: string, delta: number): void;
 
   /* Clips ---------------------------------------------------------------- */
@@ -144,7 +161,12 @@ interface ProjectStore {
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
-  moveClipTo(clipId: string, trackId: string, startFrame: number): void;
+  /**
+   * Move a clip, inserting it where it lands: clips it would cover on that
+   * track move along. `base` is the clips as they were when a drag began, so
+   * the whole drag is worked out from one starting point.
+   */
+  moveClipTo(clipId: string, trackId: string, startFrame: number, base?: Record<string, Clip>): void;
   /**
    * Put several clips at absolute start frames at once. A group drag calls
    * this on every pointer move with the same `mergeKey`, so the whole drag is
@@ -169,9 +191,6 @@ interface ProjectStore {
   setExportSettings(patch: Partial<ExportSettings>): void;
 }
 
-/** Reassign contiguous order values after an insert, move or delete. */
-const renumber = (tracks: Track[]): Track[] =>
-  tracks.map((track, index) => ({ ...track, order: index }));
 
 /** Keep `durationFrames` at least as long as the content plus a little tail. */
 function withContentLength(project: ProjectState): ProjectState {
@@ -445,19 +464,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   /* Tracks --------------------------------------------------------------- */
 
   addTrack(type, name) {
-    get().transact('Add track', (project) => ({
-      ...project,
-      tracks: [...project.tracks, createTrack(type, project.tracks.length, name)],
-    }));
+    // A new picture track goes on top of the others, a new audio track under
+    // the last one - where every editor puts them.
+    get().addTrackAt(type, undefined, name);
   },
 
-  addTrackAt(type, order, name) {
+  addTrackAt(type, row, name) {
     get().transact('Add track', (project) => {
-      const ordered = [...project.tracks].sort((a, b) => a.order - b.order);
-      const index = clamp(Math.round(order), 0, ordered.length);
-
-      ordered.splice(index, 0, createTrack(type, index, name));
-      return { ...project, tracks: renumber(ordered) };
+      const rows = timelineRows(project.tracks);
+      const at = insertionRow(rows, type, row === undefined ? undefined : Math.round(row));
+      rows.splice(at, 0, createTrack(type, 0, name ?? nextTrackName(project.tracks, type)));
+      return { ...project, tracks: withRowOrders(rows) };
     });
   },
 
@@ -480,9 +497,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return {
         ...project,
         clips,
-        tracks: renumber(
-          [...project.tracks].sort((a, b) => a.order - b.order).filter((t) => t.id !== trackId),
-        ),
+        tracks: withRowOrders(timelineRows(project.tracks).filter((t) => t.id !== trackId)),
       };
     });
     set({ ui: { ...get().ui, selectedClipIds: [], selectedTrackId: null } });
@@ -490,15 +505,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   moveTrack(trackId, delta) {
     get().transact('Reorder track', (project) => {
-      const ordered = [...project.tracks].sort((a, b) => a.order - b.order);
-      const index = ordered.findIndex((track) => track.id === trackId);
-      const target = index + delta;
-
-      if (index === -1 || target < 0 || target >= ordered.length) return project;
-
-      const [moved] = ordered.splice(index, 1);
-      ordered.splice(target, 0, moved);
-      return { ...project, tracks: renumber(ordered) };
+      // One row up or down on screen, never out of its group: a picture track
+      // does not go below the audio.
+      const rows = moveTrackRow(timelineRows(project.tracks), trackId, delta < 0 ? -1 : 1);
+      return rows ? { ...project, tracks: withRowOrders(rows) } : project;
     });
   },
 
@@ -527,9 +537,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   placeAssets(assets, placements) {
     const byId = new Map(assets.map((asset) => [asset.id, asset]));
     const created: string[] = [];
+    const placed: [number, number][] = [];
 
     get().transact('Add clips', (project) => {
-      const tracks = [...project.tracks];
+      let rows = timelineRows(project.tracks);
       const clips = { ...project.clips };
       const newTracks = new Map<Track['type'], string>();
 
@@ -539,29 +550,42 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
         let trackId = placement.trackId;
         if (!trackId) {
-          // One new track per type, shared by every placement that needs it.
+          // One new track per type, shared by every placement that needs it,
+          // where a new track of that type goes: pictures on top, audio last.
           trackId = newTracks.get(placement.trackType) ?? null;
           if (!trackId) {
-            const track = createTrack(placement.trackType, tracks.length);
-            tracks.push(track);
+            const track = createTrack(placement.trackType, 0, nextTrackName(rows, placement.trackType));
+            rows = [...rows];
+            rows.splice(insertionRow(rows, placement.trackType), 0, track);
             newTracks.set(placement.trackType, track.id);
             trackId = track.id;
           }
         }
 
+        // Inserted where it was put: a still dropped just before a video goes
+        // there and the video moves along, instead of the two overlapping in
+        // the export (point 8).
+        const insertion = insertIntoTrack(
+          clipsOnTrackExcept(clips, trackId, new Set()),
+          placement.startFrame,
+          placement.durationFrames,
+        );
+        for (const [id, start] of insertion.shifts) clips[id] = moveClip(clips[id], start);
+
         const clip = createClip({
           trackId,
           name: asset.name,
           sourceUri: asset.uri,
-          startFrame: placement.startFrame,
+          startFrame: insertion.startFrame,
           durationFrames: placement.durationFrames,
           hasAlphaChannel: asset.hasAlphaChannel,
         });
         clips[clip.id] = clip;
         created.push(clip.id);
+        placed.push([insertion.startFrame, insertion.startFrame + placement.durationFrames]);
       }
 
-      return created.length > 0 ? { ...project, tracks, clips } : project;
+      return created.length > 0 ? { ...project, tracks: withRowOrders(rows), clips } : project;
     });
 
     if (created.length > 0) {
@@ -569,9 +593,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
       // Whatever was just added is shown. It used to land wherever it landed,
       // often far off to the right, and the editor had to go and find it.
-      const starts = placements.map((placement) => placement.startFrame);
-      const ends = placements.map((placement) => placement.startFrame + placement.durationFrames);
-      get().revealFrames(Math.min(...starts), Math.max(...ends));
+      get().revealFrames(Math.min(...placed.map(([start]) => start)), Math.max(...placed.map(([, end]) => end)));
     }
     return created;
   },
@@ -643,9 +665,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         if (!source) continue;
 
         // The copy lands directly after the original, which is where an editor
-        // expects a duplicate to appear.
-        const startFrame = source.startFrame + source.durationFrames;
-        const copy = moveClip({ ...structuredClone(source), id: createId('clip') }, startFrame);
+        // expects a duplicate to appear - inserted, so a clip that was right
+        // after the original moves along rather than being covered.
+        const insertion = insertIntoTrack(
+          clipsOnTrackExcept(clips, source.trackId, new Set()),
+          source.startFrame + source.durationFrames,
+          source.durationFrames,
+        );
+        for (const [shiftedId, start] of insertion.shifts) clips[shiftedId] = moveClip(clips[shiftedId], start);
+        const copy = moveClip({ ...structuredClone(source), id: createId('clip') }, insertion.startFrame);
 
         clips[copy.id] = copy;
         copies.push(copy);
@@ -657,12 +685,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ ui: { ...get().ui, selectedClipIds: copies.map((clip) => clip.id) } });
   },
 
-  moveClipTo(clipId, trackId, startFrame) {
-    const { project, ui } = get();
+  moveClipTo(clipId, trackId, startFrame, base) {
+    const { project, ui, assets } = get();
     const clip = project.clips[clipId];
     if (!clip) return;
 
-    const targets = collectSnapTargets(project, { excludeClipIds: [clipId] });
+    // Sound stays on audio tracks and pictures on picture tracks; a drag onto
+    // the wrong kind keeps the clip on its own track and only moves it in time.
+    const target = project.tracks.find((track) => track.id === trackId);
+    const kind = assets.find((asset) => asset.uri === clip.sourceUri)?.kind;
+    if (!target || target.locked || !trackAccepts(target, kind)) trackId = clip.trackId;
+
+    // Everything is worked out from the clips as they were when the drag
+    // began: a clip pushed aside a moment ago goes back when the dragged one
+    // moves on, instead of staying pushed.
+    const from = base ?? project.clips;
+    const targets = collectSnapTargets({ ...project, clips: from }, { excludeClipIds: [clipId] });
     const snap = snapClipMove(startFrame, clip.durationFrames, targets, {
       pixelsPerFrame: ui.pixelsPerFrame,
       enabled: ui.snappingEnabled,
@@ -671,15 +709,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().transact(
       'Move clip',
       (current) => {
-        const target = current.clips[clipId];
-        if (!target) return current;
-        return {
-          ...current,
-          clips: {
-            ...current.clips,
-            [clipId]: moveClip(target, Math.max(0, snap.frame), trackId),
-          },
-        };
+        const moving = current.clips[clipId];
+        if (!moving) return current;
+
+        const clips = { ...current.clips };
+        if (base) {
+          for (const [id, original] of Object.entries(base)) if (id !== clipId && clips[id]) clips[id] = original;
+        }
+
+        // Inserted where it lands; whatever it would cover moves along (point 8).
+        const insertion = insertIntoTrack(
+          clipsOnTrackExcept(clips, trackId, new Set([clipId])),
+          Math.max(0, snap.frame),
+          moving.durationFrames,
+        );
+        for (const [id, start] of insertion.shifts) clips[id] = moveClip(clips[id], start);
+        clips[clipId] = moveClip(moving, insertion.startFrame, trackId);
+        return { ...current, clips };
       },
       `move:${clipId}`,
     );
@@ -689,6 +735,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().transact(
       'Move clips',
       (project) => {
+        // A group stops against a clip that is not moving rather than landing
+        // on it (point 8).
+        if (groupMoveCollides(project.clips, starts)) return project;
+
         const locked = new Set(project.tracks.filter((t) => t.locked).map((t) => t.id));
         const clips = { ...project.clips };
         let changed = false;
@@ -716,10 +766,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (!clip) return;
 
     const targets = collectSnapTargets(project, { excludeClipIds: [clipId] });
-    const snapped = snapFrame(frame, targets, {
+    let snapped = snapFrame(frame, targets, {
       pixelsPerFrame: ui.pixelsPerFrame,
       enabled: ui.snappingEnabled,
     }).frame;
+
+    // An edge stops at its neighbour: a trimmed clip never grows over the next
+    // one on its track (point 8 - clips on a track never overlap).
+    const limit = trimLimit(project.clips, clip, edge);
+    snapped = edge === 'start' ? Math.max(snapped, limit) : Math.min(snapped, limit);
 
     get().transact(
       edge === 'start' ? 'Trim clip in' : 'Trim clip out',

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useHistoryStore } from '@renderer/store/useHistoryStore';
 import { createClip } from '@renderer/store/types';
+import { timelineRows } from '@renderer/components/Timeline/trackRows';
 
 /**
  * Track and clip management through the store.
@@ -13,8 +14,8 @@ import { createClip } from '@renderer/store/types';
  */
 
 const state = () => useProjectStore.getState();
-const trackNames = (): string[] =>
-  [...state().project.tracks].sort((a, b) => a.order - b.order).map((track) => track.name);
+/** Track names as the timeline shows them, top row first. */
+const trackNames = (): string[] => timelineRows(state().project.tracks).map((track) => track.name);
 
 beforeEach(() => {
   useProjectStore.getState().newProject();
@@ -26,7 +27,11 @@ describe('track ordering', () => {
     expect([...state().project.tracks].map((t) => t.order).sort()).toEqual([0, 1, 2]);
   });
 
-  it('inserts a track above the given position', () => {
+  it('shows picture tracks on top, the covering one first, then audio', () => {
+    expect(trackNames()).toEqual(['Video 2', 'Video 1', 'Audio 1']);
+  });
+
+  it('inserts a track at the given row', () => {
     const before = trackNames();
     state().addTrackAt('video', 1, 'Inserted');
 
@@ -39,6 +44,13 @@ describe('track ordering', () => {
     expect(trackNames().at(-1)).toBe('Last');
   });
 
+  it('keeps a picture track above the audio whatever row it is asked for', () => {
+    state().addTrackAt('video', 99, 'Low video');
+    expect(trackNames()).toEqual(['Video 2', 'Video 1', 'Low video', 'Audio 1']);
+    state().addTrackAt('audio', 0, 'High audio');
+    expect(trackNames()).toEqual(['Video 2', 'Video 1', 'Low video', 'High audio', 'Audio 1']);
+  });
+
   it('keeps order values contiguous after an insert', () => {
     state().addTrackAt('video', 1, 'Inserted');
     const orders = [...state().project.tracks].map((t) => t.order).sort((a, b) => a - b);
@@ -47,21 +59,23 @@ describe('track ordering', () => {
 
   it('moves a track down and back up again', () => {
     const original = trackNames();
-    const first = state().project.tracks.find((t) => t.order === 0)!;
+    const top = timelineRows(state().project.tracks)[0];
 
-    state().moveTrack(first.id, 1);
+    state().moveTrack(top.id, 1);
     expect(trackNames()[1]).toBe(original[0]);
 
-    state().moveTrack(first.id, -1);
+    state().moveTrack(top.id, -1);
     expect(trackNames()).toEqual(original);
   });
 
-  it('refuses to move past either end', () => {
-    const ordered = [...state().project.tracks].sort((a, b) => a.order - b.order);
+  it('refuses to move past either end, or out of its group', () => {
+    const rows = timelineRows(state().project.tracks);
     const before = trackNames();
 
-    state().moveTrack(ordered[0].id, -1);
-    state().moveTrack(ordered[ordered.length - 1].id, 1);
+    state().moveTrack(rows[0].id, -1);
+    state().moveTrack(rows[rows.length - 1].id, 1);
+    // The lowest picture track cannot go below the audio.
+    state().moveTrack(rows[1].id, 1);
 
     expect(trackNames()).toEqual(before);
   });

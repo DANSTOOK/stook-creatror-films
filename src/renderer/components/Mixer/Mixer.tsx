@@ -3,6 +3,7 @@ import type { AudioBus, Clip, Track } from '@shared/types';
 import { NEUTRAL_EQ } from '@shared/types';
 import { hasSoloedTrack, isTrackAudible } from '@renderer/audio/mixRouting';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { timelineRows } from '@renderer/components/Timeline/trackRows';
 
 /**
  * The mixer.
@@ -219,7 +220,8 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
   const setDucking = useProjectStore((state) => state.setDucking);
 
   const anySolo = hasSoloedTrack(project);
-  const tracks = [...project.tracks].sort((a, b) => a.order - b.order);
+  // Same order as the timeline rows.
+  const tracks = timelineRows(project.tracks);
   const clip = selectedIds.length === 1 ? project.clips[selectedIds[0]] : undefined;
   const ducking = project.audio.ducking;
 

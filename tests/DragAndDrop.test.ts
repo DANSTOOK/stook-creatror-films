@@ -55,11 +55,13 @@ describe('planDrop', () => {
     expect(placements.map((entry) => entry.startFrame)).toEqual([100, 160, 200]);
   });
 
-  it('never covers an existing clip: an overlapping drop moves to its end', () => {
+  // Point 8: planDrop keeps the drop point; what the clip would cover is
+  // settled by insertIntoTrack when it is placed (tests/StrictSequence.test.ts).
+  it('keeps the drop point even over a clip, for the insertion to settle', () => {
     const p = project();
     const occupied = withClip(p, p.v1, 50, 100); // frames 50-150
     const [placement] = planDrop(occupied, [video('a', 30)], p.v1, 80);
-    expect(placement.startFrame).toBe(150);
+    expect(placement.startFrame).toBe(80);
   });
 
   it('slips into a gap that is big enough', () => {
@@ -70,12 +72,13 @@ describe('planDrop', () => {
     expect(placement.startFrame).toBe(60);
   });
 
-  it('skips a gap that is too small instead of overlapping the next clip', () => {
+  it('keeps a drop into a gap too small for it where it was dropped', () => {
     const p = project();
     let occupied = withClip(p, p.v1, 0, 50);
     occupied = withClip(occupied, p.v1, 70, 50); // gap 50-70 is only 20 long
     const [placement] = planDrop(occupied, [video('a', 60)], p.v1, 50);
-    expect(placement.startFrame).toBe(120);
+    // Not pushed past the next clip any more: inserted here, it moves along.
+    expect(placement.startFrame).toBe(50);
   });
 
   it('does not drop onto a locked track', () => {

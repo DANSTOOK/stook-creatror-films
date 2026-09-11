@@ -46,6 +46,11 @@ const profileArg = `--user-data-dir=${join(workDir, 'profile')}`;
 // picture from the wrong moment is then unmistakable.
 const EXPORT_FRAMES = 60;
 
+// Timeline rows, top to bottom: Video 2 (covers), Video 1, Audio 1. Centres,
+// from the top of the timeline canvas: 24 px ruler, then 58 px per row.
+const VIDEO2_ROW_Y = 24 + 28;
+const VIDEO1_ROW_Y = 24 + 58 + 28;
+
 const checks = [];
 const check = (name, passed, detail = '') => {
   checks.push({ name, passed, detail });
@@ -243,7 +248,9 @@ async function main() {
     await assetRow.getByTitle(/Add at the playhead/).click();
 
     // The inspector is the observable proof a clip exists and is selectable.
-    await window.locator('canvas').last().click({ position: { x: 60, y: 80 } });
+    // The clip lands on Video 1, the lower of the two picture rows (the one
+    // above covers it, as in every editor).
+    await window.locator('canvas').last().click({ position: { x: 60, y: VIDEO1_ROW_Y } });
     const inspectorHasClip = await window.getByText('TRANSFORM').isVisible().catch(() => false);
     check('clip lands on the timeline and can be selected', inspectorHasClip);
 
@@ -325,12 +332,12 @@ async function main() {
       .waitFor({ state: 'visible', timeout: 30_000 }).then(() => true).catch(() => false);
     check('dropping a file on the media panel imports it', panelDropped);
 
-    // Onto the timeline, on the second track, well past the export range so the
+    // Onto the timeline, on the other picture track (the top row), well past the export range so the
     // frame-accuracy check below still compares the source video alone.
     await dropFiles(
       [timelineDropImage],
       'timeline',
-      { x: 1100, y: 24 + 58 + 20 },
+      { x: 1100, y: VIDEO2_ROW_Y },
     );
     const droppedOnTimeline = await window.locator('aside').filter({ hasText: 'TRANSFORM' })
       .getByText('drop.png', { exact: true }).first()
@@ -390,11 +397,10 @@ async function main() {
       return { frame: project.currentFrame, clips: Object.values(project.clips).map((c) => [c.trackId, c.startFrame, c.durationFrames]) };
     });
     // Put the playhead a third of the way into the video clip via the ruler.
-    const videoClip = await window.evaluate(() => {
+    const videoClip = await window.evaluate((name) => {
       const { project } = window.__scfStore.getState();
-      const video = project.tracks.find((t) => t.type === 'video');
-      return Object.values(project.clips).filter((c) => c.trackId === video.id).sort((a, b) => b.durationFrames - a.durationFrames)[0];
-    });
+      return Object.values(project.clips).find((c) => c.name === name);
+    }, assetName);
     const ppf = await window.evaluate(() => window.__scfStore.getState().ui.pixelsPerFrame);
     const scroll = await window.evaluate(() => window.__scfStore.getState().ui.scrollLeftPx);
     const frameX = (f) => bandBox.x + f * ppf - scroll;
@@ -410,7 +416,7 @@ async function main() {
       return project.tracks.filter((t) => t.type === 'video').length;
     });
     const beforeCut = (await clipsNow()).clips.length;
-    await window.mouse.click(frameX(videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)), bandBox.y + 24 + 20);
+    await window.mouse.click(frameX(videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)), bandBox.y + VIDEO1_ROW_Y);
     const afterRazor = await clipsNow();
     const halves = afterRazor.clips.filter((c) => c[0] === videoClip.trackId).sort((a, b) => a[1] - b[1]);
     const boundary = halves.find((c) => c[1] > videoClip.startFrame)?.[1];
@@ -430,7 +436,7 @@ async function main() {
     await window.keyboard.press('Control+z');
 
     /* LUT survives save and reopen ------------------------------------------- */
-    await surface.click({ position: { x: 60, y: 80 } });
+    await surface.click({ position: { x: 60, y: VIDEO1_ROW_Y } });
     await app.evaluate(({ dialog }, lut) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [lut] });
     }, lutPath);
@@ -455,7 +461,7 @@ async function main() {
       .waitFor({ state: 'visible', timeout: 30_000 });
 
     // Reopening clears the selection, so the clip has to be picked again.
-    await surface.click({ position: { x: 60, y: 80 } });
+    await surface.click({ position: { x: 60, y: VIDEO1_ROW_Y } });
     const lutSurvived = await window.getByText('identity.cube', { exact: false })
       .isVisible().catch(() => false);
     check('LUT survives saving and reopening the project', lutSurvived);
@@ -469,6 +475,28 @@ async function main() {
     check('media survives saving and reopening the project (dropped files too)',
       missingBadges === 0 && !/could not be found/.test(statusLine),
       missingBadges > 0 ? `${missingBadges} missing - ${statusLine}` : 'all restored from disk');
+
+    /* Point 7: several video and audio tracks -------------------------------- */
+    // Read off the track headers, top to bottom, as the user sees them.
+    const headerNames = () => window.evaluate(() =>
+      [...document.querySelectorAll('button, span, div')]
+        .filter((el) => el.children.length === 0 && /^(Video|Audio) \d+$/.test(el.textContent.trim()))
+        .map((el) => ({ name: el.textContent.trim(), y: el.getBoundingClientRect().top }))
+        .sort((a, b) => a.y - b.y)
+        .map((entry) => entry.name));
+    await window.getByTitle('Add video track').click();
+    await window.getByTitle('Add audio track').click();
+    const rowsShown = [...new Set(await headerNames())];
+    check('a new video track goes on top and a new audio track at the bottom',
+      rowsShown.join(',') === 'Video 3,Video 2,Video 1,Audio 1,Audio 2', rowsShown.join(' / '));
+    // Stacking follows the rows: the top row has the highest compositing order.
+    const stacking = await window.evaluate(() => {
+      const tracks = window.__scfStore.getState().project.tracks.filter((t) => t.type === 'video');
+      return tracks.sort((a, b) => b.order - a.order).map((t) => t.name).join(',');
+    });
+    check('the top video row covers the ones below it', stacking === 'Video 3,Video 2,Video 1', stacking);
+    await window.keyboard.press('Control+z');
+    await window.keyboard.press('Control+z');
 
     /* Export --------------------------------------------------------------- */
     // The export picks a FOLDER in a dialog and takes the name from a text

@@ -396,6 +396,29 @@ picture and sound:
   strips, ramped in and out over 6 ms, at most one per 45 ms, with the last
   position of a drag always sounding.
 
+## Tracks
+
+`components/Timeline/trackRows.ts` owns the layout. Picture tracks are on top,
+the one that covers the others first; audio tracks underneath, the first
+nearest the picture. `Track.order` is still the compositing order (higher
+covers lower) and what gets saved; `timelineRows` maps it to rows and
+`withRowOrders` back, so projects from before this layout render exactly as
+they did - only their video rows are displayed the other way up. New picture
+tracks go on top, new audio tracks at the bottom, and moving a track never
+takes it out of its group. `trackAccepts` keeps sound on audio tracks and
+pictures on picture tracks.
+
+## One track, one clip at a time
+
+Clips on a track never overlap (`components/Timeline/trackPacking.ts`).
+Anything placed where clips already are is inserted: landing in the first
+half of a clip goes before it, in the second half after it, and every clip it
+would cover is pushed right only as far as needed. Placing, dropping, moving
+and duplicating all go through `insertIntoTrack`; a single-clip drag is worked
+out from the clips as they were when it began, so a clip pushed aside goes
+back once the drag moves on. Trims stop at the neighbour (`trimLimit`), and a
+group move stops against clips that are not moving (`groupMoveCollides`).
+
 ## Cutting
 
 Cuts land on the playhead line (`razorClick` in `timelineOps.ts`). A razor

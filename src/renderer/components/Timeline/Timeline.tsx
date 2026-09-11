@@ -33,6 +33,7 @@ import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
 import { clipsInMarquee, groupMoveStarts } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
 import { emitScrub } from '@renderer/audio/scrubAudio';
+import { canMoveTrack, timelineRows } from './trackRows';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
@@ -53,7 +54,13 @@ type DragMode =
   | { kind: 'scrub' }
   /** Pressed the scissors on the playhead: a click cuts, a drag scrubs. */
   | { kind: 'scissors'; startClientX: number }
-  | { kind: 'move';clipId: string; grabOffsetFrames: number }
+  | {
+      kind: 'move';
+      clipId: string;
+      grabOffsetFrames: number;
+      /** The clips when the drag began: clips pushed aside go back if passed. */
+      base: Record<string, Clip>;
+    }
   | { kind: 'trim'; clipId: string; edge: 'start' | 'end' }
   | { kind: 'pan'; startClientX: number; startScrollLeft: number }
   | {
@@ -108,7 +115,8 @@ export function Timeline(): JSX.Element {
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
-  const tracks = [...project.tracks].sort((a, b) => a.order - b.order);
+  // Picture tracks on top, the topmost layer first; audio underneath.
+  const tracks = timelineRows(project.tracks);
   const renamingMarker = project.markers.find((marker) => marker.id === renamingMarkerId);
   const contentWidth = Math.max(
     viewportWidth,
@@ -222,13 +230,14 @@ export function Timeline(): JSX.Element {
         {
           label: 'Move up',
           icon: ArrowUp,
-          disabled: index === 0,
+          // Within its group: a picture track never goes below the audio.
+          disabled: !canMoveTrack(tracks, track.id, -1),
           onSelect: () => state.moveTrack(track.id, -1),
         },
         {
           label: 'Move down',
           icon: ArrowDown,
-          disabled: index === tracks.length - 1,
+          disabled: !canMoveTrack(tracks, track.id, 1),
           onSelect: () => state.moveTrack(track.id, 1),
         },
         { separator: true },
@@ -567,6 +576,7 @@ export function Timeline(): JSX.Element {
         kind: 'move',
         clipId: hit.clip.id,
         grabOffsetFrames: pointerFrame - hit.clip.startFrame,
+        base: store.getState().project.clips,
       };
     },
     [clipAtPoint, store, ui.pixelsPerFrame, ui.scrollLeftPx],
@@ -687,14 +697,15 @@ export function Timeline(): JSX.Element {
       const targetTrack = tracks[trackIndexAtY(y)] ?? tracks.find((t) => t.id === clip.trackId);
       if (!targetTrack || targetTrack.locked) return;
 
-      const targets = collectSnapTargets(state.project, { excludeClipIds: [clip.id] });
+      // Snap against where clips were before the drag pushed any aside.
+      const targets = collectSnapTargets({ ...state.project, clips: drag.base }, { excludeClipIds: [clip.id] });
       const snap = snapClipMove(rawStart, clip.durationFrames, targets, {
         pixelsPerFrame: ui.pixelsPerFrame,
         enabled: state.ui.snappingEnabled,
       });
 
       setActiveSnap(snap.snapped ? (snap.target ?? null) : null);
-      state.moveClipTo(clip.id, targetTrack.id, snap.frame);
+      state.moveClipTo(clip.id, targetTrack.id, snap.frame, drag.base);
     },
     [clipAtPoint, store, tracks, ui.pixelsPerFrame, ui.scrollLeftPx],
   );

@@ -7,11 +7,65 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **352 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **32/32 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, opciones de exportación y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **374 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **34/34 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.7.0-beta.1 — Varias pistas y clips siempre en secuencia
+2026-09-11 · pre-release para probar
+
+Puntos 7 y 8 del plan.
+
+### Cambiado
+- **Las pistas se ordenan como en cualquier editor** (punto 7). Las pistas
+  de vídeo van arriba y la de más arriba **tapa** a las de abajo. Las de
+  audio van debajo. Antes era al revés: la fila de arriba quedaba por
+  debajo en la imagen, y "+ Video" añadía la pista nueva **debajo del
+  audio**.
+  - "+ Video" pone la pista nueva encima de las demás ("Video 3" sobre
+    "Video 2"). "+ Audio" la pone debajo de la última. Los números no se
+    repiten.
+  - "Subir" y "Bajar" no sacan una pista de su grupo: una de vídeo nunca
+    baja por debajo del audio.
+  - El mezclador muestra las pistas en el mismo orden.
+  - **Tus proyectos anteriores se exportan igual que antes.** Solo se
+    muestran al revés las filas de vídeo, que es lo que hace que la de
+    arriba sea la que tapa.
+- **Cada cosa en su tipo de pista** (punto 7). Un clip de audio no se puede
+  arrastrar a una pista de vídeo, ni una imagen o un vídeo a una de audio;
+  si lo intentas, el clip solo se mueve en el tiempo en su pista. El sonido
+  de un vídeo sigue sonando desde su propio clip.
+
+### Arreglado
+- **Una imagen puesta antes de un vídeo se superponía en la exportación**
+  (punto 8). Ahora, en una misma pista, los clips van estrictamente uno
+  detrás de otro: lo que pones donde ya hay algo se **inserta** ahí, y lo
+  que taparía se desplaza para dejarle sitio.
+  - **Soltar o añadir** una imagen justo antes de un vídeo la deja donde la
+    soltaste y mueve el vídeo detrás. Antes la mandaba detrás del vídeo, y
+    al arrastrarla de vuelta a su sitio acababa encima.
+  - **Mover** un clip sobre otro: si cae en la primera mitad va delante, y
+    en la segunda, detrás; el otro se aparta. Si sigues arrastrando, el que
+    se apartó vuelve a su sitio.
+  - **Recortar** un borde se para al llegar al clip vecino.
+  - **Duplicar** inserta la copia y desplaza lo que venía después.
+  - **Mover varios clips a la vez** se detiene al chocar con un clip que no
+    se mueve.
+  - *Comprobado:* 10 pruebas en `StrictSequence.test.ts`, incluido el caso
+    exacto: imagen de 150 fotogramas soltada 30 antes de un vídeo, y en la
+    exportación se dibuja **un solo clip por fotograma**. Además, 10 pruebas
+    de pistas en `MultiTrack.test.ts` y dos comprobaciones nuevas en la
+    prueba de interfaz (34/34).
+
+### Problemas conocidos
+- Mover un clip a otro sitio deja su hueco. Cerrar huecos automáticamente
+  al cortar, mover o borrar (el imán) es el punto 9.
+- Un proyecto antiguo que ya tenga clips superpuestos en una misma pista
+  se abre tal cual; la regla se aplica a partir de la siguiente edición.
 
 ---
 
