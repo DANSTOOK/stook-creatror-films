@@ -49,7 +49,8 @@ src/
     ipc/fileSystem.ts      Native dialogs, allowlisted file I/O, ffprobe
     exporter/
       EncoderPipeline.ts   Raw RGBA -> ffmpeg stdin, with backpressure
-      HardwareAccel.ts     NVENC / QuickSync / VideoToolbox / AMF selection
+      HardwareAccel.ts     Encoder probing (real encodes) and codec arguments
+    gpu/                   GPU list, saved preference, startup switch
   renderer/
     App.tsx                Layout grid
     engine/
@@ -180,6 +181,38 @@ baseline-first would silently fail every 4K export.
 
 The encoder is configured with `avc: { format: 'annexb' }`, so chunks begin with
 the `00 00 00 01` start code that ffmpeg's `-f h264` demuxer expects.
+
+## Choosing the GPU
+
+The export dialog's **Hardware** section picks two things, measured rather
+than assumed:
+
+- **Render with** - the GPU Chromium composites on: automatic, dedicated or
+  integrated, listed by real name. Chromium picks its adapter once, at startup,
+  from `force_high_performance_gpu` / `force_low_power_gpu`, and only honours
+  switches appended before `ready`. So the choice is saved in the app's
+  settings (`userData/gpu-settings.json`, not the project - it is a property of
+  the machine) and applied on the next launch; the dialog offers a restart.
+- **Encoder** - only encoders that actually produced frames on this machine.
+  The bundled ffmpeg is *built* with NVENC, Quick Sync and AMF everywhere, so
+  asking it what it contains says nothing about the hardware; each candidate
+  encodes five frames instead, once per session.
+
+Names come from Windows (`Win32_VideoController`) matched on PCI ids, because
+`app.getGPUInfo` has the ids and Chromium's own dedicated/integrated
+classification but no names. Vendor alone does not decide the class - Intel
+also makes discrete cards.
+
+**Automatic** encoding prefers WebCodecs (the frame never leaves the GPU), then
+the hardware encoder on the GPU the compositor runs on, then the CPU. An
+explicit choice is always honoured; it used to be silently replaced by
+WebCodecs.
+
+`npm run test:gpu` launches the real app on each GPU and exports through every
+offered encoder. It proves a hardware encode really happened by the absence of
+libx264's `x264 - core` stamp in the stream, which no hardware encoder writes.
+`FILMORA_GPU=high-performance|low-power|auto` overrides the saved preference
+for a single run.
 
 ## Audio mixing
 
@@ -417,7 +450,7 @@ re-mixed somebody's edit.
 
 ## Tests
 
-243 unit tests across fifteen suites, run with `npm test`:
+267 unit tests across sixteen suites, run with `npm test`:
 
 - `KeyframeEvaluator.test.ts` - bezier endpoints and monotonicity, easing
   direction, hold-outside-range, vector and scalar interpolation, unsorted-track
@@ -454,3 +487,10 @@ re-mixed somebody's edit.
   1-frame clip never rounded away, no-op and nonsense rates refused; plus the
   store wiring (export settings kept in step, undoable) and the version 1
   migration.
+- `GpuSelection.test.ts` - GPU classification from the ids and names measured
+  on an RTX 4060 + Intel UHD laptop (software rasterizer dropped, Intel Arc not
+  assumed integrated), PNP id parsing, encoder-to-GPU matching, preference
+  switches and their validation, real-encode probing, and the encoder plan:
+  an explicit encoder beats WebCodecs, the CPU is honoured, automatic follows
+  the compositor's GPU, an unavailable saved encoder is reported, and alpha or
+  non-MP4 formats stay on the CPU.

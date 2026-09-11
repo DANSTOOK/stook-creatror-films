@@ -7,10 +7,60 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **243 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo** y **17/17 comprobaciones de interfaz**
-contra la compilación de desarrollo. Las 18/18 contra el ejecutable empaquetado
-y sin red son de la v1.0 y no se han repetido tras la v1.1.
+Cifras de referencia al día de hoy: **267 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **17/17 comprobaciones de interfaz** y
+**22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD),
+todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
+empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.2.0-beta.1 — Exportación por GPU
+2026-09-10 · pre-release para probar
+
+Elegir con qué GPU se compone y con qué codificador se exporta, entre los que
+de verdad funcionan en el equipo.
+
+### Añadido
+- **"Render with"** en el diálogo de exportación: automático, GPU dedicada o
+  GPU integrada, cada una con su nombre real (p. ej. *NVIDIA GeForce RTX 4060
+  Laptop GPU*, *Intel(R) UHD Graphics*). Se guarda en los ajustes de la app, no
+  en el proyecto, y se aplica al arrancar con los interruptores de Chromium
+  `force_high_performance_gpu` / `force_low_power_gpu`; el diálogo ofrece
+  reiniciar.
+  - *Comprobado:* con cada preferencia, el compositor WebGL arranca en la GPU
+    pedida (ANGLE informa *RTX 4060* o *Intel UHD*).
+- **"Encoder"**: automático, cada codificador de GPU que funciona (con su GPU),
+  o CPU. El diálogo dice con qué se va a codificar antes de empezar, y el
+  mensaje final dice con qué se codificó.
+- **`npm run test:gpu`**: arranca la app real en cada GPU y exporta con cada
+  codificador ofrecido. Comprueba códec, que llegan todos los fotogramas
+  (decodificándolos) y que un codificador de GPU **no** cayó a la CPU: libx264
+  deja su firma `x264 - core` en el flujo y ningún codificador de hardware lo
+  hace. *Comprobado:* **22/22** en el equipo de referencia.
+
+### Arreglado
+- **La app ofrecía codificadores que no existen en el equipo.** Solo miraba si
+  el ffmpeg incluido los traía compilados, y los trae todos. En el equipo de
+  referencia ofrecía AMD AMF sin haber GPU AMD: `AMFQueryVersion failed`. Ahora
+  cada candidato codifica 5 fotogramas al abrir el diálogo y solo se ofrece si
+  lo consigue. *Comprobado:* aquí funcionan NVENC y Quick Sync; AMF ya no
+  aparece.
+- **Elegir un codificador no servía de nada en MP4.** Si WebCodecs podía con el
+  formato, se usaba WebCodecs se eligiera lo que se eligiera. Una elección
+  explícita ahora se respeta. *Comprobado:* prueba unitaria del caso exacto, y
+  `test:gpu` exporta con NVENC y con Quick Sync y verifica que no hay firma
+  x264.
+- El mensaje final decía "software encode" aunque ffmpeg codificara con la GPU.
+- El interruptor de decodificación HEVC se añadía después de `ready`, cuando
+  Chromium ya lo ignora. Ahora se añade antes. *Sin verificar* su efecto.
+
+### Sin verificar
+- Equipos con dos GPU del **mismo** fabricante (APU AMD + Radeon): el
+  codificador se asocia a la dedicada, pero ffmpeg abre el dispositivo por
+  defecto y no se ha podido comprobar cuál es.
+- macOS y Linux: la clasificación y la prueba de codificadores están escritas
+  para ellos, pero solo se ha ejecutado en Windows.
 
 ---
 

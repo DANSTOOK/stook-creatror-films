@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderOpen, Loader2, X } from 'lucide-react';
-import type { ExportFormat, ExportProgress, HardwareEncoder } from '@shared/types';
+import type {
+  ExportFormat,
+  ExportProgress,
+  GpuPreference,
+  GpuReport,
+  HardwareEncoder,
+} from '@shared/types';
+import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPlan';
+import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { renderTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
@@ -23,12 +31,10 @@ const FORMATS: { value: ExportFormat; label: string; alpha: boolean }[] = [
   { value: 'mp4-h265', label: 'MP4 / H.265', alpha: false },
 ];
 
-const ENCODER_LABELS: Record<HardwareEncoder, string> = {
-  none: 'Software',
-  nvenc: 'NVIDIA NVENC',
-  qsv: 'Intel QuickSync',
-  videotoolbox: 'Apple VideoToolbox',
-  amf: 'AMD AMF',
+const PREFERENCE_LABELS: Record<GpuPreference, string> = {
+  auto: 'Automatic (let Windows decide)',
+  'high-performance': 'Dedicated GPU',
+  'low-power': 'Integrated GPU',
 };
 
 export interface ExportDialogProps {
@@ -41,7 +47,9 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
   const settings = useProjectStore((state) => state.exportSettings);
   const setExportSettings = useProjectStore((state) => state.setExportSettings);
 
-  const [encoders, setEncoders] = useState<HardwareEncoder[]>(['none']);
+  const [gpu, setGpu] = useState<GpuReport | null>(null);
+  const [webCodecs, setWebCodecs] = useState<CodecSupport | null>(null);
+  const [savedPreference, setSavedPreference] = useState<GpuPreference | null>(null);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -61,9 +69,40 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
     });
 
-    void window.filmora.detectEncoders().then(setEncoders);
+    // Probing encodes a few frames per candidate, so it runs once per session
+    // in the main process and is cached there.
+    void window.filmora.gpuReport().then((report) => {
+      setGpu(report);
+      setSavedPreference(report.preference);
+    });
     // Intentionally runs once, on open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // What WebCodecs would take for the current settings, for the plan preview.
+  useEffect(() => {
+    let cancelled = false;
+    void detectCodecSupport(settings).then((support) => {
+      if (!cancelled) setWebCodecs(support);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [settings]);
+
+  const activeGpu = gpu?.devices.find((device) => device.active) ?? null;
+  const plan = resolveEncoderPlan({
+    settings,
+    webCodecs,
+    encoders: gpu?.encoders ?? [],
+    activeGpu,
+  });
+  const restartPending =
+    gpu !== null && savedPreference !== null && savedPreference !== gpu.appliedPreference;
+
+  const chooseGpu = useCallback(async (preference: GpuPreference) => {
+    await window.filmora.setGpuPreference(preference);
+    setSavedPreference(preference);
   }, []);
 
   useEffect(() => window.filmora.onExportProgress(setProgress), []);
@@ -129,12 +168,20 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
         }
       }
 
-      // Prefer GPU-side encoding when the format allows it: the frame never
-      // leaves the GPU as raw pixels, so only compressed chunks cross IPC.
-      const support = await detectCodecSupport(settings);
+      // Resolve the encoder the same way the preview did, but against a fresh
+      // WebCodecs probe: the settings may have changed since it last ran.
+      const probed = await detectCodecSupport(settings);
+      const jobPlan = resolveEncoderPlan({
+        settings,
+        webCodecs: probed,
+        encoders: gpu?.encoders ?? [],
+        activeGpu,
+      });
+      const support = jobPlan.pipeMode === 'rawvideo' ? null : probed;
       const jobSettings = {
         ...settings,
-        pipeMode: support ? support.pipeMode : ('rawvideo' as const),
+        pipeMode: jobPlan.pipeMode,
+        hardwareEncoder: jobPlan.hardwareEncoder,
         ...(audioPath ? { audioPath, audioBitrateKbps } : {}),
       };
 
@@ -173,7 +220,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
 
       await window.filmora.exportFinish(activeJobId);
       setMessage(
-        `Export finished (${support ? 'GPU encode' : 'software encode'}): ${settings.outputPath}`,
+        `Export finished with ${jobPlan.label}: ${settings.outputPath}`,
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -183,7 +230,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     } finally {
       setRunning(false);
     }
-  }, [project, assets, settings]);
+  }, [project, assets, settings, gpu, activeGpu]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const percent =
@@ -306,29 +353,91 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
             {settings.width}x{settings.height} @ {settings.fps} fps.
           </p>
 
-          <label className="flex flex-col gap-1">
-            <span className="field-label">Hardware encoder</span>
-            <select
-              className="numeric-input"
-              value={settings.hardwareEncoder}
-              disabled={settings.exportAlpha}
-              onChange={(event) =>
-                setExportSettings({ hardwareEncoder: event.target.value as HardwareEncoder })
-              }
-            >
-              {encoders.map((encoder) => (
-                <option key={encoder} value={encoder}>
-                  {ENCODER_LABELS[encoder]}
-                </option>
-              ))}
-            </select>
-            {settings.exportAlpha && (
-              <span className="text-2xs text-slate-500">
-                Hardware encoders cannot carry alpha, so this render uses a
-                software encoder.
-              </span>
+          <div className="space-y-2 rounded border border-panel-700 bg-panel-950 p-3">
+            <span className="field-label">Hardware</span>
+
+            {gpu === null ? (
+              <p className="flex items-center gap-2 text-2xs text-slate-500">
+                <Loader2 size={12} className="animate-spin" />
+                Testing which GPUs and encoders work on this machine...
+              </p>
+            ) : (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-2xs text-slate-400">Render with (compositor GPU)</span>
+                  <select
+                    className="numeric-input"
+                    value={savedPreference ?? gpu.preference}
+                    onChange={(event) => void chooseGpu(event.target.value as GpuPreference)}
+                  >
+                    {(['auto', 'high-performance', 'low-power'] as const).map((preference) => {
+                      const device = gpu.devices.find(
+                        (candidate) =>
+                          candidate.kind ===
+                          (preference === 'high-performance' ? 'dedicated' : 'integrated'),
+                      );
+                      const available = preference === 'auto' || device !== undefined;
+                      return (
+                        <option key={preference} value={preference} disabled={!available}>
+                          {PREFERENCE_LABELS[preference]}
+                          {preference !== 'auto' ? ` - ${device?.name ?? 'not present'}` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <span className="text-2xs text-slate-500">
+                    Running on: {activeGpu?.name ?? 'unknown GPU'}
+                  </span>
+                </label>
+
+                {restartPending && (
+                  <div className="flex items-center justify-between gap-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
+                    <span>
+                      The GPU is chosen when the app starts. Restart to render on the
+                      new one; save your project first.
+                    </span>
+                    <button
+                      type="button"
+                      className="tool-button h-6 shrink-0"
+                      onClick={() => void window.filmora.relaunch()}
+                    >
+                      Restart now
+                    </button>
+                  </div>
+                )}
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-2xs text-slate-400">Encoder</span>
+                  <select
+                    className="numeric-input"
+                    value={settings.hardwareEncoder}
+                    onChange={(event) =>
+                      setExportSettings({ hardwareEncoder: event.target.value as HardwareEncoder })
+                    }
+                  >
+                    <option value="auto">Automatic</option>
+                    {gpu.encoders.map((option) => (
+                      <option key={option.encoder} value={option.encoder}>
+                        {describeEncoder(option)}
+                      </option>
+                    ))}
+                    <option value="none">CPU (software)</option>
+                  </select>
+                </label>
+
+                <p className="text-2xs text-slate-300">
+                  This render: <span className="text-slate-100">{plan.label}</span>
+                </p>
+                {plan.note && <p className="text-2xs text-amber-300">{plan.note}</p>}
+                {gpu.encoders.length === 0 && (
+                  <p className="text-2xs text-slate-500">
+                    No hardware encoder produced frames on this machine, so only
+                    the CPU is offered.
+                  </p>
+                )}
+              </>
             )}
-          </label>
+          </div>
 
           <div className="flex items-end gap-2">
             <label className="flex flex-1 flex-col gap-1">

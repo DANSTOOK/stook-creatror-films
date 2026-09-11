@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   AudioBus,
   Clip,
   EqSettings,
@@ -86,7 +86,8 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
   pixelArtScaling: false,
   // Derived from the project size rather than fixed; see recommendedBitrateKbps.
   bitrateKbps: recommendedBitrateKbps(1920, 1080, 30),
-  hardwareEncoder: 'none',
+  // Resolved per render by resolveEncoderPlan.
+  hardwareEncoder: 'auto',
   // Replaced at export time when the platform offers a usable GPU encoder.
   pipeMode: 'rawvideo',
 };

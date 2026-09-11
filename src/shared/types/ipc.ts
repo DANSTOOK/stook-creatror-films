@@ -1,4 +1,11 @@
-import type { ExportProgress, ExportSettings, HardwareEncoder, MediaKind } from './index';
+import type {
+  ExportProgress,
+  ExportSettings,
+  GpuPreference,
+  GpuReport,
+  HardwareEncoder,
+  MediaKind,
+} from './index';
 
 /** Channel names shared by the main process and the preload bridge. */
 export const IPC = {
@@ -12,6 +19,9 @@ export const IPC = {
   writeTextFile: 'fs:write-text-file',
   probeMedia: 'media:probe',
   detectEncoders: 'export:detect-encoders',
+  gpuReport: 'gpu:report',
+  setGpuPreference: 'gpu:set-preference',
+  relaunch: 'app:relaunch',
   writeExportAudio: 'export:write-audio',
   exportStart: 'export:start',
   exportFrame: 'export:frame',
@@ -65,6 +75,13 @@ export interface FilmoraApi {
 
   probeMedia(path: string): Promise<MediaProbe>;
   detectEncoders(): Promise<HardwareEncoder[]>;
+
+  /** GPUs present, the saved and applied GPU preference, and working encoders. */
+  gpuReport(): Promise<GpuReport>;
+  /** Save the GPU to composite on. Takes effect on the next launch. */
+  setGpuPreference(preference: GpuPreference): Promise<void>;
+  /** Restart the app, so a new GPU preference applies. */
+  relaunch(): Promise<void>;
 
   /**
    * Stash the rendered audio mix as a temporary WAV and return its path, to be

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
+import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
 import type { EncoderPipeline } from './exporter/EncoderPipeline';
 
 /**
@@ -25,6 +26,13 @@ let pipeline: EncoderPipeline | null = null;
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
+
+// Chromium reads its switches once, before `ready`. Anything appended later is
+// silently ignored - which is where the HEVC switch used to live, inside
+// whenReady, doing nothing.
+applyGpuPreferenceAtStartup();
+// Hardware video decode keeps scrubbing responsive on large timelines.
+app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -66,9 +74,6 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  // Hardware video decode keeps scrubbing responsive on large timelines.
-  app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
-
   pipeline = registerFileSystemHandlers(() => mainWindow);
   createWindow();
 

@@ -19,6 +19,7 @@
     "test:watch": "node ./node_modules/vitest/vitest.mjs",
     "test:e2e": "node ./tests/e2e/run.mjs",
     "test:ui": "node ./tests/ui/run.mjs",
+    "test:gpu": "node ./tests/gpu/run.mjs",
     "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
     "release": "node ./scripts/release.mjs",
     "rollback": "node ./scripts/rollback.mjs"

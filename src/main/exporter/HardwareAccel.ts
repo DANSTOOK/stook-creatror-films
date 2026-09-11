@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import ffmpegStatic from 'ffmpeg-static';
-import type { ExportFormat, ExportSettings, HardwareEncoder } from '@shared/types';
+import type { ExportFormat, ExportSettings, GpuEncoder, HardwareEncoder } from '@shared/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,35 +22,77 @@ export function resolveFfmpegPath(): string {
   return 'ffmpeg';
 }
 
-const HARDWARE_ENCODER_PROBES: Record<Exclude<HardwareEncoder, 'none'>, string> = {
+const HARDWARE_ENCODER_PROBES: Record<GpuEncoder, string> = {
   nvenc: 'h264_nvenc',
   qsv: 'h264_qsv',
   videotoolbox: 'h264_videotoolbox',
   amf: 'h264_amf',
 };
 
-let cachedEncoders: HardwareEncoder[] | null = null;
+/** Encoders worth probing on each OS; VideoToolbox only exists on macOS. */
+const PROBES_BY_PLATFORM: Record<string, GpuEncoder[]> = {
+  win32: ['nvenc', 'qsv', 'amf'],
+  linux: ['nvenc', 'qsv', 'amf'],
+  darwin: ['videotoolbox'],
+};
 
-/** Ask ffmpeg which encoders this build exposes. Result is cached per session. */
-export async function detectHardwareEncoders(): Promise<HardwareEncoder[]> {
+/**
+ * Arguments that make ffmpeg encode a handful of frames with `codec` and throw
+ * them away. It exits 0 only if the encoder opened a real device and produced
+ * output - which is the whole point.
+ */
+export function encoderProbeArgs(codec: string): string[] {
+  return [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-f', 'lavfi',
+    '-i', 'color=c=black:s=256x256:r=30,format=rgba',
+    '-frames:v', '5',
+    '-c:v', codec,
+    '-pix_fmt', 'yuv420p',
+    '-f', 'null',
+    '-',
+  ];
+}
+
+let cachedEncoders: Promise<GpuEncoder[]> | null = null;
+
+/**
+ * Find the hardware encoders that ACTUALLY work on this machine.
+ *
+ * Asking ffmpeg which encoders it was built with (`-encoders`) is not the same
+ * question: the bundled build lists NVENC, QuickSync and AMF everywhere. On the
+ * reference machine (RTX 4060 + Intel UHD) `h264_amf` is listed and fails with
+ * "AMFQueryVersion failed", because there is no AMD GPU - so offering it meant
+ * offering an export that could only fail. Each candidate is therefore made to
+ * encode five frames, in parallel, and only the ones that succeed are offered.
+ */
+export function probeHardwareEncoders(): Promise<GpuEncoder[]> {
   if (cachedEncoders) return cachedEncoders;
 
-  try {
-    const { stdout } = await execFileAsync(resolveFfmpegPath(), ['-hide_banner', '-encoders'], {
-      maxBuffer: 8 * 1024 * 1024,
-    });
+  const candidates = PROBES_BY_PLATFORM[process.platform] ?? [];
+  const ffmpeg = resolveFfmpegPath();
 
-    const available: HardwareEncoder[] = ['none'];
-    for (const [encoder, probe] of Object.entries(HARDWARE_ENCODER_PROBES)) {
-      if (stdout.includes(probe)) available.push(encoder as HardwareEncoder);
-    }
-    cachedEncoders = available;
-  } catch {
-    // A missing or unreadable ffmpeg means software-only.
-    cachedEncoders = ['none'];
-  }
+  cachedEncoders = Promise.all(
+    candidates.map(async (encoder) => {
+      try {
+        await execFileAsync(ffmpeg, encoderProbeArgs(HARDWARE_ENCODER_PROBES[encoder]), {
+          timeout: 15_000,
+          windowsHide: true,
+        });
+        return encoder;
+      } catch {
+        return null;
+      }
+    }),
+  ).then((results) => results.filter((encoder): encoder is GpuEncoder => encoder !== null));
 
   return cachedEncoders;
+}
+
+/** Kept for the IPC surface: `none` (the CPU) plus whatever really works. */
+export async function detectHardwareEncoders(): Promise<HardwareEncoder[]> {
+  return ['none', ...(await probeHardwareEncoders())];
 }
 
 /** Formats that actually carry an alpha channel to disk. */
@@ -154,7 +196,7 @@ export function scaleFilterArgs(settings: ExportSettings): string[] {
 export function describeAlphaFallback(settings: ExportSettings): string | null {
   if (!settings.exportAlpha) return null;
   if (FORMAT_SUPPORTS_ALPHA[settings.format]) {
-    if (settings.hardwareEncoder !== 'none' && settings.format !== 'png-sequence') {
+    if (settings.hardwareEncoder !== 'none' && settings.hardwareEncoder !== 'auto' && settings.format !== 'png-sequence') {
       return 'Hardware encoders cannot carry alpha; this render will use a software encoder.';
     }
     return null;

@@ -278,7 +278,58 @@ export interface MediaAsset {
  */
 export type ExportFormat = 'png-sequence' | 'prores4444' | 'webm-vp9' | 'mp4-h264' | 'mp4-h265';
 
-export type HardwareEncoder = 'none' | 'nvenc' | 'qsv' | 'videotoolbox' | 'amf';
+/**
+ * Which encoder a render uses.
+ *
+ * `none` is the CPU (libx264 / libx265). `auto` is resolved at export time by
+ * `resolveEncoderPlan`, never sent to ffmpeg as is.
+ */
+export type HardwareEncoder = 'auto' | 'none' | 'nvenc' | 'qsv' | 'videotoolbox' | 'amf';
+
+/** A hardware encoder ffmpeg can drive, as opposed to the two pseudo-choices. */
+export type GpuEncoder = Exclude<HardwareEncoder, 'auto' | 'none'>;
+
+/* -------------------------------------------------------------------------- */
+/* Graphics hardware                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Which GPU Chromium composites on.
+ *
+ * Applied as a command-line switch before the app is ready, so a change only
+ * takes effect after a restart. `auto` leaves the choice to the OS.
+ */
+export type GpuPreference = 'auto' | 'high-performance' | 'low-power';
+
+export type GpuVendor = 'nvidia' | 'intel' | 'amd' | 'apple' | 'other';
+
+export interface GpuDevice {
+  vendorId: number;
+  deviceId: number;
+  vendor: GpuVendor;
+  /** Marketing name, e.g. "NVIDIA GeForce RTX 4060 Laptop GPU". */
+  name: string;
+  /** How the OS classifies it: its high-performance or its power-saving GPU. */
+  kind: 'dedicated' | 'integrated' | 'unknown';
+  /** True for the GPU the compositor is running on right now. */
+  active: boolean;
+}
+
+/** A hardware encoder that was actually exercised and produced frames. */
+export interface EncoderOption {
+  encoder: GpuEncoder;
+  /** The GPU that runs it, when one could be matched. */
+  gpu: GpuDevice | null;
+}
+
+export interface GpuReport {
+  devices: GpuDevice[];
+  /** The preference saved for the next launch. */
+  preference: GpuPreference;
+  /** The preference this session was actually started with. */
+  appliedPreference: GpuPreference;
+  encoders: EncoderOption[];
+}
 
 /**
  * How frames reach ffmpeg's stdin.

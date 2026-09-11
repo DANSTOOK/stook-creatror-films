@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
@@ -10,6 +10,9 @@ import { IPC, type MediaProbe, type PickedFile } from '@shared/types/ipc';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
+import { isGpuPreference } from '../gpu/classify';
+import { getGpuReport } from '../gpu/gpuInventory';
+import { writeGpuPreference } from '../gpu/gpuSettings';
 
 const execFileAsync = promisify(execFile);
 
@@ -258,6 +261,20 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.probeMedia, (_event, path: string) => probeMedia(path));
 
   ipcMain.handle(IPC.detectEncoders, () => detectHardwareEncoders());
+
+  ipcMain.handle(IPC.gpuReport, () => getGpuReport());
+
+  ipcMain.handle(IPC.setGpuPreference, (_event, preference: unknown) => {
+    // Validated here, not trusted from the renderer: this value becomes a
+    // command-line switch on the next launch.
+    if (!isGpuPreference(preference)) throw new Error(`Unknown GPU preference "${String(preference)}"`);
+    writeGpuPreference(preference);
+  });
+
+  ipcMain.handle(IPC.relaunch, () => {
+    app.relaunch();
+    app.quit();
+  });
 
   ipcMain.handle(IPC.writeExportAudio, async (_event, wav: ArrayBuffer) => {
     // ffmpeg takes audio as a file input, so the mix has to land on disk before

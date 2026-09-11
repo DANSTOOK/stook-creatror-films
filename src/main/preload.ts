@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ExportProgress, ExportSettings, HardwareEncoder } from '@shared/types';
+import type {
+  ExportProgress,
+  ExportSettings,
+  GpuReport,
+  HardwareEncoder,
+} from '@shared/types';
 import { IPC, type FilmoraApi, type MediaProbe, type PickedFile } from '@shared/types/ipc';
 
 /**
@@ -26,6 +31,9 @@ const api: FilmoraApi = {
 
   probeMedia: (path) => ipcRenderer.invoke(IPC.probeMedia, path) as Promise<MediaProbe>,
   detectEncoders: () => ipcRenderer.invoke(IPC.detectEncoders) as Promise<HardwareEncoder[]>,
+  gpuReport: () => ipcRenderer.invoke(IPC.gpuReport) as Promise<GpuReport>,
+  setGpuPreference: (preference) => ipcRenderer.invoke(IPC.setGpuPreference, preference),
+  relaunch: () => ipcRenderer.invoke(IPC.relaunch),
 
   writeExportAudio: (wav) => ipcRenderer.invoke(IPC.writeExportAudio, wav) as Promise<string>,
   exportStart: (settings: ExportSettings) => ipcRenderer.invoke(IPC.exportStart, settings),
