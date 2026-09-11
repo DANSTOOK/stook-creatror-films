@@ -64,7 +64,9 @@ for (const file of ['package.json', 'package-lock.json']) {
 
 git('add', 'package.json', 'package-lock.json');
 if (git('diff', '--cached', '--name-only') !== '') git('commit', '-m', `Release ${tag}`);
-git('tag', '-a', tag, '-m', notes);
+// Verbatim: the default cleanup strips every line starting with '#' as a
+// comment, which deletes all the ### headings from the release notes.
+git('tag', '-a', tag, '--cleanup=verbatim', '-m', notes);
 
 console.log(`release: tagged ${tag}`);
 
