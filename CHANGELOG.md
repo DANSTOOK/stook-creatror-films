@@ -8,8 +8,8 @@ Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
 Cifras de referencia al día de hoy: **184 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo** y **17/17 comprobaciones de interfaz**,
-estas últimas verificadas también **contra el ejecutable empaquetado**.
+comprobaciones de extremo a extremo** y **18/18 comprobaciones de interfaz**,
+estas últimas verificadas **contra el ejecutable empaquetado y sin red**.
 
 ---
 
@@ -42,6 +42,28 @@ otra prueba podía encontrar, porque solo existe al empaquetar.
     guarda, reabre y **exporta con vídeo y audio**. Es la comprobación de que
     el ffmpeg incluido funciona desde dentro del paquete.
 - `npm run dist:dir` para generar la carpeta ejecutable sin instalador.
+- **Funciona sin conexión a internet**, y está comprobado, no supuesto.
+  - La prueba de interfaz tiene un modo `UI_OFFLINE=1` que corta la red de toda
+    la sesión de Chromium **y registra cualquier intento de conexión**. Bloquear
+    sin registrar escondería una dependencia; registrarla es lo que demuestra
+    que no la hay.
+  - *Comprobado:* **18/18 contra el ejecutable empaquetado con la red cortada**
+    — importar, LUT, guardar, reabrir y exportar con vídeo y audio — con
+    **cero peticiones intentadas** y cero errores de consola.
+  - *Revisado a mano:* las únicas URLs del código compilado son identificadores
+    de espacio de nombres XML (`w3.org`, nunca se descargan) y dos enlaces
+    dentro de mensajes de error de React y Zustand. Sin fuentes web ni CDN. El
+    proceso principal no tiene ningún código de red ni autoactualización.
+  - Alcance honesto: la prueba intercepta la red de Chromium. El proceso
+    principal de Node queda fuera de ese filtro, pero se revisó y no contiene
+    llamadas de red; ffmpeg solo lee y escribe archivos locales.
+
+### Limpieza pendiente
+- `@ffmpeg/ffmpeg` y `@ffmpeg/util` (ffmpeg.wasm) siguen en `dependencies`
+  **sin importarse en ningún sitio**: la exportación se hizo con el ffmpeg
+  nativo. No afectan al funcionamiento sin red —ffmpeg.wasm descargaría su
+  núcleo de internet, pero nunca se carga—, aunque sí engordan el paquete.
+  Figuraban en la especificación original, así que no se quitan sin decisión.
 
 ### Problema conocido: el instalador no se puede generar aquí
 `npm run dist` falla, y **no es culpa del proyecto**:

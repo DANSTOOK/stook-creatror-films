@@ -95,6 +95,13 @@ const packagedExe = process.env.UI_PACKAGED
   ? join(projectRoot, 'release/win-unpacked/Filmora Engine.exe')
   : null;
 
+/**
+ * Run with the network cut. Every attempted request is logged and cancelled,
+ * so the run proves the app has no network dependency rather than merely
+ * tolerating a slow one.
+ */
+const offline = Boolean(process.env.UI_OFFLINE);
+
 async function main() {
   console.log('1. preparing media and building the app');
   await prepare();
@@ -124,6 +131,29 @@ async function main() {
       }
     });
     window.on('pageerror', (error) => consoleIssues.push(`[pageerror] ${error.message}`));
+
+    if (offline) {
+      // Cut the network for the whole Chromium session, and record anything
+      // that even tries to leave the machine. Blocking alone would hide a
+      // dependency; logging it is what proves there is none.
+      await app.evaluate(({ session }) => {
+        globalThis.__externalRequests = [];
+        const ses = session.defaultSession;
+        ses.enableNetworkEmulation({ offline: true });
+        ses.webRequest.onBeforeRequest((details, callback) => {
+          const local = /^(file|blob|data|devtools|chrome|chrome-extension):/i.test(details.url);
+          if (!local) {
+            globalThis.__externalRequests.push(details.url);
+            callback({ cancel: true });
+            return;
+          }
+          callback({});
+        });
+      });
+      // The page loaded before the hook existed; reload so the whole startup
+      // runs through it too.
+      await window.reload();
+    }
 
     await window.waitForSelector('#root > *', { timeout: 30_000 });
 
@@ -279,6 +309,12 @@ async function main() {
       check('exported only the requested range',
         Math.abs(seconds - expected) < 0.2,
         `${seconds.toFixed(2)}s vs ${expected.toFixed(2)}s requested`);
+    }
+
+    if (offline) {
+      const external = await app.evaluate(() => globalThis.__externalRequests ?? []);
+      check('no network request attempted with the network cut', external.length === 0,
+        external.length ? external.slice(0, 3).join(', ') : 'none attempted');
     }
 
     check('no console errors during the whole session', consoleIssues.length === 0,
