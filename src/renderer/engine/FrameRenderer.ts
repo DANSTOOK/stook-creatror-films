@@ -232,6 +232,14 @@ export class FrameRenderer {
    */
   private sequential: Map<string, Promise<SequentialVideoReader | null>> | null = null;
 
+  /** Sources an export could not decode forwards, and seeks frame by frame instead. */
+  private readonly seekingSources = new Set<string>();
+
+  /** Names of the sources on the slow, seek-per-frame export path. */
+  slowSources(): string[] {
+    return [...this.seekingSources];
+  }
+
   /** Frames decoded for the render in progress, by clip id. */
   private readonly decodedFrames = new Map<string, VideoFrame>();
 
@@ -239,6 +247,7 @@ export class FrameRenderer {
   startSequentialDecode(): void {
     this.stopSequentialDecode();
     this.sequential = new Map();
+    this.seekingSources.clear();
   }
 
   stopSequentialDecode(): void {
@@ -279,6 +288,9 @@ export class FrameRenderer {
             this.sequential.set(clip.id, reader);
           }
           const open = await reader;
+          // Remembered so the export can say it is on the slow path, rather
+          // than leaving the user to wonder why a render crawls at 15 fps.
+          if (!open) this.seekingSources.add(clip.name);
           if (open) {
             try {
               this.decodedFrames.set(clip.id, await open.frameAt(sourceFrame, project.fps));
@@ -288,6 +300,7 @@ export class FrameRenderer {
               console.info(`[export] ${clip.name}: decoding forwards failed at frame ${sourceFrame}, seeking instead (${String(error)})`);
               open.close();
               this.sequential.set(clip.id, Promise.resolve(null));
+              this.seekingSources.add(clip.name);
             }
           }
         }

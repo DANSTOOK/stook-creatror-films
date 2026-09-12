@@ -268,6 +268,9 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
         activeGpu,
       });
       const support = jobPlan.pipeMode === 'rawvideo' ? null : probed;
+      // The audio is done by now; leaving "Rendering audio..." up for the whole
+      // picture render made a slow export look stuck on the sound.
+      setMessage(`Rendering with ${jobPlan.label}...`);
       const jobSettings = {
         ...settings,
         pipeMode: jobPlan.pipeMode,
@@ -294,6 +297,18 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
           await window.filmora.exportCancel(activeJobId);
           setMessage('Export cancelled.');
           return;
+        }
+
+        // Say so when a source fell back to seeking: that path is more than an
+        // order of magnitude slower, and a silent crawl looks like a bug.
+        const done = frame - settings.startFrame;
+        if (done === 1 || (done > 0 && done % 600 === 0)) {
+          const slow = renderer.slowSources();
+          if (slow.length > 0) {
+            setMessage(
+              `Rendering with ${jobPlan.label} - slow path: ${slow.join(', ')} cannot be decoded forwards, so each frame is sought separately.`,
+            );
+          }
         }
 
         if (encoder) {
