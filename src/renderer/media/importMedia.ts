@@ -1,5 +1,6 @@
 import type { MediaAsset, MediaKind, ProjectState } from '@shared/types';
 import { createId } from '@shared/utils/id';
+import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { probeMediaElement } from '@renderer/engine/probeMedia';
 
 /**
@@ -135,10 +136,23 @@ export function settingsFromAsset(
   if (asset.kind === 'audio') return null;
 
   const settings: { fps?: number; width?: number; height?: number } = {};
-  if (asset.sourceFps && asset.sourceFps > 0) settings.fps = asset.sourceFps;
+
+  // Only a rate that could belong to real footage. An absurd measurement
+  // used to be adopted as-is, which turned a 36-minute timeline into 16.5
+  // million frames (see MAX_FRAME_RATE).
+  if (
+    asset.sourceFps &&
+    asset.sourceFps >= MIN_FRAME_RATE &&
+    asset.sourceFps <= MAX_FRAME_RATE
+  ) {
+    settings.fps = asset.sourceFps;
+  }
+
   if (asset.width > 0 && asset.height > 0) {
-    settings.width = asset.width;
-    settings.height = asset.height;
+    // Even sizes only: yuv420p cannot represent an odd width or height, and
+    // a still is quite happily 2070 px wide.
+    settings.width = asset.width - (asset.width % 2);
+    settings.height = asset.height - (asset.height % 2);
   }
 
   return Object.keys(settings).length > 0 ? settings : null;

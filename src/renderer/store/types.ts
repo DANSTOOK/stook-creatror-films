@@ -18,6 +18,10 @@ import {
 } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
+import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
+
+/** What a project runs at when nothing better is known. */
+const DEFAULT_FPS = 30;
 
 /**
  * Serializable project document plus the editor-only UI state that must NOT be
@@ -289,8 +293,25 @@ export function normalizeProject(project: ProjectState): ProjectState {
     }))
     .sort((a, b) => a.frame - b.frame);
 
+  /**
+   * A rate outside the believable range means the project was built before
+   * imports were bounded, when a bad measurement could be adopted whole. Such
+   * a project counts its own length in millions of frames, so it is repaired
+   * on the way in rather than opened unusable.
+   */
+  const fps = finite(project.fps, DEFAULT_FPS);
+  const sane = fps >= MIN_FRAME_RATE && fps <= MAX_FRAME_RATE;
+  const seconds = sane ? 0 : Math.round(finite(project.durationFrames, 0) / fps);
+
   return {
     ...project,
+    ...(sane
+      ? {}
+      : {
+          fps: DEFAULT_FPS,
+          // Keep the wall-clock length it had, at a rate that can exist.
+          durationFrames: Math.max(DEFAULT_FPS, Math.round(seconds * DEFAULT_FPS)),
+        }),
     markers,
     audio: normalizeAudio(project.audio),
     tracks: project.tracks.map((track) => ({

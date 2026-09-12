@@ -207,7 +207,9 @@ interface ProjectStore {
 function withContentLength(project: ProjectState): ProjectState {
   const content = projectContentLength(project);
   if (content <= project.durationFrames) return project;
-  return { ...project, durationFrames: content + project.fps };
+  // Rounded: a legitimate rate can be fractional (23.976, 29.97), and adding
+  // one straight to a frame count gave a project 16492260.71 frames long.
+  return { ...project, durationFrames: Math.ceil(content + project.fps) };
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({

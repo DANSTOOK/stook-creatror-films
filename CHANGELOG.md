@@ -7,11 +7,45 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **421 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **431 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.9.0-beta.5 — El proyecto que creía ir a 7650 fps
+2026-09-12 · pre-release para probar
+
+Esto es lo que estabas viendo en tu prueba con el vídeo largo, y **no era
+lentitud**: el render iba a 572 fps, que es rapidísimo. El problema es que
+creía tener que producir **16.492.260 fotogramas**.
+
+### Arreglado
+- **Una medición absurda de fotogramas por segundo se adoptaba tal cual.**
+  Al importar, si no hay dato fiable en el archivo, la velocidad se mide
+  observando los fotogramas que va presentando el reproductor. En un archivo
+  esa medición dio **7650,71 fps**, y todas las comprobaciones por las que
+  pasaba solo miraban que fuera mayor que cero. El proyecto la adoptó, y una
+  línea de tiempo de 36 minutos pasó a tener 16,5 millones de fotogramas:
+  ocho horas de exportación con una barra de progreso que parecía estropeada
+  cuando en realidad era sincera.
+  - Ahora solo se cree una velocidad **entre 1 y 240 fps**; fuera de ahí se
+    considera desconocida y el proyecto conserva la que tenía.
+- **Un proyecto ya guardado con ese valor se repara al abrirlo**, conservando
+  su duración real en segundos. Si tenías uno así, se arregla solo.
+- **Una imagen podía imponer un tamaño de proyecto imposible.** Tu captura
+  fijó el proyecto en **2070x1080**, y 2070 es impar: el formato de color que
+  usa el vídeo (yuv420p) no puede representar un ancho impar. Ahora se
+  redondea a par.
+- **El recuento de fotogramas ya no puede salir fraccionario.** La cola de un
+  segundo que se añade al final sumaba la velocidad directamente al número de
+  fotogramas, y con una velocidad fraccionaria (23,976 o 29,97 son
+  legítimas) el proyecto acababa con "16492260,71 fotogramas".
+  - *Comprobado:* 10 pruebas nuevas en `FrameRateSanity.test.ts`, incluida la
+    reparación al abrir y que las velocidades reales (24, 25, 29,97, 30, 50,
+    59,94, 60, 120 y un timelapse a 40) siguen aceptándose.
 
 ---
 
