@@ -1,4 +1,4 @@
-import { parseMoov, readMoov, type ByteReader, type Mp4Sample, type Mp4VideoTrack } from './mp4';
+import { parseMoov, readLayout, type ByteReader, type Mp4Sample, type Mp4VideoTrack } from './mp4';
 
 /**
  * Frame-exact, in-order video decoding for export.
@@ -52,8 +52,9 @@ function loadTrack(url: string): Promise<{ track: Mp4VideoTrack; size: number } 
     pending = (async () => {
       if (!url.startsWith('media:')) return null;
       const size = await fileSize(url);
-      const moov = await readMoov(rangeReader(url), size);
-      const track = moov ? parseMoov(moov) : null;
+      // Fragments too: a fragmented file's moov alone lists no samples.
+      const layout = await readLayout(rangeReader(url), size);
+      const track = layout ? parseMoov(layout.moov, layout.fragments) : null;
       return track && track.samples.length > 0 ? { track, size } : null;
     })().catch(() => null);
     trackCache.set(url, pending);

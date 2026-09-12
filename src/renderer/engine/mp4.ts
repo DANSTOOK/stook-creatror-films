@@ -132,7 +132,7 @@ function hevcCodec(sampleType: string, hvcC: Uint8Array): string {
  * this reader does not handle - no video track, a codec other than H.264 /
  * HEVC - so the caller can fall back to seeking.
  */
-export function parseMoov(moov: Uint8Array): Mp4VideoTrack | null {
+export function parseMoov(moov: Uint8Array, fragments: readonly Mp4Fragment[] = []): Mp4VideoTrack | null {
   const view = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
   const [root] = childBoxes(view, 0, moov.byteLength);
   if (!root || root.type !== 'moov') return null;
@@ -161,7 +161,7 @@ export function parseMoov(moov: Uint8Array): Mp4VideoTrack | null {
     const description = moov.slice(config.start, config.end);
     const codec = configType === 'avcC' ? avcCodec(entry.type, description) : hevcCodec(entry.type, description);
 
-    const samples = sampleTable(view, trak, stbl, timescale);
+    const samples = sampleTable(view, trak, stbl, timescale, root, fragments);
     if (!samples) return null;
 
     return { codec, description, width, height, timescale, samples };
@@ -176,7 +176,19 @@ export function parseMoov(moov: Uint8Array): Mp4VideoTrack | null {
  * Shared by video and audio - the boxes that describe WHERE samples are and
  * WHEN they play are the same for both; only the codec-specific head differs.
  */
-function sampleTable(view: DataView, trak: Box, stbl: Box, timescale: number): Mp4Sample[] | null {
+function sampleTable(
+  view: DataView,
+  trak: Box,
+  stbl: Box,
+  timescale: number,
+  root?: Box,
+  fragments: readonly Mp4Fragment[] = [],
+): Mp4Sample[] | null {
+  // A fragmented file keeps this table empty and describes its samples in
+  // movie fragments instead.
+  if (root && fragments.length > 0 && sampleCount(view, stbl) === 0) {
+    return fragmentSampleTable(view, root, trak, timescale, fragments);
+  }
   {
     // stts: decode-time deltas.
     const stts = child(view, stbl, 'stts');
@@ -365,7 +377,7 @@ const ASC_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000
  * Returns null for anything else - a bare ADTS `.aac`, MP3, FLAC, Opus - so
  * the caller falls back to decoding the whole file the old way.
  */
-export function parseMoovAudio(moov: Uint8Array): Mp4AudioTrack | null {
+export function parseMoovAudio(moov: Uint8Array, fragments: readonly Mp4Fragment[] = []): Mp4AudioTrack | null {
   const view = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
   const [root] = childBoxes(view, 0, moov.byteLength);
   if (!root || root.type !== 'moov') return null;
@@ -406,7 +418,7 @@ export function parseMoovAudio(moov: Uint8Array): Mp4AudioTrack | null {
     if (channelConfig > 0) channels = channelConfig;
     if (!sampleRate || !channels) return null;
 
-    const samples = sampleTable(view, trak, stbl, timescale);
+    const samples = sampleTable(view, trak, stbl, timescale, root, fragments);
     if (!samples) return null;
 
     return { codec: `mp4a.40.${objectType}`, description, sampleRate, channels, timescale, samples };
@@ -437,4 +449,237 @@ export async function readMoov(read: ByteReader, fileSize: number): Promise<Uint
     at += size;
   }
   return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fragmented MP4                                                             */
+/* -------------------------------------------------------------------------- */
+
+/** One movie fragment (`moof`) and the file offset it starts at. */
+export interface Mp4Fragment {
+  offset: number;
+  /** The whole `moof` box, header included. */
+  bytes: Uint8Array;
+}
+
+export interface Mp4Layout {
+  moov: Uint8Array;
+  /** Empty for an ordinary file; one entry per `moof` for a fragmented one. */
+  fragments: Mp4Fragment[];
+}
+
+/**
+ * The `moov` and every movie fragment of a file, walking top-level headers.
+ *
+ * A fragmented MP4 - what screen recorders and streaming downloads write -
+ * keeps an empty sample table in `moov` and describes its samples in `moof`
+ * boxes spread through the file. The user's 19-minute recording has 344 of
+ * them. Reading only `moov` found no samples at all, and export fell back to
+ * seeking every frame. Only headers, the moov and the moofs are read here,
+ * never media data.
+ */
+export async function readLayout(read: ByteReader, fileSize: number): Promise<Mp4Layout | null> {
+  let moov: Uint8Array | null = null;
+  const fragments: Mp4Fragment[] = [];
+  let at = 0;
+
+  while (at + 8 <= fileSize) {
+    const header = await read(at, Math.min(16, fileSize - at));
+    if (header.byteLength < 8) break;
+    const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+    let size = view.getUint32(0);
+    const type = fourCC(view, 4);
+    if (size === 1) {
+      if (header.byteLength < 16) break;
+      size = readUint64(view, 8);
+    } else if (size === 0) {
+      size = fileSize - at;
+    }
+    if (size < 8) break;
+
+    if (type === 'moov') moov = await read(at, size);
+    else if (type === 'moof') fragments.push({ offset: at, bytes: await read(at, size) });
+    at += size;
+  }
+
+  return moov ? { moov, fragments } : null;
+}
+
+/** Samples a `stbl` lists - zero in a fragmented file. */
+function sampleCount(view: DataView, stbl: Box): number {
+  const stsz = child(view, stbl, 'stsz');
+  return stsz ? view.getUint32(stsz.start + 8) : 0;
+}
+
+/** The track's id, which is how its fragments name it. */
+function trackIdOf(view: DataView, trak: Box): number | null {
+  const tkhd = child(view, trak, 'tkhd');
+  if (!tkhd) return null;
+  return view.getUint32(tkhd.start + (view.getUint8(tkhd.start) === 1 ? 20 : 12));
+}
+
+/** Where the presentation starts, from the edit list, in the track timescale. */
+function editListStart(view: DataView, trak: Box): number {
+  const elst = path(view, trak, 'edts', 'elst');
+  if (!elst) return 0;
+  const version = view.getUint8(elst.start);
+  const entries = view.getUint32(elst.start + 4);
+  for (let e = 0; e < entries; e += 1) {
+    const at = elst.start + 8 + e * (version === 1 ? 20 : 12);
+    const mediaTime = version === 1 ? Number(view.getBigInt64(at + 8)) : view.getInt32(at + 4);
+    if (mediaTime >= 0) return mediaTime;
+  }
+  return 0;
+}
+
+interface SampleDefaults {
+  duration: number;
+  size: number;
+  flags: number;
+}
+
+/** A sample whose flags carry this bit is not a keyframe (ISO/IEC 14496-12 8.8.3.1). */
+const SAMPLE_IS_NON_SYNC = 0x10000;
+
+/**
+ * The samples of one track, read out of its movie fragments.
+ *
+ * Every track fragment of every moof is walked, including other tracks': when
+ * a fragment gives no explicit base offset, where one track's data starts
+ * depends on where the previous track's data ended.
+ */
+function fragmentSampleTable(
+  view: DataView,
+  root: Box,
+  trak: Box,
+  timescale: number,
+  fragments: readonly Mp4Fragment[],
+): Mp4Sample[] | null {
+  const trackId = trackIdOf(view, trak);
+  if (trackId === null) return null;
+
+  // Per-track defaults from mvex/trex, which fragments fall back on.
+  const trexById = new Map<number, SampleDefaults>();
+  const mvex = child(view, root, 'mvex');
+  if (mvex) {
+    for (const trex of childBoxes(view, mvex.start, mvex.end)) {
+      if (trex.type !== 'trex') continue;
+      trexById.set(view.getUint32(trex.start + 4), {
+        duration: view.getUint32(trex.start + 12),
+        size: view.getUint32(trex.start + 16),
+        flags: view.getUint32(trex.start + 20),
+      });
+    }
+  }
+
+  const mediaStart = editListStart(view, trak);
+  const samples: Mp4Sample[] = [];
+  let nextDts = 0;
+
+  for (const fragment of fragments) {
+    const fv = new DataView(fragment.bytes.buffer, fragment.bytes.byteOffset, fragment.bytes.byteLength);
+    const [moof] = childBoxes(fv, 0, fragment.bytes.byteLength);
+    if (!moof || moof.type !== 'moof') continue;
+
+    // Without an explicit base, the first track fragment's data is counted
+    // from the moof, and each later one from where the previous one ended.
+    let dataEnd = fragment.offset;
+
+    for (const traf of childBoxes(fv, moof.start, moof.end)) {
+      if (traf.type !== 'traf') continue;
+      const tfhd = child(fv, traf, 'tfhd');
+      if (!tfhd) continue;
+
+      const tfhdFlags = fv.getUint32(tfhd.start) & 0xffffff;
+      const id = fv.getUint32(tfhd.start + 4);
+      const defaults = trexById.get(id) ?? { duration: 0, size: 0, flags: 0 };
+      let at = tfhd.start + 8;
+
+      let base = tfhdFlags & 0x20000 ? fragment.offset : dataEnd;
+      if (tfhdFlags & 0x1) {
+        base = readUint64(fv, at);
+        at += 8;
+      }
+      if (tfhdFlags & 0x2) at += 4;
+      let duration = defaults.duration;
+      let size = defaults.size;
+      let flags = defaults.flags;
+      if (tfhdFlags & 0x8) {
+        duration = fv.getUint32(at);
+        at += 4;
+      }
+      if (tfhdFlags & 0x10) {
+        size = fv.getUint32(at);
+        at += 4;
+      }
+      if (tfhdFlags & 0x20) flags = fv.getUint32(at);
+
+      const mine = id === trackId;
+      let dts = nextDts;
+      const tfdt = child(fv, traf, 'tfdt');
+      if (mine && tfdt) {
+        dts = fv.getUint8(tfdt.start) === 1 ? readUint64(fv, tfdt.start + 4) : fv.getUint32(tfdt.start + 4);
+      }
+
+      let cursor = base;
+      for (const trun of childBoxes(fv, traf.start, traf.end)) {
+        if (trun.type !== 'trun') continue;
+        const version = fv.getUint8(trun.start);
+        const trunFlags = fv.getUint32(trun.start) & 0xffffff;
+        const count = fv.getUint32(trun.start + 4);
+        let p = trun.start + 8;
+
+        if (trunFlags & 0x1) {
+          cursor = base + fv.getInt32(p);
+          p += 4;
+        }
+        let firstFlags: number | null = null;
+        if (trunFlags & 0x4) {
+          firstFlags = fv.getUint32(p);
+          p += 4;
+        }
+
+        for (let i = 0; i < count; i += 1) {
+          let sampleDuration = duration;
+          let sampleSize = size;
+          let sampleFlags = i === 0 && firstFlags !== null ? firstFlags : flags;
+          let composition = 0;
+          if (trunFlags & 0x100) {
+            sampleDuration = fv.getUint32(p);
+            p += 4;
+          }
+          if (trunFlags & 0x200) {
+            sampleSize = fv.getUint32(p);
+            p += 4;
+          }
+          if (trunFlags & 0x400) {
+            sampleFlags = fv.getUint32(p);
+            p += 4;
+          }
+          if (trunFlags & 0x800) {
+            composition = version === 0 ? fv.getUint32(p) : fv.getInt32(p);
+            p += 4;
+          }
+
+          if (mine) {
+            samples.push({
+              offset: cursor,
+              size: sampleSize,
+              dts,
+              time: (dts + composition - mediaStart) / timescale,
+              duration: sampleDuration / timescale,
+              isSync: (sampleFlags & SAMPLE_IS_NON_SYNC) === 0,
+            });
+            dts += sampleDuration;
+          }
+          cursor += sampleSize;
+        }
+      }
+
+      dataEnd = cursor;
+      if (mine) nextDts = dts;
+    }
+  }
+
+  return samples;
 }

@@ -1,4 +1,4 @@
-import { parseMoovAudio, readMoov, type Mp4AudioTrack, type Mp4Sample } from '@renderer/engine/mp4';
+import { parseMoovAudio, readLayout, type Mp4AudioTrack, type Mp4Sample } from '@renderer/engine/mp4';
 import { fileSize, rangeReader } from '@renderer/engine/rangeFetch';
 
 /**
@@ -205,8 +205,9 @@ export class AudioStream {
 
     try {
       const size = await fileSize(url);
-      const moov = await readMoov(rangeReader(url), size);
-      const track = moov ? parseMoovAudio(moov) : null;
+      // Fragments too: a fragmented file's moov alone lists no samples.
+      const layout = await readLayout(rangeReader(url), size);
+      const track = layout ? parseMoovAudio(layout.moov, layout.fragments) : null;
       if (!track || track.samples.length === 0) return null;
 
       const support = await AudioDecoder.isConfigSupported({
