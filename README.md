@@ -561,6 +561,13 @@ silence passes while proving nothing. Only AAC in MP4 streams (what
 `extractAudio` writes); MP3, WAV, FLAC and bare `.aac` are decoded whole as
 before.
 
+**Export reads the same way.** `renderMix` opens a stream per source and
+decodes only the stretch being rendered, walking clips in source order so
+each file is read once. The trade is that a short range from deep inside a
+long source now pays for the walk to it: 10 s from minute 30 of a
+45-minute recording went from 2.9 s to 8.7 s. Exporting a whole project -
+the usual case - is unaffected, since that walk happens anyway.
+
 `npm run test:bench` (with `BENCH_SOURCE=<video>`) exports a whole real video
 both ways and compares them frame by frame. On a 91-second 720p30 screen
 recording: 346 fps decoding forwards against 12.6 fps seeking (27.5x), with

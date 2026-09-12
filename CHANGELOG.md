@@ -15,6 +15,32 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.9.0-beta.2 — La exportación tampoco carga el audio entero
+2026-09-11 · pre-release para probar
+
+Cierra el problema conocido que dejé anotado en la beta.1: exportar seguía
+decodificando cada fuente de audio completa antes de empezar el render.
+
+### Arreglado
+- **Al exportar ya solo se decodifica el tramo que se está renderizando.**
+  Un proyecto con fuentes largas se ahorra ese pico de ~1 GB durante el
+  render.
+  - *Comprobado:* el audio exportado sigue siendo exactamente el correcto y
+    en sincronía — correlación **0,9997** contra la fuente en la prueba de
+    extremo a extremo (22/22), 36/36 en interfaz, 6/6 en metraje largo.
+  - Los clips se recorren en orden de fuente, para que cada archivo se lea
+    una sola vez de principio a fin.
+
+### A cambio
+- **Exportar un tramo corto de muy adentro de un archivo largo es más
+  lento**: 10 s desde el minuto 30 de una grabación de 45 minutos pasa de
+  2,9 s a **8,7 s**. El lector tiene que recorrer el archivo desde el
+  principio, que es la única forma de que el audio salga exacto (ver la
+  beta.1). Exportar el proyecto entero —lo normal— no se ve afectado,
+  porque ese recorrido se hace igualmente al renderizar hacia delante.
+
+---
+
 ## v1.9.0-beta.1 — El audio deja de cargarse entero en memoria
 2026-09-11 · pre-release para probar
 

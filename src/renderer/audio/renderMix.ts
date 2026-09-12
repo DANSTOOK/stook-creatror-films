@@ -3,6 +3,7 @@ import { clamp } from '@shared/utils/math';
 import { encodeWavFloat32 } from '@shared/utils/wav';
 import { clipGain, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
 import { duckOffline } from './DynamicDucking';
+import { AudioStream } from './AudioStream';
 
 /**
  * Offline render of the timeline's audio for export.
@@ -42,17 +43,45 @@ export interface RenderedMix {
   duckFloor: number;
 }
 
-/** Decode every distinct audio-bearing source once. */
+/**
+ * Open a streaming reader for every source that has one.
+ *
+ * A render only needs the stretch it is rendering, and these hand it over
+ * without the whole file being decoded first - the difference between a
+ * gigabyte and a few megabytes when the source is 45 minutes long. Sources
+ * that cannot stream (MP3, WAV, FLAC, a bare `.aac`) come back missing here
+ * and are decoded whole below, as before.
+ */
+async function openStreams(
+  assets: readonly MediaAsset[],
+  uris: ReadonlySet<string>,
+): Promise<Map<string, AudioStream>> {
+  const streams = new Map<string, AudioStream>();
+
+  await Promise.all(
+    assets
+      .filter((asset) => uris.has(asset.uri) && !asset.missing && asset.kind !== 'image')
+      .map(async (asset) => {
+        const stream = await AudioStream.open(asset.audioUri ?? asset.uri).catch(() => null);
+        if (stream) streams.set(asset.uri, stream);
+      }),
+  );
+
+  return streams;
+}
+
+/** Decode every distinct audio-bearing source that cannot be streamed. */
 async function decodeSources(
   context: BaseAudioContext,
   assets: readonly MediaAsset[],
   uris: ReadonlySet<string>,
+  streamed: ReadonlySet<string>,
 ): Promise<Map<string, AudioBuffer>> {
   const decoded = new Map<string, AudioBuffer>();
 
   await Promise.all(
     assets
-      .filter((asset) => uris.has(asset.uri) && !asset.missing && asset.kind !== 'image')
+      .filter((asset) => uris.has(asset.uri) && !streamed.has(asset.uri) && !asset.missing && asset.kind !== 'image')
       .map(async (asset) => {
         try {
           // The extracted audio track, not the (possibly multi-gigabyte) video.
@@ -94,6 +123,7 @@ async function renderClips(
   clips: readonly Clip[],
   trackById: ReadonlyMap<string, Track>,
   buffers: ReadonlyMap<string, AudioBuffer>,
+  streams: ReadonlyMap<string, AudioStream>,
   anySolo: boolean,
   geometry: MixGeometry,
 ): Promise<BusRender> {
@@ -121,10 +151,18 @@ async function renderClips(
 
   let clipsMixed = 0;
 
-  for (const clip of clips) {
+  // In source order, so a stream's forward decoder walks each file once
+  // instead of being sent back to its head between clips.
+  const ordered = [...clips].sort(
+    (a, b) =>
+      a.sourceUri.localeCompare(b.sourceUri) || a.sourceOffsetFrames - b.sourceOffsetFrames,
+  );
+
+  for (const clip of ordered) {
     const track = trackById.get(clip.trackId);
-    const buffer = buffers.get(clip.sourceUri);
-    if (!track || !buffer) continue;
+    const stream = streams.get(clip.sourceUri);
+    const whole = buffers.get(clip.sourceUri);
+    if (!track || (!stream && !whole)) continue;
 
     // Clip position expressed relative to the start of the export range.
     const clipStartSeconds = (clip.startFrame - startFrame) / fps;
@@ -135,8 +173,28 @@ async function renderClips(
     const when = Math.max(0, clipStartSeconds);
     const offset = clip.sourceOffsetFrames / fps + skippedSeconds;
 
+    const sourceDuration = stream ? stream.duration : (whole as AudioBuffer).duration;
     const playSeconds = Math.min(clipEndSeconds, durationSeconds) - when;
-    if (playSeconds <= 0 || offset >= buffer.duration) continue;
+    if (playSeconds <= 0 || offset >= sourceDuration) continue;
+
+    // A streamed source hands over exactly the stretch this clip needs, so
+    // it starts at the beginning of what it was given; a whole buffer is
+    // played from the offset, as before.
+    const wanted = Math.min(playSeconds, sourceDuration - offset);
+    let buffer: AudioBuffer;
+    let startOffset: number;
+
+    if (stream) {
+      const decoded = await stream.span(offset, wanted);
+      buffer = context.createBuffer(decoded.channels, decoded.planes[0].length, decoded.sampleRate);
+      for (let channel = 0; channel < decoded.channels; channel += 1) {
+        buffer.getChannelData(channel).set(decoded.planes[channel]);
+      }
+      startOffset = 0;
+    } else {
+      buffer = whole as AudioBuffer;
+      startOffset = offset;
+    }
 
     const source = context.createBufferSource();
     source.buffer = buffer;
@@ -171,7 +229,7 @@ async function renderClips(
     high.connect(panner);
     panner.connect(stripFor(track));
 
-    source.start(when, offset, Math.min(playSeconds, buffer.duration - offset));
+    source.start(when, startOffset, wanted);
     clipsMixed += 1;
   }
 
@@ -224,14 +282,15 @@ export async function renderTimelineAudio(
 
   if (audible.length === 0) return null;
 
-  const decodeContext = new OfflineAudioContext(channels, Math.max(1, length), sampleRate);
-  const buffers = await decodeSources(
-    decodeContext,
-    assets,
-    new Set(audible.map((clip) => clip.sourceUri)),
-  );
+  const wanted = new Set(audible.map((clip) => clip.sourceUri));
 
-  if (buffers.size === 0) return null;
+  // Streamed where possible: only the stretch being rendered is decoded,
+  // rather than every source in full before the render starts.
+  const streams = await openStreams(assets, wanted);
+  const decodeContext = new OfflineAudioContext(channels, Math.max(1, length), sampleRate);
+  const buffers = await decodeSources(decodeContext, assets, wanted, new Set(streams.keys()));
+
+  if (buffers.size === 0 && streams.size === 0) return null;
 
   const geometry: MixGeometry = {
     fps,
@@ -256,10 +315,11 @@ export async function renderTimelineAudio(
   let duckFloor = 1;
 
   if (duckingApplies) {
-    const [musicMix, dialogueMix] = await Promise.all([
-      renderClips(onBus('music'), trackById, buffers, anySolo, geometry),
-      renderClips(dialogue, trackById, buffers, anySolo, geometry),
-    ]);
+    // One after the other, not together: both renders read the same streams,
+    // and two readers walking one forward decoder would keep sending it back
+    // to the head of the file.
+    const musicMix = await renderClips(onBus('music'), trackById, buffers, streams, anySolo, geometry);
+    const dialogueMix = await renderClips(dialogue, trackById, buffers, streams, anySolo, geometry);
 
     duckFloor = duckOffline(musicMix.planar, dialogueMix.planar, sampleRate, ducking);
 
@@ -273,7 +333,7 @@ export async function renderTimelineAudio(
 
     clipsMixed = musicMix.clipsMixed + dialogueMix.clipsMixed;
   } else {
-    const mix = await renderClips(audible, trackById, buffers, anySolo, geometry);
+    const mix = await renderClips(audible, trackById, buffers, streams, anySolo, geometry);
     planar = mix.planar;
     clipsMixed = mix.clipsMixed;
   }
@@ -291,6 +351,9 @@ export async function renderTimelineAudio(
       if (magnitude > peak) peak = magnitude;
     }
   }
+
+  // The render is done; nothing decoded for it needs keeping.
+  for (const stream of streams.values()) stream.close();
 
   return {
     wav: encodeWavFloat32(planar, sampleRate),
