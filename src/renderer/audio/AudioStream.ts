@@ -10,14 +10,19 @@ import { fileSize, rangeReader } from '@renderer/engine/rangeFetch';
  * spans as it passes them, and remembers only a window around the playhead -
  * about 11 MB instead of a gigabyte.
  *
- * It runs forwards, from the head, because measurement left no choice. A
- * decode started in the middle of an AAC stream does not reproduce one
- * started at the head: around some positions it differs from the browser's
- * own decode by only -28 dB against the signal, which is audible, and no
- * amount of run-up fixes it. Started at the head it is bit-exact everywhere,
- * and an independent decoder (ffmpeg) agrees with the browser exactly. So
- * the shape is the same as video export's: one decoder, moving forward,
- * restarted only when asked to go back further than it remembers.
+ * It runs forwards, and starts either at the head or right next to what was
+ * asked for, depending on where that is.
+ *
+ * Only the first few seconds of an AAC stream cannot be decoded from the
+ * middle: measured against both the browser's own decode and ffmpeg, a
+ * decode starting inside roughly the first 6 seconds differs audibly there
+ * (as little as -28 dB against the signal, and more run-up does not help,
+ * because the error is positional rather than a warm-up deficit), while one
+ * starting at 6 s or beyond is bit-exact - checked at 6, 10, 20, 60, 300,
+ * 900 and 1800 s, with byte-identical exports. So near the head it winds
+ * from the head, which is cheap to reach; past that it starts where it is
+ * wanted, which is what keeps a render from the 30th minute from having to
+ * chew through 30 minutes of audio first.
  *
  * Only AAC in MP4 works this way (which is what `extractAudio` writes, and
  * what phones and cameras record). Anything else - a bare `.aac`, MP3, WAV,
@@ -37,6 +42,20 @@ const WINDOW_SECONDS = 30;
  * line are made of, without holding the whole file.
  */
 const KEEP_BEHIND_SECONDS = 10;
+
+/**
+ * Inside this much of the head, a decode has to start at the head.
+ *
+ * The boundary measured at 5-6 s on two different files; ten seconds leaves
+ * room and costs about 20 ms to wind through.
+ */
+const NEAR_HEAD_SECONDS = 10;
+
+/**
+ * Further ahead than this and the decoder starts again next to the target
+ * instead of being fed everything in between.
+ */
+const FAR_AHEAD_SECONDS = 30;
 
 /** Samples in one AAC-LC frame, which is also its run-up length. */
 const AAC_FRAME_SAMPLES = 1024;
@@ -114,6 +133,8 @@ export class AudioStream {
   private fedCount = 0;
   private decodedUntil = 0;
   private endReached = false;
+  /** -1024 when the decoder started at the head, 0 when it started mid-stream. */
+  private labelShift = -AAC_FRAME_SAMPLES;
   private failure: Error | null = null;
   private wake: (() => void) | null = null;
   /** Serialises `ensure`, so two spans never feed the decoder at once. */
@@ -244,29 +265,45 @@ export class AudioStream {
   }
 
   /**
-   * Start (or restart) the decoder at the head of the file.
+   * Start (or restart) the decoder so that `fromSeconds` is reached.
    *
-   * Always the head: that is the only starting point that reproduces the
-   * browser's own decode, and audio that is a little wrong is audible.
+   * Near the head that means the head itself, which is the only start that
+   * reproduces the browser's own decode there. Past NEAR_HEAD_SECONDS it
+   * starts a few frames before what was asked for, which is bit-exact and
+   * saves winding through everything in front of it.
    */
-  private startFromHead(): void {
+  private startAt(fromSeconds: number): void {
     this.closeDecoder();
     this.frames = [];
     this.heldSamples = 0;
-    this.nextFeed = 0;
     this.fedCount = 0;
-    this.decodedUntil = 0;
     this.endReached = false;
     this.failure = null;
 
     const { sampleRate, channels } = this.track;
+
+    // Where to begin feeding, in sample-table terms.
+    const fileFrom = Math.max(0, fromSeconds) + this.primingSeconds;
+    const start =
+      fromSeconds < NEAR_HEAD_SECONDS
+        ? 0
+        : Math.max(0, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
+
+    this.nextFeed = start;
+    // Labels run one frame ahead of content only when starting at the head.
+    this.labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
+    // Everything before the first frame fed is simply not held.
+    this.decodedUntil =
+      start === 0
+        ? 0
+        : Math.max(0, Math.round(this.samples[start].time * sampleRate) - this.primingSamples);
     this.decoder = new AudioDecoder({
       output: (data) => {
         try {
           // The decoder's labels run one frame ahead of its content when it
           // starts at the head, and sound time starts after the priming.
           const at =
-            Math.round((data.timestamp / 1e6) * sampleRate) - AAC_FRAME_SAMPLES - this.primingSamples;
+            Math.round((data.timestamp / 1e6) * sampleRate) + this.labelShift - this.primingSamples;
           const count = data.numberOfFrames;
 
           // Entirely run-up: nothing of it belongs to the sound.
@@ -314,7 +351,7 @@ export class AudioStream {
     while (this.pumping) await this.pumping.catch(() => undefined);
 
     const work = (async () => {
-      if (!this.decoder) this.startFromHead();
+      if (!this.decoder) this.startAt(0);
       const decoder = this.decoder as AudioDecoder;
 
       while (this.decodedUntil < untilSample && !this.endReached) {
@@ -383,8 +420,13 @@ export class AudioStream {
     const length = Math.max(1, Math.round(seconds * sampleRate));
     const wantTo = wantFrom + length;
 
-    // Older than what is still held: the decoder has to come round again.
-    if (this.frames.length > 0 && wantFrom < this.frames[0].at) this.startFromHead();
+    // Start again when what is wanted sits behind what is still held, or so
+    // far ahead that feeding everything in between would cost more than
+    // starting next to it. An empty window with a live decoder means it is
+    // simply still working towards the first frames.
+    const behind = this.frames.length > 0 && wantFrom < this.frames[0].at;
+    const farAhead = wantFrom > this.decodedUntil + FAR_AHEAD_SECONDS * sampleRate;
+    if (!this.decoder || behind || farAhead) this.startAt(from);
 
     await this.ensure(wantTo);
 

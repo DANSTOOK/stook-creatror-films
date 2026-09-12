@@ -550,11 +550,19 @@ that folds each stretch into the min/max pairs and lets it go
 (`PeakAccumulator`). Measured on 45 minutes: page peak 1.5-2.2 GB -> 339 MB,
 import 2.2 s -> 4.7 s (the extra is that peaks pass).
 
-**Forwards, from the head, because measurement left no choice.** A decode
-started mid-stream does not reproduce one started at the head: around some
-positions it differs from the browser's own decode by only -28 dB against
-the signal, which is audible, and no amount of run-up fixes it. From the head
-it is bit-exact everywhere, and ffmpeg agrees with the browser exactly.
+**Where a decode may start is a measured boundary, not a rule of thumb.**
+Inside roughly the first 6 seconds of an AAC stream, starting mid-stream
+does not reproduce a start from the head: it differs from the browser's own
+decode by as little as -28 dB against the signal, which is audible, and more
+run-up does not help - the error is positional, not a warm-up deficit. From
+6 seconds on it is bit-exact, checked at 6, 10, 20, 60, 300, 900 and 1800 s
+against both the browser and ffmpeg, with byte-identical exports. So
+`AudioStream` winds from the head only within `NEAR_HEAD_SECONDS` (10 s,
+about 20 ms of decoding) and otherwise starts next to what was asked for.
+That distinction is worth stating precisely: taking the near-head result as
+a general rule made every render from deep inside a long file wind through
+everything before it - 10 s from minute 30 cost 7.7 s of audio decoding
+alone.
 `npm run test:bench:audio` checks that, on pink noise it generates itself -
 a screen recording's audio track is often silent, and comparing silence with
 silence passes while proving nothing. Only AAC in MP4 streams (what
@@ -563,10 +571,28 @@ before.
 
 **Export reads the same way.** `renderMix` opens a stream per source and
 decodes only the stretch being rendered, walking clips in source order so
-each file is read once. The trade is that a short range from deep inside a
-long source now pays for the walk to it: 10 s from minute 30 of a
-45-minute recording went from 2.9 s to 8.7 s. Exporting a whole project -
-the usual case - is unaffected, since that walk happens anyway.
+each file is read once.
+
+## Export throughput
+
+Profiled per stage on this machine (RTX 4060 Laptop, WebCodecs + NVENC):
+
+| | whole 93 s clip | 10 s from minute 30 of 45 min |
+| --- | --- | --- |
+| audio mix | 0.36 s | 7.71 s → 0.05 s once the walk went |
+| frame loop (decode + composite + encode) | 7.35 s | 1.17 s |
+| everything else | 0.81 s | 0.38 s |
+
+Two things came out of that. **The audio walk** dominated any render from
+deep inside a long file, and `NEAR_HEAD_SECONDS` removed it (measured
+8.7 s → 3.9 s end to end for that case, output unchanged). **The encoder was
+waiting on a timer, not on the encoder**: with a queue depth of 8 drained by
+a 4 ms poll, 1326 of 2816 frames blocked on the timer; waiting on the
+`dequeue` event with a depth scaled by frame area (`queueDepthFor`) measured
+383 → 428 fps. `latencyMode` stays `'quality'` - `'realtime'` bought 9% and
+costs B-frames and lookahead - and the raw RGBA path stays the fallback it
+is: forcing it measured 4.8x slower (79.6 fps), `readPixels` alone costing
+2.79 ms/frame.
 
 `npm run test:bench` (with `BENCH_SOURCE=<video>`) exports a whole real video
 both ways and compares them frame by frame. On a 91-second 720p30 screen

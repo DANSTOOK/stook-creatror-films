@@ -75,7 +75,11 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       width: project.width,
       height: project.height,
       fps: project.fps,
-      endFrame: settings.endFrame || project.durationFrames,
+      // Seeded every time the dialog opens, not just the first time. With
+      // `settings.endFrame ||` here, the first range ever seeded stuck for
+      // the whole session: adding 40 minutes to a 5-minute timeline still
+      // exported 5 minutes, silently, with the dialog showing that number.
+      endFrame: project.durationFrames,
       exportAlpha: settings.exportAlpha || project.hasAlphaBackground,
       bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
     });

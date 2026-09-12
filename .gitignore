@@ -12,3 +12,4 @@ release/
 .gpu-tmp/
 .long-tmp/
 .bench-tmp/
+.bench-media/

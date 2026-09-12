@@ -242,7 +242,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({
       // Older files predate the mixer and markers; normalizing on the way in
       // means nothing downstream has to defend against a missing field.
-      project: normalizeProject(document.project),
+      // Every other path that adds clips grows the project through
+      // `transact`; opening a file was the one that did not, so a document
+      // whose stored duration was shorter than its clips opened with the
+      // playhead unable to reach them.
+      project: withContentLength(normalizeProject(document.project)),
       assets: document.assets,
       // The viewport's measured width is a fact about the window, not the
       // project, and fitting depends on it.
@@ -252,7 +256,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         width: document.project.width,
         height: document.project.height,
         fps: document.project.fps,
-        endFrame: document.project.durationFrames,
+        // Zero means "the whole timeline", resolved when the export dialog
+      // opens. Storing the length the project had when it was saved froze
+      // the export range at that number for the rest of the session.
+      endFrame: 0,
       },
     });
   },

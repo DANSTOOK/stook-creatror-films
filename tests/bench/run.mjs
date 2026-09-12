@@ -71,8 +71,13 @@ async function frameDiffs(a, b) {
 }
 
 async function main() {
-  await rm(workDir, { recursive: true, force: true });
+  // Only this run's own outputs. Wiping the whole directory deleted a source
+  // video that had been put in there, and the run then imported a file that
+  // no longer existed and waited for it to appear.
   await mkdir(workDir, { recursive: true });
+  await Promise.all(
+    ['fast.mp4', 'slow.mp4'].map((name) => rm(join(workDir, name), { force: true })),
+  );
 
   if (!process.env.SKIP_BUILD) {
     await execFileAsync(process.execPath, [join(projectRoot, 'node_modules/vite/bin/vite.js'), 'build'], { cwd: projectRoot });

@@ -54,6 +54,12 @@ export function MediaLibrary(): JSX.Element {
 
   const applyOutcome = useCallback(
     (outcome: ImportOutcome) => {
+      // The library keeps one entry per file, so importing the same file
+      // again adds nothing. That used to happen in silence and read as the
+      // app refusing the file - hence saying so.
+      const known = new Set(useProjectStore.getState().assets.map((asset) => asset.uri));
+      const duplicates = outcome.assets.filter((asset) => known.has(asset.uri));
+
       addAssets(outcome.assets);
 
       if (outcome.rejected.length > 0) {
@@ -61,6 +67,13 @@ export function MediaLibrary(): JSX.Element {
           .map((entry) => `${entry.name} (${entry.reason})`)
           .join(', ');
         setNotice(`Could not import ${detail}`);
+      } else if (duplicates.length > 0 && duplicates.length === outcome.assets.length) {
+        const names = duplicates.map((asset) => asset.name).join(', ');
+        setNotice(
+          duplicates.length === 1
+            ? `${names} is already in the library - drag it onto the timeline to use it again`
+            : `Already in the library: ${names}`,
+        );
       } else if (outcome.assets.length > 0) {
         setNotice(null);
       }

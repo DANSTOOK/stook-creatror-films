@@ -7,11 +7,64 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **415 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **421 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.9.0-beta.3 — El "solo 5 minutos" y la exportación lenta
+2026-09-12 · pre-release para probar
+
+Los dos errores que reportaste, más una corrección de algo que yo había
+dado por cierto y no lo era.
+
+### Arreglado
+- **"Solo deja agregar 5 minutos de metraje".** No había ningún límite de 5
+  minutos en ninguna parte: eran dos cosas encadenadas.
+  - **El rango de exportación se congelaba.** La primera vez que se abría la
+    ventana de exportación se guardaba la duración del proyecto de ese
+    momento, y un `||` mal puesto hacía que ese número se quedara para toda
+    la sesión. El metraje se añadía entero y se veía y oía completo, pero
+    **la exportación se cortaba en silencio** y la ventana seguía mostrando
+    ese número. Ahora el rango se recalcula cada vez que se abre.
+  - **Abrir un proyecto guardado** instalaba la duración que tenía al
+    guardarse, y esa duración es un techo para el cursor y para la línea de
+    tiempo. Todas las demás rutas que añaden clips la estiran; abrir archivo
+    era la única que no. Ya la estira también.
+  - *Comprobado:* 6 pruebas nuevas. Un proyecto con 45 minutos de clips
+    guardado con 5 de duración ahora abre con los 45 alcanzables y con el
+    rango de exportación cubriéndolos.
+- **Reimportar el mismo archivo no decía nada.** La biblioteca guarda una
+  entrada por archivo, así que volver a importarlo no añadía nada — en
+  silencio, lo cual se lee exactamente como "no me deja agregar". Ahora
+  avisa y te dice que lo arrastres desde la biblioteca.
+- **Exportar iba lento, y parte era culpa mía.** En la beta.2 hice que el
+  audio se leyera desde el principio del archivo, y eso obligaba a masticar
+  todo lo anterior: exportar 10 s desde el minuto 30 se iba en **7,7 s solo
+  de audio** (84.853 tramas AAC).
+  - *Medido de punta a punta:* ese caso pasa de **8,7 s a 3,9 s**, con la
+    exportación byte a byte idéntica.
+- **El codificador esperaba a un temporizador, no al codificador.** La cola
+  admitía 8 fotogramas y se vaciaba sondeando cada 4 ms: de 2816 fotogramas,
+  **1326 se quedaban esperando el temporizador**. Ahora espera el evento
+  `dequeue` (que existe justo para esto) con una cola dimensionada según el
+  tamaño del fotograma. *Medido:* **383 → 428 fps**.
+
+### Corregido de la beta.1
+- Dije que **arrancar la decodificación de audio a mitad de flujo nunca
+  reproduce el arranque desde el principio**. Era falso, y mis propios datos
+  ya lo desmentían: solo pasa en los **primeros ~6 segundos**. A partir de
+  ahí es exacto bit a bit — verificado en 6, 10, 20, 60, 300, 900 y 1800 s
+  contra el navegador y contra ffmpeg. Generalicé de un caso a 4 s sin ver
+  que mi propio control a 8 s salía perfecto. De ahí venía la lentitud.
+
+### Otros
+- El banco de pruebas de exportación **borraba su propia carpeta de trabajo**
+  al arrancar, incluida cualquier fuente que hubiera dentro. Ahora borra
+  solo sus salidas.
 
 ---
 
