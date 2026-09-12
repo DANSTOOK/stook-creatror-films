@@ -19,6 +19,7 @@ export const IPC = {
   chooseExportPath: 'dialog:choose-export-path',
   chooseExportFolder: 'dialog:choose-export-folder',
   resolveExportTarget: 'export:resolve-target',
+  defaultExportFolder: 'export:default-folder',
   chooseThumbnail: 'dialog:choose-thumbnail',
   writeThumbnail: 'export:write-thumbnail',
   readFile: 'fs:read-file',
@@ -100,6 +101,8 @@ export interface FilmoraApi {
     name: string,
     format: ExportSettings['format'],
   ): Promise<{ path: string; exists: boolean; inUse: boolean }>;
+  /** Documents\VIDEOS EXPORTADOS, created if missing and allowed as an export folder. */
+  defaultExportFolder(): Promise<string>;
   /** Pick an image to use as the video's thumbnail. */
   chooseThumbnail(): Promise<string | null>;
   /** Store a PNG (e.g. the current frame) as a thumbnail and return its path. */

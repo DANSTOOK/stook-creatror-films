@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { FolderOpen, Loader2, X } from 'lucide-react';
 import type {
   ExportFormat,
@@ -16,6 +16,7 @@ import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { describeExportProgress, formatClock } from './exportProgress';
 
 /**
  * Export dialog, including the game-asset mode.
@@ -148,6 +149,23 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     const picked = await window.filmora.chooseExportFolder();
     if (picked) setFolder(picked);
   }, []);
+
+  // Documents\VIDEOS EXPORTADOS unless the user picks somewhere else - never
+  // the footage folder by default, which is how a render once replaced its
+  // own source.
+  useEffect(() => {
+    if (folder) return;
+    let cancelled = false;
+    void window.filmora
+      .defaultExportFolder()
+      .then((path) => {
+        if (!cancelled) setFolder((current) => current ?? path);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [folder]);
 
   // Every change of folder, name or format resolves the real target path in
   // the main process, which cleans the name and applies the extension.
@@ -341,15 +359,23 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
   }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
-  const percent =
-    progress && progress.totalFrames > 0
-      ? Math.round((progress.frame / progress.totalFrames) * 100)
-      : 0;
+  const renderFps = settings.fps || project.fps;
+  const view = describeExportProgress({
+    frame: progress?.frame ?? 0,
+    totalFrames: progress?.totalFrames || totalFrames,
+    renderFps: progress?.fps ?? 0,
+    projectFps: renderFps,
+  });
+  const finished = !running && progress?.done === true && !progress.error;
+  const extension =
+    settings.format === 'png-sequence'
+      ? '/ (folder)'
+      : `.${settings.format === 'prores4444' ? 'mov' : settings.format === 'webm-vp9' ? 'webm' : 'mp4'}`;
 
   return (
     // The editor behind is blurred, so the dialog is the only thing in focus.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="panel w-[520px] max-h-[86vh]">
+      <div className="panel w-[560px] max-h-[90vh]">
         <header className="panel-header justify-between">
           <span>Export</span>
           <button type="button" className="tool-button" onClick={onClose} title="Close">
@@ -358,138 +384,190 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
         </header>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-          <label className="flex flex-col gap-1">
-            <span className="field-label">Format</span>
-            <select
-              className="numeric-input"
-              value={settings.format}
-              onChange={(event) =>
-                setExportSettings({ format: event.target.value as ExportFormat, outputPath: '' })
-              }
-            >
-              {FORMATS.map((format) => (
-                <option key={format.value} value={format.value}>
-                  {format.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="rounded border border-panel-700 bg-panel-950 p-3">
-            <label className="flex items-center gap-2 text-xs text-slate-200">
-              <input
-                type="checkbox"
-                className="accent-blue-500"
-                checked={settings.exportAlpha}
-                onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
-              />
-              Export alpha channel (PNG sequence / ProRes 4444 / WebM)
+          {/* Where the file goes comes first: nothing can start without it. */}
+          <Section title="Output">
+            <label className="flex flex-col gap-1">
+              <span className="text-2xs text-slate-400">File name</span>
+              <div className="flex items-center gap-1">
+                <input
+                  className="numeric-input"
+                  value={fileName}
+                  spellCheck={false}
+                  onChange={(event) => setFileName(event.target.value)}
+                />
+                <span className="shrink-0 text-2xs text-slate-500">{extension}</span>
+              </div>
             </label>
 
-            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-              <input
-                type="checkbox"
-                className="accent-blue-500"
-                checked={settings.premultiplyAlpha}
-                onChange={(event) => setExportSettings({ premultiplyAlpha: event.target.checked })}
-              />
-              Premultiply alpha
-            </label>
-            <p className="mt-1 pl-6 text-2xs leading-relaxed text-slate-500">
-              Leave this off for Godot. Godot imports straight alpha, and
-              premultiplying here is what produces dark fringes around sprites.
-            </p>
+            <div className="flex items-end gap-2">
+              <label className="flex flex-1 flex-col gap-1">
+                <span className="text-2xs text-slate-400">Save in</span>
+                <input readOnly className="numeric-input" value={folder ?? ''} placeholder="Not chosen" />
+              </label>
+              <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
+                <FolderOpen size={14} />
+                Browse
+              </button>
+            </div>
 
-            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-              <input
-                type="checkbox"
-                className="accent-blue-500"
-                checked={settings.pixelArtScaling}
-                onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
-              />
-              Nearest-neighbour scaling (pixel art)
-            </label>
-
-            {alphaUnsupported && (
-              <p className="mt-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
-                {selectedFormat?.label} has no alpha channel. Choose PNG sequence,
-                ProRes 4444 or WebM/VP9 to keep transparency.
+            {folder && settings.outputPath && (
+              <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-500'}`}>
+                {targetExists ? 'Will replace the existing ' : 'Will save as '}
+                <span className="text-slate-300">{settings.outputPath}</span>
               </p>
             )}
-          </div>
-
-          <label className="flex flex-col gap-1">
-            <span className="field-label">Resolution</span>
-            <select
-              className="numeric-input"
-              value={activePreset?.id ?? 'custom'}
-              onChange={(event) => {
-                const preset = presets.find((candidate) => candidate.id === event.target.value);
-                if (preset) resize(preset.width, preset.height);
-              }}
-            >
-              {presets.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.label}
-                </option>
-              ))}
-              {!activePreset && <option value="custom">Custom ({settings.width}x{settings.height})</option>}
-            </select>
-            {settings.width * settings.height > project.width * project.height * 1.01 && (
-              <span className="text-2xs text-amber-300">
-                Larger than the project ({project.width}x{project.height}): the picture is
-                scaled up, which adds pixels but not detail.
-              </span>
+            {/*
+              The export name defaults to the first video's name, so a folder the
+              footage came from aims the render at the footage itself. That is
+              not a replace, it is a loss - said plainly, and the button is off.
+            */}
+            {targetInUse && (
+              <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
+                That file is source footage in this project. Exporting onto it would destroy the
+                original - change the name or the folder.
+              </p>
             )}
-          </label>
+          </Section>
 
-          <div className="grid grid-cols-2 gap-3">
+          <Section title="Format and size">
             <label className="flex flex-col gap-1">
-              <span className="field-label">Width</span>
-              <input
-                type="number"
+              <span className="text-2xs text-slate-400">Format</span>
+              <select
                 className="numeric-input"
-                value={settings.width}
-                onChange={(event) => resize(Number(event.target.value), settings.height)}
-              />
+                value={settings.format}
+                onChange={(event) =>
+                  setExportSettings({ format: event.target.value as ExportFormat, outputPath: '' })
+                }
+              >
+                {FORMATS.map((format) => (
+                  <option key={format.value} value={format.value}>
+                    {format.label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label className="flex flex-col gap-1">
-              <span className="field-label">Height</span>
-              <input
-                type="number"
-                className="numeric-input"
-                value={settings.height}
-                onChange={(event) => resize(settings.width, Number(event.target.value))}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="field-label">Start frame</span>
-              <input
-                type="number"
-                className="numeric-input"
-                value={settings.startFrame}
-                onChange={(event) => setExportSettings({ startFrame: Number(event.target.value) })}
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="field-label">End frame</span>
-              <input
-                type="number"
-                className="numeric-input"
-                value={settings.endFrame}
-                onChange={(event) => setExportSettings({ endFrame: Number(event.target.value) })}
-              />
-            </label>
-          </div>
 
-          <p className="text-2xs text-slate-500">
-            Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
-            {settings.width}x{settings.height} @ {settings.fps} fps.
-          </p>
+            <label className="flex flex-col gap-1">
+              <span className="text-2xs text-slate-400">Resolution</span>
+              <select
+                className="numeric-input"
+                value={activePreset?.id ?? 'custom'}
+                onChange={(event) => {
+                  const preset = presets.find((candidate) => candidate.id === event.target.value);
+                  if (preset) resize(preset.width, preset.height);
+                }}
+              >
+                {presets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
+                ))}
+                {!activePreset && <option value="custom">Custom ({settings.width}x{settings.height})</option>}
+              </select>
+            </label>
 
-          <div className="space-y-2 rounded border border-panel-700 bg-panel-950 p-3">
-            <span className="field-label">Hardware</span>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-2xs text-slate-400">Width</span>
+                <input
+                  type="number"
+                  className="numeric-input"
+                  value={settings.width}
+                  onChange={(event) => resize(Number(event.target.value), settings.height)}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-2xs text-slate-400">Height</span>
+                <input
+                  type="number"
+                  className="numeric-input"
+                  value={settings.height}
+                  onChange={(event) => resize(settings.width, Number(event.target.value))}
+                />
+              </label>
+            </div>
 
+            {settings.width * settings.height > project.width * project.height * 1.01 && (
+              <p className="text-2xs text-amber-300">
+                Larger than the project ({project.width}x{project.height}): the picture is scaled
+                up, which adds pixels but not detail.
+              </p>
+            )}
+            <p className="text-2xs text-slate-500">
+              Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
+              {settings.width}x{settings.height} @ {settings.fps} fps.
+            </p>
+          </Section>
+
+          <Section title="Range">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-2xs text-slate-400">
+                  Start frame <span className="text-slate-500">({formatClock(settings.startFrame / renderFps)})</span>
+                </span>
+                <input
+                  type="number"
+                  className="numeric-input"
+                  value={settings.startFrame}
+                  onChange={(event) => setExportSettings({ startFrame: Number(event.target.value) })}
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-2xs text-slate-400">
+                  End frame <span className="text-slate-500">({formatClock(settings.endFrame / renderFps)})</span>
+                </span>
+                <input
+                  type="number"
+                  className="numeric-input"
+                  value={settings.endFrame}
+                  onChange={(event) => setExportSettings({ endFrame: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-slate-300">
+              Renders <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span> of
+              video <span className="text-slate-500">({totalFrames.toLocaleString()} frames at {renderFps} fps)</span>
+            </p>
+          </Section>
+
+          {coverArt && (
+            <Section title="Thumbnail">
+              <div className="flex items-center gap-3">
+                <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-panel-700 bg-panel-900">
+                  {thumbnailPreview ? (
+                    <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-2xs text-slate-600">None</span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void captureCurrentFrame()}>
+                    Use the frame at the playhead
+                  </button>
+                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void chooseThumbnail()}>
+                    Choose an image...
+                  </button>
+                  {thumbnailPath && (
+                    <button
+                      type="button"
+                      className="tool-button h-7 justify-start text-slate-500"
+                      onClick={() => {
+                        setThumbnailPath(null);
+                        setThumbnailPreview(null);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-2xs text-slate-600">
+                Embedded as the file&apos;s cover - what Explorer and video players show.
+              </p>
+            </Section>
+          )}
+
+          <Section title="Hardware">
             {gpu === null ? (
               <p className="flex items-center gap-2 text-2xs text-slate-500">
                 <Loader2 size={12} className="animate-spin" />
@@ -527,8 +605,8 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
                 {restartPending && (
                   <div className="flex items-center justify-between gap-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
                     <span>
-                      The GPU is chosen when the app starts. Restart to render on the
-                      new one; save your project first.
+                      The GPU is chosen when the app starts. Restart to render on the new one; save
+                      your project first.
                     </span>
                     <button
                       type="button"
@@ -565,110 +643,118 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
                 {plan.note && <p className="text-2xs text-amber-300">{plan.note}</p>}
                 {gpu.encoders.length === 0 && (
                   <p className="text-2xs text-slate-500">
-                    No hardware encoder produced frames on this machine, so only
-                    the CPU is offered.
+                    No hardware encoder produced frames on this machine, so only the CPU is offered.
                   </p>
                 )}
               </>
             )}
-          </div>
+          </Section>
 
-          <label className="flex flex-col gap-1">
-            <span className="field-label">File name</span>
-            <div className="flex items-center gap-1">
+          {/* Only game-asset exports need these, so they stay folded unless in use. */}
+          <details
+            className="rounded border border-panel-700 bg-panel-950 p-3"
+            open={settings.exportAlpha || settings.premultiplyAlpha || settings.pixelArtScaling || alphaUnsupported}
+          >
+            <summary className="field-label cursor-pointer select-none">Transparency and pixel art</summary>
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-200">
               <input
-                className="numeric-input"
-                value={fileName}
-                spellCheck={false}
-                onChange={(event) => setFileName(event.target.value)}
+                type="checkbox"
+                className="accent-blue-500"
+                checked={settings.exportAlpha}
+                onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
               />
-              <span className="shrink-0 text-2xs text-slate-500">
-                {settings.format === 'png-sequence' ? '/ (folder)' : `.${settings.format === 'prores4444' ? 'mov' : settings.format === 'webm-vp9' ? 'webm' : 'mp4'}`}
-              </span>
-            </div>
-          </label>
-
-          <div className="flex items-end gap-2">
-            <label className="flex flex-1 flex-col gap-1">
-              <span className="field-label">Save in</span>
-              <input readOnly className="numeric-input" value={folder ?? ''} placeholder="Not chosen" />
+              Export alpha channel (PNG sequence / ProRes 4444 / WebM)
             </label>
-            <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
-              <FolderOpen size={14} />
-              Browse
-            </button>
-          </div>
-          {folder && settings.outputPath && (
-            <p className={`text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-500'}`}>
-              {targetExists ? 'Will replace the existing ' : 'Will save as '}
-              <span className="text-slate-300">{settings.outputPath}</span>
+
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                className="accent-blue-500"
+                checked={settings.premultiplyAlpha}
+                onChange={(event) => setExportSettings({ premultiplyAlpha: event.target.checked })}
+              />
+              Premultiply alpha
+            </label>
+            <p className="mt-1 pl-6 text-2xs leading-relaxed text-slate-500">
+              Leave this off for Godot. Godot imports straight alpha, and premultiplying here is what
+              produces dark fringes around sprites.
             </p>
-          )}
-          {/*
-            The export name defaults to the first video's name, so choosing the
-            folder that footage came from aims the render straight at the
-            footage. That is not a replace, it is a loss: the source is gone and
-            the render needs it. Said plainly, and the button is off.
-          */}
-          {targetInUse && (
-            <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
-              That file is source footage in this project. Exporting onto it would destroy the
-              original - change the name or the folder.
-            </p>
-          )}
 
-          {coverArt && (
-            <div className="rounded border border-panel-700 bg-panel-950 p-3">
-              <span className="field-label">Thumbnail</span>
-              <div className="mt-2 flex items-center gap-3">
-                <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-panel-700 bg-panel-900">
-                  {thumbnailPreview ? (
-                    <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-2xs text-slate-600">None</span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void captureCurrentFrame()}>
-                    Use the frame at the playhead
-                  </button>
-                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void chooseThumbnail()}>
-                    Choose an image...
-                  </button>
-                  {thumbnailPath && (
-                    <button
-                      type="button"
-                      className="tool-button h-7 justify-start text-slate-500"
-                      onClick={() => {
-                        setThumbnailPath(null);
-                        setThumbnailPreview(null);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="mt-2 text-2xs text-slate-600">
-                Embedded as the file&apos;s cover - what Explorer and video players show.
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                className="accent-blue-500"
+                checked={settings.pixelArtScaling}
+                onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
+              />
+              Nearest-neighbour scaling (pixel art)
+            </label>
+
+            {alphaUnsupported && (
+              <p className="mt-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
+                {selectedFormat?.label} has no alpha channel. Choose PNG sequence, ProRes 4444 or
+                WebM/VP9 to keep transparency.
               </p>
-            </div>
-          )}
-
-          {(running || progress) && (
-            <div>
-              <div className="h-1.5 w-full overflow-hidden rounded bg-panel-700">
-                <div className="h-full bg-accent transition-all" style={{ width: `${percent}%` }} />
-              </div>
-              <p className="mt-1 text-2xs text-slate-400">
-                {progress?.frame ?? 0} / {progress?.totalFrames || totalFrames} frames
-                {progress && progress.fps > 0 ? ` - ${progress.fps.toFixed(1)} fps` : ''}
-              </p>
-            </div>
-          )}
-
-          {message && <p className="text-2xs text-slate-300">{message}</p>}
+            )}
+          </details>
         </div>
+
+        {/*
+          Progress lives outside the scrolling area, so it stays in view for the
+          whole render - and it speaks in minutes of video and time left, not in
+          a frame count nobody can turn into a coffee break.
+        */}
+        {(running || progress || message) && (
+          <div className="space-y-2 border-t border-panel-700 bg-panel-950 px-4 py-3">
+            {(running || progress) && (
+              <>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold text-slate-100">
+                    {finished ? 'Finished' : running ? 'Rendering' : 'Stopped'}{' '}
+                    <span className="tabular-nums">{view.percent.toFixed(1)}%</span>
+                  </span>
+                  <span className="text-xs tabular-nums text-slate-300">
+                    <span className="text-slate-100">{view.videoDone}</span> / {view.videoTotal} of video
+                  </span>
+                </div>
+                <div
+                  className="h-3 w-full overflow-hidden rounded-full bg-panel-700"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={view.percent}
+                >
+                  <div
+                    className={`h-full rounded-full transition-[width] duration-300 ${finished ? 'bg-emerald-500' : 'bg-accent'}`}
+                    style={{ width: `${view.percent}%` }}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-2xs tabular-nums text-slate-400">
+                  <span>
+                    Elapsed <span className="text-slate-200">{view.elapsed}</span>
+                  </span>
+                  <span className="text-center">
+                    Remaining{' '}
+                    <span className="text-slate-200">
+                      {finished ? '0:00' : running ? (view.remaining ?? 'estimating...') : '-'}
+                    </span>
+                  </span>
+                  <span className="text-right">
+                    {view.speed !== null ? (
+                      <>
+                        <span className="text-slate-200">{view.speed.toFixed(1)}x</span> realtime (
+                        {(progress?.fps ?? 0).toFixed(0)} fps)
+                      </>
+                    ) : (
+                      'starting...'
+                    )}
+                  </span>
+                </div>
+              </>
+            )}
+            {message && <p className="text-2xs leading-relaxed text-slate-300">{message}</p>}
+          </div>
+        )}
 
         <footer className="flex justify-end gap-2 border-t border-panel-700 px-4 py-3">
           {running ? (
@@ -698,6 +784,16 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
         </footer>
       </div>
     </div>
+  );
+}
+
+/** A titled group of related settings. */
+function Section({ title, children }: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <section className="space-y-2 rounded border border-panel-700 bg-panel-950 p-3">
+      <h3 className="field-label">{title}</h3>
+      {children}
+    </section>
   );
 }
 

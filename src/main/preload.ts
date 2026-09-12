@@ -34,6 +34,7 @@ const api: FilmoraApi = {
   chooseExportFolder: () => ipcRenderer.invoke(IPC.chooseExportFolder) as Promise<string | null>,
   resolveExportTarget: (folder, name, format) =>
     ipcRenderer.invoke(IPC.resolveExportTarget, folder, name, format) as Promise<{ path: string; exists: boolean; inUse: boolean }>,
+  defaultExportFolder: () => ipcRenderer.invoke(IPC.defaultExportFolder) as Promise<string>,
   chooseThumbnail: () => ipcRenderer.invoke(IPC.chooseThumbnail) as Promise<string | null>,
   writeThumbnail: (png) => ipcRenderer.invoke(IPC.writeThumbnail, png) as Promise<string>,
   chooseExportPath: (format) =>

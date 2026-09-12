@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -421,6 +421,18 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       return result.filePath;
     },
   );
+
+  /**
+   * Where exports go unless the user picks somewhere else: Documents\VIDEOS
+   * EXPORTADOS, created on first use. Never next to the footage by default -
+   * that is how a render once replaced the video it was rendering.
+   */
+  ipcMain.handle(IPC.defaultExportFolder, async (): Promise<string> => {
+    const folder = join(app.getPath('documents'), 'VIDEOS EXPORTADOS');
+    await mkdir(folder, { recursive: true });
+    allowedFolders.add(folder);
+    return folder;
+  });
 
   ipcMain.handle(IPC.chooseExportFolder, async (): Promise<string | null> => {
     const window = getWindow();
