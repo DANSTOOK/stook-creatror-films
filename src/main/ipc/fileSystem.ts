@@ -207,7 +207,21 @@ async function probeMedia(path: string): Promise<MediaProbe> {
 }
 
 export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null): EncoderPipeline {
+  /**
+   * Progress, at about ten readings a second rather than one per frame.
+   *
+   * A render sends thousands of these, and each one crossed IPC and
+   * re-rendered the dialog - 0.17 ms a frame, and worse, the jitter of a
+   * React commit landing mid-frame. Nobody reads a counter faster than
+   * this, but the LAST reading has to arrive or the bar stops short of the
+   * end, so a frame that reaches the total is always sent.
+   */
+  let lastProgressAt = 0;
   const pipeline = new EncoderPipeline((progress) => {
+    const now = Date.now();
+    const finished = progress.totalFrames > 0 && progress.frame >= progress.totalFrames;
+    if (!finished && now - lastProgressAt < 100) return;
+    lastProgressAt = now;
     getWindow()?.webContents.send(IPC.exportProgress, progress);
   });
 

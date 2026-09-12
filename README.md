@@ -583,13 +583,29 @@ Profiled per stage on this machine (RTX 4060 Laptop, WebCodecs + NVENC):
 | frame loop (decode + composite + encode) | 7.35 s | 1.17 s |
 | everything else | 0.81 s | 0.38 s |
 
-Two things came out of that. **The audio walk** dominated any render from
-deep inside a long file, and `NEAR_HEAD_SECONDS` removed it (measured
-8.7 s → 3.9 s end to end for that case, output unchanged). **The encoder was
-waiting on a timer, not on the encoder**: with a queue depth of 8 drained by
-a 4 ms poll, 1326 of 2816 frames blocked on the timer; waiting on the
-`dequeue` event with a depth scaled by frame area (`queueDepthFor`) measured
-383 → 428 fps. `latencyMode` stays `'quality'` - `'realtime'` bought 9% and
+Three things came out of that.
+
+**The export ran at the speed of the monitor.** Every frame is built as a
+`VideoFrame` from the canvas, and that call is paced by vsync: on a 180 Hz
+display the loop advanced exactly one refresh per frame - 5.555 ms, or
+11.111 ms when a frame slipped, never anything between - which pinned an
+encoder good for 700 fps at 180. `disable-gpu-vsync` in `main/index.ts`
+lifts it: the same render went 30.7 s → 9.1 s (507 fps), and a 10 s range
+from minute 30 of a 45-minute file 3.9 s → 1.4 s. The cost is that the
+preview is no longer synchronised to the display and can tear while
+playing. Reading the pixels back to dodge the gate in the export path alone
+looked twice as fast measured on its own and came out *slower* in the real
+loop (33.7 s against 30.7 s) - the readback stalls the pipeline for about as
+long as the refresh it avoids.
+
+**The audio walk** dominated any render from deep inside a long file, and
+`NEAR_HEAD_SECONDS` removed it (8.7 s → 3.9 s for that case, output
+unchanged). **The encoder was waiting on a timer, not on the encoder**: with
+a queue depth of 8 drained by a 4 ms poll, 1326 of 2816 frames blocked on
+the timer; waiting on the `dequeue` event with a depth scaled by frame area
+(`queueDepthFor`) measured 383 → 428 fps. Progress is throttled to ten
+readings a second for the same reason - a React commit landing mid-frame was
+enough to miss a deadline. `latencyMode` stays `'quality'` - `'realtime'` bought 9% and
 costs B-frames and lookahead - and the raw RGBA path stays the fallback it
 is: forcing it measured 4.8x slower (79.6 fps), `readPixels` alone costing
 2.79 ms/frame.

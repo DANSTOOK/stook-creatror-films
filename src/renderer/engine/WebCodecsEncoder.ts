@@ -198,6 +198,20 @@ export class WebCodecsEncoder {
       duration: Math.round(1_000_000 / this.settings.fps),
     });
 
+    await this.submit(frame);
+  }
+
+  /**
+   * Wait for room in the encoder, hand the frame over, and release it.
+   *
+   * Reading the pixels back and encoding from a buffer instead was tried
+   * here: measured on its own it looked twice as fast, but in the real
+   * export loop it came out slower (33.7 s against 30.7 s for the same
+   * render), because the readback stalls the GPU pipeline for about as long
+   * as the refresh it avoids. The cap this was meant to dodge is lifted in
+   * the main process instead - see `disable-gpu-vsync` there.
+   */
+  private async submit(frame: VideoFrame): Promise<void> {
     try {
       // Backpressure: let the encoder drain before queuing more work.
       while (this.encoder.encodeQueueSize > this.queueDepth) {

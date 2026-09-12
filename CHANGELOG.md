@@ -15,6 +15,38 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.9.0-beta.4 — La exportación iba a la velocidad del monitor
+2026-09-12 · pre-release para probar
+
+### Arreglado
+- **Exportar era 3 veces más lento de lo que podía ser, por el vsync de la
+  pantalla.** Cada fotograma se construye desde el lienzo, y esa llamada va
+  sincronizada con el refresco del monitor: en tu pantalla de 180 Hz la
+  exportación avanzaba **exactamente un refresco por fotograma** (5,555 ms,
+  u 11,111 cuando se le escapaba el plazo, nunca nada intermedio). Eso
+  clavaba en 180 fps un codificador que da 700.
+  - *Medido con tus archivos* (una línea de tiempo de 2:33 con tu MP3):
+    **30,7 s → 9,1 s**, de 150 a **507 fps** (16,9× tiempo real).
+  - *Y en metraje largo:* 10 s desde el minuto 30 de una grabación de 45
+    minutos, **3,9 s → 1,4 s**. Con el arreglo de audio de la beta.3, ese
+    caso va de 8,7 s a 1,4 s.
+  - **Lo que cuesta:** la vista previa ya no va sincronizada con la pantalla
+    y puede mostrar *tearing* al reproducir. Si te molesta, dímelo y lo pongo
+    detrás de un ajuste.
+- **El aviso de progreso se manda diez veces por segundo**, no una por
+  fotograma. Antes cada fotograma cruzaba el proceso principal y repintaba
+  la ventana; nadie lee un contador tan rápido, y ese repintado a media
+  exportación bastaba para perder el plazo del refresco.
+
+### Lo que probé y descarté
+- Alimentar al codificador con los píxeles leídos de la GPU, en vez del
+  lienzo, para esquivar el vsync sin tocar la vista previa: **medido solo
+  parecía el doble de rápido, pero en el bucle real salió más lento** (33,7 s
+  frente a 30,7 s). Leer los píxeles atasca la tubería de la GPU más o menos
+  lo mismo que el refresco que evita. Queda anotado en el código.
+
+---
+
 ## v1.9.0-beta.3 — El "solo 5 minutos" y la exportación lenta
 2026-09-12 · pre-release para probar
 

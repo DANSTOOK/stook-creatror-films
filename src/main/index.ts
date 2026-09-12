@@ -36,6 +36,24 @@ registerMediaSchemeAsPrivileged();
 // Hardware video decode keeps scrubbing responsive on large timelines.
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 
+/**
+ * Do not pace the compositor to the display's refresh.
+ *
+ * An export builds each frame as a `VideoFrame` from the canvas, and that
+ * call is gated by vsync: measured on a 180 Hz screen, the whole export
+ * advanced exactly one refresh per frame - 5.555 ms, or 11.111 ms when a
+ * frame slipped the deadline, never anything in between - which pinned an
+ * encoder good for 700 fps at 180. Lifting it took the same render from
+ * 30.7 s to 9.6 s, with every exported frame still the right picture.
+ *
+ * The cost is that the preview is no longer synchronised to the display and
+ * can tear while playing. Reading the pixels back to dodge the gate instead
+ * was tried and measured slower (see WebCodecsEncoder), and
+ * `disable-frame-rate-limit` is worse still - it lets the viewport's own
+ * animation loop spin free.
+ */
+app.commandLine.appendSwitch('disable-gpu-vsync');
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1680,
