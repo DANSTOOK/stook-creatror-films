@@ -89,6 +89,65 @@ export function bucketsFor(seconds: number): number {
   return Math.min(1_000_000, Math.max(2048, Math.round(seconds * 100)));
 }
 
+/**
+ * Peaks folded in a chunk at a time, for audio that is never all in memory.
+ *
+ * `computePeaks` needs every sample at once, which is exactly what streaming
+ * avoids: 45 minutes of stereo is about a gigabyte of Float32. Buckets span
+ * the whole file, so this keeps the min/max pairs and folds each decoded
+ * chunk into them as it arrives, then throws the samples away.
+ */
+export class PeakAccumulator {
+  private readonly peaks: Float32Array;
+  /** Whether any sample landed in a bucket, to tell silence from untouched. */
+  private readonly touched: Uint8Array;
+  private readonly samplesPerBucket: number;
+
+  constructor(
+    readonly bucketCount: number,
+    readonly totalSamples: number,
+    readonly sampleRate: number,
+  ) {
+    if (bucketCount <= 0) throw new RangeError('bucketCount must be positive');
+    this.peaks = new Float32Array(bucketCount * 2);
+    this.touched = new Uint8Array(bucketCount);
+    this.samplesPerBucket = Math.max(1, totalSamples / bucketCount);
+  }
+
+  /** Fold in `channels`, whose first sample is `startSample` in the file. */
+  add(channels: readonly ArrayLike<number>[], startSample: number): void {
+    const length = channels[0]?.length ?? 0;
+    for (const channel of channels) {
+      for (let i = 0; i < length; i += 1) {
+        const bucket = Math.min(
+          this.bucketCount - 1,
+          Math.floor((startSample + i) / this.samplesPerBucket),
+        );
+        const sample = channel[i];
+        const at = bucket * 2;
+        if (!this.touched[bucket]) {
+          this.touched[bucket] = 1;
+          this.peaks[at] = sample;
+          this.peaks[at + 1] = sample;
+        } else {
+          if (sample < this.peaks[at]) this.peaks[at] = sample;
+          if (sample > this.peaks[at + 1]) this.peaks[at + 1] = sample;
+        }
+      }
+    }
+  }
+
+  /** The peaks so far. Buckets nothing reached read as silence. */
+  finish(): WaveformPeaks {
+    return {
+      peaks: this.peaks,
+      bucketCount: this.bucketCount,
+      durationSeconds: this.totalSamples / this.sampleRate,
+      sampleRate: this.sampleRate,
+    };
+  }
+}
+
 export class WaveformExtractor {
   private readonly cache = new Map<string, WaveformPeaks>();
   private readonly pending = new Map<string, Promise<WaveformPeaks>>();

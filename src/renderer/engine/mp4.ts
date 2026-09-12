@@ -161,6 +161,23 @@ export function parseMoov(moov: Uint8Array): Mp4VideoTrack | null {
     const description = moov.slice(config.start, config.end);
     const codec = configType === 'avcC' ? avcCodec(entry.type, description) : hevcCodec(entry.type, description);
 
+    const samples = sampleTable(view, trak, stbl, timescale);
+    if (!samples) return null;
+
+    return { codec, description, width, height, timescale, samples };
+  }
+
+  return null;
+}
+
+/**
+ * The sample table of one track: byte range, times and sync flag per sample.
+ *
+ * Shared by video and audio - the boxes that describe WHERE samples are and
+ * WHEN they play are the same for both; only the codec-specific head differs.
+ */
+function sampleTable(view: DataView, trak: Box, stbl: Box, timescale: number): Mp4Sample[] | null {
+  {
     // stts: decode-time deltas.
     const stts = child(view, stbl, 'stts');
     const stsz = child(view, stbl, 'stsz');
@@ -272,7 +289,127 @@ export function parseMoov(moov: Uint8Array): Mp4VideoTrack | null {
       };
     }
 
-    return { codec, description, width, height, timescale, samples };
+    return samples;
+  }
+}
+
+/**
+ * Walk the MPEG-4 descriptors inside an `esds` and return the
+ * AudioSpecificConfig (`DecoderSpecificInfo`, tag 5).
+ *
+ * That config is what an `AudioDecoder` needs as its `description`, and it
+ * also carries the real sample rate and channel count for a track whose
+ * sample entry says zero. Descriptors are tag + a length written seven bits
+ * per byte, nested; anything unexpected ends the walk rather than guessing.
+ */
+function audioSpecificConfig(moov: Uint8Array, view: DataView, esds: Box): Uint8Array | null {
+  // Skip the box's version and flags.
+  let at = esds.start + 4;
+
+  const readLength = (): number => {
+    let length = 0;
+    for (let byte = 0; byte < 4; byte += 1) {
+      const value = view.getUint8(at);
+      at += 1;
+      length = (length << 7) | (value & 0x7f);
+      if ((value & 0x80) === 0) break;
+    }
+    return length;
+  };
+
+  while (at < esds.end) {
+    const tag = view.getUint8(at);
+    at += 1;
+    const length = readLength();
+    const payloadEnd = Math.min(esds.end, at + length);
+
+    if (tag === 0x03) {
+      // ES_Descriptor: ES_ID (2) and flags (1), then nested descriptors.
+      const flags = view.getUint8(at + 2);
+      at += 3;
+      if (flags & 0x80) at += 2; // Stream dependency.
+      if (flags & 0x40) at += 1 + view.getUint8(at); // URL.
+      if (flags & 0x20) at += 2; // OCR stream.
+      continue;
+    }
+    if (tag === 0x04) {
+      // DecoderConfigDescriptor: 13 fixed bytes, then DecoderSpecificInfo.
+      at += 13;
+      continue;
+    }
+    if (tag === 0x05) return moov.slice(at, payloadEnd);
+
+    at = payloadEnd;
+  }
+
+  return null;
+}
+
+export interface Mp4AudioTrack {
+  /** WebCodecs codec string, e.g. "mp4a.40.2" (AAC-LC). */
+  codec: string;
+  /** AudioSpecificConfig - the `description` an AudioDecoder needs. */
+  description: Uint8Array;
+  sampleRate: number;
+  channels: number;
+  timescale: number;
+  samples: Mp4Sample[];
+}
+
+/** Sample rates an AudioSpecificConfig can name, by its 4-bit index. */
+const ASC_RATES = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
+
+/**
+ * Parse the sample table of the first AAC audio track in a `moov` payload.
+ *
+ * Returns null for anything else - a bare ADTS `.aac`, MP3, FLAC, Opus - so
+ * the caller falls back to decoding the whole file the old way.
+ */
+export function parseMoovAudio(moov: Uint8Array): Mp4AudioTrack | null {
+  const view = new DataView(moov.buffer, moov.byteOffset, moov.byteLength);
+  const [root] = childBoxes(view, 0, moov.byteLength);
+  if (!root || root.type !== 'moov') return null;
+
+  for (const trak of childBoxes(view, root.start, root.end).filter((box) => box.type === 'trak')) {
+    const hdlr = path(view, trak, 'mdia', 'hdlr');
+    if (!hdlr || fourCC(view, hdlr.start + 8) !== 'soun') continue;
+
+    const mdhd = path(view, trak, 'mdia', 'mdhd');
+    const stbl = path(view, trak, 'mdia', 'minf', 'stbl');
+    if (!mdhd || !stbl) return null;
+
+    const timescale = view.getUint8(mdhd.start) === 1 ? view.getUint32(mdhd.start + 20) : view.getUint32(mdhd.start + 12);
+
+    const stsd = child(view, stbl, 'stsd');
+    if (!stsd) return null;
+    const [entry] = childBoxes(view, stsd.start + 8, stsd.end);
+    if (!entry || entry.type !== 'mp4a') return null;
+
+    // AudioSampleEntry: 8 bytes of SampleEntry, 8 reserved, then channel
+    // count, sample size, two more reserved fields and a 16.16 sample rate -
+    // 28 bytes before the child boxes.
+    let channels = view.getUint16(entry.start + 16);
+    let sampleRate = view.getUint32(entry.start + 24) / 65536;
+
+    const esds = childBoxes(view, entry.start + 28, entry.end).find((box) => box.type === 'esds');
+    if (!esds) return null;
+    const description = audioSpecificConfig(moov, view, esds);
+    if (!description || description.byteLength < 2) return null;
+
+    // AudioSpecificConfig: 5 bits of object type, 4 of sample-rate index, 4
+    // of channel configuration. It is the authority when the sample entry
+    // leaves them at zero, which some writers do.
+    const objectType = description[0] >> 3;
+    const rateIndex = ((description[0] & 0x07) << 1) | (description[1] >> 7);
+    const channelConfig = (description[1] >> 3) & 0x0f;
+    if (rateIndex < ASC_RATES.length) sampleRate = ASC_RATES[rateIndex] || sampleRate;
+    if (channelConfig > 0) channels = channelConfig;
+    if (!sampleRate || !channels) return null;
+
+    const samples = sampleTable(view, trak, stbl, timescale);
+    if (!samples) return null;
+
+    return { codec: `mp4a.40.${objectType}`, description, sampleRate, channels, timescale, samples };
   }
 
   return null;

@@ -23,6 +23,7 @@
     "test:long": "node ./tests/long/run.mjs",
     "test:bench": "node ./tests/bench/run.mjs",
     "test:bench:scrub": "node ./tests/bench/scrub.mjs",
+    "test:bench:audio": "node ./tests/bench/audio-stream.mjs",
     "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
     "release": "node ./scripts/release.mjs",
     "rollback": "node ./scripts/rollback.mjs"
