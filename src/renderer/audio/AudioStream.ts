@@ -2,14 +2,22 @@ import { parseMoovAudio, readMoov, type Mp4AudioTrack, type Mp4Sample } from '@r
 import { fileSize, rangeReader } from '@renderer/engine/rangeFetch';
 
 /**
- * Audio decoded a few seconds at a time, instead of all of it at once.
+ * Audio decoded as it is needed, instead of all of it at once.
  *
  * Playback used to hold every source as one `AudioBuffer`: 45 minutes of
  * stereo is about a gigabyte of Float32, and it was the largest thing in the
- * page by far. This decodes the span that is actually wanted - for playback
- * just ahead of the playhead, for a scrub grain the 85 ms under it, for an
- * export the range being rendered - with a WebCodecs `AudioDecoder`, keeps a
- * bounded cache of recent spans, and forgets the rest.
+ * page by far. This keeps ONE decoder per file running forwards, hands out
+ * spans as it passes them, and remembers only a window around the playhead -
+ * about 11 MB instead of a gigabyte.
+ *
+ * It runs forwards, from the head, because measurement left no choice. A
+ * decode started in the middle of an AAC stream does not reproduce one
+ * started at the head: around some positions it differs from the browser's
+ * own decode by only -28 dB against the signal, which is audible, and no
+ * amount of run-up fixes it. Started at the head it is bit-exact everywhere,
+ * and an independent decoder (ffmpeg) agrees with the browser exactly. So
+ * the shape is the same as video export's: one decoder, moving forward,
+ * restarted only when asked to go back further than it remembers.
  *
  * Only AAC in MP4 works this way (which is what `extractAudio` writes, and
  * what phones and cameras record). Anything else - a bare `.aac`, MP3, WAV,
@@ -17,22 +25,18 @@ import { fileSize, rangeReader } from '@renderer/engine/rangeFetch';
  * before.
  */
 
-/** Span of audio decoded and cached as a unit. */
-const CHUNK_SECONDS = 4;
-
-/** How much decoded audio to keep. 96 MB is ~4 minutes of 48 kHz stereo. */
-const CACHE_BYTES = 96 * 1024 * 1024;
+/** Decoded audio kept around the playhead. 30 s of 48 kHz stereo is ~11 MB. */
+const WINDOW_SECONDS = 30;
 
 /**
- * Frames fed before the wanted span, so the decoder is warm when it reaches
- * it. AAC frames each decode on their own, but a decoder started mid-stream
- * needs run-up through its filter bank before it reproduces samples exactly.
- * Measured against the browser's own decode of the same file: with two
- * frames, a span starting mid-stream still differed from it by about a tenth
- * of the signal near its start; with eight, it matches exactly. The extra
- * output is discarded by position, so the only cost is a little decoding.
+ * How much of the window sits BEHIND the playhead.
+ *
+ * Going back further than this restarts the decoder at the head of the file,
+ * which costs real time (about 3.7 s to reach minute 40, decoding at ~650x).
+ * Ten seconds covers the small steps back that scrubbing and replaying a
+ * line are made of, without holding the whole file.
  */
-const LEAD_IN_FRAMES = 8;
+const KEEP_BEHIND_SECONDS = 10;
 
 /** Samples in one AAC-LC frame, which is also its run-up length. */
 const AAC_FRAME_SAMPLES = 1024;
@@ -49,6 +53,22 @@ const AAC_FRAME_SAMPLES = 1024;
  */
 const AAC_PRIMING_SAMPLES = AAC_FRAME_SAMPLES;
 
+/**
+ * Frames fed before a span that `decodeUncached` is asked for.
+ *
+ * Only a nicety there: it does NOT make a mid-stream decode match one from
+ * the head. That was measured - two frames and twenty-three frames of
+ * run-up gave the same difference - which is why everything that has to be
+ * exact goes through the forward decoder instead.
+ */
+const LEAD_IN_FRAMES = 8;
+
+/** Chunks allowed to wait in the decoder at once. */
+const MAX_QUEUE = 8;
+
+/** No output for this long means the decoder is stuck. */
+const STALL_MS = 8000;
+
 /** Bytes fetched per read; audio frames are small and consecutive. */
 const READ_WINDOW = 1024 * 1024;
 
@@ -58,22 +78,17 @@ export interface DecodedSpan {
   planes: Float32Array[];
   sampleRate: number;
   channels: number;
-  /** File time of the first sample, in seconds. */
+  /** Sound time of the first sample, in seconds. */
   startSeconds: number;
 }
 
-interface CacheEntry {
+/** One decoded frame, at an absolute sample position in sound time. */
+interface DecodedFrame {
+  at: number;
   planes: Float32Array[];
-  bytes: number;
-  lastUsed: number;
 }
 
 export class AudioStream {
-  private readonly cache = new Map<number, CacheEntry>();
-  private readonly pending = new Map<number, Promise<Float32Array[]>>();
-  private tick = 0;
-  private cachedBytes = 0;
-
   /** Samples in presentation order; AAC stores them in order already. */
   private readonly samples: Mp4Sample[];
 
@@ -89,6 +104,20 @@ export class AudioStream {
    * - and one AAC frame when it does not. See AAC_PRIMING_SAMPLES.
    */
   private readonly primingSeconds: number;
+  private readonly primingSamples: number;
+
+  /* The forward decoder and what it has produced. */
+  private decoder: AudioDecoder | null = null;
+  private frames: DecodedFrame[] = [];
+  private heldSamples = 0;
+  private nextFeed = 0;
+  private fedCount = 0;
+  private decodedUntil = 0;
+  private endReached = false;
+  private failure: Error | null = null;
+  private wake: (() => void) | null = null;
+  /** Serialises `ensure`, so two spans never feed the decoder at once. */
+  private pumping: Promise<void> | null = null;
 
   private constructor(
     url: string,
@@ -96,8 +125,8 @@ export class AudioStream {
   ) {
     this.samples = track.samples;
     this.read = rangeReader(url);
-    this.primingSeconds =
-      this.samples[0].time < 0 ? 0 : AAC_PRIMING_SAMPLES / track.sampleRate;
+    this.primingSeconds = this.samples[0].time < 0 ? 0 : AAC_PRIMING_SAMPLES / track.sampleRate;
+    this.primingSamples = Math.round(this.primingSeconds * track.sampleRate);
   }
 
   get sampleRate(): number {
@@ -114,6 +143,11 @@ export class AudioStream {
     return Math.max(0, last.time + last.duration - this.primingSeconds);
   }
 
+  /** Decoded audio held right now, in bytes. */
+  get heldBytes(): number {
+    return this.heldSamples * this.track.channels * 4;
+  }
+
   /**
    * What this stream decided about the file, for the comparison harness to
    * report. An offset between this and the browser's own decode is always
@@ -128,6 +162,8 @@ export class AudioStream {
     secondSampleTime: number;
     primingSeconds: number;
     duration: number;
+    heldSeconds: number;
+    decodedUntilSeconds: number;
   } {
     return {
       sampleRate: this.track.sampleRate,
@@ -137,6 +173,8 @@ export class AudioStream {
       secondSampleTime: this.samples[1]?.time ?? NaN,
       primingSeconds: this.primingSeconds,
       duration: this.duration,
+      heldSeconds: this.heldSamples / this.track.sampleRate,
+      decodedUntilSeconds: this.decodedUntil / this.track.sampleRate,
     };
   }
 
@@ -186,67 +224,214 @@ export class AudioStream {
     return low;
   }
 
+  private notify(): void {
+    const resume = this.wake;
+    this.wake = null;
+    resume?.();
+  }
+
+  private waitForDecoder(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.wake = null;
+        reject(new Error('audio decoder stalled'));
+      }, STALL_MS);
+      this.wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+    });
+  }
+
   /**
-   * Decode `[fromSeconds, fromSeconds + seconds)` into planar channels,
-   * without touching the chunk cache.
+   * Start (or restart) the decoder at the head of the file.
    *
-   * Samples before the start - the encoder's priming and the lead-in frames -
-   * are decoded and dropped, so the result begins exactly where asked. An
-   * export wants exactly this: one arbitrary range, decoded once, nothing
-   * kept afterwards.
+   * Always the head: that is the only starting point that reproduces the
+   * browser's own decode, and audio that is a little wrong is audible.
+   */
+  private startFromHead(): void {
+    this.closeDecoder();
+    this.frames = [];
+    this.heldSamples = 0;
+    this.nextFeed = 0;
+    this.fedCount = 0;
+    this.decodedUntil = 0;
+    this.endReached = false;
+    this.failure = null;
+
+    const { sampleRate, channels } = this.track;
+    this.decoder = new AudioDecoder({
+      output: (data) => {
+        try {
+          // The decoder's labels run one frame ahead of its content when it
+          // starts at the head, and sound time starts after the priming.
+          const at =
+            Math.round((data.timestamp / 1e6) * sampleRate) - AAC_FRAME_SAMPLES - this.primingSamples;
+          const count = data.numberOfFrames;
+
+          // Entirely run-up: nothing of it belongs to the sound.
+          if (at + count > 0) {
+            const planes: Float32Array[] = [];
+            for (let channel = 0; channel < channels; channel += 1) {
+              const plane = new Float32Array(count);
+              if (channel < data.numberOfChannels) {
+                data.copyTo(plane, { planeIndex: channel, format: 'f32-planar' });
+              }
+              planes.push(plane);
+            }
+            this.frames.push({ at, planes });
+            this.heldSamples += count;
+            this.decodedUntil = Math.max(this.decodedUntil, at + count);
+          }
+        } catch (error) {
+          this.failure = error instanceof Error ? error : new Error(String(error));
+        } finally {
+          data.close();
+          this.notify();
+        }
+      },
+      error: (error) => {
+        this.failure = error instanceof Error ? error : new Error(String(error));
+        this.notify();
+      },
+    });
+    this.decoder.addEventListener('dequeue', () => this.notify());
+    this.decoder.configure({
+      codec: this.track.codec,
+      sampleRate,
+      numberOfChannels: channels,
+      description: this.track.description,
+    });
+  }
+
+  private closeDecoder(): void {
+    if (this.decoder && this.decoder.state !== 'closed') this.decoder.close();
+    this.decoder = null;
+  }
+
+  /** Decode forward until `untilSample` is covered, or the file ends. */
+  private async ensure(untilSample: number): Promise<void> {
+    while (this.pumping) await this.pumping.catch(() => undefined);
+
+    const work = (async () => {
+      if (!this.decoder) this.startFromHead();
+      const decoder = this.decoder as AudioDecoder;
+
+      while (this.decodedUntil < untilSample && !this.endReached) {
+        if (this.failure) throw this.failure;
+
+        if (this.nextFeed >= this.samples.length) {
+          await decoder.flush();
+          this.endReached = true;
+          break;
+        }
+
+        if (decoder.decodeQueueSize < MAX_QUEUE) {
+          const sample = this.samples[this.nextFeed];
+          this.nextFeed += 1;
+          const data = await this.bytes(sample);
+          if (decoder.state !== 'configured') break;
+          decoder.decode(
+            new EncodedAudioChunk({
+              // Only the first frame opens the sequence; AAC frames after it
+              // continue one, since each is built on an overlap with the last.
+              type: this.fedCount === 0 ? 'key' : 'delta',
+              timestamp: Math.round(sample.time * 1e6),
+              duration: Math.round(sample.duration * 1e6),
+              data,
+            }),
+          );
+          this.fedCount += 1;
+          continue;
+        }
+
+        await this.waitForDecoder();
+      }
+
+      if (this.failure) throw this.failure;
+    })();
+
+    this.pumping = work.finally(() => {
+      this.pumping = null;
+    });
+    await this.pumping;
+  }
+
+  /** Forget decoded frames that sit further back than the window keeps. */
+  private trim(keepFromSample: number): void {
+    const limit = WINDOW_SECONDS * this.track.sampleRate;
+    while (
+      this.frames.length > 1 &&
+      this.heldSamples > limit &&
+      this.frames[0].at + this.frames[0].planes[0].length <= keepFromSample
+    ) {
+      const dropped = this.frames.shift() as DecodedFrame;
+      this.heldSamples -= dropped.planes[0].length;
+    }
+  }
+
+  /**
+   * The sound in `[fromSeconds, fromSeconds + seconds)`.
+   *
+   * Decodes forward to reach it, and restarts from the head when asked for
+   * something older than the window still holds.
+   */
+  async span(fromSeconds: number, seconds: number): Promise<DecodedSpan> {
+    const { sampleRate, channels } = this.track;
+    const from = Math.max(0, fromSeconds);
+    const wantFrom = Math.round(from * sampleRate);
+    const length = Math.max(1, Math.round(seconds * sampleRate));
+    const wantTo = wantFrom + length;
+
+    // Older than what is still held: the decoder has to come round again.
+    if (this.frames.length > 0 && wantFrom < this.frames[0].at) this.startFromHead();
+
+    await this.ensure(wantTo);
+
+    const planes = Array.from({ length: channels }, () => new Float32Array(length));
+    for (const frame of this.frames) {
+      const count = frame.planes[0].length;
+      const overlapFrom = Math.max(wantFrom, frame.at);
+      const overlapTo = Math.min(wantTo, frame.at + count);
+      if (overlapTo <= overlapFrom) continue;
+
+      for (let channel = 0; channel < channels; channel += 1) {
+        planes[channel].set(
+          frame.planes[channel].subarray(overlapFrom - frame.at, overlapTo - frame.at),
+          overlapFrom - wantFrom,
+        );
+      }
+    }
+
+    this.trim(wantFrom - KEEP_BEHIND_SECONDS * sampleRate);
+    return { planes, sampleRate, channels, startSeconds: wantFrom / sampleRate };
+  }
+
+  /**
+   * One range, decoded on its own, with nothing kept.
+   *
+   * Faster to reach a far-off moment than winding the forward decoder there,
+   * but NOT exact: started mid-stream it can differ from the real decode by
+   * around -28 dB against the signal near some positions. Only for sound
+   * short enough that a moment of roughness does not matter - a scrub grain
+   * far from the window - never for playback or export.
    */
   async decodeUncached(
     fromSeconds: number,
     seconds: number,
-    /**
-     * Set by the comparison harness to record what the decoder handed back,
-     * output by output. Which output carries which timestamp, and which one
-     * holds the codec's warm-up, cannot be reasoned about reliably - it has
-     * to be looked at. Nothing is recorded when this is left out.
-     */
-    trace?: {
-      timestamp: number;
-      frames: number;
-      level: number;
-      at: number;
-      kept: number;
-    }[],
+    /** Set by the comparison harness to record what the decoder handed back. */
+    trace?: { timestamp: number; frames: number; level: number; at: number; kept: number }[],
   ): Promise<Float32Array[]> {
     const { sampleRate, channels } = this.track;
     const length = Math.max(0, Math.round(seconds * sampleRate));
     const planes = Array.from({ length: channels }, () => new Float32Array(length));
     if (length === 0) return planes;
 
-    // Asked in sound time, read in file time: they differ by the priming.
     const fileFrom = fromSeconds + this.primingSeconds;
     const firstSample = Math.round(fileFrom * sampleRate);
     const endSeconds = fileFrom + seconds;
     const start = Math.max(0, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
-
-    /**
-     * Starting at the head of the stream, the decoder's labels run one frame
-     * ahead of its content.
-     *
-     * Measured, because two different readings of the spec each contradicted
-     * the audio. Feeding from sample 0, the first output comes back stamped
-     * at time zero but holding the codec's run-up (level 0.003 against a
-     * signal of 0.05), and the output stamped one frame later holds what the
-     * browser's own decode puts at zero. Started mid-stream, with frames
-     * ahead of it to warm up on, labels and content agree exactly - so this
-     * correction applies only when there was nothing earlier to feed.
-     */
     const labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
-
-    /**
-     * How far to keep feeding, in LABEL time.
-     *
-     * Content sits `labelShift` behind its label, so filling the last frame
-     * of the span needs the output labelled one frame past its end. Cutting
-     * the feed at the span's own end left the final 1024 samples of the
-     * first chunk empty - which showed up as the one window that straddled
-     * the head chunk and the next being slightly off while every other
-     * window matched exactly.
-     */
     const feedUntilSeconds = endSeconds - labelShift / sampleRate;
 
     let failure: Error | null = null;
@@ -260,10 +445,8 @@ export class AudioStream {
     const decoder = new AudioDecoder({
       output: (data) => {
         try {
-          // Where this output sits in the file, in samples.
           const at = Math.round((data.timestamp / 1e6) * sampleRate) - firstSample + labelShift;
           const count = data.numberOfFrames;
-          // Overlap with the wanted span.
           const from = Math.max(0, -at);
           const to = Math.min(count, length - at);
 
@@ -301,7 +484,6 @@ export class AudioStream {
       },
     });
     decoder.addEventListener('dequeue', notify);
-
     decoder.configure({
       codec: this.track.codec,
       sampleRate,
@@ -309,27 +491,13 @@ export class AudioStream {
       description: this.track.description,
     });
 
-    /**
-     * Only the first frame fed may claim to be a key frame.
-     *
-     * AAC-LC frames are not independent: each output is built from an
-     * overlap with the frame before it. MP4 marks them all as sync samples
-     * (there is no `stss`), and passing that straight through - every chunk
-     * declared `key` - gave audio that was in the right place, at the right
-     * level, yet a little different from what the same decoder produces via
-     * `decodeAudioData`, deterministically, for about a second after a
-     * mid-stream start. Two independent decoders agreed with each other and
-     * not with this, which is what pointed at the input rather than the
-     * decoding. So: the first frame opens the sequence, the rest continue it.
-     */
     let fed = 0;
-
     try {
       for (let index = start; index < this.samples.length; index += 1) {
         const sample = this.samples[index];
         if (sample.time >= feedUntilSeconds) break;
 
-        while (decoder.decodeQueueSize > 8 && !failure) {
+        while (decoder.decodeQueueSize > MAX_QUEUE && !failure) {
           await new Promise<void>((resolve) => {
             wake = resolve;
           });
@@ -356,84 +524,16 @@ export class AudioStream {
     return planes;
   }
 
-  private evict(): void {
-    if (this.cachedBytes <= CACHE_BYTES) return;
-    for (const [index, entry] of [...this.cache.entries()].sort((a, b) => a[1].lastUsed - b[1].lastUsed)) {
-      if (this.cachedBytes <= CACHE_BYTES) break;
-      this.cachedBytes -= entry.bytes;
-      this.cache.delete(index);
-    }
-  }
-
-  /** The decoded chunk `index` covers `[index * CHUNK, (index + 1) * CHUNK)`. */
-  private async chunk(index: number): Promise<Float32Array[]> {
-    const cached = this.cache.get(index);
-    if (cached) {
-      this.tick += 1;
-      cached.lastUsed = this.tick;
-      return cached.planes;
-    }
-
-    const inFlight = this.pending.get(index);
-    if (inFlight) return inFlight;
-
-    const request = this.decodeUncached(index * CHUNK_SECONDS, CHUNK_SECONDS)
-      .then((planes) => {
-        this.tick += 1;
-        const bytes = planes.reduce((total, plane) => total + plane.byteLength, 0);
-        this.cache.set(index, { planes, bytes, lastUsed: this.tick });
-        this.cachedBytes += bytes;
-        this.evict();
-        return planes;
-      })
-      .finally(() => this.pending.delete(index));
-
-    this.pending.set(index, request);
-    return request;
-  }
-
-  /**
-   * The sound in `[fromSeconds, fromSeconds + seconds)`, assembled from
-   * cached chunks and decoding whatever is missing.
-   */
-  async span(fromSeconds: number, seconds: number): Promise<DecodedSpan> {
-    const { sampleRate, channels } = this.track;
-    const from = Math.max(0, fromSeconds);
-    const length = Math.max(1, Math.round(seconds * sampleRate));
-    const planes = Array.from({ length: channels }, () => new Float32Array(length));
-
-    const firstChunk = Math.floor(from / CHUNK_SECONDS);
-    const lastChunk = Math.floor(Math.max(from, from + seconds - 1 / sampleRate) / CHUNK_SECONDS);
-
-    for (let index = firstChunk; index <= lastChunk; index += 1) {
-      const chunk = await this.chunk(index);
-      const chunkStart = Math.round(index * CHUNK_SECONDS * sampleRate);
-      const wantedStart = Math.round(from * sampleRate);
-      // Where this chunk overlaps the wanted span.
-      const offsetInChunk = Math.max(0, wantedStart - chunkStart);
-      const offsetInResult = Math.max(0, chunkStart - wantedStart);
-      const count = Math.min(
-        chunk[0].length - offsetInChunk,
-        length - offsetInResult,
-      );
-      if (count <= 0) continue;
-
-      for (let channel = 0; channel < channels; channel += 1) {
-        planes[channel].set(
-          chunk[channel].subarray(offsetInChunk, offsetInChunk + count),
-          offsetInResult,
-        );
-      }
-    }
-
-    return { planes, sampleRate, channels, startSeconds: from };
-  }
-
-  /** Everything decoded so far is dropped; the tables stay. */
-  clearCache(): void {
-    this.cache.clear();
-    this.pending.clear();
-    this.cachedBytes = 0;
+  /** Everything decoded is dropped; the tables stay. */
+  close(): void {
+    this.closeDecoder();
+    this.frames = [];
+    this.heldSamples = 0;
+    this.decodedUntil = 0;
+    this.nextFeed = 0;
+    this.fedCount = 0;
+    this.endReached = false;
     this.buffer = null;
+    this.notify();
   }
 }

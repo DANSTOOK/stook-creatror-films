@@ -536,8 +536,30 @@ depend on a file fitting in memory:
 `npm run test:long` imports a generated 45-minute, ~2 GB recording into the real
 app and checks import time, peak memory per process, canvas size, fit and an
 export from minute 30. Measured: import 2.2 s, main process peak 117 MB, page
-peak 1.5-2.2 GB (decoded audio included; it varies run to run, and the limit
-is 2.5 GB), export 88-105 fps.
+peak 339 MB, export 88-105 fps.
+
+## Streamed playback audio
+
+Playback used to hold every source as one `AudioBuffer` - about a gigabyte
+per 45 minutes of stereo, and the largest thing in the page. Now one
+`AudioStream` per file keeps a decoder running forwards and remembers a
+window around the playhead (`WINDOW_SECONDS`, ~11 MB), `playbackSchedule.ts`
+decides which short spans to hand the graph next, and `AudioEngine` schedules
+them as the playhead reaches them. Waveform peaks come from one forward pass
+that folds each stretch into the min/max pairs and lets it go
+(`PeakAccumulator`). Measured on 45 minutes: page peak 1.5-2.2 GB -> 339 MB,
+import 2.2 s -> 4.7 s (the extra is that peaks pass).
+
+**Forwards, from the head, because measurement left no choice.** A decode
+started mid-stream does not reproduce one started at the head: around some
+positions it differs from the browser's own decode by only -28 dB against
+the signal, which is audible, and no amount of run-up fixes it. From the head
+it is bit-exact everywhere, and ffmpeg agrees with the browser exactly.
+`npm run test:bench:audio` checks that, on pink noise it generates itself -
+a screen recording's audio track is often silent, and comparing silence with
+silence passes while proving nothing. Only AAC in MP4 streams (what
+`extractAudio` writes); MP3, WAV, FLAC and bare `.aac` are decoded whole as
+before.
 
 `npm run test:bench` (with `BENCH_SOURCE=<video>`) exports a whole real video
 both ways and compares them frame by frame. On a 91-second 720p30 screen

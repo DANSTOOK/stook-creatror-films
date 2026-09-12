@@ -4,7 +4,13 @@ import { AudioEngine } from '@renderer/audio/AudioEngine';
 import { DynamicDucking } from '@renderer/audio/DynamicDucking';
 import { mixSignature } from '@renderer/audio/mixRouting';
 import { GRAIN_INTERVAL_MS, onScrub, planScrubGrains } from '@renderer/audio/scrubAudio';
-import { WaveformExtractor } from '@renderer/audio/WaveformExtractor';
+import { AudioStream } from '@renderer/audio/AudioStream';
+import {
+  bucketsFor,
+  PeakAccumulator,
+  WaveformExtractor,
+  type WaveformPeaks,
+} from '@renderer/audio/WaveformExtractor';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
@@ -20,6 +26,40 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 
 /** Playhead divergence beyond this many seconds means the user scrubbed. */
 const RESYNC_THRESHOLD_SECONDS = 0.35;
+
+/** Seconds of audio read at a time while measuring a waveform. */
+const PEAK_PASS_SECONDS = 4;
+
+/**
+ * Waveform peaks from a streamed source, without ever holding it whole.
+ *
+ * The peaks span the whole file, so they need every sample - but only one
+ * pass of them. This walks the source forwards, folds each stretch into the
+ * min/max pairs and lets it go, which is what keeps a 45-minute import from
+ * costing a gigabyte just to draw a waveform.
+ */
+async function peaksFromStream(
+  stream: AudioStream,
+  uri: string,
+  extractor: WaveformExtractor,
+): Promise<WaveformPeaks> {
+  const { duration, sampleRate } = stream;
+  const accumulator = new PeakAccumulator(
+    bucketsFor(duration),
+    Math.max(1, Math.round(duration * sampleRate)),
+    sampleRate,
+  );
+
+  for (let at = 0; at < duration; at += PEAK_PASS_SECONDS) {
+    const seconds = Math.min(PEAK_PASS_SECONDS, duration - at);
+    const span = await stream.span(at, seconds);
+    accumulator.add(span.planes, Math.round(at * sampleRate));
+  }
+
+  const peaks = accumulator.finish();
+  extractor.set(uri, peaks);
+  return peaks;
+}
 
 export function useAudioPlayback(): void {
   const engineRef = useRef<AudioEngine | null>(null);
@@ -116,17 +156,27 @@ export function useAudioPlayback(): void {
 
         try {
           // The extracted audio track when there is one: megabytes, where the
-          // source file can be gigabytes of pictures. Buffers stay keyed by the
-          // asset's URI, which is what clips reference.
-          const bytes = await fetch(asset.audioUri ?? asset.uri).then((response) =>
-            response.arrayBuffer(),
-          );
+          // source file can be gigabytes of pictures. Everything stays keyed
+          // by the asset's URI, which is what clips reference.
+          const audioUrl = asset.audioUri ?? asset.uri;
 
-          // Decoded once, and the waveform is read off that same buffer.
-          const buffer = await engine.registerSource(asset.uri, bytes);
-          const peaks = extractor.fromBuffer(asset.uri, buffer);
+          // Streamed when the file allows it (AAC in MP4, which is what the
+          // extraction writes): playback then holds a window of about 11 MB
+          // instead of the whole source, which for 45 minutes was a gigabyte.
+          const stream = await AudioStream.open(audioUrl);
 
-          if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+          if (stream) {
+            engine.registerStream(asset.uri, stream);
+            const peaks = await peaksFromStream(stream, asset.uri, extractor);
+            if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+          } else {
+            // Anything else - MP3, WAV, FLAC, a bare .aac - is decoded whole,
+            // as it always was, and the waveform read off that same buffer.
+            const bytes = await fetch(audioUrl).then((response) => response.arrayBuffer());
+            const buffer = await engine.registerSource(asset.uri, bytes);
+            const peaks = extractor.fromBuffer(asset.uri, buffer);
+            if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+          }
         } catch {
           // A video with no audio track is the common case here, not an error.
         } finally {
@@ -155,7 +205,7 @@ export function useAudioPlayback(): void {
       const { project, ui } = useProjectStore.getState();
       if (!engine || ui.isPlaying) return;
       lastGrainAt = performance.now();
-      const grains = planScrubGrains(project, frame, (uri) => engine.getBuffer(uri) !== undefined);
+      const grains = planScrubGrains(project, frame, (uri) => engine.hasAudio(uri));
       engine.scrub(project, grains);
       // Test instrumentation, off unless a test asks for it.
       const stats = (window as { __scfScrubStats?: { grains: number } }).__scfScrubStats;

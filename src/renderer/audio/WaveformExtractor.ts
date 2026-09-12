@@ -158,6 +158,11 @@ export class WaveformExtractor {
     return this.cache.get(uri);
   }
 
+  /** Keep peaks that were computed elsewhere, such as a streaming pass. */
+  set(uri: string, peaks: WaveformPeaks): void {
+    this.cache.set(uri, peaks);
+  }
+
   /**
    * Decode `data` and reduce it to `bucketCount` peaks.
    *

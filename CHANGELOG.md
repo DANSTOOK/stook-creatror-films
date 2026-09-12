@@ -7,11 +7,59 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **395 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **415 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.9.0-beta.1 — El audio deja de cargarse entero en memoria
+2026-09-11 · pre-release para probar
+
+El problema conocido que quedaba: la reproducción guardaba **cada archivo de
+audio entero** en memoria, sobre 1 GB por cada 45 minutos, y era con
+diferencia lo más grande de la aplicación.
+
+### Arreglado
+- **Un proyecto de 45 minutos ocupa ahora unas 6 veces menos.** El audio se
+  decodifica **según hace falta**, en una ventana de unos segundos alrededor
+  del cursor, en vez de entero.
+  - *Medido* con la grabación de 45 minutos (`npm run test:long`): pico de
+    la página **339 MB, antes 1,5-2,2 GB**; lo que queda residente pasa de
+    ~1,2 GB a 336 MB.
+  - La forma de onda sale de **una sola pasada** que va plegando cada tramo
+    y soltándolo, en vez de decodificar el archivo otra vez.
+  - Importar pasa de 2,2 s a 4,7 s: esa pasada es el coste. Sigue muy por
+    debajo del límite de la prueba (30 s).
+  - Reproducción, arrastre y exportación se comportan igual: 36/36 en la
+    prueba de interfaz (incluidos los granos del arrastre), 6/6 en metraje
+    largo, exportación a 102 fps.
+
+### Detalles para quien le interese
+- Solo se transmite así el **AAC dentro de MP4**, que es lo que extrae la
+  propia app de tus vídeos y lo que graban móviles y cámaras. MP3, WAV,
+  FLAC y `.aac` suelto se siguen decodificando enteros, como antes.
+- El lector va **hacia delante desde el principio del archivo**, y eso no es
+  un capricho: arrancar a mitad del flujo **no** reproduce lo mismo que
+  arrancar desde el principio. En algunas zonas se desvía solo **-28 dB**
+  respecto a la señal, que **se oye**, y no se arregla dándole más carrerilla.
+  Desde el principio es exacto hasta el último bit, y ffmpeg coincide con el
+  navegador exactamente. Lo comprueba `npm run test:bench:audio`.
+- Esa prueba se genera su propio archivo con **ruido rosa**: una grabación de
+  pantalla suele tener la pista de audio muda, y comparar silencio con
+  silencio pasaba sin demostrar nada.
+
+### Problemas conocidos
+- **La exportación todavía no aprovecha esto**: al exportar se sigue
+  decodificando el audio de cada fuente entero, así que un proyecto largo
+  vuelve a tener ese pico durante el render. Es el siguiente paso natural y
+  el camino ya está hecho.
+- Ir muy hacia atrás en un archivo largo obliga al lector a recorrerlo de
+  nuevo desde el principio (unos 3,7 s para llegar al minuto 40). Los saltos
+  cortos hacia atrás están cubiertos por la ventana y no lo notan.
+- Sigue pendiente que arrastrar el cursor **hacia atrás** vaya fino en vídeo.
 
 ---
 

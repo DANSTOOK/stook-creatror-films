@@ -2,6 +2,27 @@ import type { AudioBus, Clip, EqSettings, ProjectState, Track } from '@shared/ty
 import { clamp } from '@shared/utils/math';
 import { clipGain, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
 import type { ScrubGrain } from './scrubAudio';
+import type { AudioStream } from './AudioStream';
+import {
+  advanceScheduled,
+  forgetPassed,
+  planPlaybackSpans,
+  type ScheduledSpan,
+} from './playbackSchedule';
+
+/** How often the scheduler looks ahead while playing. */
+const SCHEDULE_INTERVAL_MS = 200;
+
+/**
+ * How far ahead of the playhead to keep the graph fed.
+ *
+ * Long enough that a slow decode or a busy frame cannot leave a hole, short
+ * enough that a 45-minute source costs no more than a short one.
+ */
+const LOOKAHEAD_SECONDS = 2;
+
+/** Longest stretch handed over at once. */
+const SPAN_SECONDS = 0.5;
 
 /**
  * Web Audio subsystem.
@@ -24,13 +45,19 @@ export { NEUTRAL_EQ } from '@shared/types';
 
 interface ClipStrip {
   trackId: string;
-  source: AudioBufferSourceNode | null;
+  /**
+   * Every source node feeding this strip.
+   *
+   * A whole-buffer clip has one. A streamed clip has a few seconds at a
+   * time, so its strip outlives many of them and they come and go.
+   */
+  sources: AudioBufferSourceNode[];
   gain: GainNode;
   panner: StereoPannerNode;
   low: BiquadFilterNode;
   mid: BiquadFilterNode;
   high: BiquadFilterNode;
-  buffer: AudioBuffer;
+  buffer?: AudioBuffer;
 }
 
 interface TrackStrip {
@@ -52,6 +79,13 @@ export class AudioEngine {
   private startedAtContextTime = 0;
   private startedAtSeconds = 0;
   private playing = false;
+
+  /* Streamed sources, and the scheduler that feeds them to the graph. */
+  private readonly streams = new Map<string, AudioStream>();
+  private scheduler: ReturnType<typeof setInterval> | null = null;
+  private scheduledUntil = new Map<string, number>();
+  private playingProject: ProjectState | null = null;
+  private ticking = false;
 
   constructor(context: AudioContext = new AudioContext()) {
     this.context = context;
@@ -134,7 +168,7 @@ export class AudioEngine {
     return strip;
   }
 
-  private createStrip(buffer: AudioBuffer, bus: AudioNode, trackId: string): ClipStrip {
+  private createStrip(bus: AudioNode, trackId: string, buffer?: AudioBuffer): ClipStrip {
     const { context } = this;
 
     const gain = context.createGain();
@@ -160,7 +194,7 @@ export class AudioEngine {
     high.connect(panner);
     panner.connect(bus);
 
-    return { trackId, source: null, gain, panner, low, mid, high, buffer };
+    return { trackId, sources: [], gain, panner, low, mid, high, buffer };
   }
 
   setClipEq(clipId: string, eq: EqSettings): void {
@@ -180,6 +214,123 @@ export class AudioEngine {
     const strip = this.strips.get(clipId);
     if (strip) {
       strip.gain.gain.setTargetAtTime(clamp(volume, 0, 2), this.context.currentTime, 0.01);
+    }
+  }
+
+  /**
+   * Hand a streamed source to the engine.
+   *
+   * Sources registered this way are decoded a few seconds at a time as the
+   * playhead reaches them, instead of being held whole - which is the
+   * difference between about 11 MB and a gigabyte for a long recording.
+   */
+  registerStream(uri: string, stream: AudioStream): void {
+    this.streams.set(uri, stream);
+  }
+
+  /** Whether this source plays from a stream rather than a whole buffer. */
+  hasStream(uri: string): boolean {
+    return this.streams.has(uri);
+  }
+
+  /** Whether this source can be heard at all, streamed or whole. */
+  hasAudio(uri: string): boolean {
+    return this.streams.has(uri) || this.buffers.has(uri);
+  }
+
+  /** The strip a streamed clip keeps for as long as it is playing. */
+  private stripFor(clip: Clip, track: Track, anySolo: boolean): ClipStrip {
+    const existing = this.strips.get(clip.id);
+    if (existing) return existing;
+
+    const trackStrip = this.ensureTrackStrip(track, anySolo);
+    const strip = this.createStrip(trackStrip.gain, track.id);
+    strip.gain.gain.value = clipGain(clip);
+    strip.panner.pan.value = panPosition(clip.pan);
+    strip.low.gain.value = clip.eq.low;
+    strip.mid.gain.value = clip.eq.mid;
+    strip.high.gain.value = clip.eq.high;
+    this.strips.set(clip.id, strip);
+    return strip;
+  }
+
+  /**
+   * Decode one planned span and hand it to the graph at its moment.
+   *
+   * A span that is already late is started with an offset into itself rather
+   * than late in full, so a slow decode costs a little of that stretch
+   * instead of pushing everything after it out of time.
+   */
+  private async scheduleSpan(project: ProjectState, span: ScheduledSpan): Promise<void> {
+    const stream = this.streams.get(span.sourceUri);
+    const clip = project.clips[span.clipId];
+    const track = project.tracks.find((candidate) => candidate.id === clip?.trackId);
+    if (!stream || !clip || !track) return;
+
+    const decoded = await stream.span(span.sourceFrom, span.seconds);
+    if (!this.playing) return;
+
+    const when = this.startedAtContextTime + (span.atTimeline - this.startedAtSeconds);
+    const now = this.context.currentTime;
+    const lateBy = now - when;
+    if (lateBy >= span.seconds) return;
+
+    const buffer = this.context.createBuffer(
+      decoded.channels,
+      decoded.planes[0].length,
+      decoded.sampleRate,
+    );
+    for (let channel = 0; channel < decoded.channels; channel += 1) {
+      buffer.getChannelData(channel).set(decoded.planes[channel]);
+    }
+
+    const strip = this.stripFor(clip, track, hasSoloedTrack(project));
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(strip.gain);
+    source.onended = () => {
+      const at = strip.sources.indexOf(source);
+      if (at >= 0) strip.sources.splice(at, 1);
+      source.disconnect();
+    };
+
+    if (lateBy > 0) source.start(now, lateBy);
+    else source.start(when);
+    strip.sources.push(source);
+  }
+
+  /** Keep the graph fed for the next few seconds of streamed audio. */
+  private async tick(): Promise<void> {
+    if (this.ticking || !this.playing) return;
+    const project = this.playingProject;
+    if (!project) return;
+
+    this.ticking = true;
+    try {
+      const now = this.positionSeconds;
+      this.scheduledUntil = forgetPassed(this.scheduledUntil, now);
+
+      const spans = planPlaybackSpans(project, {
+        fromSeconds: now,
+        horizonSeconds: LOOKAHEAD_SECONDS,
+        chunkSeconds: SPAN_SECONDS,
+        scheduledUntil: this.scheduledUntil,
+        canStream: (uri) => this.streams.has(uri),
+      });
+      if (spans.length === 0) return;
+
+      // Marked before decoding, so the next tick does not plan them again
+      // while this one is still waiting on the decoder.
+      this.scheduledUntil = advanceScheduled(this.scheduledUntil, spans);
+      for (const span of spans) {
+        if (!this.playing) break;
+        await this.scheduleSpan(project, span);
+      }
+    } catch {
+      // A source that cannot be decoded goes quiet rather than stopping
+      // playback; the rest of the mix carries on.
+    } finally {
+      this.ticking = false;
     }
   }
 
@@ -208,6 +359,10 @@ export class AudioEngine {
       // for the next seek.
       if (!track) continue;
 
+      // A streamed source has no whole buffer to lay out: the scheduler
+      // below feeds it to the graph a few seconds at a time.
+      if (this.streams.has(clip.sourceUri)) continue;
+
       const buffer = this.buffers.get(clip.sourceUri);
       if (!buffer) continue;
 
@@ -216,7 +371,7 @@ export class AudioEngine {
       if (clipEnd <= startSeconds) continue;
 
       const trackStrip = this.ensureTrackStrip(track, anySolo);
-      const strip = this.createStrip(buffer, trackStrip.gain, track.id);
+      const strip = this.createStrip(trackStrip.gain, track.id, buffer);
       strip.gain.gain.value = clipGain(clip);
       strip.panner.pan.value = panPosition(clip.pan);
       strip.low.gain.value = clip.eq.low;
@@ -226,7 +381,7 @@ export class AudioEngine {
       const source = this.context.createBufferSource();
       source.buffer = buffer;
       source.connect(strip.gain);
-      strip.source = source;
+      strip.sources.push(source);
 
       const sourceOffset = clip.sourceOffsetFrames / fps;
       const whenSeconds = Math.max(0, clipStart - startSeconds);
@@ -240,18 +395,32 @@ export class AudioEngine {
     this.startedAtContextTime = this.context.currentTime;
     this.startedAtSeconds = startSeconds;
     this.playing = true;
+
+    // Streamed clips are decoded and handed over as the playhead nears them.
+    this.playingProject = project;
+    this.scheduledUntil = new Map();
+    void this.tick();
+    this.scheduler = setInterval(() => void this.tick(), SCHEDULE_INTERVAL_MS);
   }
 
   stop(): void {
+    if (this.scheduler !== null) {
+      clearInterval(this.scheduler);
+      this.scheduler = null;
+    }
+    this.playingProject = null;
+    this.scheduledUntil = new Map();
+
     for (const strip of this.strips.values()) {
-      if (strip.source) {
+      for (const source of strip.sources) {
         try {
-          strip.source.stop();
+          source.stop();
         } catch {
           // A source that never started throws; nothing to clean up.
         }
-        strip.source.disconnect();
+        source.disconnect();
       }
+      strip.sources.length = 0;
       strip.gain.disconnect();
       strip.low.disconnect();
       strip.mid.disconnect();
@@ -282,6 +451,10 @@ export class AudioEngine {
   applyMix(project: ProjectState): void {
     const now = this.context.currentTime;
     const anySolo = hasSoloedTrack(project);
+
+    // The scheduler plans from this, so it has to be the project as it is now
+    // and not the one playback started with.
+    if (this.playing) this.playingProject = project;
 
     this.master.gain.setTargetAtTime(clamp(project.audio.masterVolume, 0, 2), now, 0.01);
 
@@ -345,13 +518,23 @@ export class AudioEngine {
     const tracks = new Map(project.tracks.map((track) => [track.id, track]));
 
     for (const grain of grains) {
-      const buffer = this.buffers.get(grain.sourceUri);
       const track = tracks.get(grain.trackId);
       const clip = project.clips[grain.clipId];
-      if (!buffer || !track || !clip || grain.offsetSeconds >= buffer.duration) continue;
+      if (!track || !clip) continue;
+
+      // A streamed source has no whole buffer to slice, so the grain is
+      // fetched. It arrives a few milliseconds later, which a scrub does
+      // not notice.
+      if (this.streams.has(grain.sourceUri)) {
+        void this.scrubFromStream(grain, clip, track, anySolo);
+        continue;
+      }
+
+      const buffer = this.buffers.get(grain.sourceUri);
+      if (!buffer || grain.offsetSeconds >= buffer.duration) continue;
 
       const trackStrip = this.ensureTrackStrip(track, anySolo);
-      const strip = this.createStrip(buffer, trackStrip.gain, track.id);
+      const strip = this.createStrip(trackStrip.gain, track.id, buffer);
       strip.panner.pan.value = panPosition(clip.pan);
       strip.low.gain.value = clip.eq.low;
       strip.mid.gain.value = clip.eq.mid;
@@ -380,6 +563,65 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * One scrub grain from a streamed source.
+   *
+   * The window the forward decoder holds usually covers the playhead, so
+   * this is a copy rather than a decode. Dragging far from it decodes on its
+   * own, which is a moment rougher but immediate - see AudioStream.
+   */
+  private async scrubFromStream(
+    grain: ScrubGrain,
+    clip: Clip,
+    track: Track,
+    anySolo: boolean,
+  ): Promise<void> {
+    const stream = this.streams.get(grain.sourceUri);
+    if (!stream || this.playing) return;
+
+    const decoded = await stream.span(grain.offsetSeconds, grain.durationSeconds).catch(() => null);
+    if (!decoded || this.playing) return;
+
+    const buffer = this.context.createBuffer(
+      decoded.channels,
+      decoded.planes[0].length,
+      decoded.sampleRate,
+    );
+    for (let channel = 0; channel < decoded.channels; channel += 1) {
+      buffer.getChannelData(channel).set(decoded.planes[channel]);
+    }
+
+    const now = this.context.currentTime;
+    const fade = 0.006;
+    const trackStrip = this.ensureTrackStrip(track, anySolo);
+    const strip = this.createStrip(trackStrip.gain, track.id, buffer);
+    strip.panner.pan.value = panPosition(clip.pan);
+    strip.low.gain.value = clip.eq.low;
+    strip.mid.gain.value = clip.eq.mid;
+    strip.high.gain.value = clip.eq.high;
+
+    const level = clipGain(clip);
+    const end = now + grain.durationSeconds;
+    strip.gain.gain.setValueAtTime(0, now);
+    strip.gain.gain.linearRampToValueAtTime(level, now + fade);
+    strip.gain.gain.setValueAtTime(level, Math.max(now + fade, end - fade));
+    strip.gain.gain.linearRampToValueAtTime(0, end);
+
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(strip.gain);
+    source.onended = () => {
+      source.disconnect();
+      strip.gain.disconnect();
+      strip.low.disconnect();
+      strip.mid.disconnect();
+      strip.high.disconnect();
+      strip.panner.disconnect();
+    };
+    source.start(now, 0, grain.durationSeconds + 0.01);
+    this.scrubVoices.push({ source, strip });
+  }
+
   seek(frame: number, fps: number): void {
     this.startedAtSeconds = frame / fps;
     this.startedAtContextTime = this.context.currentTime;
@@ -395,6 +637,8 @@ export class AudioEngine {
 
   async dispose(): Promise<void> {
     this.stop();
+    for (const stream of this.streams.values()) stream.close();
+    this.streams.clear();
     this.buffers.clear();
     await this.context.close();
   }

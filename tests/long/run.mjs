@@ -14,10 +14,8 @@ import { _electron as electron } from 'playwright';
  * processes for one 45-minute file without any test noticing. This imports a
  * 45-minute, ~2 GB recording into the real app and measures.
  *
- * The limits are generous on purpose - they catch a regression back to
- * reading whole files into memory (gigabytes), not the ordinary cost of
- * decoded audio (about 1 GB per 45 minutes of stereo, which is expected until
- * playback audio streams).
+ * The limits catch a regression back to reading or decoding whole files into
+ * memory, which is what both the video and the audio paths used to do.
  *
  * The source is generated once and kept in .long-tmp, because producing 45
  * minutes of video takes a minute or two even with a hardware encoder.
@@ -125,11 +123,11 @@ async function main() {
 
     check('imports a 45-minute file in under 30 s', importSeconds < 30, `${importSeconds.toFixed(1)} s`);
     check('the main process never holds the file (peak < 600 MB)', peakBrowser < 600, `${peakBrowser} MB`);
-    // The peak is the 45 minutes of audio decoded into one float32 AudioBuffer
-    // (~1 GB, plus the decoder's working memory), and it swings between 1.5
-    // and 2.2 GB from run to run. The limit is above that noise and far below
-    // the ~6 GB of the old read-the-whole-file import, which is what it guards.
-    check('the page never holds the file (peak < 2.5 GB, audio included)', peakTab < 2560, `${peakTab} MB`);
+    // Audio is streamed now - a window of a few seconds around the playhead,
+    // not the whole file - and this came down from 1.5-2.2 GB to 339 MB for
+    // the same 45 minutes. The limit sits above that with room for the rest
+    // of the page, and low enough to catch a return to decoding whole files.
+    check('the page never holds the file (peak < 700 MB)', peakTab < 700, `${peakTab} MB`);
 
     const canvas = await window.evaluate(() => {
       const element = [...document.querySelectorAll('canvas')].at(-1);
