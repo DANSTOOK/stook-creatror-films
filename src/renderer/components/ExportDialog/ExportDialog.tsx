@@ -141,6 +141,8 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
   const [folder, setFolder] = useState<string | null>(null);
   const [fileName, setFileName] = useState(() => defaultFileName(assets));
   const [targetExists, setTargetExists] = useState(false);
+  /** The destination is footage this project reads from. Exporting would destroy it. */
+  const [targetInUse, setTargetInUse] = useState(false);
 
   const chooseFolder = useCallback(async () => {
     const picked = await window.filmora.chooseExportFolder();
@@ -156,6 +158,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       if (cancelled) return;
       setExportSettings({ outputPath: target.path });
       setTargetExists(target.exists);
+      setTargetInUse(target.inUse);
     });
     return () => {
       cancelled = true;
@@ -586,6 +589,18 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
               <span className="text-slate-300">{settings.outputPath}</span>
             </p>
           )}
+          {/*
+            The export name defaults to the first video's name, so choosing the
+            folder that footage came from aims the render straight at the
+            footage. That is not a replace, it is a loss: the source is gone and
+            the render needs it. Said plainly, and the button is off.
+          */}
+          {targetInUse && (
+            <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
+              That file is source footage in this project. Exporting onto it would destroy the
+              original - change the name or the folder.
+            </p>
+          )}
 
           {coverArt && (
             <div className="rounded border border-panel-700 bg-panel-950 p-3">
@@ -659,7 +674,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
           <button
             type="button"
             className="tool-button tool-button-active"
-            disabled={running || totalFrames <= 0}
+            disabled={running || totalFrames <= 0 || targetInUse}
             onClick={() => void startExport()}
           >
             {running && <Loader2 size={14} className="animate-spin" />}

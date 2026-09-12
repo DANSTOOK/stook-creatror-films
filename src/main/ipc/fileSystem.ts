@@ -13,7 +13,7 @@ import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareA
 import { isGpuPreference } from '../gpu/classify';
 import { getGpuReport } from '../gpu/gpuInventory';
 import { writeGpuPreference } from '../gpu/gpuSettings';
-import { mediaUrlFor } from './mediaProtocol';
+import { isOpenMediaPath, mediaUrlFor } from './mediaProtocol';
 
 const execFileAsync = promisify(execFile);
 
@@ -450,7 +450,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       const path = join(folder, format === 'png-sequence' ? base : `${base}.${extensionFor(format)}`);
       allowedPaths.add(path);
       const exists = Boolean(await stat(path).catch(() => null));
-      return { path, exists };
+      return { path, exists, inUse: isOpenMediaPath(path) };
     },
   );
 
@@ -519,6 +519,13 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle(IPC.exportStart, async (_event, settings: ExportSettings) => {
     assertAllowed(settings.outputPath);
+    // Never render over footage the project is reading from. The dialog warns
+    // first; this is the line that makes it impossible.
+    if (settings.format !== 'png-sequence' && isOpenMediaPath(settings.outputPath)) {
+      throw new Error(
+        'That file is in this project as source footage. Exporting onto it would destroy it - choose another name or folder.',
+      );
+    }
     if (settings.audioPath) assertAllowed(settings.audioPath);
     if (settings.thumbnailPath) assertAllowed(settings.thumbnailPath);
     return { jobId: await pipeline.start(settings) };

@@ -99,7 +99,7 @@ export interface FilmoraApi {
     folder: string,
     name: string,
     format: ExportSettings['format'],
-  ): Promise<{ path: string; exists: boolean }>;
+  ): Promise<{ path: string; exists: boolean; inUse: boolean }>;
   /** Pick an image to use as the video's thumbnail. */
   chooseThumbnail(): Promise<string | null>;
   /** Store a PNG (e.g. the current frame) as a thumbnail and return its path. */

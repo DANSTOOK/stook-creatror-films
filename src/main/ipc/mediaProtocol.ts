@@ -2,7 +2,7 @@ import { protocol } from 'electron';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { extname } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { Readable } from 'node:stream';
 
 /**
@@ -54,6 +54,27 @@ export function mediaUrlFor(path: string): string {
     tokensByPath.set(path, token);
   }
   return `${MEDIA_SCHEME}://file/${token}`;
+}
+
+/**
+ * True when this path is already open in the page as source media.
+ *
+ * An export writes with `-y`, and the export name defaults to the first
+ * video's name: choose the folder the footage came from and the destination
+ * resolves onto the footage itself. Cancel that export and the source is a
+ * headless MP4 - video data, no index, unopenable. It happened to two of the
+ * user's files before anything stopped it, so the export path asks here first.
+ *
+ * Compared case-insensitively on Windows, where the two spellings are one file.
+ */
+export function isOpenMediaPath(path: string): boolean {
+  const key = (value: string): string =>
+    process.platform === 'win32' ? value.toLowerCase() : value;
+  const wanted = key(resolve(path));
+  for (const known of tokensByPath.keys()) {
+    if (key(resolve(known)) === wanted) return true;
+  }
+  return false;
 }
 
 const MIME: Record<string, string> = {

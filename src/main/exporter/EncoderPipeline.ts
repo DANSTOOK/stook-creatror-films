@@ -32,6 +32,8 @@ interface ActiveJob {
   /** Resolves when ffmpeg exits. */
   completion: Promise<void>;
   cancelled: boolean;
+  /** Where ffmpeg actually writes until the export succeeds. */
+  destination: string;
 }
 
 const MAX_STDERR_CHARS = 16_000;
@@ -50,11 +52,11 @@ export class EncoderPipeline {
    *   - `annexb-*`   - an already-encoded elementary stream in, ffmpeg only
    *                    muxes (`-c:v copy`). No alpha, but no re-encode either.
    */
-  static buildArgs(settings: ExportSettings): string[] {
+  static buildArgs(settings: ExportSettings, destination = settings.outputPath): string[] {
     const outputTarget =
       settings.format === 'png-sequence'
-        ? join(settings.outputPath, 'frame_%05d.png')
-        : settings.outputPath;
+        ? join(destination, 'frame_%05d.png')
+        : destination;
 
     const preamble = ['-hide_banner', '-loglevel', 'error', '-stats_period', '0.5'];
 
@@ -144,6 +146,25 @@ export class EncoderPipeline {
     return Math.max(0, settings.endFrame - settings.startFrame);
   }
 
+  /**
+   * Where an export writes before it has earned the destination.
+   *
+   * ffmpeg is given `-y` and writes the container as it goes, patching the
+   * `mdat` length and appending `moov` only at the very end. So the moment an
+   * export starts, whatever used to be at the destination is gone, and if the
+   * export is then cancelled what is left is an MP4 with no index: unopenable,
+   * and no longer the file that was there before. Two of the user's own
+   * recordings were destroyed exactly that way, because the export name
+   * defaults to the footage's name and the folder was the footage's folder.
+   *
+   * A sidecar next to the destination - same volume, so the publish is an
+   * atomic rename rather than a copy - means nothing is overwritten until the
+   * encode has exited 0.
+   */
+  static partialPathFor(outputPath: string): string {
+    return `${outputPath}.part${extname(outputPath)}`;
+  }
+
   async start(settings: ExportSettings): Promise<string> {
     if (!settings.outputPath) throw new Error('Export needs an output path');
 
@@ -153,13 +174,20 @@ export class EncoderPipeline {
     await mkdir(directory, { recursive: true });
 
     const id = randomUUID();
-    const args = EncoderPipeline.buildArgs(settings);
+    // A PNG sequence fills a directory the user chose, so there is nothing to
+    // overwrite and nothing to publish; every other format goes via a sidecar.
+    const destination =
+      settings.format === 'png-sequence'
+        ? settings.outputPath
+        : EncoderPipeline.partialPathFor(settings.outputPath);
+    const args = EncoderPipeline.buildArgs(settings, destination);
     const child = spawn(resolveFfmpegPath(), args, { stdio: ['pipe', 'pipe', 'pipe'] });
 
     const job: ActiveJob = {
       id,
       process: child,
       settings,
+      destination,
       totalFrames: EncoderPipeline.frameCount(settings),
       framesWritten: 0,
       startedAt: Date.now(),
@@ -183,7 +211,13 @@ export class EncoderPipeline {
         this.jobs.delete(id);
         // The mix was written to temp purely to be an ffmpeg input.
         if (settings.audioPath) void rm(settings.audioPath, { force: true });
+        // A cancelled or failed encode leaves a half-written sidecar. It is
+        // never the destination, so removing it loses nothing.
+        const discardPartial = (): void => {
+          if (job.destination !== settings.outputPath) void rm(job.destination, { force: true });
+        };
         if (job.cancelled) {
+          discardPartial();
           resolve();
           return;
         }
@@ -192,6 +226,7 @@ export class EncoderPipeline {
           resolve();
           return;
         }
+        discardPartial();
         const message = `ffmpeg exited with code ${code}\n${job.stderr}`;
         this.emit(job, { error: message, done: true });
         reject(new Error(message));
@@ -262,8 +297,12 @@ export class EncoderPipeline {
 
     const { thumbnailPath, outputPath, format } = job.settings;
     if (thumbnailPath && EncoderPipeline.supportsCoverArt(format)) {
-      await EncoderPipeline.attachCoverArt(outputPath, thumbnailPath);
+      await EncoderPipeline.attachCoverArt(job.destination, thumbnailPath);
     }
+
+    // Only now, with a complete and indexed file in hand, does the destination
+    // get replaced. Until this line the previous file is still intact.
+    if (job.destination !== outputPath) await rename(job.destination, outputPath);
   }
 
   /** Containers that carry a cover image players and Explorer show. */

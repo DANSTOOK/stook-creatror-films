@@ -2,6 +2,7 @@ import type { MediaAsset, MediaKind, ProjectState } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { probeMediaElement } from '@renderer/engine/probeMedia';
+import { explainImportFailure } from '@renderer/engine/diagnoseContainer';
 
 /**
  * One import path for every way a file can arrive.
@@ -277,10 +278,15 @@ async function importPickedFiles(
         ),
       );
     } catch (error) {
-      rejected.push({
-        name: file.name,
-        reason: error instanceof Error ? error.message : String(error),
-      });
+      const reported = error instanceof Error ? error.message : String(error);
+      // The decoder only ever says it could not decode the file. Read the
+      // container's top-level boxes and, when they show the file simply stops
+      // short, say that instead - it points at the file rather than the app.
+      const reason = await explainImportFailure(
+        await window.filmora.mediaUrl(file.path).catch(() => ''),
+        reported,
+      );
+      rejected.push({ name: file.name, reason });
     }
   }
 
