@@ -1,6 +1,6 @@
 {
   "name": "filmora-engine",
-  "version": "1.9.0-beta.7",
+  "version": "1.9.0-beta.8",
   "private": true,
   "description": "Production-ready desktop video editor with a WebGL2 compositing core, optimized for video editing and transparent sprite-sheet authoring for game engines (Godot).",
   "repository": {
