@@ -7,11 +7,59 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **477 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **491 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.9.0-beta.7 — Arrastrar el cursor hacia atrás
+2026-09-12 · pre-release para probar
+
+El último punto del plan: al arrastrar el cursor hacia atrás, la vista previa
+casi nunca mostraba el fotograma que tocaba.
+
+### Arreglado
+- **Arrastrar el cursor hacia atrás muestra el fotograma exacto.** Antes cada
+  paso atrás obligaba a reiniciar el decodificador o a buscar en el vídeo, y
+  eso tarda más de lo que la mano tarda en seguir moviéndose: salía bien
+  ≈7 % de las veces. Ahora la app guarda copias pequeñas de los fotogramas
+  que ya decodificó, así que volver sobre lo recorrido es inmediato, y cuando
+  retrocedes hacia una zona nueva va decodificando en segundo plano los tres
+  segundos anteriores al cursor. Al soltar llega la imagen a tamaño completo.
+  - *Comprobado* con arrastres reales en la app, a velocidad de mano, con la
+    GPU libre (solo buscar → ahora):
+
+    | | Atrás, zona nueva | Adelante | Atrás, zona recorrida |
+    |---|---|---|---|
+    | Tu vídeo de KRATOS | 24 % → **91 %** | 26 % → **100 %** | 22 % → **100 %** |
+    | Grabación de pantalla | 13 % → **91 %** | 13 % → **65 %** | 16 % → **96 %** |
+
+    Y 6 pruebas en `PreviewFrameCache.test.ts`.
+- **Vídeos grabados con GOP abierto (OBS, streaming) fallaban al arrancar a
+  mitad del archivo.** Marcan como "fotograma clave" fotogramas I que no son
+  IDR: tu vídeo de KRATOS tiene 344 y solo 212 son IDR. El decodificador solo
+  acepta un IDR para empezar, así que al arrastrar hacia atrás, o al exportar
+  un rango que empieza a mitad del vídeo, fallaba y caía a la vía lenta. Ahora
+  solo arranca en IDR.
+  - *Comprobado:* 6 pruebas en `Mp4OpenGop.test.ts` con un archivo de GOP
+    abierto generado por ffmpeg, en el que todo arranque debe caer en un IDR;
+    y exportar los últimos 10 segundos de tu vídeo sale en 10,00 s exactos,
+    sin vía lenta.
+- **Ctrl+Z ya no quita la selección.** Tras deshacer un movimiento de varios
+  clips hacía falta volver a seleccionarlos todos. Deshacer y rehacer
+  conservan la selección, menos los clips que el paso haga desaparecer.
+  - *Comprobado:* 2 pruebas en `GroupMove.test.ts`.
+
+### Problemas conocidos
+- Cortar un clip descarta los fotogramas guardados de ese clip; se vuelven a
+  llenar al arrastrar.
+
+### Sin verificar
+- Con el vsync de la GPU desactivado (beta.4) la **vista previa podría
+  mostrar cortes horizontales**; no se ha observado en esta máquina.
 
 ---
 

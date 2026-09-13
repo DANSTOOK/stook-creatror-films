@@ -311,14 +311,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ project: after });
   },
 
+  // Undo and redo keep the selection, less any clip the step removed. They
+  // used to clear it, so undoing a group move meant selecting the whole group
+  // again before trying the move a second time.
   undo() {
     const reverted = useHistoryStore.getState().undo(get().project);
-    if (reverted) set({ project: reverted, ui: { ...get().ui, selectedClipIds: [] } });
+    if (reverted) set({ project: reverted, ui: keepSelectionIn(reverted, get().ui) });
   },
 
   redo() {
     const reapplied = useHistoryStore.getState().redo(get().project);
-    if (reapplied) set({ project: reapplied, ui: { ...get().ui, selectedClipIds: [] } });
+    if (reapplied) set({ project: reapplied, ui: keepSelectionIn(reapplied, get().ui) });
   },
 
   /* Transport ------------------------------------------------------------ */
@@ -1178,4 +1181,10 @@ function groupMoveOptions(
     accepts: (track, clip) => trackAccepts(track, kinds.get(clip.sourceUri)),
     anchorId,
   };
+}
+
+/** The editor state with its selection narrowed to clips `project` still has. */
+function keepSelectionIn<Ui extends { selectedClipIds: string[] }>(project: ProjectState, ui: Ui): Ui {
+  const kept = ui.selectedClipIds.filter((id) => project.clips[id] !== undefined);
+  return { ...ui, selectedClipIds: kept };
 }

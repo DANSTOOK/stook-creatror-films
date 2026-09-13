@@ -168,6 +168,40 @@ describe('dragging a selection', () => {
   });
 });
 
+describe('undo and the selection', () => {
+  it('keeps a moved group selected after undo, so it can be moved again', () => {
+    magnet(false);
+    const v1 = track('Video 1');
+    const a = clipAt(v1, 'a', 0, 30);
+    const b = clipAt(v1, 'b', 60, 30);
+    seed(a, b);
+    state().selectClips([a.id, b.id]);
+
+    state().moveClipGroup([a.id, b.id], 40, 0);
+    state().undo();
+
+    expect([start(a), start(b)]).toEqual([0, 60]);
+    expect(state().ui.selectedClipIds).toEqual([a.id, b.id]);
+
+    state().redo();
+    expect(state().ui.selectedClipIds).toEqual([a.id, b.id]);
+  });
+
+  it('drops from the selection only a clip the undone step takes away', () => {
+    magnet(false);
+    const v1 = track('Video 1');
+    const a = clipAt(v1, 'a', 0, 30);
+    seed(a);
+    const added = clipAt(v1, 'added', 100, 30);
+    state().transact('add', (project) => ({ ...project, clips: { ...project.clips, [added.id]: added } }));
+    state().selectClips([a.id, added.id]);
+
+    state().undo();
+
+    expect(state().ui.selectedClipIds).toEqual([a.id]);
+  });
+});
+
 describe('arrow keys', () => {
   it('move the selection a frame, or ten, through free space', () => {
     magnet(true);
