@@ -40,8 +40,11 @@ import {
   closeGap,
   groupMoveCollides,
   insertIntoTrack,
+  nudgeHopDelta,
+  planGroupMove,
   rippleDelete,
   trimLimit,
+  type GroupMoveOptions,
 } from '@renderer/components/Timeline/trackPacking';
 import { settingsFromAsset } from '@renderer/media/importMedia';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
@@ -184,6 +187,24 @@ interface ProjectStore {
    * one undo step.
    */
   setClipStarts(starts: ReadonlyMap<string, number>, mergeKey?: string): void;
+  /**
+   * Move several clips together, by the rules a single clip follows: the
+   * holes they leave close with the magnet, and what they land on moves
+   * along. `base` is the clips when a drag began, so the whole drag is
+   * placed from one starting point and pushed clips go back.
+   */
+  moveClipGroup(
+    clipIds: readonly string[],
+    deltaFrames: number,
+    deltaTracks: number,
+    options?: { base?: Record<string, Clip>; anchorId?: string; mergeKey?: string; ripple?: boolean },
+  ): void;
+  /**
+   * Arrow keys: move the selected clips by frames, or a track up or down.
+   * A nudge a neighbouring clip blocks hops over that clip instead.
+   * `repeat` (a held key) folds the moves into one undo step.
+   */
+  nudgeSelection(frames: number, tracks: number, repeat?: boolean): void;
   trimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
   /** Razor tool: split at the playhead. */
   razorAtFrame(frame?: number, clipIds?: string[]): void;
@@ -796,6 +817,61 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
+  moveClipGroup(clipIds, deltaFrames, deltaTracks, options = {}) {
+    const state = get();
+    const from = options.base ?? state.project.clips;
+    const rules = groupMoveOptions(state, options.anchorId);
+    const plan = planGroupMove(from, clipIds, deltaFrames, deltaTracks, {
+      ...rules,
+      ripple: options.ripple ?? rules.ripple,
+    });
+    if (plan.size === 0 && !options.base) return;
+
+    get().transact(
+      'Move clips',
+      (current) => {
+        const clips = { ...current.clips };
+        // Clips pushed aside earlier in the same drag go back first.
+        if (options.base) {
+          for (const [id, original] of Object.entries(options.base)) if (clips[id]) clips[id] = original;
+        }
+        for (const [id, placement] of plan) {
+          const clip = clips[id];
+          // moveClip, not a bare write: keyframes travel with their clip.
+          if (clip) clips[id] = moveClip(clip, placement.startFrame, placement.trackId);
+        }
+        return { ...current, clips };
+      },
+      options.mergeKey,
+    );
+  },
+
+  nudgeSelection(frames, tracks, repeat = false) {
+    const state = get();
+    const ids = state.ui.selectedClipIds.filter((id) => state.project.clips[id]);
+    if (ids.length === 0 || (frames === 0 && tracks === 0)) return;
+    const mergeKey = repeat ? `nudge:${ids.join(',')}` : undefined;
+
+    if (tracks !== 0) {
+      state.moveClipGroup(ids, 0, tracks, { mergeKey });
+      return;
+    }
+
+    // In free space: exactly the frames asked for, and without closing the
+    // hole behind - or a one-frame nudge would drag the rest of the track.
+    const step = planGroupMove(state.project.clips, ids, frames, 0, { ...groupMoveOptions(state), ripple: false });
+    const moves = ids.some((id) => step.has(id));
+    const pushesOthers = [...step.keys()].some((id) => !ids.includes(id));
+    if (moves && !pushesOthers) {
+      state.moveClipGroup(ids, frames, 0, { mergeKey, ripple: false });
+      return;
+    }
+
+    // A neighbour is in the way: hop over it.
+    const hop = nudgeHopDelta(state.project.clips, ids, frames > 0 ? 1 : -1, state.ui.rippleEnabled);
+    if (hop !== null) state.moveClipGroup(ids, hop, 0, { mergeKey });
+  },
+
   setClipStarts(starts, mergeKey) {
     get().transact(
       'Move clips',
@@ -1089,3 +1165,17 @@ export const selectClipsForTrack = (project: ProjectState, trackId: string): Cli
     .sort((a, b) => a.startFrame - b.startFrame);
 
 export { clipEndFrame };
+
+/** The rules a group move takes from the editor: magnet, track order, what each track accepts. */
+function groupMoveOptions(
+  state: { project: ProjectState; ui: { rippleEnabled: boolean }; assets: readonly MediaAsset[] },
+  anchorId?: string,
+): GroupMoveOptions {
+  const kinds = new Map(state.assets.map((asset) => [asset.uri, asset.kind]));
+  return {
+    ripple: state.ui.rippleEnabled,
+    tracks: timelineRows(state.project.tracks),
+    accepts: (track, clip) => trackAccepts(track, kinds.get(clip.sourceUri)),
+    anchorId,
+  };
+}

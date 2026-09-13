@@ -32,7 +32,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
-import { clipsInMarquee, groupMoveStarts } from './marquee';
+import { clipsInMarquee } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { canMoveTrack, timelineRows } from './trackRows';
@@ -82,6 +82,8 @@ type DragMode =
       anchorId: string;
       grabOffsetFrames: number;
       origins: Map<string, number>;
+      /** The clips when the drag began; every move of the group is placed from these. */
+      base: Record<string, Clip>;
       /** A click (no drag) on a clip inside a selection narrows to that clip. */
       collapseTo: string | null;
       moved: boolean;
@@ -601,6 +603,7 @@ export function Timeline(): JSX.Element {
               .filter((id) => current[id])
               .map((id) => [id, current[id].startFrame] as [string, number]),
           ),
+          base: current,
           collapseTo: alreadySelected && !event.shiftKey ? hit.clip.id : null,
           moved: false,
         };
@@ -714,9 +717,18 @@ export function Timeline(): JSX.Element {
         });
 
         const delta = snap.frame - anchorOrigin;
-        if (delta !== 0) drag.moved = true;
+        // A vertical drag takes the whole group to other tracks, the way it
+        // takes a single clip.
+        const anchorRow = tracks.findIndex((track) => track.id === drag.base[drag.anchorId]?.trackId);
+        const row = trackIndexAtY(y);
+        const deltaTracks = anchorRow >= 0 && row >= 0 && row < tracks.length ? row - anchorRow : 0;
+        if (delta !== 0 || deltaTracks !== 0) drag.moved = true;
         setActiveSnap(snap.snapped ? (snap.target ?? null) : null);
-        state.setClipStarts(groupMoveStarts(drag.origins, delta), `move-group:${drag.anchorId}`);
+        state.moveClipGroup([...drag.origins.keys()], delta, deltaTracks, {
+          base: drag.base,
+          anchorId: drag.anchorId,
+          mergeKey: `move-group:${drag.anchorId}`,
+        });
         return;
       }
 

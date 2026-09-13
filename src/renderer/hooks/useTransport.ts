@@ -225,13 +225,26 @@ export function useEditorShortcuts(): void {
           event.preventDefault();
           transport.toggle();
           return;
+        // With clips selected the arrows move them - Shift for ten frames, up
+        // and down to another track. With nothing selected they step the
+        // playhead, as they always did; Escape clears the selection to get back.
         case 'ArrowLeft':
+        case 'ArrowRight': {
           event.preventDefault();
-          transport.step(event.shiftKey ? -10 : -1);
+          const frames = (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1);
+          if (store.ui.selectedClipIds.length > 0) store.nudgeSelection(frames, 0, event.repeat);
+          else transport.step(frames);
           return;
-        case 'ArrowRight':
-          event.preventDefault();
-          transport.step(event.shiftKey ? 10 : 1);
+        }
+        case 'ArrowUp':
+        case 'ArrowDown':
+          if (store.ui.selectedClipIds.length > 0) {
+            event.preventDefault();
+            store.nudgeSelection(0, event.key === 'ArrowUp' ? -1 : 1, event.repeat);
+          }
+          return;
+        case 'Escape':
+          if (store.ui.selectedClipIds.length > 0) store.selectClips([]);
           return;
         case 'Home':
           event.preventDefault();
