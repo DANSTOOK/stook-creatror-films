@@ -683,3 +683,69 @@ function fragmentSampleTable(
 
   return samples;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Where a decoder can start                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * True when an H.264 sample (length-prefixed NAL units, as MP4 stores them)
+ * holds an IDR slice.
+ *
+ * A container's "sync sample" flag is not enough to start a decoder on. Open-
+ * GOP recordings - OBS and streaming captures - mark plain I-frames as sync
+ * too, with a recovery-point SEI: the user's KRATOS vs THOR file has 344 sync
+ * samples and only 212 IDR frames. Chromium's VideoDecoder refuses anything
+ * but an IDR as the first chunk after configure(), so a restart on one of the
+ * other 132 threw, and scrubbing and mid-file exports fell back to seeking.
+ */
+export function isIdrAccessUnit(bytes: Uint8Array, lengthSize: number): boolean {
+  let at = 0;
+  while (at + lengthSize <= bytes.byteLength) {
+    let length = 0;
+    for (let i = 0; i < lengthSize; i += 1) length = length * 256 + bytes[at + i];
+    if (length <= 0 || at + lengthSize + length > bytes.byteLength) return false;
+    if ((bytes[at + lengthSize] & 0x1f) === 5) return true;
+    at += lengthSize + length;
+  }
+  return false;
+}
+
+/** Per track: which sync samples a decoder can start on, once looked at. */
+const restartVerdicts = new WeakMap<Mp4VideoTrack, Map<number, boolean>>();
+
+/**
+ * The last sample at or before `index` a decoder can be started on.
+ *
+ * For H.264 that is a sync sample holding an IDR slice, found by reading the
+ * candidate samples' bytes, newest first, and remembering the answer. Other
+ * codecs trust the container's sync flag, as before. Sample 0 is the last
+ * resort: a file always starts decodable.
+ */
+export async function restartIndexBefore(
+  track: Mp4VideoTrack,
+  index: number,
+  sampleBytes: (sample: Mp4Sample) => Promise<Uint8Array>,
+): Promise<number> {
+  const { samples } = track;
+  const avc = track.codec.startsWith('avc');
+  const lengthSize = avc && track.description.byteLength > 4 ? (track.description[4] & 0x03) + 1 : 4;
+
+  let verdicts = restartVerdicts.get(track);
+  if (!verdicts) {
+    verdicts = new Map();
+    restartVerdicts.set(track, verdicts);
+  }
+
+  for (let i = Math.min(index, samples.length - 1); i > 0; i -= 1) {
+    if (!samples[i].isSync) continue;
+    if (!avc) return i;
+    let verdict = verdicts.get(i);
+    if (verdict === undefined) {
+      verdict = isIdrAccessUnit(await sampleBytes(samples[i]), lengthSize);
+      verdicts.set(i, verdict);
+    }
+    if (verdict) return i;
+  }
+  return 0;
+}

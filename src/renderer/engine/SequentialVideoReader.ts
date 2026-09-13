@@ -1,4 +1,4 @@
-import { parseMoov, readLayout, type ByteReader, type Mp4Sample, type Mp4VideoTrack } from './mp4';
+import { parseMoov, readLayout, restartIndexBefore, type ByteReader, type Mp4Sample, type Mp4VideoTrack } from './mp4';
 
 /**
  * Frame-exact, in-order video decoding for export.
@@ -131,13 +131,6 @@ export class SequentialVideoReader {
     return list[low];
   }
 
-  /** Last sync sample at or before decode index `index`. */
-  private syncBefore(index: number): number {
-    const { samples } = this.track;
-    for (let i = index; i >= 0; i -= 1) if (samples[i].isSync) return i;
-    return 0;
-  }
-
   private startDecoder(fromIndex: number): void {
     this.closeDecoder();
     this.failure = null;
@@ -206,12 +199,24 @@ export class SequentialVideoReader {
   }
 
   /**
+   * The timestamp, in microseconds, of the frame `frameAt` answers for
+   * `sourceFrame` - so a cache keyed by it gives exactly what a decode would.
+   */
+  timestampFor(sourceFrame: number, fps: number): number {
+    return microseconds(this.sampleAt((sourceFrame + 0.5) / fps).sample.time);
+  }
+
+  /**
    * The decoded frame for `sourceFrame` of a `fps` timeline.
    *
    * The returned frame belongs to the reader and stays valid until the next
    * call or `close` - upload it, do not keep it.
+   *
+   * `onPassed` sees every frame decoded on the way to the target and skipped
+   * over. It may copy the frame, but not keep it: the frame is closed as soon
+   * as the callback returns. Export passes nothing and skips them as before.
    */
-  async frameAt(sourceFrame: number, fps: number): Promise<VideoFrame> {
+  async frameAt(sourceFrame: number, fps: number, onPassed?: (frame: VideoFrame) => void): Promise<VideoFrame> {
     // The middle of the frame, for the same reason `seekExact` aims there:
     // container timestamps are rounded, frame starts are not safe targets.
     const target = this.sampleAt((sourceFrame + 0.5) / fps);
@@ -222,7 +227,9 @@ export class SequentialVideoReader {
     // Restart from a keyframe when going backwards, or when the target is far
     // enough ahead that decoding everything in between would be slower.
     const lastShown = this.current?.timestamp ?? -Infinity;
-    const restartFrom = this.syncBefore(target.decodeIndex);
+    // A sample the decoder accepts as a start: an IDR, not merely a sample
+    // the container calls sync (see restartIndexBefore).
+    const restartFrom = await restartIndexBefore(this.track, target.decodeIndex, (sample) => this.bytes(sample));
     if (!this.decoder || timestamp < lastShown || restartFrom > this.nextFeed) {
       this.dropFrames();
       this.startDecoder(restartFrom);
@@ -233,7 +240,9 @@ export class SequentialVideoReader {
 
       // Frames before the target are ones this render skips over.
       while (this.decoded.length > 0 && this.decoded[0].timestamp < timestamp) {
-        this.decoded.shift()?.close();
+        const passed = this.decoded.shift() as VideoFrame;
+        onPassed?.(passed);
+        passed.close();
       }
       if (this.decoded.length > 0) {
         // Normally the exact frame. Should the file's tables disagree with the
@@ -244,7 +253,10 @@ export class SequentialVideoReader {
         return frame;
       }
 
-      const decoder = this.decoder as VideoDecoder;
+      // Closed while this call waited - a scrub decoder is closed whenever
+      // playback starts. Say so plainly rather than failing on a null.
+      const decoder = this.decoder;
+      if (!decoder) throw new Error('reader closed');
       if (this.nextFeed < this.track.samples.length) {
         if (decoder.decodeQueueSize < MAX_DECODE_QUEUE) {
           await this.feed();

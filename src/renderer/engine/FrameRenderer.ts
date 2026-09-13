@@ -167,6 +167,22 @@ export class FrameRenderer {
       return { texture, flipY: true };
     }
 
+    // Decoded on the way here - by a forward drag, or filled in behind a
+    // backwards one: a smaller copy of exactly this frame, right now. A
+    // different revision, so the full-size frame replaces it once the
+    // playhead rests.
+    const preview = scrubber.previewFor(sourceFrame);
+    if (preview) {
+      const texture = this.textures.upload(clip.sourceUri, preview, `${revision}:preview`);
+      this.textures.setFilter(clip.sourceUri, filter);
+      scrubber.requestWhenSettled(sourceFrame, performance.now());
+      if (sourceFrame < scrubber.position) scrubber.fillBehind(sourceFrame);
+      return { texture, flipY: true };
+    }
+
+    // Heading back past what is kept: fill in behind, ahead of the hand.
+    if (scrubber.position >= 0 && sourceFrame < scrubber.position) scrubber.fillBehind(sourceFrame);
+
     if (!scrubber.canReachCheaply(sourceFrame)) {
       // Too far for a walk: the element seeks, as it always did, and the
       // decoder follows once the playhead rests.
@@ -213,7 +229,10 @@ export class FrameRenderer {
         const stats = (window as { __scfViewportStats?: { draws: number; exact: number } }).__scfViewportStats;
         if (stats && isVideo && !playing) {
           stats.draws += 1;
-          if (this.textures.revisionOf(clip.sourceUri) === `${clip.sourceUri}:${sourceFrame}`) stats.exact += 1;
+          // A kept small copy of the right frame is the right frame.
+          const shown = this.textures.revisionOf(clip.sourceUri);
+          const wanted = `${clip.sourceUri}:${sourceFrame}`;
+          if (shown === wanted || shown === `${wanted}:preview`) stats.exact += 1;
         }
         return source;
       },

@@ -45,6 +45,11 @@ async function main() {
   let ok = true;
   try {
     const window = await app.firstWindow();
+    // The scrub decoder says when it gives up on a file; show it, or a file
+    // that scrubs on the slow path reads as nothing more than a low number.
+    window.on('console', (message) => {
+      if (message.text().includes('[scrub]')) console.log(`   page: ${message.text().slice(0, 240)}`);
+    });
     await app.evaluate(({ dialog }, video) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [video] });
     }, source);
@@ -56,10 +61,57 @@ async function main() {
     await row.getByTitle(/Add at the playhead/).click();
     await window.waitForTimeout(4000); // Audio decode.
 
+    // The same pace for every file: the first clip added fits the timeline to
+    // the view, so a 600 px drag covered 360 frames of a 95-second clip but
+    // ~14,000 of a 19-minute one - 80 frames a move, which no decoder follows.
+    // Fixed zoom: 600 px is 360 frames, about 2 frames per move, a brisk hand.
+    await window.evaluate(() => window.__scfStore.getState().setUi({ pixelsPerFrame: 600 / 360, scrollLeftPx: 0 }));
+    await window.waitForTimeout(500);
+
     const canvas = window.locator('canvas').last();
     const box = await canvas.boundingBox();
 
     const results = {};
+    const playhead = () => window.evaluate(() => window.__scfStore.getState().project.currentFrame);
+
+    /**
+     * One drag, measured: settle at `from`, reset the counters, drag to `to`,
+     * and check how far the playhead really went. A drag that never moved it
+     * reads as 100% exact - a still playhead always is - so it is marked
+     * invalid rather than believed.
+     */
+    // Where the timeline is scrolled, in the store and on the element - a
+    // scroll during a drag shifts which frame a pixel means.
+    const scroll = () =>
+      window.evaluate(() => {
+        const stored = Math.round(window.__scfStore.getState().ui.scrollLeftPx);
+        const element = [...document.querySelectorAll('div')].find((d) => d.scrollWidth > d.clientWidth + 50 && d.querySelector('canvas'));
+        return `${stored}/${element ? Math.round(element.scrollLeft) : '?'} (visible ${element ? element.clientWidth : '?'} px)`;
+      });
+
+    const clipCount = () => window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
+
+    async function pass(from, to) {
+      // Put the playhead at `from` with a short drag that starts 20 px away.
+      // Pressing ON the playhead in the ruler grabs its scissors, and a press
+      // there that does not move is a click - which cuts the clip. The bench
+      // did exactly that between passes, and every cut gave the clip a new id
+      // and its scrub decoder a fresh, empty set of kept pictures.
+      const clipsBefore = await clipCount();
+      await drag(window, box, from - 20 * Math.sign(to - from), from, 10);
+      await window.waitForTimeout(600);
+      const before = await playhead();
+      const scrollBefore = await scroll();
+      await window.evaluate(() => { window.__scfViewportStats = { draws: 0, exact: 0 }; });
+      await drag(window, box, from, to, 180);
+      const stats = await window.evaluate(() => ({ ...window.__scfViewportStats }));
+      const after = await playhead();
+      const scrollAfter = await scroll();
+      const cut = (await clipCount()) !== clipsBefore;
+      const travelled = (after - before) * Math.sign(to - from);
+      return { ...stats, before, after, scrollBefore, scrollAfter, cut, valid: travelled >= 300 && !cut };
+    }
+
     for (const mode of ['seek only', 'forward decoder']) {
       await window.evaluate((noDecoder) => {
         window.__scfNoScrubDecoder = noDecoder;
@@ -67,29 +119,35 @@ async function main() {
         window.__scfScrubStats = { grains: 0 };
       }, mode === 'seek only');
 
-      // Start somewhere in the middle, let it settle, then drag. Width 600 px
-      // over ~3 s: about 2 frames per move at this zoom, a brisk hand.
+      // 600 px over ~3 s at this zoom: about 2 frames per move, a brisk hand.
       const start = 300;
-      await drag(window, box, start, start + 1, 1);
-      await window.waitForTimeout(600);
-      await window.evaluate(() => { window.__scfViewportStats = { draws: 0, exact: 0 }; });
-      await drag(window, box, start, start + 600, 180);
-      const forward = await window.evaluate(() => ({ ...window.__scfViewportStats }));
-
-      await window.evaluate(() => { window.__scfViewportStats = { draws: 0, exact: 0 }; });
-      await drag(window, box, start + 600, start, 180);
-      const backward = await window.evaluate(() => ({ ...window.__scfViewportStats }));
+      // Backwards first, over ground this mode has not decoded: settled at the
+      // far end, a forward decoder holds only the GOP before it, so most of
+      // the way back depends on filling in behind the playhead.
+      const fresh = await pass(start + 600, start);
+      const forward = await pass(start, start + 600);
+      // Then back over what the forward drag just decoded.
+      const backward = await pass(start + 600, start);
       const grains = await window.evaluate(() => window.__scfScrubStats.grains);
 
-      const pct = (s) => `${((100 * s.exact) / Math.max(1, s.draws)).toFixed(0)}% of ${s.draws} draws`;
-      console.log(`${mode.padEnd(16)} forward: exact frame ${pct(forward)}; backward: ${pct(backward)}; audio grains ${grains}`);
-      results[mode] = { forward, backward, grains };
+      const pct = (s) =>
+        `${((100 * s.exact) / Math.max(1, s.draws)).toFixed(0)}% of ${s.draws} draws (frame ${s.before} -> ${s.after})${s.valid ? '' : '  INVALID: the playhead did not travel'}`;
+      console.log(mode);
+      console.log(`   backward, new ground:     ${pct(fresh)}`);
+      console.log(`   forward:                  ${pct(forward)}`);
+      console.log(`   backward, covered ground: ${pct(backward)}`);
+      console.log(`   audio grains:             ${grains}`);
+      results[mode] = { fresh, forward, backward, grains };
     }
 
     const f = results['forward decoder'];
     const s = results['seek only'];
     const rate = (x) => x.exact / Math.max(1, x.draws);
-    ok = rate(f.forward) > rate(s.forward) && rate(f.backward) >= rate(s.backward) * 0.8 && f.grains > 20;
+    const valid = [f, s].every((r) => r.fresh.valid && r.forward.valid && r.backward.valid);
+    // A source with no sound gives no grains in either mode; only then is
+    // zero not a failure.
+    const audioOk = f.grains > 20 || s.grains === 0;
+    ok = valid && audioOk && rate(f.forward) > rate(s.forward) && rate(f.backward) > rate(s.backward) && rate(f.fresh) >= rate(s.fresh);
   } finally {
     await app.close().catch(() => undefined);
   }
