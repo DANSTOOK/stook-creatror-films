@@ -17,6 +17,7 @@ import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { describeExportProgress, formatClock } from './exportProgress';
+import { exportEndFrame } from './exportRange';
 
 /**
  * Export dialog, including the game-asset mode.
@@ -80,7 +81,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       // `settings.endFrame ||` here, the first range ever seeded stuck for
       // the whole session: adding 40 minutes to a 5-minute timeline still
       // exported 5 minutes, silently, with the dialog showing that number.
-      endFrame: project.durationFrames,
+      endFrame: exportEndFrame(project),
       exportAlpha: settings.exportAlpha || project.hasAlphaBackground,
       bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
     });

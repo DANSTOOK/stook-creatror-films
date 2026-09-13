@@ -7,11 +7,95 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **431 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **477 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.9.0-beta.6 — El vídeo de 19 minutos que exportaba a 23 fps
+2026-09-12 · pre-release para probar
+
+Tu prueba con KRATOS vs THOR iba lenta por una razón concreta, y la
+exportación podía además destruir el vídeo que estaba exportando. Las dos
+cosas están arregladas, y la ventana de exportación está rehecha.
+
+### Arreglado
+- **Exportar podía destruir el vídeo original.** El nombre de salida es por
+  defecto el del vídeo, y si la carpeta era la del vídeo, ffmpeg escribía
+  encima del propio archivo fuente. Al cancelar quedaba un MP4 sin índice que
+  nada puede abrir. Así se perdieron dos grabaciones tuyas.
+  - La exportación escribe ahora en un archivo temporal al lado y **solo
+    sustituye el destino cuando termina bien**; si se cancela o falla, lo que
+    había queda intacto.
+  - Si el destino es un vídeo del proyecto, la ventana lo avisa en rojo y no
+    deja empezar, y el proceso principal lo rechaza aunque se intente.
+  - Un MP4 incompleto al importar dice "the file is incomplete" en vez de
+    "the browser could not decode this file".
+  - *Comprobado:* 11 pruebas en `OverwriteSource.test.ts`; la exportación de
+    extremo a extremo sigue dando un MP4 válido con todos sus fotogramas y sin
+    archivo temporal sobrante.
+- **Tu vídeo de KRATOS exportaba a 23 fps: es un MP4 fragmentado.** Los
+  grabadores de pantalla y las descargas de streaming guardan los datos en
+  cientos de fragmentos, y el lector solo buscaba en el índice principal,
+  que en estos archivos está vacío. No encontraba ningún fotograma y caía a
+  buscar cada uno por separado. Ahora lee los fragmentos.
+  - *Comprobado:* 11 pruebas en `Mp4Fragmented.test.ts`, que codifican el
+    mismo contenido normal y fragmentado de tres maneras y exigen que cada
+    fotograma y cada trozo de audio coincidan byte a byte, con tiempos iguales
+    a los que da ffmpeg. En tu archivo: 344 fragmentos, 35.029 fotogramas y
+    50.288 de audio. **La exportación completa de 19:29 tardó 1:42, a 343 fps
+    (11,4× tiempo real)**, sin errores al decodificarla y con sonido. Antes
+    habría tardado unos 25 minutos.
+- **La exportación ya no se queda en "Rendering audio…"** mientras hace el
+  vídeo (el audio termina antes del primer fotograma), y **avisa si algún
+  clip va por la vía lenta**, nombrándolo.
+  - *Comprobado:* el aviso apareció en tu captura con el vídeo de KRATOS; con
+    la lectura de fragmentos ya no aparece.
+- **Cada exportación terminaba con un segundo en negro.** La línea de tiempo
+  guarda un segundo de margen después del último clip para poder seguir
+  editando, y la exportación lo incluía. Ahora termina con el último clip.
+  - *Comprobado:* 4 pruebas en `ExportEnd.test.ts`.
+- **Cuatro comprobaciones de audio de la prueba de extremo a extremo fallaban**
+  porque el vídeo de prueba no tenía pista de audio. Ahora lleva un tono real.
+  - *Comprobado:* 21/21.
+
+### Añadido
+- **Mover varios clips a la vez.** Selecciona con clic y Ctrl+clic y arrastra:
+  se mueven juntos, también a otra pista, conservando la separación entre
+  ellos y con imán al soltar cerca de un borde. Ctrl+Z deshace todo el
+  arrastre de una vez.
+- **Mover clips con las flechas.** ←/→ un fotograma (con Shift, diez); si hay
+  un clip pegado, lo saltan. ↑/↓ cambian de pista. Escape quita la selección,
+  y sin selección las flechas vuelven a mover el cursor de reproducción.
+  - *Comprobado:* 13 pruebas en `GroupMove.test.ts` y **12/12 comprobaciones
+    en la app** con clics, arrastres y teclas de verdad sobre clips de tu
+    vídeo.
+- **Ventana de exportación reorganizada.** Primero dónde se guarda, luego
+  formato y tamaño, rango (ahora con tiempos: "Renders 19:29 of video"),
+  miniatura y hardware; transparencia y pixel art quedan plegados salvo que
+  se usen.
+- **Barra de progreso en minutos.** Fija abajo durante todo el render: "2:27
+  / 19:29 of video", tiempo transcurrido, **tiempo restante** y velocidad
+  respecto al tiempo real. Se pone verde al terminar.
+- **Carpeta de exportación por defecto: `Documentos\VIDEOS EXPORTADOS`**, que
+  se crea sola. "Browse" sigue eligiendo cualquier otra.
+  - *Comprobado:* 7 pruebas en `ExportProgress.test.ts`, 36/36 de interfaz, y
+    en la app con tu vídeo: la carpeta aparece elegida y el panel mostró
+    "Rendering 12,6% · 2:27 / 19:29 of video · Elapsed 0:12 · Remaining 1:21 ·
+    12,6x realtime".
+
+### Problemas conocidos
+- **Arrastrar el cursor hacia atrás** todavía no muestra el fotograma exacto
+  la mayoría de las veces (≈7%); hacia delante sí (81–83%).
+- **Ctrl+Z quita la selección**, así que tras deshacer un movimiento hay que
+  volver a seleccionar el grupo.
+
+### Sin verificar
+- Con el vsync de la GPU desactivado (beta.4) la **vista previa podría
+  mostrar cortes horizontales**; no se ha observado en esta máquina.
 
 ---
 
