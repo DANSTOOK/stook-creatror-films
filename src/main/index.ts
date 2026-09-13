@@ -63,6 +63,9 @@ function createWindow(): void {
     show: false,
     backgroundColor: '#0d0f14',
     title: 'STOOK CREATOR FILMS',
+    // The project's own logo in the title bar and taskbar, instead of
+    // Electron's. Vite copies public/icon.ico next to index.html.
+    icon: join(RENDERER_DIST, 'icon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: PRELOAD,

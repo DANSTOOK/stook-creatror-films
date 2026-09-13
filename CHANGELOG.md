@@ -15,6 +15,23 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.9.0-beta.8 — El logo del proyecto
+2026-09-13 · pre-release para probar
+
+### Añadido
+- **El logo de STOOK CREATOR FILMS en toda la app**, en lugar del icono de
+  Electron: en el instalador y el ejecutable, en la barra de título y la
+  barra de tareas, y junto al nombre en la cabecera (sustituye a la etiqueta
+  "SCF").
+  - El icono lleva todos los tamaños que usa Windows (16, 24, 32, 48, 64, 128
+    y 256 px). Los de 16 a 64 px están recortados más cerca de la "S" para que
+    se lea en la barra de tareas y el Explorador; los de 128 y 256 conservan
+    el encuadre original.
+  - *Comprobado:* abriendo la app compilada, la "S" aparece en la barra de
+    título y en la cabecera; 491 pruebas unitarias y 36/36 de interfaz.
+
+---
+
 ## v1.9.0-beta.7 — Arrastrar el cursor hacia atrás
 2026-09-12 · pre-release para probar
 
