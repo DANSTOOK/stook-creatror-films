@@ -49,11 +49,17 @@ async function generateMedia() {
     paths.video = sourceOverride;
     console.log(`   using real source: ${sourceOverride}`);
   } else {
-    // A moving pattern, so a duplicated or frozen frame would be detectable.
+    // A moving pattern, so a duplicated or frozen frame would be detectable,
+    // plus an audible tone. Without an audio track the mix has nothing to
+    // render and every audio check fails; a silent track would pass the
+    // structural ones while proving nothing, so it has to be a real signal.
     await run(ffmpeg, [
       '-y', '-loglevel', 'error',
       '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=30:duration=4',
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', paths.video,
+      '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=4',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-ac', '2', '-ar', '48000',
+      '-shortest', paths.video,
     ]);
   }
 
