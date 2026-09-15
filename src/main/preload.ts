@@ -15,6 +15,7 @@ import { IPC, type FilmoraApi, type MediaProbe, type PickedFile } from '@shared/
  */
 const api: FilmoraApi = {
   openMedia: () => ipcRenderer.invoke(IPC.openMedia) as Promise<PickedFile[]>,
+  openMediaFolder: () => ipcRenderer.invoke(IPC.openMediaFolder) as Promise<PickedFile[]>,
   // Paths are derived HERE, from the File objects themselves: getPathForFile
   // only knows the path of a file the OS handed over and returns '' for one
   // constructed in JavaScript, so page code cannot talk its way into a path.

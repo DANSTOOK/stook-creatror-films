@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   FilePlus2,
   FolderOpen,
   Headphones,
+  LayoutDashboard,
   Redo2,
   Save,
   Settings2,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
+import { Splitter } from './components/Layout/Splitter';
 import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
@@ -18,6 +20,16 @@ import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
+import {
+  DEFAULT_LAYOUT,
+  LAYOUT_LIMITS,
+  clampLayout,
+  loadLayout,
+  resizePanel,
+  saveLayout,
+  type LayoutKey,
+  type PanelLayout,
+} from './layout/layoutSizes';
 import { hasNativeBridge, rehydrateDocument } from './media/importMedia';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
@@ -29,6 +41,9 @@ const LOGO_URL = new URL('./assets/logo.png', import.meta.url).href;
 /**
  * Main layout: a fixed toolbar over a three-column editing row (media,
  * viewport, inspector) with the timeline docked underneath.
+ *
+ * Every border between them drags, as in DaVinci Resolve - see layoutSizes.ts.
+ * The preview takes whatever the other panels leave.
  */
 export default function App(): JSX.Element {
   // The clock advances the playhead and must exist exactly once in the tree.
@@ -59,6 +74,56 @@ export default function App(): JSX.Element {
   const [mixerOpen, setMixerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+
+  /* Panel sizes ------------------------------------------------------------- */
+
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const [space, setSpace] = useState({ width: 0, height: 0 });
+  const [layout, setLayout] = useState<PanelLayout>(loadLayout);
+  // Sizes are fitted to the window on every render rather than stored fitted,
+  // so shrinking the window and growing it back returns the panels to the
+  // sizes that were chosen.
+  const fitted = clampLayout(layout, space);
+  const dragOrigin = useRef<PanelLayout>(fitted);
+  const latest = useRef<PanelLayout>(layout);
+  latest.current = layout;
+
+  useLayoutEffect(() => {
+    const element = workspaceRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setSpace({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const commitLayout = useCallback((next: PanelLayout) => {
+    setLayout(next);
+    saveLayout(next);
+  }, []);
+
+  /**
+   * A border for one panel. `grows` says which way the pointer has to move for
+   * the panel to get bigger: right for the media panel, left for the
+   * inspector, up for the timeline.
+   */
+  const border = (key: LayoutKey, label: string, orientation: 'vertical' | 'horizontal', grows: 1 | -1): JSX.Element => (
+    <Splitter
+      orientation={orientation}
+      label={label}
+      value={fitted[key]}
+      min={LAYOUT_LIMITS[key].min}
+      max={LAYOUT_LIMITS[key].max}
+      onDragStart={() => {
+        dragOrigin.current = fitted;
+      }}
+      onDrag={(offset) => setLayout(resizePanel(dragOrigin.current, key, grows * offset, space))}
+      onDragEnd={() => saveLayout(latest.current)}
+      onStep={(offset) => commitLayout(resizePanel(fitted, key, grows * offset, space))}
+      onReset={() => commitLayout(clampLayout({ ...fitted, [key]: DEFAULT_LAYOUT[key] }, space))}
+    />
+  );
 
   // Saving, opening and exporting all go through the native bridge, so those
   // controls are disabled rather than throwing when running in a browser.
@@ -183,6 +248,15 @@ export default function App(): JSX.Element {
           <Settings2 size={14} />
           Settings
         </button>
+        <button
+          type="button"
+          className="tool-button"
+          onClick={() => commitLayout({ ...DEFAULT_LAYOUT })}
+          title="Put every panel back to its default size (double-click one border to reset just that panel)"
+        >
+          <LayoutDashboard size={14} />
+          Reset layout
+        </button>
 
         <div className="flex-1" />
 
@@ -204,14 +278,24 @@ export default function App(): JSX.Element {
         </button>
       </header>
 
-      <main className="flex min-h-0 flex-1 gap-1.5">
-        <MediaLibrary />
-        <PreviewViewport />
-        <Inspector />
-      </main>
+      <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
+        <main className="flex min-h-0 flex-1">
+          <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
+            <MediaLibrary />
+          </div>
+          {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
+          <PreviewViewport />
+          {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
+          <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
+            <Inspector />
+          </div>
+        </main>
 
-      <div className="h-[300px] shrink-0">
-        <Timeline />
+        {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
+
+        <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
+          <Timeline />
+        </div>
       </div>
 
       {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}

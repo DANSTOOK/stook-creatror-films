@@ -42,6 +42,8 @@ export interface ProjectDocument {
   savedAt: string;
   project: ProjectState;
   assets: MediaAsset[];
+  /** Library bins. Absent in files saved before bins existed. */
+  bins?: import('@shared/types').MediaBin[];
 }
 
 export type TimelineTool = 'select' | 'razor' | 'hand';

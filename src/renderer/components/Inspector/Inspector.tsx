@@ -193,7 +193,7 @@ export function Inspector(): JSX.Element {
 
   if (!clip || !resolved) {
     return (
-      <aside className="panel w-[300px] shrink-0">
+      <aside className="panel w-full">
         <header className="panel-header">Inspector</header>
         <p className="p-4 text-xs text-slate-500">
           {selectedIds.length > 1
@@ -213,7 +213,7 @@ export function Inspector(): JSX.Element {
       updateClip(clip.id, { eq: { ...eq, ...patch } }, `eq:${clip.id}`);
 
     return (
-      <aside className="panel w-[300px] shrink-0">
+      <aside className="panel w-full">
         <header className="panel-header justify-between">
           <span className="truncate">{clip.name}</span>
           <span className="normal-case tracking-normal text-slate-500">Audio</span>
@@ -282,7 +282,7 @@ export function Inspector(): JSX.Element {
   );
 
   return (
-    <aside className="panel w-[300px] shrink-0">
+    <aside className="panel w-full">
       <header className="panel-header justify-between">
         <span className="truncate">{clip.name}</span>
         <span className="normal-case tracking-normal text-slate-500">

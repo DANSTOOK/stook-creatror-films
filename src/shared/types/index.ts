@@ -241,6 +241,19 @@ export interface ProjectState {
 
 export type MediaKind = 'video' | 'audio' | 'image';
 
+/**
+ * A folder in the media library - a "bin", as DaVinci Resolve calls it.
+ *
+ * Bins organise what is already in the project; nothing on disk moves. The
+ * top level ("Master") is not a bin: it is where anything without one sits.
+ */
+export interface MediaBin {
+  id: string;
+  name: string;
+  /** The containing bin, or null for the top level. */
+  parentId: string | null;
+}
+
 export interface MediaAsset {
   id: string;
   name: string;
@@ -272,6 +285,8 @@ export interface MediaAsset {
   audioUri?: string;
   /** Set when a reopened project could not restore this asset from disk. */
   missing?: boolean;
+  /** The library bin this asset is filed in; absent means the top level. */
+  binId?: string;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -33,6 +33,10 @@ const allowedPaths = new Set<string>();
 
 /** Source path -> media:// URL of its extracted audio, for the session. */
 const extractedAudio = new Map<string, string>();
+
+/** Bounds on a folder import, so choosing a drive root cannot stall the app. */
+const MAX_FOLDER_DEPTH = 8;
+const MAX_FOLDER_FILES = 2000;
 
 function classify(path: string): MediaKind {
   const extension = extname(path).toLowerCase();
@@ -334,6 +338,68 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     );
 
     return files;
+  });
+
+  /**
+   * A folder with its subfolders - DaVinci Resolve's "Add Folder and
+   * SubFolders into Media Pool (Create Bins)".
+   *
+   * Every media file under the chosen folder is allowlisted exactly like a
+   * file picked in the Import dialog, and comes back with the folders it sits
+   * in so the library can mirror them as bins. Hidden entries and links are
+   * skipped (a Dirent for a link is neither a file nor a directory), and the
+   * walk stops at MAX_FOLDER_DEPTH levels and MAX_FOLDER_FILES files.
+   */
+  ipcMain.handle(IPC.openMediaFolder, async (): Promise<PickedFile[]> => {
+    const window = getWindow();
+    if (!window) return [];
+
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Add a folder and its subfolders',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+
+    const root = result.filePaths[0];
+    const picked: PickedFile[] = [];
+
+    const walk = async (folder: string, segments: string[]): Promise<void> => {
+      if (segments.length > MAX_FOLDER_DEPTH) return;
+      const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+      entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+      for (const entry of entries) {
+        if (picked.length >= MAX_FOLDER_FILES) return;
+        if (entry.name.startsWith('.')) continue;
+        const path = join(folder, entry.name);
+
+        if (entry.isDirectory()) {
+          await walk(path, [...segments, entry.name]);
+          continue;
+        }
+
+        const extension = extname(entry.name).toLowerCase();
+        const isMedia =
+          VIDEO_EXTENSIONS.has(extension) || AUDIO_EXTENSIONS.has(extension) || IMAGE_EXTENSIONS.has(extension);
+        if (!entry.isFile() || !isMedia) continue;
+
+        const info = await stat(path).catch(() => null);
+        if (!info) continue;
+
+        allowedPaths.add(path);
+        picked.push({
+          path,
+          name: entry.name,
+          kind: classify(path),
+          sizeBytes: info.size,
+          relativeDir: segments.join('/'),
+        });
+      }
+    };
+
+    // A drive root has no base name; it still needs a bin to go in.
+    await walk(root, [basename(root) || root.replace(/[\\/:]+$/, '')]);
+    return picked;
   });
 
   ipcMain.handle(IPC.openProject, async () => {

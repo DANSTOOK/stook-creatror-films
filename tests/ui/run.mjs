@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -36,6 +36,10 @@ const lutPath = join(workDir, 'identity.cube');
 const panelDropImage = join(workDir, 'panel-drop.png');
 const timelineDropImage = join(workDir, 'drop.png');
 const projectPath = join(workDir, 'ui-project.scf');
+const folderImportRoot = join(workDir, 'Footage');
+
+/** Media panel width left by the resize checks, to find again in the fresh session. */
+let persistedMediaWidth = null;
 
 // A profile of its own: the run must work beside a copy of the app the user
 // has open (the app allows one instance per profile), and must not read or
@@ -81,6 +85,14 @@ async function prepare() {
       '-y', '-loglevel', 'error',
       '-f', 'lavfi', '-i', 'testsrc=size=160x120:rate=1', '-frames:v', '1', path,
     ]);
+  }
+
+  // A folder with subfolders, for "Add folder and subfolders": each folder has
+  // to come out as a bin, with each still filed in its own.
+  const { copyFile } = require('node:fs/promises');
+  for (const [dir, name] of [['', 'still-root.png'], ['Day 1', 'still-a.png'], ['Day 2', 'still-b.png']]) {
+    await mkdir(join(folderImportRoot, dir), { recursive: true });
+    await copyFile(panelDropImage, join(folderImportRoot, dir, name));
   }
 
   if (!process.env.UI_SOURCE_VIDEO) {
@@ -701,6 +713,123 @@ async function main() {
       labelAfterOneUndo !== 'Intro' && markersAfterUndo === beforeSettings.markers.length,
       `label after one undo ${JSON.stringify(labelAfterOneUndo)}; ${withMarker.markers.length} -> ${markersAfterUndo} markers`);
 
+    /* Resizable panels ------------------------------------------------------ */
+    // Every border drags, as in DaVinci Resolve. Measured on the panels
+    // themselves, not on the handle: a handle that moves without resizing
+    // anything cannot pass.
+    const mediaPanel = window.locator('aside').filter({ hasText: 'Transparent background' }).first();
+    const timelinePanel = window.locator('section.panel').filter({ has: window.getByTitle('Split at playhead (B)') }).first();
+    const dragHandle = async (name, dx, dy) => {
+      const box = await window.getByRole('separator', { name }).boundingBox();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await window.mouse.move(x, y);
+      await window.mouse.down();
+      for (let i = 1; i <= 10; i += 1) await window.mouse.move(x + (dx * i) / 10, y + (dy * i) / 10);
+      await window.mouse.up();
+    };
+    const widthOf = async (locator) => Math.round((await locator.boundingBox()).width);
+    const heightOf = async (locator) => Math.round((await locator.boundingBox()).height);
+
+    const mediaBefore = await widthOf(mediaPanel);
+    await dragHandle('Resize the media panel', 80, 0);
+    const mediaDragged = await widthOf(mediaPanel);
+    const editBeforeKey = JSON.stringify(await clipsNow());
+    await window.getByRole('separator', { name: 'Resize the media panel' }).press('ArrowRight');
+    const editAfterKey = JSON.stringify(await clipsNow());
+    const mediaStepped = await widthOf(mediaPanel);
+    persistedMediaWidth = mediaStepped;
+    check('dragging the media panel border widens it, and the arrow keys step it',
+      Math.abs(mediaDragged - mediaBefore - 80) <= 2 && Math.abs(mediaStepped - mediaDragged - 16) <= 2,
+      `${mediaBefore} -> ${mediaDragged} px dragged, ${mediaStepped} px after ArrowRight`);
+    // The editor's own arrow shortcuts nudge the selected clips. A key pressed
+    // on a border used to reach them too: the clip moved a frame and the
+    // export began on black. Found by the frame-accuracy check further down.
+    check('an arrow key on a border resizes the panel and leaves the edit alone',
+      editBeforeKey === editAfterKey,
+      editBeforeKey === editAfterKey ? 'playhead and clips unchanged' : `${editBeforeKey} -> ${editAfterKey}`);
+
+    const timelineBefore = await heightOf(timelinePanel);
+    await dragHandle('Resize the timeline', 0, -60);
+    const timelineDragged = await heightOf(timelinePanel);
+    await window.getByRole('separator', { name: 'Resize the timeline' }).dblclick();
+    const timelineReset = await heightOf(timelinePanel);
+    check('dragging the timeline border makes it taller, and a double-click resets it',
+      Math.abs(timelineDragged - timelineBefore - 60) <= 2 && Math.abs(timelineReset - timelineBefore) <= 2,
+      `${timelineBefore} -> ${timelineDragged} px, reset to ${timelineReset} px`);
+
+    /* Bins ------------------------------------------------------------------ */
+    // Folders in the library, as in DaVinci Resolve's Media Pool. Read from the
+    // store as paths, so "filed in the right bin" is checked, not just "a bin exists".
+    const libraryState = () => window.evaluate(() => {
+      const { assets, bins, currentBinId } = window.__scfStore.getState();
+      const pathOf = (id) => {
+        const names = [];
+        let bin = bins.find((b) => b.id === id);
+        while (bin) {
+          names.unshift(bin.name);
+          const parentId = bin.parentId;
+          bin = bins.find((b) => b.id === parentId);
+        }
+        return names.join('/');
+      };
+      return {
+        bins: bins.map((b) => pathOf(b.id)).sort(),
+        current: pathOf(currentBinId),
+        assets: Object.fromEntries(assets.map((a) => [a.name, pathOf(a.binId)])),
+      };
+    });
+
+    await window.getByRole('button', { name: 'New bin', exact: true }).click();
+    const binNameField = window.getByLabel('Bin name');
+    await binNameField.waitFor({ state: 'visible', timeout: 5_000 });
+    await binNameField.fill('Shots');
+    await binNameField.press('Enter');
+    await mediaPanel.locator('li').filter({ hasText: assetName }).first().click({ button: 'right' });
+    await window.getByText('Move to Shots', { exact: true }).click();
+    const afterMove = await libraryState();
+    const listedInMaster = await mediaPanel.locator('li').filter({ hasText: assetName }).count();
+    await window.getByRole('treeitem', { name: /Shots/ }).click();
+    const listedInShots = await mediaPanel.locator('li').filter({ hasText: assetName }).count();
+    check('a new bin can be named, and a clip filed into it from its menu',
+      afterMove.bins.includes('Shots') && afterMove.assets[assetName] === 'Shots' && listedInMaster === 0 && listedInShots === 1,
+      `bins [${afterMove.bins}]; ${assetName} in "${afterMove.assets[assetName]}", listed in Master ${listedInMaster}, in Shots ${listedInShots}`);
+
+    await window.getByRole('treeitem', { name: /^Master/ }).click();
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, folderImportRoot);
+    await window.getByRole('button', { name: 'Add folder and subfolders' }).click();
+    await window.waitForFunction(
+      () => window.__scfStore.getState().assets.some((a) => a.name === 'still-b.png'),
+      null,
+      { timeout: 30_000 },
+    );
+    const afterFolder = await libraryState();
+    check('adding a folder turns its subfolders into bins and files each clip in its own',
+      ['Footage', 'Footage/Day 1', 'Footage/Day 2'].every((path) => afterFolder.bins.includes(path))
+        && afterFolder.assets['still-root.png'] === 'Footage'
+        && afterFolder.assets['still-a.png'] === 'Footage/Day 1'
+        && afterFolder.assets['still-b.png'] === 'Footage/Day 2'
+        && afterFolder.current === 'Footage',
+      `bins [${afterFolder.bins.join(', ')}]; still-a.png in "${afterFolder.assets['still-a.png']}", showing "${afterFolder.current}"`);
+
+    // Saved again, so the fresh session at the end has bins to restore.
+    await app.evaluate(({ dialog }, project) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: project });
+    }, projectPath);
+    await window.getByRole('button', { name: 'Save' }).click();
+    let savedBins = 0;
+    for (let attempt = 0; attempt < 50 && savedBins !== 4; attempt += 1) {
+      await window.waitForTimeout(200);
+      try {
+        savedBins = (JSON.parse(await readFile(projectPath, 'utf8')).bins ?? []).length;
+      } catch {
+        savedBins = 0;
+      }
+    }
+    check('bins are saved with the project', savedBins === 4, `${savedBins} bins in the file`);
+
     /* Export --------------------------------------------------------------- */
     // The export picks a FOLDER in a dialog and takes the name from a text
     // field, so the folder dialog is what gets stubbed.
@@ -719,6 +848,26 @@ async function main() {
     const dialog = window.locator('div[role="dialog"], .panel').filter({
       hasText: 'Target bitrate',
     }).first();
+
+    // Laid out like Resolve's Deliver page: the actions sit at the top.
+    const startBox = await dialog.getByRole('button', { name: 'Start export' }).boundingBox();
+    const formatBox = await dialog.getByText('Format', { exact: true }).first().boundingBox();
+    check('Start export sits at the top, above the settings',
+      Boolean(startBox && formatBox) && startBox.y < formatBox.y,
+      `button at y ${Math.round(startBox?.y ?? -1)}, Format at y ${Math.round(formatBox?.y ?? -1)}`);
+
+    const exportState = () => window.evaluate(() => {
+      const s = window.__scfStore.getState().exportSettings;
+      return { format: s.format, alpha: s.exportAlpha, size: `${s.width}x${s.height}` };
+    });
+    await dialog.getByRole('button', { name: /^Sprite frames/ }).click();
+    const spritePreset = await exportState();
+    await dialog.getByRole('button', { name: /^Project/ }).click();
+    const projectPreset = await exportState();
+    check('quick presets set format, size and transparency together',
+      spritePreset.format === 'png-sequence' && spritePreset.alpha
+        && projectPreset.format === 'mp4-h264' && !projectPreset.alpha,
+      `Sprite frames: ${spritePreset.format}${spritePreset.alpha ? ' + alpha' : ''} ${spritePreset.size}; Project: ${projectPreset.format} ${projectPreset.size}`);
 
 
     await dialog.getByLabel('Start frame').fill('0');
@@ -753,6 +902,11 @@ async function main() {
     await window.getByText('Export finished', { exact: false })
       .waitFor({ state: 'visible', timeout: 180_000 });
     check('export completes through the dialog', true);
+    const barBox = await dialog.getByRole('progressbar').boundingBox();
+    const formatAfterBox = await dialog.getByText('Format', { exact: true }).first().boundingBox();
+    check('the render progress shows at the top, above the settings',
+      Boolean(barBox && formatAfterBox) && barBox.y < formatAfterBox.y,
+      `progress at y ${Math.round(barBox?.y ?? -1)}, Format at y ${Math.round(formatAfterBox?.y ?? -1)}`);
 
     /* The file itself ------------------------------------------------------- */
     const info = await stat(exportPath).catch(() => null);
@@ -838,6 +992,22 @@ async function main() {
     check('a saved project reopens in a NEW session with all its media',
       missing === 0 && status.startsWith('Opened') && !/could not be found/.test(status),
       missing > 0 ? `${missing} missing - ${status}` : 'all restored from disk');
+
+    const reopenedBins = await window.evaluate(() => {
+      const { assets, bins } = window.__scfStore.getState();
+      const nameOf = (id) => bins.find((b) => b.id === id)?.name ?? null;
+      return { count: bins.length, dayOne: nameOf(assets.find((a) => a.name === 'still-a.png')?.binId) };
+    });
+    check('bins, and the bin each clip is in, survive reopening in a new session',
+      reopenedBins.count === 4 && reopenedBins.dayOne === 'Day 1',
+      `${reopenedBins.count} bins; still-a.png in ${reopenedBins.dayOne}`);
+
+    const reopenedMediaWidth = Math.round(
+      (await window.locator('aside').filter({ hasText: 'Transparent background' }).first().boundingBox()).width,
+    );
+    check('panel sizes are remembered in a new session',
+      persistedMediaWidth !== null && Math.abs(reopenedMediaWidth - persistedMediaWidth) <= 2,
+      `media panel ${reopenedMediaWidth} px (left at ${persistedMediaWidth})`);
   } finally {
     await second.close().catch(() => undefined);
   }

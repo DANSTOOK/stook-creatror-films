@@ -1062,7 +1062,9 @@ export function Timeline(): JSX.Element {
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      {/* Scrolls vertically as one, headers and tracks together, so a timeline
+          dragged shorter than its tracks still reaches every row. */}
+      <div className="flex min-h-0 flex-1 overflow-y-auto">
         <div
           className="shrink-0 overflow-hidden border-r border-panel-700 bg-panel-900"
           style={{ width: HEADER_WIDTH }}

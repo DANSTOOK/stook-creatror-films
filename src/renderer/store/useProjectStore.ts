@@ -63,6 +63,15 @@ import {
   type ProjectDocument,
   type TimelineTool,
 } from './types';
+import type { MediaBin } from '@shared/types';
+import {
+  createBin as createMediaBin,
+  deleteBin as deleteMediaBin,
+  ensureBinPath as ensureMediaBinPath,
+  moveAssetsToBin as moveMediaAssets,
+  renameBin as renameMediaBin,
+  sanitizeBins,
+} from '@renderer/media/bins';
 
 /**
  * Single source of truth for the editor.
@@ -78,6 +87,10 @@ export type NumberProperty = 'rotation' | 'opacity';
 interface ProjectStore {
   project: ProjectState;
   assets: MediaAsset[];
+  /** Library bins (folders). See media/bins.ts. */
+  bins: MediaBin[];
+  /** The bin the media panel shows, and where imports land. Null is the top level. */
+  currentBinId: string | null;
   ui: EditorUiState;
   exportSettings: ExportSettings;
   /** Clips copied with Ctrl+C or Ctrl+X (point 10). Not saved with the project. */
@@ -216,8 +229,20 @@ interface ProjectStore {
   clearKeyframes(clipId: string, property: VectorProperty | NumberProperty): void;
 
   /* Media ---------------------------------------------------------------- */
-  addAssets(assets: MediaAsset[]): void;
+  /** Assets without a bin of their own go into `binId`, or the current bin when it is omitted. */
+  addAssets(assets: MediaAsset[], binId?: string | null): void;
   removeAsset(assetId: string): void;
+
+  /* Media bins ----------------------------------------------------------- */
+  setCurrentBin(binId: string | null): void;
+  /** Returns the new bin's id. */
+  createBin(parentId: string | null, name?: string): string;
+  renameBin(binId: string, name: string): void;
+  /** Its clips and sub-bins move up into its parent; nothing leaves the library. */
+  deleteBin(binId: string): void;
+  moveAssetsToBin(assetIds: string[], binId: string | null): void;
+  /** Bins for a folder path under `parentId`, created where missing; returns the deepest. */
+  ensureBinPath(parentId: string | null, segments: string[]): string | null;
 
   /* Export --------------------------------------------------------------- */
   setExportSettings(patch: Partial<ExportSettings>): void;
@@ -236,6 +261,8 @@ function withContentLength(project: ProjectState): ProjectState {
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   project: createEmptyProject(),
   assets: [],
+  bins: [],
+  currentBinId: null,
   ui: { ...DEFAULT_UI_STATE },
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
   clipboard: null,
@@ -248,6 +275,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({
       project: createEmptyProject(width, height, fps),
       assets: [],
+      bins: [],
+      currentBinId: null,
       // The viewport's measured width is a fact about the window, not the
       // project, and fitting depends on it.
       ui: { ...DEFAULT_UI_STATE, viewportWidthPx: get().ui.viewportWidthPx },
@@ -271,6 +300,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // playhead unable to reach them.
       project: withContentLength(normalizeProject(document.project)),
       assets: document.assets,
+      // Files from before bins have none; a damaged list is repaired, not trusted.
+      bins: sanitizeBins(document.bins),
+      currentBinId: null,
       // The viewport's measured width is a fact about the window, not the
       // project, and fitting depends on it.
       ui: { ...DEFAULT_UI_STATE, viewportWidthPx: get().ui.viewportWidthPx },
@@ -288,7 +320,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   toDocument() {
-    const { project, assets } = get();
+    const { project, assets, bins } = get();
     return {
       version: PROJECT_FILE_VERSION,
       savedAt: new Date().toISOString(),
@@ -297,6 +329,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // link between a clip's `sourceUri` and the asset it came from, and
       // rehydration needs it to remap them onto the fresh URLs.
       assets,
+      bins,
     };
   },
 
@@ -1058,9 +1091,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   /* Media ---------------------------------------------------------------- */
 
-  addAssets(assets) {
+  addAssets(assets, binId) {
     const existing = new Set(get().assets.map((asset) => asset.uri));
-    const fresh = assets.filter((asset) => !existing.has(asset.uri));
+    // Imports land in the bin being looked at, the way the Media Pool files
+    // them into the selected bin; a folder import brings its own.
+    const target = binId === undefined ? get().currentBinId : binId;
+    const fresh = assets
+      .filter((asset) => !existing.has(asset.uri))
+      .map((asset) => (asset.binId || !target ? asset : { ...asset, binId: target }));
     if (fresh.length === 0) return;
 
     const wasEmpty = get().assets.length === 0 && Object.keys(get().project.clips).length === 0;
@@ -1122,6 +1160,39 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   removeAsset(assetId) {
     set({ assets: get().assets.filter((asset) => asset.id !== assetId) });
+  },
+
+  /* Media bins ----------------------------------------------------------- */
+
+  setCurrentBin(binId) {
+    set({ currentBinId: binId && get().bins.some((bin) => bin.id === binId) ? binId : null });
+  },
+
+  createBin(parentId, name) {
+    const created = createMediaBin(get().bins, parentId, name);
+    set({ bins: created.bins });
+    return created.bin.id;
+  },
+
+  renameBin(binId, name) {
+    set({ bins: renameMediaBin(get().bins, binId, name) });
+  },
+
+  deleteBin(binId) {
+    const parentId = get().bins.find((bin) => bin.id === binId)?.parentId ?? null;
+    const next = deleteMediaBin(get().bins, get().assets, binId);
+    // Looking at the bin being deleted would show nothing: follow its contents up.
+    set({ ...next, currentBinId: get().currentBinId === binId ? parentId : get().currentBinId });
+  },
+
+  moveAssetsToBin(assetIds, binId) {
+    set({ assets: moveMediaAssets(get().assets, assetIds, binId) });
+  },
+
+  ensureBinPath(parentId, segments) {
+    const result = ensureMediaBinPath(get().bins, parentId, segments);
+    set({ bins: result.bins });
+    return result.binId;
   },
 
   /* Export --------------------------------------------------------------- */

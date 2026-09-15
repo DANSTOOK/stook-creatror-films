@@ -10,6 +10,7 @@ import type {
 /** Channel names shared by the main process and the preload bridge. */
 export const IPC = {
   openMedia: 'dialog:open-media',
+  openMediaFolder: 'dialog:open-media-folder',
   registerDroppedFiles: 'drop:register-files',
   mediaUrl: 'media:url',
   extractAudio: 'media:extract-audio',
@@ -43,6 +44,11 @@ export interface PickedFile {
   name: string;
   kind: MediaKind;
   sizeBytes: number;
+  /**
+   * The folders between the chosen folder and this file, the chosen one
+   * first, joined with "/". Set only by a folder import.
+   */
+  relativeDir?: string;
 }
 
 export interface MediaProbe {
@@ -68,6 +74,12 @@ export interface ExportStartResult {
  */
 export interface FilmoraApi {
   openMedia(): Promise<PickedFile[]>;
+  /**
+   * A folder and everything under it: each media file with the folders it sits
+   * in, so the library can mirror them as bins. Optional so a bridge without
+   * it (a browser shim, an older preload) still satisfies the type.
+   */
+  openMediaFolder?(): Promise<PickedFile[]>;
   /**
    * Files dropped onto the window, resolved to their paths on disk and added
    * to the read allowlist - so a drop is as good as the open dialog: the

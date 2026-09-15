@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { FolderOpen, Loader2, X } from 'lucide-react';
+import { Clapperboard, Film, FolderOpen, Loader2, Sparkles, Youtube } from 'lucide-react';
 import type {
   ExportFormat,
   ExportProgress,
@@ -22,6 +22,12 @@ import { exportEndFrame } from './exportRange';
 /**
  * Export dialog, including the game-asset mode.
  *
+ * Laid out the way DaVinci Resolve's Deliver page is: the actions and the
+ * render's progress at the top, where they stay in view; quick presets next;
+ * then the settings in groups that belong together - the picture (format with
+ * its transparency, size and range) on one side, the file (name, folder,
+ * cover) and the hardware on the other.
+ *
  * The alpha toggle is the important control: only PNG sequence, ProRes 4444 and
  * WebM/VP9 keep a real alpha channel, so choosing an MP4 with alpha on is
  * flagged here rather than producing a sprite sheet with a black background.
@@ -43,6 +49,29 @@ const PREFERENCE_LABELS: Record<GpuPreference, string> = {
 
 /** Containers that can carry a cover image. */
 const COVER_ART_FORMATS = new Set<ExportFormat>(['mp4-h264', 'mp4-h265', 'prores4444']);
+
+/**
+ * One-click starting points, like the preset strip at the top of Resolve's
+ * render settings. Each sets format, size and transparency together - the
+ * three that have to agree - and everything below stays editable.
+ */
+interface QuickPreset {
+  id: string;
+  label: string;
+  hint: string;
+  icon: typeof Film;
+  format: ExportFormat;
+  alpha: boolean;
+  /** Height to look for among the resolution presets; null keeps the project size. */
+  height: number | null;
+}
+
+const QUICK_PRESETS: QuickPreset[] = [
+  { id: 'project', label: 'Project', hint: 'MP4 at the project size', icon: Film, format: 'mp4-h264', alpha: false, height: null },
+  { id: 'youtube', label: 'YouTube 1080p', hint: 'MP4 / H.264, 1080 lines', icon: Youtube, format: 'mp4-h264', alpha: false, height: 1080 },
+  { id: 'sprites', label: 'Sprite frames', hint: 'PNG sequence with alpha, for game engines', icon: Sparkles, format: 'png-sequence', alpha: true, height: null },
+  { id: 'master', label: 'Transparent master', hint: 'ProRes 4444 with alpha', icon: Clapperboard, format: 'prores4444', alpha: true, height: null },
+];
 
 /** The first video's name without its extension, else "export". */
 function defaultFileName(assets: readonly MediaAsset[]): string {
@@ -225,6 +254,36 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
   const presets = resolutionPresets(project.width, project.height);
   const activePreset = matchPreset(presets, settings.width, settings.height);
 
+  /* Quick presets ----------------------------------------------------------- */
+
+  const presetSize = (preset: QuickPreset): { width: number; height: number } => {
+    if (preset.height === null) return { width: project.width, height: project.height };
+    const match = presets.find((candidate) => candidate.height === preset.height);
+    return match ? { width: match.width, height: match.height } : { width: 1920, height: 1080 };
+  };
+
+  const applyQuickPreset = (preset: QuickPreset): void => {
+    const size = presetSize(preset);
+    setExportSettings({
+      format: preset.format,
+      outputPath: '',
+      exportAlpha: preset.alpha,
+      width: size.width,
+      height: size.height,
+      bitrateKbps: recommendedBitrateKbps(size.width, size.height, settings.fps),
+    });
+  };
+
+  const isQuickPresetActive = (preset: QuickPreset): boolean => {
+    const size = presetSize(preset);
+    return (
+      settings.format === preset.format &&
+      settings.exportAlpha === preset.alpha &&
+      settings.width === size.width &&
+      settings.height === size.height
+    );
+  };
+
   const startExport = useCallback(async () => {
     const renderer = getActiveFrameRenderer();
     if (!renderer) {
@@ -372,417 +431,483 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
     settings.format === 'png-sequence'
       ? '/ (folder)'
       : `.${settings.format === 'prores4444' ? 'mov' : settings.format === 'webm-vp9' ? 'webm' : 'mp4'}`;
+  const canStart = !running && totalFrames > 0 && !targetInUse;
 
   return (
     // The editor behind is blurred, so the dialog is the only thing in focus.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="panel w-[560px] max-h-[90vh]">
-        <header className="panel-header justify-between">
+      <div role="dialog" aria-modal="true" aria-label="Export" className="panel w-[min(980px,95vw)] max-h-[92vh]">
+        {/*
+          The actions live at the top, beside the title: what everything below
+          is for, always in reach without scrolling.
+        */}
+        <header className="panel-header h-11 justify-between">
           <span>Export</span>
-          <button type="button" className="tool-button" onClick={onClose} title="Close">
-            <X size={14} />
-          </button>
-        </header>
-
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-          {/* Where the file goes comes first: nothing can start without it. */}
-          <Section title="Output">
-            <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">File name</span>
-              <div className="flex items-center gap-1">
-                <input
-                  className="numeric-input"
-                  value={fileName}
-                  spellCheck={false}
-                  onChange={(event) => setFileName(event.target.value)}
-                />
-                <span className="shrink-0 text-2xs text-slate-500">{extension}</span>
-              </div>
-            </label>
-
-            <div className="flex items-end gap-2">
-              <label className="flex flex-1 flex-col gap-1">
-                <span className="text-2xs text-slate-400">Save in</span>
-                <input readOnly className="numeric-input" value={folder ?? ''} placeholder="Not chosen" />
-              </label>
-              <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
-                <FolderOpen size={14} />
-                Browse
-              </button>
-            </div>
-
-            {folder && settings.outputPath && (
-              <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-500'}`}>
-                {targetExists ? 'Will replace the existing ' : 'Will save as '}
-                <span className="text-slate-300">{settings.outputPath}</span>
-              </p>
-            )}
-            {/*
-              The export name defaults to the first video's name, so a folder the
-              footage came from aims the render at the footage itself. That is
-              not a replace, it is a loss - said plainly, and the button is off.
-            */}
-            {targetInUse && (
-              <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
-                That file is source footage in this project. Exporting onto it would destroy the
-                original - change the name or the folder.
-              </p>
-            )}
-          </Section>
-
-          <Section title="Format and size">
-            <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">Format</span>
-              <select
-                className="numeric-input"
-                value={settings.format}
-                onChange={(event) =>
-                  setExportSettings({ format: event.target.value as ExportFormat, outputPath: '' })
-                }
-              >
-                {FORMATS.map((format) => (
-                  <option key={format.value} value={format.value}>
-                    {format.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">Resolution</span>
-              <select
-                className="numeric-input"
-                value={activePreset?.id ?? 'custom'}
-                onChange={(event) => {
-                  const preset = presets.find((candidate) => candidate.id === event.target.value);
-                  if (preset) resize(preset.width, preset.height);
+          <div className="flex items-center gap-2 normal-case tracking-normal">
+            {running ? (
+              <button
+                type="button"
+                className="tool-button"
+                onClick={() => {
+                  cancelRef.current = true;
                 }}
               >
-                {presets.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </option>
-                ))}
-                {!activePreset && <option value="custom">Custom ({settings.width}x{settings.height})</option>}
-              </select>
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-2xs text-slate-400">Width</span>
-                <input
-                  type="number"
-                  className="numeric-input"
-                  value={settings.width}
-                  onChange={(event) => resize(Number(event.target.value), settings.height)}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-2xs text-slate-400">Height</span>
-                <input
-                  type="number"
-                  className="numeric-input"
-                  value={settings.height}
-                  onChange={(event) => resize(settings.width, Number(event.target.value))}
-                />
-              </label>
-            </div>
-
-            {settings.width * settings.height > project.width * project.height * 1.01 && (
-              <p className="text-2xs text-amber-300">
-                Larger than the project ({project.width}x{project.height}): the picture is scaled
-                up, which adds pixels but not detail.
-              </p>
-            )}
-            <p className="text-2xs text-slate-500">
-              Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
-              {settings.width}x{settings.height} @ {settings.fps} fps.
-            </p>
-          </Section>
-
-          <Section title="Range">
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-2xs text-slate-400">
-                  Start frame <span className="text-slate-500">({formatClock(settings.startFrame / renderFps)})</span>
-                </span>
-                <input
-                  type="number"
-                  className="numeric-input"
-                  value={settings.startFrame}
-                  onChange={(event) => setExportSettings({ startFrame: Number(event.target.value) })}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-2xs text-slate-400">
-                  End frame <span className="text-slate-500">({formatClock(settings.endFrame / renderFps)})</span>
-                </span>
-                <input
-                  type="number"
-                  className="numeric-input"
-                  value={settings.endFrame}
-                  onChange={(event) => setExportSettings({ endFrame: Number(event.target.value) })}
-                />
-              </label>
-            </div>
-            <p className="text-xs text-slate-300">
-              Renders <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span> of
-              video <span className="text-slate-500">({totalFrames.toLocaleString()} frames at {renderFps} fps)</span>
-            </p>
-          </Section>
-
-          {coverArt && (
-            <Section title="Thumbnail">
-              <div className="flex items-center gap-3">
-                <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-panel-700 bg-panel-900">
-                  {thumbnailPreview ? (
-                    <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-2xs text-slate-600">None</span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void captureCurrentFrame()}>
-                    Use the frame at the playhead
-                  </button>
-                  <button type="button" className="tool-button h-7 justify-start" onClick={() => void chooseThumbnail()}>
-                    Choose an image...
-                  </button>
-                  {thumbnailPath && (
-                    <button
-                      type="button"
-                      className="tool-button h-7 justify-start text-slate-500"
-                      onClick={() => {
-                        setThumbnailPath(null);
-                        setThumbnailPreview(null);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="text-2xs text-slate-600">
-                Embedded as the file&apos;s cover - what Explorer and video players show.
-              </p>
-            </Section>
-          )}
-
-          <Section title="Hardware">
-            {gpu === null ? (
-              <p className="flex items-center gap-2 text-2xs text-slate-500">
-                <Loader2 size={12} className="animate-spin" />
-                Testing which GPUs and encoders work on this machine...
-              </p>
+                Cancel render
+              </button>
             ) : (
-              <>
-                <label className="flex flex-col gap-1">
-                  <span className="text-2xs text-slate-400">Render with (compositor GPU)</span>
-                  <select
-                    className="numeric-input"
-                    value={savedPreference ?? gpu.preference}
-                    onChange={(event) => void chooseGpu(event.target.value as GpuPreference)}
-                  >
-                    {(['auto', 'high-performance', 'low-power'] as const).map((preference) => {
-                      const device = gpu.devices.find(
-                        (candidate) =>
-                          candidate.kind ===
-                          (preference === 'high-performance' ? 'dedicated' : 'integrated'),
-                      );
-                      const available = preference === 'auto' || device !== undefined;
-                      return (
-                        <option key={preference} value={preference} disabled={!available}>
-                          {PREFERENCE_LABELS[preference]}
-                          {preference !== 'auto' ? ` - ${device?.name ?? 'not present'}` : ''}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <span className="text-2xs text-slate-500">
-                    Running on: {activeGpu?.name ?? 'unknown GPU'}
-                  </span>
-                </label>
-
-                {restartPending && (
-                  <div className="flex items-center justify-between gap-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
-                    <span>
-                      The GPU is chosen when the app starts. Restart to render on the new one; save
-                      your project first.
-                    </span>
-                    <button
-                      type="button"
-                      className="tool-button h-6 shrink-0"
-                      onClick={() => void window.filmora.relaunch()}
-                    >
-                      Restart now
-                    </button>
-                  </div>
-                )}
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-2xs text-slate-400">Encoder</span>
-                  <select
-                    className="numeric-input"
-                    value={settings.hardwareEncoder}
-                    onChange={(event) =>
-                      setExportSettings({ hardwareEncoder: event.target.value as HardwareEncoder })
-                    }
-                  >
-                    <option value="auto">Automatic</option>
-                    {gpu.encoders.map((option) => (
-                      <option key={option.encoder} value={option.encoder}>
-                        {describeEncoder(option)}
-                      </option>
-                    ))}
-                    <option value="none">CPU (software)</option>
-                  </select>
-                </label>
-
-                <p className="text-2xs text-slate-300">
-                  This render: <span className="text-slate-100">{plan.label}</span>
-                </p>
-                {plan.note && <p className="text-2xs text-amber-300">{plan.note}</p>}
-                {gpu.encoders.length === 0 && (
-                  <p className="text-2xs text-slate-500">
-                    No hardware encoder produced frames on this machine, so only the CPU is offered.
-                  </p>
-                )}
-              </>
+              <button type="button" className="tool-button" onClick={onClose} title="Close">
+                Close
+              </button>
             )}
-          </Section>
-
-          {/* Only game-asset exports need these, so they stay folded unless in use. */}
-          <details
-            className="rounded border border-panel-700 bg-panel-950 p-3"
-            open={settings.exportAlpha || settings.premultiplyAlpha || settings.pixelArtScaling || alphaUnsupported}
-          >
-            <summary className="field-label cursor-pointer select-none">Transparency and pixel art</summary>
-            <label className="mt-3 flex items-center gap-2 text-xs text-slate-200">
-              <input
-                type="checkbox"
-                className="accent-blue-500"
-                checked={settings.exportAlpha}
-                onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
-              />
-              Export alpha channel (PNG sequence / ProRes 4444 / WebM)
-            </label>
-
-            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-              <input
-                type="checkbox"
-                className="accent-blue-500"
-                checked={settings.premultiplyAlpha}
-                onChange={(event) => setExportSettings({ premultiplyAlpha: event.target.checked })}
-              />
-              Premultiply alpha
-            </label>
-            <p className="mt-1 pl-6 text-2xs leading-relaxed text-slate-500">
-              Leave this off for Godot. Godot imports straight alpha, and premultiplying here is what
-              produces dark fringes around sprites.
-            </p>
-
-            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
-              <input
-                type="checkbox"
-                className="accent-blue-500"
-                checked={settings.pixelArtScaling}
-                onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
-              />
-              Nearest-neighbour scaling (pixel art)
-            </label>
-
-            {alphaUnsupported && (
-              <p className="mt-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
-                {selectedFormat?.label} has no alpha channel. Choose PNG sequence, ProRes 4444 or
-                WebM/VP9 to keep transparency.
-              </p>
-            )}
-          </details>
-        </div>
-
-        {/*
-          Progress lives outside the scrolling area, so it stays in view for the
-          whole render - and it speaks in minutes of video and time left, not in
-          a frame count nobody can turn into a coffee break.
-        */}
-        {(running || progress || message) && (
-          <div className="space-y-2 border-t border-panel-700 bg-panel-950 px-4 py-3">
-            {(running || progress) && (
-              <>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm font-semibold text-slate-100">
-                    {finished ? 'Finished' : running ? 'Rendering' : 'Stopped'}{' '}
-                    <span className="tabular-nums">{view.percent.toFixed(1)}%</span>
-                  </span>
-                  <span className="text-xs tabular-nums text-slate-300">
-                    <span className="text-slate-100">{view.videoDone}</span> / {view.videoTotal} of video
-                  </span>
-                </div>
-                <div
-                  className="h-3 w-full overflow-hidden rounded-full bg-panel-700"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={view.percent}
-                >
-                  <div
-                    className={`h-full rounded-full transition-[width] duration-300 ${finished ? 'bg-emerald-500' : 'bg-accent'}`}
-                    style={{ width: `${view.percent}%` }}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-2xs tabular-nums text-slate-400">
-                  <span>
-                    Elapsed <span className="text-slate-200">{view.elapsed}</span>
-                  </span>
-                  <span className="text-center">
-                    Remaining{' '}
-                    <span className="text-slate-200">
-                      {finished ? '0:00' : running ? (view.remaining ?? 'estimating...') : '-'}
-                    </span>
-                  </span>
-                  <span className="text-right">
-                    {view.speed !== null ? (
-                      <>
-                        <span className="text-slate-200">{view.speed.toFixed(1)}x</span> realtime (
-                        {(progress?.fps ?? 0).toFixed(0)} fps)
-                      </>
-                    ) : (
-                      'starting...'
-                    )}
-                  </span>
-                </div>
-              </>
-            )}
-            {message && <p className="text-2xs leading-relaxed text-slate-300">{message}</p>}
-          </div>
-        )}
-
-        <footer className="flex justify-end gap-2 border-t border-panel-700 px-4 py-3">
-          {running ? (
             <button
               type="button"
-              className="tool-button"
-              onClick={() => {
-                cancelRef.current = true;
-              }}
+              className="tool-button tool-button-active px-4"
+              disabled={!canStart}
+              onClick={() => void startExport()}
             >
-              Cancel render
+              {running && <Loader2 size={14} className="animate-spin" />}
+              {running ? 'Rendering...' : 'Start export'}
             </button>
+          </div>
+        </header>
+
+        {/*
+          What will be rendered, then - once started - how far it has got. It
+          sits above the scrolling settings, so it stays in view for the whole
+          render, and it speaks in minutes of video and time left, not in a
+          frame count nobody can turn into a coffee break.
+        */}
+        <div className="shrink-0 space-y-2 border-b border-panel-700 bg-panel-950 px-4 py-3">
+          {running || progress ? (
+            <>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-semibold text-slate-100">
+                  {finished ? 'Finished' : running ? 'Rendering' : 'Stopped'}{' '}
+                  <span className="tabular-nums">{view.percent.toFixed(1)}%</span>
+                </span>
+                <span className="text-xs tabular-nums text-slate-300">
+                  <span className="text-slate-100">{view.videoDone}</span> / {view.videoTotal} of video
+                </span>
+              </div>
+              <div
+                className="h-3 w-full overflow-hidden rounded-full bg-panel-700"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={view.percent}
+              >
+                <div
+                  className={`h-full rounded-full transition-[width] duration-300 ${finished ? 'bg-emerald-500' : 'bg-accent'}`}
+                  style={{ width: `${view.percent}%` }}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-2xs tabular-nums text-slate-400">
+                <span>
+                  Elapsed <span className="text-slate-200">{view.elapsed}</span>
+                </span>
+                <span className="text-center">
+                  Remaining{' '}
+                  <span className="text-slate-200">
+                    {finished ? '0:00' : running ? (view.remaining ?? 'estimating...') : '-'}
+                  </span>
+                </span>
+                <span className="text-right">
+                  {view.speed !== null ? (
+                    <>
+                      <span className="text-slate-200">{view.speed.toFixed(1)}x</span> realtime (
+                      {(progress?.fps ?? 0).toFixed(0)} fps)
+                    </>
+                  ) : (
+                    'starting...'
+                  )}
+                </span>
+              </div>
+            </>
           ) : (
-            <button type="button" className="tool-button" onClick={onClose}>
-              Close
-            </button>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
+              <span className="font-medium text-slate-100">{selectedFormat?.label}</span>
+              <span>
+                {settings.width}x{settings.height} @ {renderFps} fps
+              </span>
+              <span>{formatClock(totalFrames / renderFps)} of video</span>
+              {settings.exportAlpha && !alphaUnsupported && <span className="text-emerald-300">with alpha</span>}
+              <span className="text-slate-500">{plan.label}</span>
+            </p>
           )}
-          <button
-            type="button"
-            className="tool-button tool-button-active"
-            disabled={running || totalFrames <= 0 || targetInUse}
-            onClick={() => void startExport()}
-          >
-            {running && <Loader2 size={14} className="animate-spin" />}
-            {running ? 'Rendering...' : 'Start export'}
-          </button>
-        </footer>
+          {message && <p className="text-2xs leading-relaxed text-slate-300">{message}</p>}
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {/* Quick presets: format, size and transparency set together. */}
+          <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Quick presets">
+            {QUICK_PRESETS.map((preset) => {
+              const Icon = preset.icon;
+              const active = isQuickPresetActive(preset);
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  aria-pressed={active}
+                  title={preset.hint}
+                  disabled={running}
+                  className={`tool-button h-auto flex-col items-start gap-0.5 border px-3 py-2 text-left ${
+                    active ? 'tool-button-active border-transparent' : 'border-panel-700 bg-panel-950'
+                  }`}
+                  onClick={() => applyQuickPreset(preset)}
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-medium">
+                    <Icon size={13} />
+                    {preset.label}
+                  </span>
+                  <span className="text-2xs text-slate-500">{preset.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* The picture: what it is, how big, and which stretch of the timeline. */}
+            <div className="space-y-3">
+              <Section title="Video">
+                <label className="flex flex-col gap-1">
+                  <span className="text-2xs text-slate-400">Format</span>
+                  <select
+                    className="numeric-input"
+                    value={settings.format}
+                    onChange={(event) =>
+                      setExportSettings({ format: event.target.value as ExportFormat, outputPath: '' })
+                    }
+                  >
+                    {FORMATS.map((format) => (
+                      <option key={format.value} value={format.value}>
+                        {format.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {/* Transparency belongs with the format: the format decides whether it can exist. */}
+                <div className="space-y-1.5 rounded border border-panel-700 bg-panel-900 p-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-200">
+                    <input
+                      type="checkbox"
+                      className="accent-blue-500"
+                      checked={settings.exportAlpha}
+                      onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
+                    />
+                    Export alpha channel
+                    <span className="text-2xs text-slate-500">(PNG / ProRes 4444 / WebM)</span>
+                  </label>
+                  {alphaUnsupported && (
+                    <p className="rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
+                      {selectedFormat?.label} has no alpha channel. Choose PNG sequence, ProRes 4444 or
+                      WebM/VP9 to keep transparency.
+                    </p>
+                  )}
+                  {(settings.exportAlpha || settings.premultiplyAlpha) && (
+                    <>
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          className="accent-blue-500"
+                          checked={settings.premultiplyAlpha}
+                          onChange={(event) => setExportSettings({ premultiplyAlpha: event.target.checked })}
+                        />
+                        Premultiply alpha
+                      </label>
+                      <p className="pl-6 text-2xs leading-relaxed text-slate-500">
+                        Leave this off for Godot. Godot imports straight alpha, and premultiplying here is what
+                        produces dark fringes around sprites.
+                      </p>
+                    </>
+                  )}
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      className="accent-blue-500"
+                      checked={settings.pixelArtScaling}
+                      onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
+                    />
+                    Nearest-neighbour scaling (pixel art)
+                  </label>
+                </div>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-2xs text-slate-400">Resolution</span>
+                  <select
+                    className="numeric-input"
+                    value={activePreset?.id ?? 'custom'}
+                    onChange={(event) => {
+                      const preset = presets.find((candidate) => candidate.id === event.target.value);
+                      if (preset) resize(preset.width, preset.height);
+                    }}
+                  >
+                    {presets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                    {!activePreset && <option value="custom">Custom ({settings.width}x{settings.height})</option>}
+                  </select>
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-2xs text-slate-400">Width</span>
+                    <input
+                      type="number"
+                      className="numeric-input"
+                      value={settings.width}
+                      onChange={(event) => resize(Number(event.target.value), settings.height)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-2xs text-slate-400">Height</span>
+                    <input
+                      type="number"
+                      className="numeric-input"
+                      value={settings.height}
+                      onChange={(event) => resize(settings.width, Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+
+                {settings.width * settings.height > project.width * project.height * 1.01 && (
+                  <p className="text-2xs text-amber-300">
+                    Larger than the project ({project.width}x{project.height}): the picture is scaled
+                    up, which adds pixels but not detail.
+                  </p>
+                )}
+                <p className="text-2xs text-slate-500">
+                  Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
+                  {settings.width}x{settings.height} @ {settings.fps} fps.
+                </p>
+              </Section>
+
+              <Section title="Range">
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-2xs text-slate-400">
+                      Start frame <span className="text-slate-500">({formatClock(settings.startFrame / renderFps)})</span>
+                    </span>
+                    <input
+                      type="number"
+                      className="numeric-input"
+                      value={settings.startFrame}
+                      onChange={(event) => setExportSettings({ startFrame: Number(event.target.value) })}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-2xs text-slate-400">
+                      End frame <span className="text-slate-500">({formatClock(settings.endFrame / renderFps)})</span>
+                    </span>
+                    <input
+                      type="number"
+                      className="numeric-input"
+                      value={settings.endFrame}
+                      onChange={(event) => setExportSettings({ endFrame: Number(event.target.value) })}
+                    />
+                  </label>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-slate-300">
+                    Renders <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span> of
+                    video <span className="text-slate-500">({totalFrames.toLocaleString()} frames at {renderFps} fps)</span>
+                  </p>
+                  <button
+                    type="button"
+                    className="tool-button h-7 shrink-0"
+                    title="Export the whole timeline, from the start to the end of the last clip"
+                    onClick={() => setExportSettings({ startFrame: 0, endFrame: exportEndFrame(project) })}
+                  >
+                    Whole timeline
+                  </button>
+                </div>
+              </Section>
+            </div>
+
+            {/* The file: where it goes, what it is called, and its cover. */}
+            <div className="space-y-3">
+              <Section title="File">
+                <label className="flex flex-col gap-1">
+                  <span className="text-2xs text-slate-400">File name</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      className="numeric-input"
+                      value={fileName}
+                      spellCheck={false}
+                      onChange={(event) => setFileName(event.target.value)}
+                    />
+                    <span className="shrink-0 text-2xs text-slate-500">{extension}</span>
+                  </div>
+                </label>
+
+                <div className="flex items-end gap-2">
+                  <label className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="text-2xs text-slate-400">Save in</span>
+                    <input readOnly className="numeric-input" value={folder ?? ''} placeholder="Not chosen" />
+                  </label>
+                  <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
+                    <FolderOpen size={14} />
+                    Browse
+                  </button>
+                </div>
+
+                {folder && settings.outputPath && (
+                  <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-500'}`}>
+                    {targetExists ? 'Will replace the existing ' : 'Will save as '}
+                    <span className="text-slate-300">{settings.outputPath}</span>
+                  </p>
+                )}
+                {/*
+                  The export name defaults to the first video's name, so a folder the
+                  footage came from aims the render at the footage itself. That is
+                  not a replace, it is a loss - said plainly, and the button is off.
+                */}
+                {targetInUse && (
+                  <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
+                    That file is source footage in this project. Exporting onto it would destroy the
+                    original - change the name or the folder.
+                  </p>
+                )}
+              </Section>
+
+              <Section title="Thumbnail">
+                {coverArt ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-panel-700 bg-panel-900">
+                        {thumbnailPreview ? (
+                          <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-2xs text-slate-600">None</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button type="button" className="tool-button h-7 justify-start" onClick={() => void captureCurrentFrame()}>
+                          Use the frame at the playhead
+                        </button>
+                        <button type="button" className="tool-button h-7 justify-start" onClick={() => void chooseThumbnail()}>
+                          Choose an image...
+                        </button>
+                        {thumbnailPath && (
+                          <button
+                            type="button"
+                            className="tool-button h-7 justify-start text-slate-500"
+                            onClick={() => {
+                              setThumbnailPath(null);
+                              setThumbnailPreview(null);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-2xs text-slate-600">
+                      Embedded as the file&apos;s cover - what Explorer and video players show.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-2xs text-slate-500">
+                    {selectedFormat?.label} has no place for a cover image. MP4 and ProRes do.
+                  </p>
+                )}
+              </Section>
+
+              {/* Rarely changed, so it stays folded; the summary still says what will render. */}
+              <details className="rounded border border-panel-700 bg-panel-950 p-3" open={restartPending || undefined}>
+                {/* What will render stays readable with the section folded. */}
+                <summary className="flex cursor-pointer select-none items-center justify-between gap-2">
+                  <span className="field-label">Hardware</span>
+                  <span className="truncate text-2xs text-slate-300">
+                    This render: <span className="text-slate-100">{gpu === null ? 'testing...' : plan.label}</span>
+                  </span>
+                </summary>
+
+                <div className="mt-3 space-y-2">
+                  {gpu === null ? (
+                    <p className="flex items-center gap-2 text-2xs text-slate-500">
+                      <Loader2 size={12} className="animate-spin" />
+                      Testing which GPUs and encoders work on this machine...
+                    </p>
+                  ) : (
+                    <>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs text-slate-400">Render with (compositor GPU)</span>
+                        <select
+                          className="numeric-input"
+                          value={savedPreference ?? gpu.preference}
+                          onChange={(event) => void chooseGpu(event.target.value as GpuPreference)}
+                        >
+                          {(['auto', 'high-performance', 'low-power'] as const).map((preference) => {
+                            const device = gpu.devices.find(
+                              (candidate) =>
+                                candidate.kind ===
+                                (preference === 'high-performance' ? 'dedicated' : 'integrated'),
+                            );
+                            const available = preference === 'auto' || device !== undefined;
+                            return (
+                              <option key={preference} value={preference} disabled={!available}>
+                                {PREFERENCE_LABELS[preference]}
+                                {preference !== 'auto' ? ` - ${device?.name ?? 'not present'}` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <span className="text-2xs text-slate-500">
+                          Running on: {activeGpu?.name ?? 'unknown GPU'}
+                        </span>
+                      </label>
+
+                      {restartPending && (
+                        <div className="flex items-center justify-between gap-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
+                          <span>
+                            The GPU is chosen when the app starts. Restart to render on the new one; save
+                            your project first.
+                          </span>
+                          <button
+                            type="button"
+                            className="tool-button h-6 shrink-0"
+                            onClick={() => void window.filmora.relaunch()}
+                          >
+                            Restart now
+                          </button>
+                        </div>
+                      )}
+
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs text-slate-400">Encoder</span>
+                        <select
+                          className="numeric-input"
+                          value={settings.hardwareEncoder}
+                          onChange={(event) =>
+                            setExportSettings({ hardwareEncoder: event.target.value as HardwareEncoder })
+                          }
+                        >
+                          <option value="auto">Automatic</option>
+                          {gpu.encoders.map((option) => (
+                            <option key={option.encoder} value={option.encoder}>
+                              {describeEncoder(option)}
+                            </option>
+                          ))}
+                          <option value="none">CPU (software)</option>
+                        </select>
+                      </label>
+
+                      {plan.note && <p className="text-2xs text-amber-300">{plan.note}</p>}
+                      {gpu.encoders.length === 0 && (
+                        <p className="text-2xs text-slate-500">
+                          No hardware encoder produced frames on this machine, so only the CPU is offered.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

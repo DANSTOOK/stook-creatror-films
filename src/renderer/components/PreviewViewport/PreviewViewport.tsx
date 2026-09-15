@@ -29,7 +29,7 @@ export function PreviewViewport(): JSX.Element {
   const duration = framesToTimecode(project.durationFrames, project.fps);
 
   return (
-    <section className="panel flex-1">
+    <section className="panel min-w-0 flex-1">
       <header className="panel-header justify-between">
         <span>Preview</span>
         <div className="flex items-center gap-1 normal-case tracking-normal">

@@ -7,12 +7,95 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **497 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **47/47 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, opciones de exportación y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **514 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **58/58 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, la ventana de exportación, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **48/48** con la v1.9.1-beta.1 (ninguna petición a la red, los 60
+y sin red: **59/59** con la v1.10.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos); antes solo se había hecho con la v1.0.
+
+---
+
+## v1.10.0-beta.1 — Paneles a tu medida, bins y una exportación ordenada
+2026-09-15 · pre-release para probar
+
+Tomando como referencia DaVinci Resolve (paneles que se arrastran, el Media
+Pool con bins y la página Deliver).
+
+### Añadido
+- **Todos los paneles se ajustan de tamaño.** Arrastra el borde entre el
+  panel de medios, el visor, el inspector y la línea de tiempo; con el borde
+  seleccionado, las flechas lo mueven (Mayús, cuatro veces más). Doble clic en
+  un borde lo devuelve a su tamaño, y **Reset layout** los devuelve todos. El
+  visor nunca baja de 320×200 y los tamaños se recuerdan al volver a abrir la
+  app (son de la ventana, no del proyecto). La línea de tiempo, más baja que
+  sus pistas, ahora se desplaza en vertical en lugar de cortarlas.
+  - Cómo se comprobó: prueba de interfaz que arrastra el borde del panel de
+    medios (260 → 340 px, 356 px con una flecha) y el de la línea de tiempo
+    (300 → 360 px, doble clic → 300 px), midiendo los paneles, no el tirador;
+    en una sesión nueva el panel sigue a 356 px. Seis pruebas unitarias de los
+    límites (`tests/LayoutSizes.test.ts`).
+- **Bins en el panel de medios**, como el Media Pool: una lista con Master
+  arriba y carpetas dentro de carpetas, con el número de clips de cada una.
+  Lo que importas entra en el bin que estás viendo; un clip se archiva
+  arrastrándolo sobre un bin o con **Move to…** en su menú. Los bins se
+  crean, renombran (doble clic) y borran con el botón derecho; **al borrar un
+  bin sus clips suben al bin padre**, nunca desaparecen de la biblioteca.
+  - **Añadir una carpeta con sus subcarpetas** (el botón de carpeta junto a
+    Import): cada carpeta se convierte en un bin con el mismo nombre y cada
+    archivo va a la suya. Importar la misma carpeta dos veces reutiliza los
+    bins que ya existen.
+  - Los bins se guardan con el proyecto; los proyectos anteriores se abren
+    sin bins, con todo en Master.
+  - Cómo se comprobó: prueba de interfaz que crea y nombra un bin, archiva el
+    vídeo en él desde su menú (desaparece de Master y aparece en el bin), y
+    añade una carpeta `Footage` con `Day 1` y `Day 2`: salen los tres bins y
+    cada imagen en el suyo. Se guarda, y en una sesión nueva vuelven los 4
+    bins con cada clip en su sitio. Once pruebas unitarias de las reglas
+    (`tests/MediaBins.test.ts`), incluidos proyectos con bins dañados.
+- **Ventana de exportación reorganizada.** Arriba, junto al título, **Close**
+  y **Start export**; debajo, un resumen de lo que se va a renderizar y, al
+  empezar, el progreso, siempre a la vista. Después, **preajustes rápidos**
+  (Proyecto, YouTube 1080p, Fotogramas de sprite, Máster transparente) que
+  fijan formato, tamaño y transparencia a la vez. Las opciones van en dos
+  columnas: *Video* (formato con su transparencia al lado, resolución) y
+  *Rango* (con **Whole timeline**) a la izquierda; *File*, *Thumbnail* y
+  *Hardware* (plegado, con el codificador a la vista) a la derecha.
+  - Cómo se comprobó: prueba de interfaz que mide que Start export (y. 163)
+    y el progreso (y. 206) quedan por encima de los ajustes (y. 355/390), que
+    el preajuste de sprites da PNG con alfa y el de proyecto vuelve a MP4, y
+    que la exportación sigue saliendo bien: 60/60 fotogramas correctos.
+
+### Arreglado durante el desarrollo
+- **Mover un borde con las flechas movía también la edición.** Los atajos del
+  editor escuchan en la ventana, y ahí las flechas empujan los clips
+  seleccionados: el clip se desplazaba un fotograma y el vídeo exportado
+  empezaba en negro. Lo encontró la comprobación de fotogramas exactos
+  (2/60 mal, siempre los mismos); se aisló repitiendo la prueba sin cada
+  parte nueva hasta dejar solo la flecha. Ahora el borde se queda con la
+  tecla, y una comprobación nueva verifica que el cursor y los clips no se
+  mueven.
+
+### Problemas conocidos
+- **Arrastrar una carpeta desde el Explorador** al panel todavía no crea
+  bins; para eso está el botón de carpeta. Los archivos sueltos arrastrados
+  sí entran, en el bin que estás viendo.
+- Crear, renombrar, borrar bins y archivar clips **no se deshace con Ctrl+Z**
+  (el historial es de la línea de tiempo). Nada se pierde: borrar un bin
+  sube su contenido.
+
+### Prueba completa antes de publicar
+- Typecheck limpio; unitarias **514**; interfaz **58/58** contra la
+  compilación de desarrollo y **59/59 contra el ejecutable empaquetado y sin
+  red** (ninguna petición a la red, 60/60 fotogramas exportados correctos).
+- E2E **21/21**; GPU **22/22**; metraje largo **6/6** (45 minutos importados
+  en 2,3 s, 10 s exportados desde el minuto 30 en 1,4 s).
+- Arrastre del cursor con tu vídeo de KRATOS vs THOR: hacia atrás por terreno
+  nuevo **94 %**, hacia delante y por terreno recorrido **100 %**.
+- Audio por partes contra el decodificado entero: idéntico muestra a muestra.
+- Las pruebas de GPU, metraje largo y el benchmark de exportación esperaban
+  ver «This render:», que el rediseño había dejado dentro de la sección
+  Hardware plegada: ahora está en su título, visible sin abrirla.
 
 ---
 

@@ -163,6 +163,8 @@ export interface ImportOutcome {
   assets: MediaAsset[];
   /** Files that were skipped or failed, with the reason, for the UI to report. */
   rejected: { name: string; reason: string }[];
+  /** The folder path each asset was found in (by asset id), for a folder import. */
+  folders?: Record<string, string>;
 }
 
 /** Import `File` objects - the drag-and-drop and file-picker path. */
@@ -209,6 +211,20 @@ export async function importFromDialog(fps: number): Promise<ImportOutcome> {
 }
 
 /**
+ * Import a folder and everything under it, through the native dialog.
+ *
+ * Each asset comes back with the folder path it was found in - the chosen
+ * folder first - for the library to mirror as bins.
+ */
+export async function importFolderFromDialog(fps: number): Promise<ImportOutcome> {
+  if (!hasNativeBridge() || typeof window.filmora.openMediaFolder !== 'function') {
+    throw new Error('Adding a folder is only available in the desktop app');
+  }
+
+  return importPickedFiles(await window.filmora.openMediaFolder(), fps);
+}
+
+/**
  * Import files dropped onto the window.
  *
  * Under Electron a drop goes through the same path as the open dialog: the
@@ -247,11 +263,12 @@ export async function importDroppedFiles(files: File[], fps: number): Promise<Im
 
 /** Read, probe and build assets for files that have a real path on disk. */
 async function importPickedFiles(
-  picked: readonly { path: string; name: string }[],
+  picked: readonly { path: string; name: string; relativeDir?: string }[],
   fps: number,
 ): Promise<ImportOutcome> {
   const assets: MediaAsset[] = [];
   const rejected: ImportOutcome['rejected'] = [];
+  const folders: Record<string, string> = {};
 
   for (const file of picked) {
     try {
@@ -265,18 +282,18 @@ async function importPickedFiles(
         kind === 'image' ? Promise.resolve(null) : window.filmora.extractAudio(file.path).catch(() => null),
       ]);
 
-      assets.push(
-        await buildAsset(
-          {
-            name: file.name,
-            uri,
-            sourcePath: file.path,
-            ...(audioUri ? { audioUri } : {}),
-            ...(probe?.fps ? { hintFps: probe.fps } : {}),
-          },
-          fps,
-        ),
+      const asset = await buildAsset(
+        {
+          name: file.name,
+          uri,
+          sourcePath: file.path,
+          ...(audioUri ? { audioUri } : {}),
+          ...(probe?.fps ? { hintFps: probe.fps } : {}),
+        },
+        fps,
       );
+      assets.push(asset);
+      if (file.relativeDir) folders[asset.id] = file.relativeDir;
     } catch (error) {
       const reported = error instanceof Error ? error.message : String(error);
       // The decoder only ever says it could not decode the file. Read the
@@ -290,7 +307,7 @@ async function importPickedFiles(
     }
   }
 
-  return { assets, rejected };
+  return { assets, rejected, ...(Object.keys(folders).length > 0 ? { folders } : {}) };
 }
 
 /**
