@@ -15,6 +15,37 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
 
 ---
 
+## v1.9.0 — Metraje largo, exportación rápida y el logo del proyecto
+2026-09-14 · versión estable
+
+Estable de todo lo probado en las betas v1.9.0-beta.1 a v1.9.0-beta.8, sin
+cambios de código respecto a v1.9.0-beta.8:
+
+- El audio ya no se carga entero en memoria, ni al reproducir ni al exportar
+  (45 minutos de metraje: la página pasa de 1,5–2,2 GB a unos 330 MB).
+- La exportación cubre siempre toda la línea de tiempo (el "solo 5 minutos"),
+  y termina con el último clip, sin un segundo en negro al final.
+- Exportación hasta 3 veces más rápida: ya no va sincronizada con el monitor.
+- Una velocidad de fotogramas absurda (7650 fps) ya no se adopta; los
+  proyectos guardados así se reparan al abrirlos.
+- Exportar ya no puede destruir el vídeo original, y un MP4 incompleto se
+  explica al importarlo.
+- MP4 fragmentados (grabadores de pantalla, descargas de streaming) y vídeos
+  con GOP abierto (OBS) se leen por la vía rápida: tus 19 minutos de KRATOS vs
+  THOR se exportan en 1:42 en lugar de ~25 minutos.
+- Ventana de exportación reorganizada, con progreso en minutos y tiempo
+  restante, y carpeta por defecto `Documentos\VIDEOS EXPORTADOS`.
+- Mover varios clips a la vez, con el ratón y con las flechas; Ctrl+Z conserva
+  la selección.
+- Arrastrar el cursor hacia atrás muestra el fotograma exacto (≈7 % → 91–100 %).
+- El logo del proyecto en el instalador, la ventana, la barra de tareas y la
+  cabecera.
+
+Los detalles, cómo se comprobó cada cosa y los problemas conocidos están en
+las entradas de cada beta, más abajo.
+
+---
+
 ## v1.9.0-beta.8 — El logo del proyecto
 2026-09-13 · pre-release para probar
 
