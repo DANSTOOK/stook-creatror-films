@@ -3,6 +3,7 @@ import { Compositor, type ClipSource, type CompositorOptions } from './Composito
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
 import { ScrubDecoder } from './ScrubDecoder';
+import { keepScrubbers } from './scrubHandover';
 import { SequentialVideoReader } from './SequentialVideoReader';
 import { TextureManager } from './TextureManager';
 
@@ -134,12 +135,16 @@ export class FrameRenderer {
     return `${clip.id}|${clip.sourceUri}`;
   }
 
-  private closeScrubbers(keep: ReadonlySet<string> = new Set()): void {
-    for (const [key, scrubber] of this.scrubbers) {
-      if (keep.has(key)) continue;
-      scrubber.close();
-      this.scrubbers.delete(key);
-    }
+  /**
+   * Close the decoders `keep` no longer needs. One whose clip was replaced by
+   * a clip of the same file - a cut, a paste, an undo - is handed over rather
+   * than closed, so what it decoded is not decoded again. See scrubHandover.
+   */
+  private closeScrubbers(keep: readonly Clip[] = []): void {
+    keepScrubbers(
+      this.scrubbers,
+      new Map(keep.map((clip) => [FrameRenderer.scrubKey(clip), clip.sourceUri])),
+    );
   }
 
   /**
@@ -209,7 +214,7 @@ export class FrameRenderer {
     // paused playhead, and hold a hardware decoder each, so they go.
     const scrubbing = !playing && !(window as { __scfNoScrubDecoder?: boolean }).__scfNoScrubDecoder;
     if (!scrubbing) this.closeScrubbers();
-    else this.closeScrubbers(new Set(Compositor.visibleClips(project, project.currentFrame).map(FrameRenderer.scrubKey)));
+    else this.closeScrubbers(Compositor.visibleClips(project, project.currentFrame));
 
     this.compositor.renderFrame(
       project,

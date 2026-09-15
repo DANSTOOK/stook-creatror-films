@@ -7,11 +7,59 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **491 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **36/36 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, cortes en el cursor, orden de pistas, imán, copiar y pegar, opciones de exportación y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **497 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **47/47 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
 empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+
+---
+
+## v1.9.1-beta.1 — Cortar ya no tira lo que el cursor acababa de recorrer
+2026-09-14 · pre-release para probar
+
+### Arreglado
+- **Cortar un clip ya no descarta sus fotogramas guardados** (el problema
+  conocido de la beta.7). Tras cortar en el cursor, arrastrar hacia atrás
+  por el tramo recién recorrido muestra el fotograma exacto el **100 %** de
+  las veces, frente al **53 %** con el comportamiento anterior.
+  - La causa: los decodificadores del arrastre iban por clip, y un corte (o
+    pegar, o deshacer) le da al clip un id nuevo aunque siga mostrando el
+    mismo archivo. Ahora el decodificador del clip que desaparece, con los
+    fotogramas que guardó, pasa al clip nuevo del mismo archivo. Nunca pasa a
+    un clip que muestre otro archivo: serían fotogramas del vídeo equivocado.
+  - Cómo se comprobó: una comprobación de interfaz nueva arrastra hacia
+    delante, corta con las tijeras del cursor y arrastra hacia atrás: 100 %
+    en cinco ejecuciones (223–227 dibujados cada una). Se ejecutó también con
+    el arreglo quitado: 53 %. Por eso exige un 90 % y no el 50 % del arrastre
+    hacia delante, que habría pasado igual sin el arreglo. Además, seis
+    pruebas unitarias de la regla de traspaso (`tests/ScrubHandover.test.ts`).
+
+### Añadido
+- **Prueba de interfaz propia para el mezclador, los ajustes del proyecto y
+  los marcadores**, que la v1.1.0 dejó en *Sin verificar*. Cada comprobación
+  mira el proyecto, no el panel, y lo deja como estaba:
+  - Mezclador: el fader master cambia el volumen del proyecto (1,5); silenciar
+    y quitar el silencio de una pista; el ducking se activa y avisa cuando
+    ninguna pista está en el bus de diálogo; al cerrar, la mezcla sigue igual.
+  - Ajustes: un preajuste cambia la resolución (320x240 → 1280x720); pasar de
+    30 a 60 fps deja cada clip en el mismo segundo (fotograma 675 → 1350, a
+    22,500 s); al volver, tamaño, velocidad, duración (1800 fotogramas) y
+    posición de cada clip quedan exactamente como estaban.
+  - Marcadores: al añadir uno se abre su nombre y Enter lo guarda; «Marcador
+    anterior» vuelve a él desde otro punto; deshacer quita primero el nombre y
+    después el marcador.
+  - Cómo se comprobó: 47/47 en la prueba de interfaz, sin errores en la
+    consola.
+
+### Sin verificar
+- **Retroceder mucho en el audio de un archivo largo** (el problema conocido
+  de la beta.1, ~3,7 s hasta el minuto 40): el código ya arranca el
+  decodificador junto al punto pedido en lugar de volver al principio, y el
+  comentario que decía lo contrario se ha corregido. No se ha vuelto a medir.
+
+Pruebas: unitarias **497**, interfaz **47/47**, E2E **21/21**. GPU y metraje
+largo no se han repetido en esta beta.
 
 ---
 

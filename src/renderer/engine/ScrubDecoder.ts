@@ -66,6 +66,11 @@ export class ScrubDecoder {
     private readonly onFrame: () => void,
   ) {}
 
+  /** The file this decodes; a decoder is only ever handed to a clip of the same one. */
+  get sourceUri(): string {
+    return this.uri;
+  }
+
   /** The source frame the decoder last produced, or -1. */
   get position(): number {
     return this.shownFrame;

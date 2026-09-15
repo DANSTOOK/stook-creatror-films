@@ -391,6 +391,42 @@ async function main() {
     check('dragging the playhead forwards shows the frame under it', exactShare >= 0.5,
       `exact frame on ${Math.round(exactShare * 100)}% of ${scrub.draws} draws`);
 
+    // A cut gives the clip under the playhead a new id, but what the drag just
+    // decoded is still frames of the same file. Dragging straight back over
+    // them has to find them, not start again from nothing - before the
+    // decoders were handed over, a cut threw them away.
+    const scrubEndX = bandBox.x + 4 + 40 * 3;
+    const clipCount = () => window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
+    const beforeScrubCut = await clipCount();
+    await window.mouse.click(scrubEndX, bandBox.y + 16);
+    const afterScrubCut = await clipCount();
+    await window.waitForTimeout(100);
+    await window.evaluate(() => {
+      window.__scfViewportStats = { draws: 0, exact: 0 };
+    });
+    // Above the scissors, so the press scrubs instead of cutting again.
+    const backY = bandBox.y + 3;
+    await window.mouse.move(scrubEndX, backY);
+    await window.mouse.down();
+    for (let i = 1; i <= 40; i += 1) {
+      await window.mouse.move(scrubEndX - i * 3, backY);
+      await window.waitForTimeout(16);
+    }
+    await window.mouse.up();
+    const back = await window.evaluate(() => ({ ...window.__scfViewportStats }));
+    await window.evaluate(() => {
+      delete window.__scfViewportStats;
+    });
+    const backShare = back.exact / Math.max(1, back.draws);
+    // 90%, not the forward check's 50%: with the decoders thrown away on the
+    // cut, seeks alone still landed 53% of the time here, against 100% with
+    // them handed over. Half would pass either way and prove nothing.
+    check('after a cut, dragging back over covered ground shows the frame under it',
+      afterScrubCut === beforeScrubCut + 1 && backShare >= 0.9,
+      `${beforeScrubCut} -> ${afterScrubCut} clips; exact frame on ${Math.round(backShare * 100)}% of ${back.draws} draws`);
+    // Leave the timeline as it was for the checks below.
+    if (afterScrubCut > beforeScrubCut) await window.keyboard.press('Control+z');
+
     /* Point 6: cuts land on the playhead line, not where the pointer is ------ */
     const clipsNow = () => window.evaluate(() => {
       const { project } = window.__scfStore.getState();
@@ -524,6 +560,142 @@ async function main() {
     check('the top video row covers the ones below it', stacking === 'Video 3,Video 2,Video 1', stacking);
     await window.keyboard.press('Control+z');
     await window.keyboard.press('Control+z');
+
+    /* The mixer, the project settings and markers --------------------------- */
+    // Each panel is only real if what it shows changes the project - the
+    // render reads the project, not the panel. Everything is put back after.
+    const projectNow = () => window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return {
+        master: project.audio.masterVolume,
+        muted: project.tracks.filter((t) => t.muted).map((t) => t.name),
+        ducking: project.audio.ducking.enabled,
+        width: project.width,
+        height: project.height,
+        fps: project.fps,
+        duration: project.durationFrames,
+        frame: project.currentFrame,
+        markers: project.markers.map((m) => m.frame),
+        clips: Object.values(project.clips).map((c) => ({ id: c.id, start: c.startFrame })),
+      };
+    });
+
+    await window.getByTitle('Mixer - levels, pan, EQ and auto ducking').click();
+    const mixer = window.locator('div.panel', { hasText: 'Auto ducking' });
+    await mixer.waitFor({ state: 'visible', timeout: 10_000 });
+    const masterFader = mixer.locator('label', { hasText: 'Master level' }).locator('input[type=range]');
+    await masterFader.fill('1.5');
+    const afterMaster = await projectNow();
+    check('the mixer master fader sets the project master level', afterMaster.master === 1.5,
+      `master ${afterMaster.master}`);
+    await masterFader.fill('1');
+
+    await mixer.getByTitle('Mute', { exact: true }).first().click();
+    const afterMute = await projectNow();
+    await mixer.getByTitle('Unmute', { exact: true }).first().click();
+    const afterUnmute = await projectNow();
+    check('the mixer mute button mutes and unmutes a track',
+      afterMute.muted.length === 1 && afterUnmute.muted.length === 0,
+      `muted: [${afterMute.muted}] then [${afterUnmute.muted}]`);
+
+    // Nothing is on the dialogue bus in this project, so the switch must say
+    // it does nothing rather than look like it works.
+    const duckSwitch = mixer.getByLabel('Duck the music bus under dialogue');
+    await duckSwitch.check();
+    const duckWarned = await mixer.getByText('nothing to duck against', { exact: false })
+      .isVisible().catch(() => false);
+    const duckOn = (await projectNow()).ducking;
+    await duckSwitch.uncheck();
+    check('auto ducking turns on and warns when no track is dialogue', duckOn && duckWarned,
+      `enabled ${duckOn}, warning ${duckWarned ? 'shown' : 'missing'}`);
+
+    await mixer.getByRole('button', { name: 'Close', exact: true }).last().click();
+    const mixerClosed = await mixer.isHidden();
+    const afterMixer = await projectNow();
+    check('the mixer closes and leaves the mix as it was',
+      mixerClosed && afterMixer.master === 1 && afterMixer.muted.length === 0 && !afterMixer.ducking,
+      `closed ${mixerClosed}, master ${afterMixer.master}, ducking ${afterMixer.ducking}`);
+
+    const beforeSettings = await projectNow();
+    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = window.locator('div.panel', { hasText: 'Project settings' });
+    await settings.waitFor({ state: 'visible', timeout: 10_000 });
+
+    await settings.locator('label', { hasText: 'Preset' }).locator('select').selectOption('1280 x 720 (720p)');
+    const afterPreset = await projectNow();
+    check('a resolution preset resizes the project',
+      afterPreset.width === 1280 && afterPreset.height === 720,
+      `${beforeSettings.width}x${beforeSettings.height} -> ${afterPreset.width}x${afterPreset.height}`);
+
+    // "Keep timing" is on by default: a clip that starts at 1 s must still
+    // start at 1 s after the rate doubles, in twice as many frames.
+    const movedClip = beforeSettings.clips.find((c) => c.start > 0) ?? beforeSettings.clips[0];
+    const doubled = beforeSettings.fps * 2;
+    const customRate = settings.locator('label', { hasText: 'Custom frame rate' }).locator('input');
+    await customRate.fill(String(doubled));
+    const afterRate = await projectNow();
+    const movedStart = afterRate.clips.find((c) => c.id === movedClip.id)?.start;
+    const secondsBefore = movedClip.start / beforeSettings.fps;
+    const secondsAfter = movedStart / afterRate.fps;
+    check('changing the frame rate keeps every clip at the same time',
+      afterRate.fps === doubled && Math.abs(secondsAfter - secondsBefore) < 1 / afterRate.fps,
+      `${beforeSettings.fps} -> ${afterRate.fps} fps; clip at frame ${movedClip.start} -> ${movedStart} ` +
+        `(${secondsBefore.toFixed(3)}s -> ${secondsAfter.toFixed(3)}s)`);
+
+    await customRate.fill(String(beforeSettings.fps));
+    await settings.locator('label', { hasText: 'Width' }).locator('input').fill(String(beforeSettings.width));
+    await settings.locator('label', { hasText: 'Height' }).locator('input').fill(String(beforeSettings.height));
+    await settings.getByRole('button', { name: 'Done' }).click();
+    const afterSettings = await projectNow();
+    const settingsRestored = afterSettings.fps === beforeSettings.fps &&
+      afterSettings.width === beforeSettings.width && afterSettings.height === beforeSettings.height &&
+      afterSettings.duration === beforeSettings.duration &&
+      afterSettings.clips.every((c) => beforeSettings.clips.find((b) => b.id === c.id)?.start === c.start);
+    check('project settings close and put back exactly what was there',
+      (await settings.isHidden()) && settingsRestored,
+      `${afterSettings.width}x${afterSettings.height} @ ${afterSettings.fps} fps, ` +
+        `${afterSettings.duration} frames long (was ${beforeSettings.duration})`);
+
+    // Markers: drop one at the playhead, walk away, and jump back to it.
+    // Placed by pixels, not frames: a ruler click within a few pixels of a
+    // flag selects that marker, and zoomed out to fit a long clip, thirty
+    // frames can be closer than that - the "away" click landed on the flag.
+    const ppfNow = await window.evaluate(() => window.__scfStore.getState().ui.pixelsPerFrame);
+    await window.mouse.click(bandBox.x + 40, bandBox.y + 3);
+    const markerFrame = (await projectNow()).frame;
+    await window.getByTitle('Add marker at the playhead (M)').click();
+    const withMarker = await projectNow();
+    // The button opens the new marker's name field right on the ruler, over
+    // the next stretch of it - so a click there only places the caret. Name
+    // it and press Enter first, as a user would.
+    const namingFocused = await window.evaluate(() =>
+      document.activeElement instanceof HTMLInputElement &&
+      document.activeElement.classList.contains('numeric-input'));
+    await window.keyboard.type('Intro');
+    await window.keyboard.press('Enter');
+    const markerLabel = await window.evaluate((frame) =>
+      window.__scfStore.getState().project.markers.find((m) => m.frame === frame)?.label ?? null, markerFrame);
+    check('a new marker opens its name field and Enter keeps the name',
+      namingFocused && markerLabel === 'Intro',
+      `field ${namingFocused ? 'focused' : 'not focused'}, label ${JSON.stringify(markerLabel)}`);
+    await window.mouse.click(bandBox.x + 160, bandBox.y + 3);
+    const awayFrame = (await projectNow()).frame;
+    await window.getByTitle('Previous marker').click();
+    const jumpedTo = (await projectNow()).frame;
+    check('a marker lands on the playhead and Previous marker jumps back to it',
+      withMarker.markers.length === beforeSettings.markers.length + 1 &&
+        withMarker.markers.includes(markerFrame) && awayFrame !== markerFrame && jumpedTo === markerFrame,
+      `marker at ${markerFrame}; playhead ${awayFrame} -> ${jumpedTo} ` +
+        `(${ppfNow.toFixed(3)} px/frame, project ${withMarker.duration} frames long)`);
+    // Two steps in the history: the name, then the marker itself.
+    await window.keyboard.press('Control+z');
+    const labelAfterOneUndo = await window.evaluate((frame) =>
+      window.__scfStore.getState().project.markers.find((m) => m.frame === frame)?.label ?? null, markerFrame);
+    await window.keyboard.press('Control+z');
+    const markersAfterUndo = (await projectNow()).markers.length;
+    check('naming and adding a marker undo one step at a time',
+      labelAfterOneUndo !== 'Intro' && markersAfterUndo === beforeSettings.markers.length,
+      `label after one undo ${JSON.stringify(labelAfterOneUndo)}; ${withMarker.markers.length} -> ${markersAfterUndo} markers`);
 
     /* Export --------------------------------------------------------------- */
     // The export picks a FOLDER in a dialog and takes the name from a text

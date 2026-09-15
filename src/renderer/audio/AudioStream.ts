@@ -36,10 +36,11 @@ const WINDOW_SECONDS = 30;
 /**
  * How much of the window sits BEHIND the playhead.
  *
- * Going back further than this restarts the decoder at the head of the file,
- * which costs real time (about 3.7 s to reach minute 40, decoding at ~650x).
- * Ten seconds covers the small steps back that scrubbing and replaying a
- * line are made of, without holding the whole file.
+ * Going back further than this starts the decoder again next to what was
+ * asked for - at the head only inside the first NEAR_HEAD_SECONDS, see
+ * `startAt` - which costs a restart, not a wind through the file. Ten seconds
+ * covers the small steps back that scrubbing and replaying a line are made
+ * of, without holding the whole file.
  */
 const KEEP_BEHIND_SECONDS = 10;
 
@@ -411,7 +412,7 @@ export class AudioStream {
   /**
    * The sound in `[fromSeconds, fromSeconds + seconds)`.
    *
-   * Decodes forward to reach it, and restarts from the head when asked for
+   * Decodes forward to reach it, and starts again next to it when asked for
    * something older than the window still holds.
    */
   async span(fromSeconds: number, seconds: number): Promise<DecodedSpan> {
