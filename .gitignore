@@ -13,3 +13,4 @@ release/
 .long-tmp/
 .bench-tmp/
 .bench-media/
+.stress-tmp/

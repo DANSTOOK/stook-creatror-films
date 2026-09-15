@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +37,50 @@ const extractedAudio = new Map<string, string>();
 /** Bounds on a folder import, so choosing a drive root cannot stall the app. */
 const MAX_FOLDER_DEPTH = 8;
 const MAX_FOLDER_FILES = 2000;
+
+/**
+ * Every media file under `root`, allowlisted like a file picked in the Import
+ * dialog, each with the folders it sits in - the root's own name first - so
+ * the library can mirror them as bins. Shared by "Add folder and subfolders"
+ * and folders dropped from Explorer.
+ *
+ * Hidden entries and links are skipped (a Dirent for a link is neither a file
+ * nor a directory), and the walk stops at MAX_FOLDER_DEPTH levels and
+ * MAX_FOLDER_FILES files in total across everything added to `picked`.
+ */
+async function collectMediaFolder(root: string, picked: PickedFile[] = []): Promise<PickedFile[]> {
+  const walk = async (folder: string, segments: string[]): Promise<void> => {
+    if (segments.length > MAX_FOLDER_DEPTH) return;
+    const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+    entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+    for (const entry of entries) {
+      if (picked.length >= MAX_FOLDER_FILES) return;
+      if (entry.name.startsWith('.')) continue;
+      const path = join(folder, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(path, [...segments, entry.name]);
+        continue;
+      }
+
+      const extension = extname(entry.name).toLowerCase();
+      const isMedia =
+        VIDEO_EXTENSIONS.has(extension) || AUDIO_EXTENSIONS.has(extension) || IMAGE_EXTENSIONS.has(extension);
+      if (!entry.isFile() || !isMedia) continue;
+
+      const info = await stat(path).catch(() => null);
+      if (!info) continue;
+
+      allowedPaths.add(path);
+      picked.push({ path, name: entry.name, kind: classify(path), sizeBytes: info.size, relativeDir: segments.join('/') });
+    }
+  };
+
+  // A drive root has no base name; it still needs a bin to go in.
+  await walk(root, [basename(root) || root.replace(/[\\/:]+$/, '')]);
+  return picked;
+}
 
 function classify(path: string): MediaKind {
   const extension = extname(path).toLowerCase();
@@ -360,45 +404,25 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     });
     if (result.canceled || result.filePaths.length === 0) return [];
 
-    const root = result.filePaths[0];
+    return collectMediaFolder(result.filePaths[0]);
+  });
+
+  /**
+   * Folders dropped from Explorer onto the media panel: the same walk.
+   *
+   * The paths come from the preload's webUtils.getPathForFile, which only
+   * yields a path for a folder the OS handed over, and only existing
+   * directories are accepted - the same footing as a file drop.
+   */
+  ipcMain.handle(IPC.registerDroppedFolders, async (_event, paths: unknown): Promise<PickedFile[]> => {
+    if (!Array.isArray(paths)) return [];
     const picked: PickedFile[] = [];
-
-    const walk = async (folder: string, segments: string[]): Promise<void> => {
-      if (segments.length > MAX_FOLDER_DEPTH) return;
-      const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
-      entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-      for (const entry of entries) {
-        if (picked.length >= MAX_FOLDER_FILES) return;
-        if (entry.name.startsWith('.')) continue;
-        const path = join(folder, entry.name);
-
-        if (entry.isDirectory()) {
-          await walk(path, [...segments, entry.name]);
-          continue;
-        }
-
-        const extension = extname(entry.name).toLowerCase();
-        const isMedia =
-          VIDEO_EXTENSIONS.has(extension) || AUDIO_EXTENSIONS.has(extension) || IMAGE_EXTENSIONS.has(extension);
-        if (!entry.isFile() || !isMedia) continue;
-
-        const info = await stat(path).catch(() => null);
-        if (!info) continue;
-
-        allowedPaths.add(path);
-        picked.push({
-          path,
-          name: entry.name,
-          kind: classify(path),
-          sizeBytes: info.size,
-          relativeDir: segments.join('/'),
-        });
-      }
-    };
-
-    // A drive root has no base name; it still needs a bin to go in.
-    await walk(root, [basename(root) || root.replace(/[\\/:]+$/, '')]);
+    for (const path of paths) {
+      if (typeof path !== 'string' || !isAbsolute(path)) continue;
+      const info = await stat(path).catch(() => null);
+      if (!info?.isDirectory()) continue;
+      await collectMediaFolder(path, picked);
+    }
     return picked;
   });
 
@@ -593,6 +617,39 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     await writeFile(path, Buffer.from(wav));
     allowedPaths.add(path);
     return path;
+  });
+
+  /**
+   * A streamed mix: raw float32 appended a piece at a time.
+   *
+   * The single WAV above means the whole mix exists at once - in the page,
+   * again as the WAV, and again here: an hour of stereo float is 1.4 GB
+   * each time, and an hour-long export peaked at 5.3 GB in the page and
+   * 1.4 GB in this process. Pieces of a minute keep both near nothing.
+   */
+  const openMixes = new Map<string, FileHandle>();
+
+  ipcMain.handle(IPC.exportAudioOpen, async () => {
+    const path = join(tmpdir(), `filmora-mix-${randomUUID()}.f32le`);
+    openMixes.set(path, await open(path, 'w'));
+    allowedPaths.add(path);
+    return path;
+  });
+
+  ipcMain.handle(IPC.exportAudioAppend, async (_event, path: string, samples: ArrayBuffer) => {
+    const handle = openMixes.get(path);
+    if (!handle) throw new Error('That audio mix is not open');
+    await handle.write(new Uint8Array(samples));
+  });
+
+  ipcMain.handle(IPC.exportAudioClose, async (_event, path: string, discard?: boolean) => {
+    const handle = openMixes.get(path);
+    openMixes.delete(path);
+    await handle?.close();
+    if (discard) {
+      allowedPaths.delete(path);
+      await rm(path, { force: true });
+    }
   });
 
   ipcMain.handle(IPC.exportStart, async (_event, settings: ExportSettings) => {

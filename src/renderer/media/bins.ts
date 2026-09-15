@@ -133,6 +133,42 @@ export function moveBin(bins: readonly MediaBin[], binId: string, parentId: stri
   return bins.map((bin) => (bin.id === binId ? { ...bin, parentId } : bin));
 }
 
+/** The bins, and where every asset is filed: what undoing a bin edit puts back. */
+export interface LibrarySnapshot {
+  bins: MediaBin[];
+  /** Asset id to its bin; null for the top level. */
+  placement: Record<string, string | null>;
+}
+
+export function librarySnapshot(bins: readonly MediaBin[], assets: readonly MediaAsset[]): LibrarySnapshot {
+  return {
+    bins: bins.map((bin) => ({ ...bin })),
+    placement: Object.fromEntries(assets.map((asset) => [asset.id, asset.binId ?? null])),
+  };
+}
+
+/**
+ * Bins and filing as a snapshot has them.
+ *
+ * Assets imported or removed since the snapshot are left as they are:
+ * importing is not an undoable edit, and undoing a rename must not take a clip
+ * back out of the library. One filed in a bin the snapshot does not have ends
+ * up in Master, like any clip whose bin is gone.
+ */
+export function restoreLibrary(
+  assets: readonly MediaAsset[],
+  snapshot: LibrarySnapshot,
+): { bins: MediaBin[]; assets: MediaAsset[] } {
+  return {
+    bins: snapshot.bins.map((bin) => ({ ...bin })),
+    assets: assets.map((asset) =>
+      Object.prototype.hasOwnProperty.call(snapshot.placement, asset.id)
+        ? withBin(asset, snapshot.placement[asset.id])
+        : asset,
+    ),
+  };
+}
+
 function withBin(asset: MediaAsset, binId: string | null): MediaAsset {
   if (binId) return { ...asset, binId };
   const { binId: _dropped, ...rest } = asset;

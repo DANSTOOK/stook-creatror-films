@@ -12,6 +12,7 @@ export const IPC = {
   openMedia: 'dialog:open-media',
   openMediaFolder: 'dialog:open-media-folder',
   registerDroppedFiles: 'drop:register-files',
+  registerDroppedFolders: 'drop:register-folders',
   mediaUrl: 'media:url',
   extractAudio: 'media:extract-audio',
   openProject: 'dialog:open-project',
@@ -32,6 +33,9 @@ export const IPC = {
   setGpuPreference: 'gpu:set-preference',
   relaunch: 'app:relaunch',
   writeExportAudio: 'export:write-audio',
+  exportAudioOpen: 'export:audio-open',
+  exportAudioAppend: 'export:audio-append',
+  exportAudioClose: 'export:audio-close',
   exportStart: 'export:start',
   exportFrame: 'export:frame',
   exportFinish: 'export:finish',
@@ -87,6 +91,12 @@ export interface FilmoraApi {
    * Files with no path on disk are left out of the result.
    */
   registerDroppedFiles(files: File[]): Promise<PickedFile[]>;
+  /**
+   * Folders dropped onto the window, walked like "Add folder and subfolders":
+   * every media file under them, allowlisted, with the folders it sits in.
+   * Optional so a bridge without it still satisfies the type.
+   */
+  registerDroppedFolders?(folders: File[]): Promise<PickedFile[]>;
   /** A `media://` URL that streams an allowlisted file from disk by ranges. */
   mediaUrl(path: string): Promise<string>;
   /**
@@ -140,6 +150,12 @@ export interface FilmoraApi {
    * input, so it must exist before the encoder is spawned.
    */
   writeExportAudio(wav: ArrayBuffer): Promise<string>;
+  /** Start a streamed mix file; returns its path, allowlisted for the export. */
+  exportAudioOpen(): Promise<string>;
+  /** Append interleaved float32 samples to an open mix. */
+  exportAudioAppend(path: string, samples: ArrayBuffer): Promise<void>;
+  /** Close a mix; `discard` deletes it (nothing audible, or the render failed). */
+  exportAudioClose(path: string, discard?: boolean): Promise<void>;
 
   /** Open an encoder and start accepting frames. */
   exportStart(settings: ExportSettings): Promise<ExportStartResult>;

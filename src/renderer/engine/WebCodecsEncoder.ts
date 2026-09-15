@@ -116,6 +116,8 @@ export class WebCodecsEncoder {
   private frameIndex = 0;
   private pending: Promise<void> = Promise.resolve();
   private failure: Error | null = null;
+  /** Set by `close`: nothing queued is forwarded after it. */
+  private closed = false;
 
   constructor(
     private readonly settings: ExportSettings,
@@ -134,7 +136,16 @@ export class WebCodecsEncoder {
         chunk.copyTo(bytes);
         // Chunk delivery is synchronous, but forwarding it is not; chaining
         // keeps the elementary stream in order.
-        this.pending = this.pending.then(() => callbacks.onChunk(bytes));
+        this.pending = this.pending
+          .then(() => (this.closed ? undefined : callbacks.onChunk(bytes)))
+          .catch((error: unknown) => {
+            // After a cancel a late write failing is expected and harmless.
+            // Before one it is a real failure: kept for `finish` to throw,
+            // rather than escaping as an unhandled rejection nobody awaits.
+            if (this.closed || this.failure) return;
+            this.failure = error instanceof Error ? error : new Error(String(error));
+            callbacks.onError(this.failure);
+          });
       },
       error: (error) => {
         this.failure = error instanceof Error ? error : new Error(String(error));
@@ -243,6 +254,7 @@ export class WebCodecsEncoder {
 
   /** Abort without waiting for a flush. */
   close(): void {
+    this.closed = true;
     if (this.encoder.state !== 'closed') this.encoder.close();
   }
 }

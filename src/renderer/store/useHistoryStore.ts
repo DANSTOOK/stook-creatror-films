@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { ProjectState } from '@shared/types';
 import { createId } from '@shared/utils/id';
+import type { LibrarySnapshot } from '@renderer/media/bins';
 
 /**
  * Undo / redo via the Command pattern.
@@ -20,10 +21,31 @@ export interface Command {
   mergeKey?: string;
   apply(project: ProjectState): ProjectState;
   revert(project: ProjectState): ProjectState;
+  /**
+   * Set when the step edited the media library's bins rather than the
+   * timeline. Bins live beside the project, not in it, so the project store
+   * restores this side itself.
+   */
+  library?: { before: LibrarySnapshot; after: LibrarySnapshot };
 }
 
 const MERGE_WINDOW_MS = 500;
 const MAX_HISTORY = 200;
+
+/**
+ * A bin edit - new, renamed or deleted bin, a clip filed somewhere else - as
+ * one undo step. The project is untouched; the library snapshots are the step.
+ */
+export function createLibraryCommand(label: string, before: LibrarySnapshot, after: LibrarySnapshot): Command {
+  return {
+    id: createId('cmd'),
+    label,
+    timestamp: Date.now(),
+    apply: (project) => project,
+    revert: (project) => project,
+    library: { before, after },
+  };
+}
 
 /** A command that simply swaps between two whole-project snapshots. */
 export function createSnapshotCommand(
@@ -58,6 +80,10 @@ interface HistoryState {
   /** Pop the newest command and hand back the reverted project. */
   undo(current: ProjectState): ProjectState | null;
   redo(current: ProjectState): ProjectState | null;
+  /** The step `undo` would take back, without taking it. */
+  peekUndo(): Command | undefined;
+  /** The step `redo` would reapply, without reapplying it. */
+  peekRedo(): Command | undefined;
   clear(): void;
   labels(): { undo: string | null; redo: string | null };
 }
@@ -130,6 +156,16 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     });
 
     return command.apply(current);
+  },
+
+  peekUndo() {
+    const { undoStack } = get();
+    return undoStack[undoStack.length - 1];
+  },
+
+  peekRedo() {
+    const { redoStack } = get();
+    return redoStack[redoStack.length - 1];
   },
 
   clear() {

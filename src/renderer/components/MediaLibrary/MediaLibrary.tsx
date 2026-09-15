@@ -27,6 +27,7 @@ import {
   importFolderFromDialog,
   importFromDialog,
   importDroppedFiles,
+  importDroppedFolders,
   importFromFiles,
   type ImportOutcome,
 } from '@renderer/media/importMedia';
@@ -102,7 +103,8 @@ export function MediaLibrary(): JSX.Element {
         const filed = outcome.assets.map((asset) => {
           const segments = (folders[asset.id] ?? '').split('/').filter(Boolean);
           const binId = useProjectStore.getState().ensureBinPath(parent, segments);
-          top ??= useProjectStore.getState().ensureBinPath(parent, segments.slice(0, 1));
+          // Loose files dropped beside a folder have no folder of their own.
+          if (segments.length > 0) top ??= useProjectStore.getState().ensureBinPath(parent, segments.slice(0, 1));
           return binId ? { ...asset, binId } : asset;
         });
         addAssets(filed, parent);
@@ -187,11 +189,34 @@ export function MediaLibrary(): JSX.Element {
       dragDepth.current = 0;
       setDragActive(false);
 
-      const files = Array.from(event.dataTransfer.files);
-      if (files.length === 0) return;
-      // Same path as the Import dialog under Electron: the dropped file keeps
+      // Read it all now: the DataTransfer is emptied once the event returns.
+      // A folder from Explorer arrives as an item whose entry is a directory,
+      // and becomes bins the same way "Add folder and subfolders" does.
+      const files: File[] = [];
+      const folders: File[] = [];
+      for (const item of Array.from(event.dataTransfer.items ?? [])) {
+        if (item.kind !== 'file') continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        if (item.webkitGetAsEntry?.()?.isDirectory) folders.push(file);
+        else files.push(file);
+      }
+      if (files.length === 0 && folders.length === 0) files.push(...Array.from(event.dataTransfer.files));
+      if (files.length === 0 && folders.length === 0) return;
+
+      // Same path as the Import dialog under Electron: a dropped file keeps
       // its location on disk, so the project reopens with it.
-      void runImport(() => importDroppedFiles(files, project.fps));
+      void runImport(async () => {
+        const [fromFiles, fromFolders] = await Promise.all([
+          files.length > 0 ? importDroppedFiles(files, project.fps) : Promise.resolve<ImportOutcome>({ assets: [], rejected: [] }),
+          importDroppedFolders(folders, project.fps),
+        ]);
+        return {
+          assets: [...fromFiles.assets, ...fromFolders.assets],
+          rejected: [...fromFiles.rejected, ...fromFolders.rejected],
+          ...(fromFolders.folders ? { folders: fromFolders.folders } : {}),
+        };
+      });
     },
     [project.fps, runImport],
   );

@@ -7,7 +7,7 @@ import { probeMediaElement } from '@renderer/engine/probeMedia';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { createId } from '@shared/utils/id';
 import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
-import { renderTimelineAudio } from '@renderer/audio/renderMix';
+import { streamTimelineAudio } from '@renderer/audio/renderMix';
 
 /**
  * End-to-end scenario: import, edit, export.
@@ -274,7 +274,11 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
     // The dialog picks WebCodecs when the platform supports it; mirroring that
     // here is the difference between testing the export and testing a fallback.
     const support = input.useRealExportPath ? await detectCodecSupport(baseSettings) : null;
-    const settings: typeof baseSettings & { audioPath?: string; audioBitrateKbps?: number } = {
+    const settings: typeof baseSettings & {
+      audioPath?: string;
+      audioBitrateKbps?: number;
+      audioRawFormat?: { sampleRate: number; channels: number };
+    } = {
       ...baseSettings,
       pipeMode: support ? support.pipeMode : ('rawvideo' as const),
     };
@@ -293,16 +297,21 @@ export async function runScenario(input: E2EInput): Promise<E2EResult> {
       return hash >>> 0;
     };
 
-    // Render the audio mix first, exactly as the dialog does.
-    const mix = await renderTimelineAudio(project, [video], startFrame, endFrame);
+    // Render the audio mix first, exactly as the dialog does: streamed to a file.
+    const mixPath = await window.filmora.exportAudioOpen();
+    const mix = await streamTimelineAudio(project, [video], startFrame, endFrame, (samples) =>
+      window.filmora.exportAudioAppend(mixPath, samples.buffer as ArrayBuffer),
+    );
+    await window.filmora.exportAudioClose(mixPath, mix === null);
     if (mix) {
       step(
         `audio mix: ${mix.clipsMixed} clip(s), ${mix.channels}ch @ ${mix.sampleRate}Hz, ` +
           `${mix.durationSeconds.toFixed(2)}s, peak ${mix.peak.toFixed(3)}`,
       );
-      settings.audioPath = await window.filmora.writeExportAudio(mix.wav);
+      settings.audioPath = mixPath;
+      settings.audioRawFormat = { sampleRate: mix.sampleRate, channels: mix.channels };
       settings.audioBitrateKbps = recommendedAudioBitrateKbps(mix.channels);
-      step(`audio written to: ${settings.audioPath ?? '(nothing returned)'}`);
+      step(`audio streamed to: ${settings.audioPath}`);
     } else {
       step('audio mix: nothing audible in range');
     }

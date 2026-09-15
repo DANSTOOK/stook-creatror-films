@@ -7,11 +7,11 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **514 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **58/58 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, la ventana de exportación, opciones de exportación y reapertura en una sesión nueva) y
+Cifras de referencia al día de hoy: **528 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **61/61 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación y reapertura en una sesión nueva), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **59/59** con la v1.10.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **60/60** con la v1.10.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos); antes solo se había hecho con la v1.0.
 
 ---
@@ -76,23 +76,136 @@ Pool con bins y la página Deliver).
   tecla, y una comprobación nueva verifica que el cursor y los clips no se
   mueven.
 
-### Problemas conocidos
-- **Arrastrar una carpeta desde el Explorador** al panel todavía no crea
-  bins; para eso está el botón de carpeta. Los archivos sueltos arrastrados
-  sí entran, en el bin que estás viendo.
-- Crear, renombrar, borrar bins y archivar clips **no se deshace con Ctrl+Z**
-  (el historial es de la línea de tiempo). Nada se pierde: borrar un bin
-  sube su contenido.
+- **Arrastrar una carpeta desde el Explorador crea bins**, igual que el botón
+  de carpeta: cada subcarpeta, un bin; cada archivo, en el suyo. Se pueden
+  soltar carpetas y archivos sueltos a la vez.
+  - Cómo se comprobó: primero una sonda con el arrastre nativo de Chromium
+    (el mismo que produce el Explorador) mostró que la carpeta llegaba como
+    directorio y **la app no importaba nada**. Ya implementado, la prueba de
+    interfaz suelta así una carpeta `Dropped` con `Clips` dentro: salen los
+    dos bins y la imagen en `Dropped/Clips`.
+- **Las operaciones con bins se deshacen con Ctrl+Z** y se rehacen con
+  Ctrl+Mayús+Z: crear, renombrar, borrar y archivar clips, en el mismo
+  historial que la línea de tiempo, así que Ctrl+Z quita lo último que
+  hiciste, fuera bin o corte. Importar sigue sin deshacerse, como siempre.
+  - Cómo se comprobó: seis pruebas unitarias contra el store real
+    (`tests/BinsUndo.test.ts`: cada paso por separado, rehacer en orden, un
+    marcador y un bin intercalados, pasos que no cambian nada no se guardan,
+    clips importados después se quedan) y, en la prueba de interfaz, crear y
+    nombrar un bin, deshacer dos veces con el teclado, rehacer y deshacer.
+
+### Arreglado
+- **Exportar una hora ya no llena la memoria.** El sonido se mezclaba entero
+  de una vez: una hora de estéreo en coma flotante son 1,4 GB, y además se
+  copiaba a un WAV y se enviaba entero al proceso principal. La prueba de
+  estrés de una hora marcó **5,3 GB en la página y 1,4 GB en el proceso
+  principal**; con dos horas es probable que fallara, y un WAV no puede pasar
+  de 4 GB (unas tres horas). Ahora se mezcla de minuto en minuto, con 2 s de
+  margen antes de cada tramo para que filtros, remuestreo y ducking lleguen
+  asentados, y cada minuto va directo a un archivo sin límite de tamaño.
+  - Cómo se comprobó: un benchmark renderiza la misma edición (cortes, un
+    trozo borrado, dos pistas superpuestas, EQ y volumen) entera y por
+    tramos, de 7 s y de 60 s: **idéntico muestra a muestra**; con ducking, la
+    diferencia queda **86–98 dB por debajo** de la señal. Misma cantidad de
+    muestras en todos los casos. Cuatro pruebas unitarias de cómo se le pasa
+    el audio a ffmpeg (`tests/StreamedMixArgs.test.ts`).
+- **En las exportaciones por GPU la imagen se adelantaba al sonido.** Los
+  fotogramas que codifica la GPU le llegan a ffmpeg sin marcas de tiempo, y
+  las que ffmpeg se inventaba iban rápidas: en la hora exportada, 43.200 de
+  los 108.000 fotogramas duraban un tick menos y el último quedaba **36 ms
+  antes de su sitio**, más de un fotograma por delante del sonido; donde el
+  desvío cruzaba medio fotograma, dos fotogramas caían en el mismo instante
+  (un reproductor puede saltarse o repetir uno ahí). Cuanto más larga la
+  exportación, más desvío. Ahora cada fotograma N se marca en N/fps exacto,
+  contado desde el propio fotograma, así que no se acumula nada.
+  - Cómo se comprobó: reproducido remultiplexando el vídeo exportado igual
+    que la app (1.200 de 3.000 duraciones con un tick menos) y resuelto con
+    el mismo método (3.000 de 3.000 exactas, el último fotograma al tick);
+    cuatro pruebas unitarias (`tests/WebCodecsTimestamps.test.ts`) y una
+    comprobación nueva en la prueba de estrés sobre la hora completa.
+- **En algunos clips el sonido iba 46 ms tarde.** El audio de tu vídeo de
+  KRATOS empieza con un paquete de 2.494 muestras en lugar de uno de 1.024,
+  y el lector de audio calculaba la posición suponiendo 1.024 cuando empezaba
+  a decodificar desde el principio del archivo: todo lo que luego leía
+  avanzando quedaba **56,5 ms desplazado** respecto a lo que leía tras un
+  salto. En la exportación de una hora, unos clips salían bien y otros con el
+  sonido más de un fotograma tarde, según cómo hubiera llegado el lector.
+  Ahora un archivo con ese primer paquete irregular nunca se empieza a
+  decodificar desde el paquete 0. Los archivos normales no cambian.
+  - Cómo se comprobó: la prueba de estrés lo destapó (unos tramos a 23 ms y
+    otros a 80 ms); una sonda lo aisló leyendo el mismo instante de tres
+    formas: lector nuevo −10,1 ms, lector que avanzó desde el principio
+    **+46,4 ms**. Con el arreglo, un benchmark nuevo
+    (`tests/bench/audio-irregular-head.mjs`) lee 4,2 s, 492,3 s y 825,7 s de
+    las tres formas: **muestras idénticas** y las tres a −10,1 ms de la
+    decodificación de ffmpeg que respeta las marcas de tiempo, dentro de un
+    fotograma (6/6).
+- **Cancelar una exportación por GPU podía dejar un error en la app.** Al
+  cancelar, los trozos de vídeo que la GPU ya tenía codificados seguían
+  enviándose a un ffmpeg recién detenido: o la tarea ya no existía («Unknown
+  export job»), o el envío se quedaba esperando a un ffmpeg que no iba a
+  responder nunca («reply was never sent»). La exportación se cancelaba bien
+  y el archivo a medias se borraba, pero el error quedaba sin atender.
+  - Cómo se comprobó: la prueba de estrés lo destapó una vez de cuatro. Una
+    sonda que cancela la exportación de la hora 15 veces seguidas, en
+    momentos distintos, lo reprodujo **3 veces de 15** (los dos casos). Ahora
+    el codificador no envía nada tras cancelar, un envío que falla queda
+    registrado en lugar de escaparse, y ffmpeg no espera a una entrada ya
+    cerrada ni se queja de trozos de una tarea cancelada. La misma sonda con
+    el arreglo: **0 errores en 15 cancelaciones**, las 15 bien canceladas y la
+    ventana lista para volver a exportar.
+- **La regla no se podía arrastrar con marcadores cerca.** Pulsar a menos de
+  6 px de un marcador lo seleccionaba e ignoraba el arrastre; con una hora
+  encajada en pantalla, 6 px son ~480 fotogramas y con un marcador por minuto
+  la regla quedaba muerta: el cursor no pasaba del fotograma 733. Ahora pulsar
+  un marcador salta a él y, si mueves, sigue arrastrando.
+  - Cómo se comprobó: una sonda que abre la hora guardada, la encaja y
+    arrastra registrando cada movimiento reprodujo el fallo (el fotograma no
+    cambiaba en ninguno de los 12 movimientos).
+
+### Verificado ahora
+- **Retroceder mucho en el audio de un archivo largo** (en *Sin verificar*
+  desde la v1.9.1-beta.1): medido en el archivo de 45 minutos con un
+  benchmark nuevo (`tests/bench/audio-seek.mjs`). Saltar del minuto 40 al 5
+  tarda **10 ms** (antes ~3,7 s), ningún salto pasa de 19 ms, las muestras
+  son idénticas a las de un lector abierto desde cero en ese punto y nunca
+  retiene más de 2,1 MB.
+- **Sonido y imagen van sincronizados, medido en el archivo exportado.** Un
+  vídeo sintético con un destello y un pitido en el mismo fotograma cada 2 s,
+  cortado en la app (con un trozo quitado, para que lo de después se mueva) y
+  exportado por la ventana real: los 18 pares llegan con **0 ms** de desfase
+  (`tests/bench/av-sync.mjs`). Con tu vídeo de KRATOS, una comparación inicial
+  daba 80 ms, pero era la medición: saltar en AAC con `-ss` antes de `-i` cae
+  en un paquete, no en el instante; decodificando desde el principio queda en
+  ~13 ms respecto a la propia sincronía del archivo, menos de medio fotograma.
 
 ### Prueba completa antes de publicar
-- Typecheck limpio; unitarias **514**; interfaz **58/58** contra la
-  compilación de desarrollo y **59/59 contra el ejecutable empaquetado y sin
+- Typecheck limpio; unitarias **528**; interfaz **61/61** contra la
+  compilación de desarrollo y **60/60 contra el ejecutable empaquetado y sin
   red** (ninguna petición a la red, 60/60 fotogramas exportados correctos).
 - E2E **21/21**; GPU **22/22**; metraje largo **6/6** (45 minutos importados
-  en 2,3 s, 10 s exportados desde el minuto 30 en 1,4 s).
+  en 2,2 s, 10 s exportados desde el minuto 30 a 220 fps).
 - Arrastre del cursor con tu vídeo de KRATOS vs THOR: hacia atrás por terreno
   nuevo **94 %**, hacia delante y por terreno recorrido **100 %**.
-- Audio por partes contra el decodificado entero: idéntico muestra a muestra.
+- Audio y sincronía: por partes contra el decodificado entero idéntico
+  muestra a muestra; mezcla por tramos contra la entera **4/4**; saltos
+  largos en el audio **5/5**; destello y pitido a **0 ms** tras un corte
+  **4/4**; primer paquete irregular **6/6**.
+- **Prueba de estrés de una hora con tu vídeo de KRATOS: 26/26**
+  (`npm run test:stress`). Importa el vídeo y 17 imágenes difíciles (4K,
+  tamaños impares, 16 px, con alfa, vertical) en bins; monta exactamente una
+  hora (108.000 fotogramas) con 234 cortes, 40 borrados, 85 clips
+  etalonados o animados y 40 superposiciones con keyframes; 150 ediciones
+  más, deshechas y rehechas hasta volver **exactamente** al mismo proyecto;
+  arrastra el cursor por toda la hora, reproduce, guarda y reabre en otra
+  sesión; cancela un render y exporta la hora entera en **4,6 min (391 fps)**
+  con **558 MB** de pico en la página. El archivo, comprobado aparte: 3.600,00
+  s, los 108.000 fotogramas, marcas de tiempo exactas (0 desviados, el último
+  a 0,0 ms), se decodifica sin un error, imagen igual a la fuente en 24
+  momentos al azar (diferencia media 1,0), diapositivas correctas, sonido de
+  la fuente a −9,5…−15,5 ms de la imagen (menos de medio fotograma) y
+  silencio donde solo hay imágenes. Además, 15 cancelaciones seguidas de la
+  exportación de la hora: 0 errores.
 - Las pruebas de GPU, metraje largo y el benchmark de exportación esperaban
   ver «This render:», que el rediseño había dejado dentro de la sección
   Hardware plegada: ahora está en su título, visible sin abrirla.

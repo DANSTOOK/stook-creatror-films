@@ -80,6 +80,10 @@ export class EncoderPipeline {
      */
     const audioArgs = withAudio
       ? [
+          // A streamed mix is headerless float32: ffmpeg has to be told what it is.
+          ...(settings.audioRawFormat
+            ? ['-f', 'f32le', '-ar', String(settings.audioRawFormat.sampleRate), '-ac', String(settings.audioRawFormat.channels)]
+            : []),
           '-i',
           settings.audioPath as string,
           '-map',
@@ -110,6 +114,14 @@ export class EncoderPipeline {
         // away the whole point of the WebCodecs path.
         '-c:v',
         'copy',
+        // Stamp frame N at exactly N/fps. An Annex-B stream carries no
+        // timestamps, and the ones ffmpeg makes up for it run fast: durations
+        // alternate 40000/39999 ticks, an hour ended 36 ms (more than a frame)
+        // ahead of its sound, and where the drift crossed half a frame two
+        // frames rounded onto the same time. Counted from the packets, not
+        // accumulated, so no drift can build up.
+        '-bsf:v',
+        `setts=ts=N/(${settings.fps}*TB)`,
         ...(settings.pipeMode === 'annexb-hevc' ? ['-tag:v', 'hvc1'] : []),
         '-movflags',
         '+faststart',
@@ -254,6 +266,13 @@ export class EncoderPipeline {
   }
 
   /**
+   * Jobs cancelled this session. Chunks the renderer had already queued keep
+   * arriving for a moment after a cancel, and a write to a job that was
+   * deliberately stopped is not an error worth throwing back.
+   */
+  private readonly cancelledJobs = new Set<string>();
+
+  /**
    * Write one frame, respecting backpressure.
    *
    * Without the drain wait, a fast compositor outruns the encoder and the raw
@@ -261,7 +280,11 @@ export class EncoderPipeline {
    */
   async writeFrame(jobId: string, frame: Uint8Array): Promise<void> {
     const job = this.jobs.get(jobId);
-    if (!job) throw new Error(`Unknown export job "${jobId}"`);
+    if (!job) {
+      if (this.cancelledJobs.has(jobId)) return;
+      throw new Error(`Unknown export job "${jobId}"`);
+    }
+    if (job.cancelled) return;
 
     // Raw frames have a fixed size, so a mismatch means the renderer and the
     // encoder disagree about the resolution - worth catching loudly. Encoded
@@ -276,10 +299,26 @@ export class EncoderPipeline {
       }
     }
 
-    const flushed = job.process.stdin.write(frame);
+    const stdin = job.process.stdin;
+    const flushed = stdin.write(frame);
     if (!flushed) {
-      await new Promise<void>((resolve) => job.process.stdin.once('drain', resolve));
+      // Not only 'drain': a cancel destroys stdin and kills the encoder, and
+      // then drain never comes. The write used to wait for it forever, the
+      // reply to the renderer was dropped, and the page logged "reply was
+      // never sent" from a render that had been cancelled cleanly.
+      await new Promise<void>((resolve) => {
+        const settle = (): void => {
+          stdin.off('drain', settle);
+          stdin.off('close', settle);
+          stdin.off('error', settle);
+          resolve();
+        };
+        stdin.once('drain', settle);
+        stdin.once('close', settle);
+        stdin.once('error', settle);
+      });
     }
+    if (job.cancelled) return;
 
     job.framesWritten += 1;
     if (job.framesWritten % 5 === 0 || job.framesWritten === job.totalFrames) {
@@ -359,6 +398,7 @@ export class EncoderPipeline {
     if (!job) return;
 
     job.cancelled = true;
+    this.cancelledJobs.add(jobId);
     job.process.stdin.destroy();
     job.process.kill('SIGKILL');
     this.jobs.delete(jobId);

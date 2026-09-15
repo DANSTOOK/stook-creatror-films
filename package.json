@@ -24,6 +24,11 @@
     "test:bench": "node ./tests/bench/run.mjs",
     "test:bench:scrub": "node ./tests/bench/scrub.mjs",
     "test:bench:audio": "node ./tests/bench/audio-stream.mjs",
+    "test:stress": "node ./tests/stress/run.mjs",
+    "test:bench:av-sync": "node ./tests/bench/av-sync.mjs",
+    "test:bench:audio-seek": "node ./tests/bench/audio-seek.mjs",
+    "test:bench:audio-chunks": "node ./tests/bench/audio-chunks.mjs",
+    "test:bench:audio-irregular-head": "node ./tests/bench/audio-irregular-head.mjs",
     "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
     "release": "node ./scripts/release.mjs",
     "rollback": "node ./scripts/rollback.mjs"

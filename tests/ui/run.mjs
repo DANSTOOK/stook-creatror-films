@@ -37,6 +37,7 @@ const panelDropImage = join(workDir, 'panel-drop.png');
 const timelineDropImage = join(workDir, 'drop.png');
 const projectPath = join(workDir, 'ui-project.scf');
 const folderImportRoot = join(workDir, 'Footage');
+const droppedFolderRoot = join(workDir, 'Dropped');
 
 /** Media panel width left by the resize checks, to find again in the fresh session. */
 let persistedMediaWidth = null;
@@ -94,6 +95,9 @@ async function prepare() {
     await mkdir(join(folderImportRoot, dir), { recursive: true });
     await copyFile(panelDropImage, join(folderImportRoot, dir, name));
   }
+  // And one to drag in from "Explorer", for the folder drop.
+  await mkdir(join(droppedFolderRoot, 'Clips'), { recursive: true });
+  await copyFile(panelDropImage, join(droppedFolderRoot, 'Clips', 'still-drop.png'));
 
   if (!process.env.UI_SOURCE_VIDEO) {
     // A short clip WITH audio, so the export exercises the mux too.
@@ -814,13 +818,59 @@ async function main() {
         && afterFolder.current === 'Footage',
       `bins [${afterFolder.bins.join(', ')}]; still-a.png in "${afterFolder.assets['still-a.png']}", showing "${afterFolder.current}"`);
 
+    // A folder dragged out of Explorer. Chromium's own drag with the folder's
+    // path arrives exactly as a real one does - a directory entry - where a
+    // DataTransfer built in the page could only ever carry files.
+    await window.getByRole('treeitem', { name: /^Master/ }).click();
+    const cdp = await window.context().newCDPSession(window);
+    const panelBox = await mediaPanel.boundingBox();
+    const dropPoint = { x: Math.round(panelBox.x + panelBox.width / 2), y: Math.round(panelBox.y + panelBox.height * 0.7) };
+    for (const type of ['dragEnter', 'dragOver', 'drop']) {
+      await cdp.send('Input.dispatchDragEvent', {
+        type,
+        ...dropPoint,
+        data: { items: [], files: [droppedFolderRoot], dragOperationsMask: 1 },
+      });
+    }
+    await window.waitForFunction(
+      () => window.__scfStore.getState().assets.some((a) => a.name === 'still-drop.png'),
+      null,
+      { timeout: 30_000 },
+    ).catch(() => undefined);
+    const afterFolderDrop = await libraryState();
+    check('a folder dropped from Explorer becomes bins, like the folder button',
+      afterFolderDrop.bins.includes('Dropped') && afterFolderDrop.bins.includes('Dropped/Clips')
+        && afterFolderDrop.assets['still-drop.png'] === 'Dropped/Clips',
+      `bins [${afterFolderDrop.bins.join(', ')}]; still-drop.png in "${afterFolderDrop.assets['still-drop.png'] ?? 'not imported'}"`);
+
+    // Bin edits undo from the keyboard like any other edit.
+    await window.getByRole('button', { name: 'New bin', exact: true }).click();
+    const tempBinName = window.getByLabel('Bin name');
+    await tempBinName.waitFor({ state: 'visible', timeout: 5_000 });
+    await tempBinName.fill('Temp');
+    await tempBinName.press('Enter');
+    // Paths, and the new bin lands inside whichever bin is on show: compare names.
+    const binLeafNames = (paths) => paths.map((path) => path.split('/').pop());
+    const withTemp = binLeafNames((await libraryState()).bins).includes('Temp');
+    await window.keyboard.press('Control+z'); // the rename
+    await window.keyboard.press('Control+z'); // the new bin
+    const afterBinUndo = (await libraryState()).bins;
+    await window.keyboard.press('Control+Shift+z');
+    const afterBinRedo = (await libraryState()).bins;
+    await window.keyboard.press('Control+z');
+    const afterBinSettle = (await libraryState()).bins;
+    const unnamed = (paths) => binLeafNames(paths).some((name) => /^Bin \d+$/.test(name));
+    check('Ctrl+Z takes back a new bin and its name, Ctrl+Shift+Z brings the bin back',
+      withTemp && !binLeafNames(afterBinUndo).includes('Temp') && !unnamed(afterBinUndo) && unnamed(afterBinRedo) && !unnamed(afterBinSettle),
+      `named Temp ${withTemp}; after two undos [${afterBinUndo.join(', ')}]; after redo [${afterBinRedo.join(', ')}]`);
+
     // Saved again, so the fresh session at the end has bins to restore.
     await app.evaluate(({ dialog }, project) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: project });
     }, projectPath);
     await window.getByRole('button', { name: 'Save' }).click();
     let savedBins = 0;
-    for (let attempt = 0; attempt < 50 && savedBins !== 4; attempt += 1) {
+    for (let attempt = 0; attempt < 50 && savedBins !== 6; attempt += 1) {
       await window.waitForTimeout(200);
       try {
         savedBins = (JSON.parse(await readFile(projectPath, 'utf8')).bins ?? []).length;
@@ -828,7 +878,7 @@ async function main() {
         savedBins = 0;
       }
     }
-    check('bins are saved with the project', savedBins === 4, `${savedBins} bins in the file`);
+    check('bins are saved with the project', savedBins === 6, `${savedBins} bins in the file`);
 
     /* Export --------------------------------------------------------------- */
     // The export picks a FOLDER in a dialog and takes the name from a text
@@ -999,7 +1049,7 @@ async function main() {
       return { count: bins.length, dayOne: nameOf(assets.find((a) => a.name === 'still-a.png')?.binId) };
     });
     check('bins, and the bin each clip is in, survive reopening in a new session',
-      reopenedBins.count === 4 && reopenedBins.dayOne === 'Day 1',
+      reopenedBins.count === 6 && reopenedBins.dayOne === 'Day 1',
       `${reopenedBins.count} bins; still-a.png in ${reopenedBins.dayOne}`);
 
     const reopenedMediaWidth = Math.round(

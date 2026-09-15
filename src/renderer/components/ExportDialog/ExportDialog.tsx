@@ -11,7 +11,7 @@ import type {
 import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPlan';
 import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
-import { renderTimelineAudio } from '@renderer/audio/renderMix';
+import { streamTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
@@ -317,21 +317,36 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
       // to exist before the encoder is spawned.
       let audioPath: string | undefined;
       let audioBitrateKbps: number | undefined;
+      let audioRawFormat: { sampleRate: number; channels: number } | undefined;
 
       if (settings.format !== 'png-sequence') {
         setMessage('Rendering audio...');
-        const mix = await renderTimelineAudio(
-          project,
-          assets,
-          settings.startFrame,
-          settings.endFrame,
-        ).catch((error: unknown) => {
+        // A minute at a time, straight to a file: the whole mix never exists
+        // in memory at once. See streamTimelineAudio.
+        const mixPath = await window.filmora.exportAudioOpen();
+        let mix: Awaited<ReturnType<typeof streamTimelineAudio>> = null;
+        try {
+          mix = await streamTimelineAudio(
+            project,
+            assets,
+            settings.startFrame,
+            settings.endFrame,
+            (samples) => window.filmora.exportAudioAppend(mixPath, samples.buffer as ArrayBuffer),
+            {
+              onProgress: (done, total) =>
+                setMessage(`Rendering audio... ${formatClock(done)} of ${formatClock(total)}`),
+            },
+          );
+        } catch (error) {
           setMessage(`Audio mix failed, exporting without sound: ${String(error)}`);
-          return null;
-        });
+          mix = null;
+        } finally {
+          await window.filmora.exportAudioClose(mixPath, mix === null);
+        }
 
         if (mix) {
-          audioPath = await window.filmora.writeExportAudio(mix.wav);
+          audioPath = mixPath;
+          audioRawFormat = { sampleRate: mix.sampleRate, channels: mix.channels };
           audioBitrateKbps = recommendedAudioBitrateKbps(mix.channels);
         }
       }
@@ -353,7 +368,7 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
         ...settings,
         pipeMode: jobPlan.pipeMode,
         hardwareEncoder: jobPlan.hardwareEncoder,
-        ...(audioPath ? { audioPath, audioBitrateKbps } : {}),
+        ...(audioPath ? { audioPath, audioBitrateKbps, audioRawFormat } : {}),
         ...(thumbnailPath && coverArt ? { thumbnailPath } : {}),
       };
 

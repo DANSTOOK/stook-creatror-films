@@ -26,6 +26,13 @@ const api: FilmoraApi = {
       IPC.registerDroppedFiles,
       files.map((file) => webUtils.getPathForFile(file)).filter((path) => path !== ''),
     ) as Promise<PickedFile[]>,
+  // A dropped folder is a File too, and getPathForFile gives its path the
+  // same way - only for one the OS handed over.
+  registerDroppedFolders: (folders) =>
+    ipcRenderer.invoke(
+      IPC.registerDroppedFolders,
+      folders.map((folder) => webUtils.getPathForFile(folder)).filter((path) => path !== ''),
+    ) as Promise<PickedFile[]>,
   openProject: () =>
     ipcRenderer.invoke(IPC.openProject) as Promise<{ path: string; contents: string } | null>,
   openLut: () =>
@@ -53,6 +60,9 @@ const api: FilmoraApi = {
   relaunch: () => ipcRenderer.invoke(IPC.relaunch),
 
   writeExportAudio: (wav) => ipcRenderer.invoke(IPC.writeExportAudio, wav) as Promise<string>,
+  exportAudioOpen: () => ipcRenderer.invoke(IPC.exportAudioOpen) as Promise<string>,
+  exportAudioAppend: (path, samples) => ipcRenderer.invoke(IPC.exportAudioAppend, path, samples) as Promise<void>,
+  exportAudioClose: (path, discard) => ipcRenderer.invoke(IPC.exportAudioClose, path, discard) as Promise<void>,
   exportStart: (settings: ExportSettings) => ipcRenderer.invoke(IPC.exportStart, settings),
   exportFrame: (jobId, rgba) => ipcRenderer.invoke(IPC.exportFrame, jobId, rgba),
   exportFinish: (jobId) => ipcRenderer.invoke(IPC.exportFinish, jobId),

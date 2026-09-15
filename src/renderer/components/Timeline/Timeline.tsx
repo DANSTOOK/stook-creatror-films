@@ -527,6 +527,12 @@ export function Timeline(): JSX.Element {
         if (marker) {
           state.setUi({ selectedMarkerId: marker.id });
           state.setCurrentFrame(marker.frame);
+          // Still a scrub if the pointer moves on. Zoomed out, a flag's few
+          // pixels cover hundreds of frames, and a press anywhere near one used
+          // to grab the marker and ignore the drag: across a fitted hour with
+          // markers every minute, the ruler could not be scrubbed at all.
+          dragRef.current = { kind: 'scrub' };
+          emitScrub(store.getState().project.currentFrame);
           return;
         }
 

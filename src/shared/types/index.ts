@@ -393,6 +393,12 @@ export interface ExportSettings {
   audioPath?: string;
   audioBitrateKbps?: number;
   /**
+   * Set when `audioPath` is a streamed mix: headerless interleaved float32
+   * at this rate and channel count, rather than a WAV. It has no size limit,
+   * which a WAV's 4 GB header does - about three hours of stereo float.
+   */
+  audioRawFormat?: { sampleRate: number; channels: number };
+  /**
    * Image embedded as the file's cover (MP4 / MOV), the thumbnail players and
    * Explorer show. Added after the encode by a stream-copy pass.
    */

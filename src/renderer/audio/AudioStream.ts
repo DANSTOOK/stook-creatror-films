@@ -126,6 +126,17 @@ export class AudioStream {
   private readonly primingSeconds: number;
   private readonly primingSamples: number;
 
+  /**
+   * The first packet is not one AAC frame long (a gap after it in the
+   * timestamps). A decode started on packet 0 then places everything after
+   * it off by that difference for as long as it runs: on the user's footage,
+   * whose first step is 2494 samples, sound walked to from the head of the
+   * file landed 56.5 ms later than the same sound reached by a jump - more
+   * than a frame out of step, in some clips of an export and not others.
+   * Such a file is never decoded from packet 0.
+   */
+  private readonly irregularHead: boolean;
+
   /* The forward decoder and what it has produced. */
   private decoder: AudioDecoder | null = null;
   private frames: DecodedFrame[] = [];
@@ -149,6 +160,14 @@ export class AudioStream {
     this.read = rangeReader(url);
     this.primingSeconds = this.samples[0].time < 0 ? 0 : AAC_PRIMING_SAMPLES / track.sampleRate;
     this.primingSamples = Math.round(this.primingSeconds * track.sampleRate);
+    this.irregularHead =
+      this.samples.length > 1 &&
+      Math.abs((this.samples[1].time - this.samples[0].time) * track.sampleRate - AAC_FRAME_SAMPLES) > 1;
+  }
+
+  /** The earliest packet a decode may start on. */
+  private get firstStartIndex(): number {
+    return this.irregularHead ? 1 : 0;
   }
 
   get sampleRate(): number {
@@ -287,9 +306,9 @@ export class AudioStream {
     // Where to begin feeding, in sample-table terms.
     const fileFrom = Math.max(0, fromSeconds) + this.primingSeconds;
     const start =
-      fromSeconds < NEAR_HEAD_SECONDS
+      fromSeconds < NEAR_HEAD_SECONDS && !this.irregularHead
         ? 0
-        : Math.max(0, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
+        : Math.max(this.firstStartIndex, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
 
     this.nextFeed = start;
     // Labels run one frame ahead of content only when starting at the head.
@@ -474,7 +493,7 @@ export class AudioStream {
     const fileFrom = fromSeconds + this.primingSeconds;
     const firstSample = Math.round(fileFrom * sampleRate);
     const endSeconds = fileFrom + seconds;
-    const start = Math.max(0, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
+    const start = Math.max(this.firstStartIndex, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
     const labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
     const feedUntilSeconds = endSeconds - labelShift / sampleRate;
 

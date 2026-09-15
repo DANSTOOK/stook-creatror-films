@@ -225,6 +225,29 @@ export async function importFolderFromDialog(fps: number): Promise<ImportOutcome
 }
 
 /**
+ * Import folders dropped from Explorer, subfolders included - the drag
+ * equivalent of "Add folder and subfolders".
+ *
+ * A dropped folder reaches the page as a File with no bytes; the main
+ * process resolves its path and walks it.
+ */
+export async function importDroppedFolders(folders: File[], fps: number): Promise<ImportOutcome> {
+  if (folders.length === 0) return { assets: [], rejected: [] };
+  if (!hasNativeBridge() || typeof window.filmora.registerDroppedFolders !== 'function') {
+    return {
+      assets: [],
+      rejected: folders.map((folder) => ({ name: folder.name, reason: 'folders can only be added in the desktop app' })),
+    };
+  }
+
+  const picked = await window.filmora.registerDroppedFolders(folders);
+  if (picked.length === 0) {
+    return { assets: [], rejected: folders.map((folder) => ({ name: folder.name, reason: 'no media files inside' })) };
+  }
+  return importPickedFiles(picked, fps);
+}
+
+/**
  * Import files dropped onto the window.
  *
  * Under Electron a drop goes through the same path as the open dialog: the

@@ -287,7 +287,9 @@ export async function renderTimelineAudio(
   // Streamed where possible: only the stretch being rendered is decoded,
   // rather than every source in full before the render starts.
   const streams = await openStreams(assets, wanted);
-  const decodeContext = new OfflineAudioContext(channels, Math.max(1, length), sampleRate);
+  // Only decodes; its length is what it would RENDER, and nothing is rendered
+  // with it. Sized to the range, it reserved the whole mix a second time.
+  const decodeContext = new OfflineAudioContext(channels, 1, sampleRate);
   const buffers = await decodeSources(decodeContext, assets, wanted, new Set(streams.keys()));
 
   if (buffers.size === 0 && streams.size === 0) return null;
@@ -361,6 +363,161 @@ export async function renderTimelineAudio(
     sampleRate,
     durationSeconds: length / sampleRate,
     clipsMixed,
+    peak,
+    duckFloor,
+  };
+}
+
+/** Seconds of mix rendered per piece of a streamed export. */
+export const MIX_CHUNK_SECONDS = 60;
+
+/**
+ * Seconds rendered and thrown away in front of each piece, so the resampler,
+ * the EQ filters and the ducking envelope reach the piece already settled -
+ * as they are in one long render - rather than starting from rest at every
+ * boundary.
+ */
+export const MIX_PREROLL_SECONDS = 2;
+
+export interface StreamedMix {
+  channels: number;
+  sampleRate: number;
+  durationSeconds: number;
+  /** Audible clips with a decodable source in the range. */
+  clipsMixed: number;
+  peak: number;
+  duckFloor: number;
+}
+
+/**
+ * The same mix as `renderTimelineAudio`, rendered a piece at a time.
+ *
+ * One OfflineAudioContext for the whole range holds all of it as float -
+ * 1.4 GB for an hour of 48 kHz stereo - and the WAV made from it is a second
+ * copy. An hour-long export peaked at 5.3 GB in the page. Here each piece is
+ * rendered, handed to `write` as interleaved float32 and let go, so memory
+ * stays at one piece whatever the length of the export.
+ *
+ * The total is exactly as many samples as the single render: the muxer lines
+ * picture and sound up by length, not by timestamps.
+ *
+ * Returns null, having written nothing, when nothing in the range is audible.
+ */
+export async function streamTimelineAudio(
+  project: ProjectState,
+  assets: readonly MediaAsset[],
+  startFrame: number,
+  endFrame: number,
+  write: (interleaved: Float32Array) => Promise<void>,
+  options: {
+    sampleRate?: number;
+    channels?: number;
+    chunkSeconds?: number;
+    prerollSeconds?: number;
+    onProgress?: (doneSeconds: number, totalSeconds: number) => void;
+  } = {},
+): Promise<StreamedMix | null> {
+  const sampleRate = options.sampleRate ?? EXPORT_SAMPLE_RATE;
+  const channels = options.channels ?? EXPORT_CHANNELS;
+  const { fps } = project;
+  const rangeFrames = Math.max(0, endFrame - startFrame);
+  if (rangeFrames === 0) return null;
+
+  // Exactly the picture duration, as in the single render.
+  const totalLength = Math.ceil((rangeFrames / fps) * sampleRate);
+  const trackById = new Map(project.tracks.map((track) => [track.id, track]));
+  const anySolo = hasSoloedTrack(project);
+
+  const audible = Object.values(project.clips).filter((clip) => {
+    const track = trackById.get(clip.trackId);
+    if (!track || !isTrackAudible(track, anySolo)) return false;
+    return clip.startFrame < endFrame && clip.startFrame + clip.durationFrames > startFrame;
+  });
+  if (audible.length === 0) return null;
+
+  const wanted = new Set(audible.map((clip) => clip.sourceUri));
+  const streams = await openStreams(assets, wanted);
+  const decodeContext = new OfflineAudioContext(channels, 1, sampleRate);
+  const buffers = await decodeSources(decodeContext, assets, wanted, new Set(streams.keys()));
+  if (buffers.size === 0 && streams.size === 0) {
+    for (const stream of streams.values()) stream.close();
+    return null;
+  }
+
+  const withSource = audible.filter((clip) => streams.has(clip.sourceUri) || buffers.has(clip.sourceUri));
+  if (withSource.length === 0) return null;
+
+  const ducking = project.audio.ducking;
+  const duckingApplies = ducking.enabled && withSource.some((clip) => trackById.get(clip.trackId)?.bus === 'dialogue');
+  const master = clamp(project.audio.masterVolume, 0, 2);
+  const chunkLength = Math.max(1, Math.round((options.chunkSeconds ?? MIX_CHUNK_SECONDS) * sampleRate));
+  const prerollLength = Math.max(0, Math.round((options.prerollSeconds ?? MIX_PREROLL_SECONDS) * sampleRate));
+
+  let peak = 0;
+  let duckFloor = 1;
+
+  try {
+    for (let at = 0; at < totalLength; at += chunkLength) {
+      const pieceLength = Math.min(chunkLength, totalLength - at);
+      const preroll = Math.min(prerollLength, at);
+      const length = preroll + pieceLength;
+      const geometry: MixGeometry = {
+        fps,
+        // Fractional frames are fine: clips are placed in seconds from here.
+        startFrame: startFrame + ((at - preroll) / sampleRate) * fps,
+        durationSeconds: length / sampleRate,
+        length,
+        sampleRate,
+        channels,
+      };
+      const pieceEndFrame = geometry.startFrame + geometry.durationSeconds * fps;
+      const inPiece = withSource.filter(
+        (clip) => clip.startFrame < pieceEndFrame && clip.startFrame + clip.durationFrames > geometry.startFrame,
+      );
+
+      const out = new Float32Array(pieceLength * channels);
+      if (inPiece.length > 0) {
+        let planar: Float32Array[];
+        const onBus = (bus: Track['bus']): Clip[] => inPiece.filter((clip) => trackById.get(clip.trackId)?.bus === bus);
+        const dialogue = onBus('dialogue');
+        if (duckingApplies && dialogue.length > 0) {
+          const music = await renderClips(onBus('music'), trackById, buffers, streams, anySolo, geometry);
+          const speech = await renderClips(dialogue, trackById, buffers, streams, anySolo, geometry);
+          duckFloor = Math.min(duckFloor, duckOffline(music.planar, speech.planar, sampleRate, ducking));
+          planar = music.planar;
+          for (let channel = 0; channel < planar.length; channel += 1) {
+            const target = planar[channel];
+            const add = speech.planar[channel];
+            for (let i = 0; i < target.length; i += 1) target[i] += add[i];
+          }
+        } else {
+          planar = (await renderClips(inPiece, trackById, buffers, streams, anySolo, geometry)).planar;
+        }
+
+        // Drop the pre-roll, apply the master and weave the channels.
+        for (let channel = 0; channel < channels; channel += 1) {
+          const plane = planar[Math.min(channel, planar.length - 1)];
+          for (let i = 0; i < pieceLength; i += 1) {
+            const value = plane[preroll + i] * master;
+            out[i * channels + channel] = value;
+            const magnitude = Math.abs(value);
+            if (magnitude > peak) peak = magnitude;
+          }
+        }
+      }
+
+      await write(out);
+      options.onProgress?.((at + pieceLength) / sampleRate, totalLength / sampleRate);
+    }
+  } finally {
+    for (const stream of streams.values()) stream.close();
+  }
+
+  return {
+    channels,
+    sampleRate,
+    durationSeconds: totalLength / sampleRate,
+    clipsMixed: withSource.length,
     peak,
     duckFloor,
   };

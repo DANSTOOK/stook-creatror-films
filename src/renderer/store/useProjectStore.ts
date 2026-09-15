@@ -70,8 +70,12 @@ import {
   ensureBinPath as ensureMediaBinPath,
   moveAssetsToBin as moveMediaAssets,
   renameBin as renameMediaBin,
+  librarySnapshot,
+  restoreLibrary,
   sanitizeBins,
+  type LibrarySnapshot,
 } from '@renderer/media/bins';
+import { createLibraryCommand } from './useHistoryStore';
 
 /**
  * Single source of truth for the editor.
@@ -249,6 +253,26 @@ interface ProjectStore {
 }
 
 
+/** Record an applied bin edit as one undo step; an edit that changed nothing is not recorded. */
+function pushLibraryEdit(label: string, before: LibrarySnapshot, after: LibrarySnapshot): void {
+  if (JSON.stringify(before) === JSON.stringify(after)) return;
+  useHistoryStore.getState().push(createLibraryCommand(label, before, after));
+}
+
+/**
+ * The library as an undo or redo of a bin edit leaves it, or nothing when the
+ * step was a timeline edit. The bin on show stays on show if it still exists.
+ */
+function libraryAt(
+  state: { assets: MediaAsset[]; currentBinId: string | null },
+  snapshot: LibrarySnapshot | undefined,
+): Partial<{ bins: MediaBin[]; assets: MediaAsset[]; currentBinId: string | null }> {
+  if (!snapshot) return {};
+  const restored = restoreLibrary(state.assets, snapshot);
+  const current = state.currentBinId;
+  return { ...restored, currentBinId: current && restored.bins.some((bin) => bin.id === current) ? current : null };
+}
+
 /** Keep `durationFrames` at least as long as the content plus a little tail. */
 function withContentLength(project: ProjectState): ProjectState {
   const content = projectContentLength(project);
@@ -348,13 +372,28 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   // used to clear it, so undoing a group move meant selecting the whole group
   // again before trying the move a second time.
   undo() {
-    const reverted = useHistoryStore.getState().undo(get().project);
-    if (reverted) set({ project: reverted, ui: keepSelectionIn(reverted, get().ui) });
+    const history = useHistoryStore.getState();
+    // Read before undoing: a bin edit carries the library to put back.
+    const command = history.peekUndo();
+    const reverted = history.undo(get().project);
+    if (!reverted) return;
+    set({
+      project: reverted,
+      ui: keepSelectionIn(reverted, get().ui),
+      ...libraryAt(get(), command?.library?.before),
+    });
   },
 
   redo() {
-    const reapplied = useHistoryStore.getState().redo(get().project);
-    if (reapplied) set({ project: reapplied, ui: keepSelectionIn(reapplied, get().ui) });
+    const history = useHistoryStore.getState();
+    const command = history.peekRedo();
+    const reapplied = history.redo(get().project);
+    if (!reapplied) return;
+    set({
+      project: reapplied,
+      ui: keepSelectionIn(reapplied, get().ui),
+      ...libraryAt(get(), command?.library?.after),
+    });
   },
 
   /* Transport ------------------------------------------------------------ */
@@ -1168,25 +1207,36 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ currentBinId: binId && get().bins.some((bin) => bin.id === binId) ? binId : null });
   },
 
+  // Bin edits are undoable steps like timeline edits, in the same history,
+  // so Ctrl+Z takes back whichever came last. Importing (and the bins a
+  // folder import creates) is not, the same as importing a file.
   createBin(parentId, name) {
+    const before = librarySnapshot(get().bins, get().assets);
     const created = createMediaBin(get().bins, parentId, name);
     set({ bins: created.bins });
+    pushLibraryEdit('New bin', before, librarySnapshot(get().bins, get().assets));
     return created.bin.id;
   },
 
   renameBin(binId, name) {
+    const before = librarySnapshot(get().bins, get().assets);
     set({ bins: renameMediaBin(get().bins, binId, name) });
+    pushLibraryEdit('Rename bin', before, librarySnapshot(get().bins, get().assets));
   },
 
   deleteBin(binId) {
+    const before = librarySnapshot(get().bins, get().assets);
     const parentId = get().bins.find((bin) => bin.id === binId)?.parentId ?? null;
     const next = deleteMediaBin(get().bins, get().assets, binId);
     // Looking at the bin being deleted would show nothing: follow its contents up.
     set({ ...next, currentBinId: get().currentBinId === binId ? parentId : get().currentBinId });
+    pushLibraryEdit('Delete bin', before, librarySnapshot(get().bins, get().assets));
   },
 
   moveAssetsToBin(assetIds, binId) {
+    const before = librarySnapshot(get().bins, get().assets);
     set({ assets: moveMediaAssets(get().assets, assetIds, binId) });
+    pushLibraryEdit('Move to bin', before, librarySnapshot(get().bins, get().assets));
   },
 
   ensureBinPath(parentId, segments) {
