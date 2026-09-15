@@ -203,7 +203,11 @@ async function main() {
         const ses = session.defaultSession;
         ses.enableNetworkEmulation({ offline: true });
         ses.webRequest.onBeforeRequest((details, callback) => {
-          const local = /^(file|blob|data|devtools|chrome|chrome-extension):/i.test(details.url);
+          // media: is the app's own protocol for footage on disk (main/ipc/
+          // mediaProtocol.ts serves a file by token, nothing else). It came
+          // after this list was written, and blocking it failed every import
+          // with the network cut - a stale list, not a network dependency.
+          const local = /^(file|blob|data|devtools|chrome|chrome-extension|media):/i.test(details.url);
           if (!local) {
             globalThis.__externalRequests.push(details.url);
             callback({ cancel: true });

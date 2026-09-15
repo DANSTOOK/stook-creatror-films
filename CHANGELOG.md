@@ -10,8 +10,9 @@ página se pueda leer sin tener que creerse nada por fe.
 Cifras de referencia al día de hoy: **497 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **47/47 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, opciones de exportación y reapertura en una sesión nueva) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
-todas contra la compilación de desarrollo. Las 18/18 contra el ejecutable
-empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
+todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
+y sin red: **48/48** con la v1.9.1-beta.1 (ninguna petición a la red, los 60
+fotogramas exportados correctos); antes solo se había hecho con la v1.0.
 
 ---
 
