@@ -58,8 +58,18 @@ empaquetado y sin red son de la v1.0 y no se han repetido desde entonces.
   decodificador junto al punto pedido en lugar de volver al principio, y el
   comentario que decía lo contrario se ha corregido. No se ha vuelto a medir.
 
-Pruebas: unitarias **497**, interfaz **47/47**, E2E **21/21**. GPU y metraje
-largo no se han repetido en esta beta.
+### Prueba completa antes de publicar
+Todo seguido, contra la compilación de desarrollo de esta beta:
+- Typecheck limpio; unitarias **497**; E2E **21/21**; interfaz **47/47**;
+  GPU **22/22** (RTX 4060 Laptop + Intel UHD).
+- Metraje largo **6/6**: 45 minutos (1,93 GB) importados en 7,3 s, con picos
+  de 157 MB en el proceso principal y 357 MB en la página; 10 s exportados
+  desde el minuto 30 en 1,4 s.
+- Arrastre del cursor con tu vídeo de KRATOS vs THOR (19 min): hacia atrás
+  por terreno nuevo **93 %**, hacia delante **100 %**, hacia atrás por terreno
+  recorrido **100 %** (solo con búsquedas del elemento de vídeo: 25–28 %).
+- Audio por partes contra el decodificado entero: idéntico muestra a muestra
+  (diferencia máxima 0, desfase 0 en los cuatro puntos, 7 ventanas).
 
 ---
 
