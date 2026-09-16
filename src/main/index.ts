@@ -43,22 +43,25 @@ registerMediaSchemeAsPrivileged();
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 
 /**
- * Do not pace the compositor to the display's refresh.
+ * Frames are paced to the display's refresh, as they normally would be.
  *
- * An export builds each frame as a `VideoFrame` from the canvas, and that
- * call is gated by vsync: measured on a 180 Hz screen, the whole export
- * advanced exactly one refresh per frame - 5.555 ms, or 11.111 ms when a
- * frame slipped the deadline, never anything in between - which pinned an
- * encoder good for 700 fps at 180. Lifting it took the same render from
- * 30.7 s to 9.6 s, with every exported frame still the right picture.
+ * This used to be turned off. Back when an export built each frame as a
+ * `VideoFrame` from the canvas, that call was gated by vsync - measured on a
+ * 180 Hz screen, the export advanced exactly one refresh per frame, pinning an
+ * encoder good for 700 fps at 180 - and lifting the gate took a render from
+ * 30.7 s to 9.6 s. The cost was that the preview was no longer synchronised to
+ * the display and could tear while playing.
  *
- * The cost is that the preview is no longer synchronised to the display and
- * can tear while playing. Reading the pixels back to dodge the gate instead
- * was tried and measured slower (see WebCodecsEncoder), and
- * `disable-frame-rate-limit` is worse still - it lets the viewport's own
- * animation loop spin free.
+ * That gate is gone: the export now decodes forwards through WebCodecs instead
+ * of seeking and reading back the canvas. Re-measured on this machine (RTX 4060
+ * Laptop, 900 frames of 1080p, three runs each, alternating): 264.2 fps with
+ * vsync, 261.3 fps without. The switch buys nothing any more, so the tearing it
+ * cost is not worth paying for.
+ *
+ * SCF_DISABLE_VSYNC brings it back for a machine where it still helps, and
+ * `SKIP_SLOW=1 BENCH_SOURCE=<video> tests/bench/run.mjs` is how to check.
  */
-app.commandLine.appendSwitch('disable-gpu-vsync');
+if (process.env.SCF_DISABLE_VSYNC) app.commandLine.appendSwitch('disable-gpu-vsync');
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
