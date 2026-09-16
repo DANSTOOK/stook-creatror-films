@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Clock, Film, FolderOpen, FolderPlus, Plus, Search, Sparkles, X } from 'lucide-react';
 import type { RecentProject } from '@shared/types/ipc';
 import { hasNativeBridge } from '@renderer/media/importMedia';
+import { useFlip } from '@renderer/motion/useFlip';
 import { formatLength, nextUntitledName, relativeTime } from '@renderer/project/projectSession';
 import type { NewProjectOptions } from '@renderer/project/useProjectActions';
 
@@ -70,6 +71,11 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent }: 
     const needle = query.trim().toLowerCase();
     return (recent ?? []).filter((project) => !needle || project.name.toLowerCase().includes(needle) || project.path.toLowerCase().includes(needle));
   }, [recent, query]);
+
+  // Searching, or removing a project, moves every card after it: FLIP slides
+  // them to their new places so the eye can follow which is which.
+  const cardsRef = useRef<HTMLUListElement>(null);
+  useFlip(cardsRef, shown.map((project) => project.path).join('|'));
 
   const chosenPreset = PRESETS.find((candidate) => candidate.id === preset) ?? PRESETS[0];
 
@@ -239,9 +245,9 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent }: 
             ) : shown.length === 0 ? (
               <p className="px-1 py-8 text-center text-xs text-slate-500">No project matches &ldquo;{query}&rdquo;.</p>
             ) : (
-              <ul className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4 pb-4">
+              <ul ref={cardsRef} className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4 pb-4">
                 {shown.map((project, index) => (
-                  <li key={project.path} className="scf-rise group relative" style={stagger(index + 2)}>
+                  <li key={project.path} data-flip-key={project.path} className="scf-rise group relative" style={stagger(index + 2)}>
                     <button
                       type="button"
                       aria-label={`Open ${project.name}`}
@@ -252,7 +258,20 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent }: 
                     >
                       <div className="relative aspect-video w-full overflow-hidden bg-panel-950">
                         {project.thumbnailUrl ? (
-                          <img src={project.thumbnailUrl} alt="" className="scf-thumb h-full w-full object-cover" draggable={false} />
+                          <img
+                            src={project.thumbnailUrl}
+                            alt=""
+                            className="scf-thumb h-full w-full object-cover"
+                            draggable={false}
+                            // Faded in when it actually decodes, so a card does
+                            // not flash from empty to picture. The ref covers an
+                            // image that was already in cache, whose load event
+                            // fired before React ever saw it.
+                            ref={(image) => {
+                              if (image?.complete && image.naturalWidth > 0) image.setAttribute('data-loaded', 'true');
+                            }}
+                            onLoad={(event) => event.currentTarget.setAttribute('data-loaded', 'true')}
+                          />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center">
                             <Film size={26} className="text-slate-700" />

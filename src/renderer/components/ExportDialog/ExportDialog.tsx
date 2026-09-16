@@ -513,9 +513,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 aria-valuemax={100}
                 aria-valuenow={view.percent}
               >
+                {/* Scaled, not resized: an export updates this many times a
+                    second, and animating width would lay the dialog out again
+                    on every one of them. */}
                 <div
-                  className={`h-full rounded-full transition-[width] duration-300 ${finished ? 'bg-emerald-500' : 'bg-accent'}`}
-                  style={{ width: `${view.percent}%` }}
+                  className={`scf-progress-bar h-full w-full rounded-full ${finished ? 'bg-emerald-500' : 'bg-accent'}`}
+                  style={{ transform: `scaleX(${Math.max(0, Math.min(100, view.percent)) / 100})` }}
                 />
               </div>
               <div className="grid grid-cols-3 gap-2 text-2xs tabular-nums text-slate-400">

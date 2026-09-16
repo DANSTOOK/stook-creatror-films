@@ -104,8 +104,14 @@ export function Splitter({
       onKeyDown={onKeyDown}
     >
       <span
-        className={`pointer-events-none absolute rounded-full transition-colors ${
-          vertical ? 'inset-y-2 left-1/2 w-0.5 -translate-x-1/2' : 'inset-x-2 top-1/2 h-0.5 -translate-y-1/2'
+        // The grip thickens under the pointer by scaling, not by growing: a
+        // width change here would lay out both panels on every frame.
+        className={`pointer-events-none absolute rounded-full transition-[background-color,transform] duration-150 ${
+          vertical
+            ? 'inset-y-2 left-1/2 w-0.5 -translate-x-1/2 group-hover:scale-x-[2.5] group-focus-visible:scale-x-[2.5]'
+            : 'inset-x-2 top-1/2 h-0.5 -translate-y-1/2 group-hover:scale-y-[2.5] group-focus-visible:scale-y-[2.5]'
+        } ${
+          dragging ? (vertical ? 'scale-x-[2.5]' : 'scale-y-[2.5]') : ''
         } ${
           dragging
             ? 'bg-accent'

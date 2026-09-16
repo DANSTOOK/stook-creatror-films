@@ -8,11 +8,67 @@ Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
 Cifras de referencia al día de hoy: **542 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **67/67 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+comprobaciones de extremo a extremo**, **67/67 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **11/11 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, incluso con el vídeo reproduciéndose), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **68/68** con la v1.11.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **68/68** con la v1.12.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.12.0-beta.1 — Movimiento suave de verdad
+2026-09-15 · pre-release para probar
+
+Se investigó si convenía meter una librería de animación (Motion, la sucesora
+de Framer Motion). No hizo falta: lo que hace que el movimiento se sienta
+físico —muelles— y lo que evita los tirones —que la animación corra en el
+compositor, no en el hilo principal— ya viene en el navegador de Electron 32.
+Cero peso añadido al programa.
+
+### Añadido
+- **Muelles reales, en CSS.** Las animaciones ya no usan curvas fijas sino
+  muelles amortiguados, muestreados a la función `linear()` de CSS: llegan
+  rápido, se asientan y no se paran en seco. Hay tres, según lo que se mueve:
+  uno vivo para los diálogos, uno seco para menús y uno sin rebote para lo que
+  lleva texto. Al salir, en cambio, todo es rápido y directo: un muelle a la
+  salida se siente indeciso.
+  - Cómo se comprobó: la nueva prueba de movimiento (`npm run test:motion`,
+    11/11) lee en la propia página que el diálogo usa `linear(...)` y dura
+    0,42 s, y la prueba de proyectos comprueba las duraciones de diálogos
+    (0,42 s) y menús (0,14 s).
+- **El cambio entre la sala y el editor lo hace ahora el navegador** (View
+  Transitions API): toma una instantánea de ambos estados y los funde en el
+  compositor, en vez de mantener dos pantallas vivas y animarlas desde
+  JavaScript mientras el editor arranca sus decodificadores.
+  - Cómo se comprobó: 6 idas y vueltas medidas fotograma a fotograma: ninguna
+    congelación, 5,6 ms de mediana entre fotogramas, con un único pico de
+    33 ms al tomar la instantánea.
+- **Las listas se reordenan deslizándose** (técnica FLIP con la Web Animations
+  API): al archivar un clip en un bin, al cambiar de bin o al filtrar la lista
+  de proyectos, las fichas viajan a su sitio en vez de teletransportarse. El
+  navegador calcula la posición una vez y el viaje es solo `transform`.
+  - Cómo se comprobó: en la prueba de movimiento, 10 reordenaciones de la
+    biblioteca y el buscador escribiendo letra a letra: 0 congelaciones.
+- **Detalles pequeños:** las miniaturas de la sala aparecen fundidas cuando de
+  verdad se decodifican (antes saltaban de vacío a imagen), y el tirador entre
+  paneles engorda al pasar por encima escalando, no creciendo.
+
+### Arreglado
+- **La barra de progreso de exportación animaba su anchura**, lo que obliga al
+  navegador a recalcular el diseño del diálogo en cada actualización, decenas
+  de veces por segundo durante un render. Ahora se escala.
+  - Cómo se comprobó: la prueba de movimiento recorre todos los elementos en
+    pantalla y falla si alguno anima una propiedad de diseño (anchura, altura,
+    márgenes); pasa con 0.
+
+### Sin verificar
+- **Posible desgarro de imagen (tearing).** La app arranca con la
+  sincronización vertical desactivada porque así la exportación es tres veces
+  más rápida (medido). El coste es que las animaciones no van acompasadas al
+  refresco del monitor y, en teoría, pueden mostrar un corte horizontal. Las
+  mediciones de fluidez no detectan eso —solo miden la cadencia—, y no se ha
+  comprobado a ojo en varios monitores. No se ha tocado el ajuste para no
+  empeorar la exportación.
 
 ---
 

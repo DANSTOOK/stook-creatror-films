@@ -4,6 +4,7 @@ import { hasNativeBridge, rehydrateDocument } from '@renderer/media/importMedia'
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import type { ProjectDocument } from '@renderer/store/types';
 import { currentMarker, documentIsDirty, useSessionStore } from '@renderer/store/useSessionStore';
+import { withViewTransition } from '@renderer/motion/viewTransition';
 import { projectNameFromPath } from './projectSession';
 
 /**
@@ -154,8 +155,12 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         // the fresh URLs: the ones the project was authored with died with that
         // session.
         const { assets, project } = await rehydrateDocument(document.assets ?? [], document.project);
-        useProjectStore.getState().loadDocument({ ...document, assets, project });
-        useSessionStore.getState().startProject(opened.path, projectNameFromPath(opened.path), currentMarker());
+        // One transition for the whole swap: the document and the screen it is
+        // shown on change together, so they cross-fade as one thing.
+        await withViewTransition(() => {
+          useProjectStore.getState().loadDocument({ ...document, assets, project });
+          useSessionStore.getState().startProject(opened.path, projectNameFromPath(opened.path), currentMarker());
+        });
 
         const missing = assets.filter((asset) => asset.missing);
         setStatus(
@@ -196,8 +201,10 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
   const newBlank = useCallback(async (): Promise<boolean> => {
     if (!(await confirmLeave())) return false;
     await pendingRecord;
-    useProjectStore.getState().newProject();
-    useSessionStore.getState().startProject(null, 'Untitled project', currentMarker());
+    await withViewTransition(() => {
+      useProjectStore.getState().newProject();
+      useSessionStore.getState().startProject(null, 'Untitled project', currentMarker());
+    });
     setStatus(null);
     return true;
   }, [confirmLeave, setStatus]);
@@ -211,7 +218,9 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         const folder = options.folder ?? (await window.filmora.projectsDefaultFolder());
         const json = JSON.stringify(useProjectStore.getState().toDocument(), null, 2);
         const path = await window.filmora.projectsCreate(folder, options.name, json);
-        useSessionStore.getState().startProject(path, projectNameFromPath(path), currentMarker());
+        await withViewTransition(() => {
+          useSessionStore.getState().startProject(path, projectNameFromPath(path), currentMarker());
+        });
         setStatus(`Created ${path}`);
         void recordRecent(path, false);
         return true;
@@ -231,8 +240,10 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
     // hands the decoders and their memory back.
     useProjectStore.getState().setPlaying(false);
     await pendingRecord;
-    useProjectStore.getState().newProject();
-    useSessionStore.getState().closeProject();
+    await withViewTransition(() => {
+      useProjectStore.getState().newProject();
+      useSessionStore.getState().closeProject();
+    });
     return true;
   }, [confirmLeave]);
 

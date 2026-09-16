@@ -367,7 +367,7 @@ async function main() {
       return dialog ? getComputedStyle(dialog).animationDuration : 'none';
     });
     await window.keyboard.press('Escape');
-    check('dialogs animate in about a quarter of a second', normalMotion === '0.24s', normalMotion);
+    check('dialogs arrive on a spring', normalMotion === '0.42s', normalMotion);
     await waitFor(async () => (await window.locator('.scf-dialog').count()) === 0, 3_000);
 
     /* 9. Context menus ---------------------------------------------------------------------- */
@@ -415,7 +415,7 @@ async function main() {
     check('right-click opens a menu every time', opened >= 95, `${opened}/100, median ${median(openTimes)} ms to show`);
     check('every menu stays fully inside the window', offscreen === 0, `${offscreen} clipped in ${size.width}x${size.height}${clippedBoxes.length ? `: ${clippedBoxes.slice(0, 4).join('; ')}` : ''}`);
     check('Escape or a click elsewhere always closes it', menusLeft === 0, `${menusLeft} left open`);
-    check('menus grow out of the click in about a tenth of a second', menuMotion === '0.13s', String(menuMotion));
+    check('menus grow out of the click in about a seventh of a second', menuMotion === '0.14s', String(menuMotion));
     check('menus changed nothing they were not asked to', !(await dirtyShown()));
 
     /* 10. Home and back, with memory --------------------------------------------------------- */

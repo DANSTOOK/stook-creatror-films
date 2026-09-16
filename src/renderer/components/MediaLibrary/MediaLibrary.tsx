@@ -32,6 +32,7 @@ import {
   type ImportOutcome,
 } from '@renderer/media/importMedia';
 import { assetsInBin, binPath, childBins, countAssetsDeep } from '@renderer/media/bins';
+import { useFlip } from '@renderer/motion/useFlip';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
@@ -81,6 +82,11 @@ export function MediaLibrary(): JSX.Element {
   const dragDepth = useRef(0);
 
   const visibleAssets = useMemo(() => assetsInBin(assets, bins, currentBinId), [assets, bins, currentBinId]);
+
+  // Filing a clip into a bin, or switching bins, moves everything below it.
+  // FLIP slides them there instead of teleporting them.
+  const assetListRef = useRef<HTMLUListElement>(null);
+  useFlip(assetListRef, visibleAssets.map((asset) => asset.id).join('|'));
   const subBins = useMemo(() => childBins(bins, currentBinId), [bins, currentBinId]);
   const path = useMemo(() => binPath(bins, currentBinId), [bins, currentBinId]);
   const libraryEmpty = assets.length === 0 && bins.length === 0;
@@ -522,12 +528,13 @@ export function MediaLibrary(): JSX.Element {
               </p>
             )}
 
-            <ul className="flex flex-col gap-1">
+            <ul ref={assetListRef} className="flex flex-col gap-1">
               {visibleAssets.map((asset) => {
                 const Icon = KIND_ICONS[asset.kind];
                 return (
                   <li
                     key={asset.id}
+                    data-flip-key={asset.id}
                     draggable={!asset.missing}
                     title={asset.missing ? undefined : 'Drag onto the timeline or a bin, or use + to add it'}
                     onDragStart={(event) => {

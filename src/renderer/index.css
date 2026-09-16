@@ -25,6 +25,32 @@
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
     --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+    /*
+      Springs, as CSS.
+
+      A spring is what makes motion read as physical rather than timed; it
+      arrives fast, settles, and never stops dead. `linear()` approximates any
+      curve from a list of samples, so these run as ordinary CSS animations -
+      on the compositor, off the main thread - with no animation library and no
+      JavaScript per frame. Each was sampled from a damped spring of the
+      stiffness and damping noted below, then normalised to land exactly on 1:
+      an overdamped spring is still at 0.98 when it is called settled, and
+      forcing that last point to 1 is a visible jolt.
+    */
+
+    /* stiffness 220, damping 26 - snappy, the faintest overshoot. Settles ~410ms. */
+    --spring: linear(0, 0.0048, 0.018, 0.0382, 0.064, 0.0944, 0.1282, 0.1646, 0.2029, 0.2423, 0.2824, 0.3226, 0.3626, 0.4021, 0.4406, 0.4781, 0.5144, 0.5493, 0.5827, 0.6145, 0.6448, 0.6734, 0.7004, 0.7258, 0.7496, 0.7718, 0.7926, 0.8119, 0.8298, 0.8463, 0.8616, 0.8757, 0.8886, 0.9004, 0.9112, 0.9211, 0.9301, 0.9382, 0.9456, 0.9523, 0.9583, 0.9637, 0.9685, 0.9728, 0.9766, 0.9801, 0.9831, 0.9857, 0.9881, 0.9901, 0.9919, 0.9935, 0.9948, 0.9959, 0.9969, 0.9977, 0.9984, 0.9989, 0.9994, 0.9997, 1);
+    /* stiffness 170, damping 30 - no overshoot at all, for things that carry text. Settles ~460ms. */
+    --spring-soft: linear(0, 0.0048, 0.0178, 0.0376, 0.0626, 0.0918, 0.1241, 0.1586, 0.1946, 0.2315, 0.2689, 0.3063, 0.3433, 0.3798, 0.4154, 0.45, 0.4835, 0.5157, 0.5466, 0.5762, 0.6045, 0.6313, 0.6568, 0.681, 0.7038, 0.7253, 0.7456, 0.7646, 0.7825, 0.7993, 0.815, 0.8297, 0.8434, 0.8563, 0.8682, 0.8794, 0.8897, 0.8994, 0.9084, 0.9167, 0.9245, 0.9316, 0.9383, 0.9445, 0.9502, 0.9555, 0.9604, 0.9649, 0.9691, 0.9729, 0.9765, 0.9798, 0.9829, 0.9857, 0.9882, 0.9906, 0.9928, 0.9948, 0.9967, 0.9984, 1);
+    /* stiffness 260, damping 24 - a little life on the way in, for dialogs. Settles ~440ms. */
+    --spring-lively: linear(0, 0.0066, 0.0249, 0.0527, 0.0881, 0.1295, 0.1754, 0.2244, 0.2754, 0.3274, 0.3796, 0.4312, 0.4818, 0.5308, 0.5778, 0.6226, 0.665, 0.7047, 0.7418, 0.7761, 0.8076, 0.8365, 0.8627, 0.8864, 0.9077, 0.9266, 0.9433, 0.958, 0.9708, 0.9819, 0.9913, 0.9992, 1.0058, 1.0111, 1.0154, 1.0188, 1.0213, 1.023, 1.0241, 1.0246, 1.0247, 1.0243, 1.0237, 1.0228, 1.0216, 1.0203, 1.0189, 1.0174, 1.0158, 1.0143, 1.0127, 1.0111, 1.0096, 1.0082, 1.0068, 1.0054, 1.0042, 1.003, 1.0019, 1.0009, 1);
+
+    /* One set of durations, so nothing is timed by hand twice. */
+    --dur-instant: 90ms;
+    --dur-fast: 140ms;
+    --dur-base: 220ms;
+    --dur-spring: 420ms;
   }
 
   /* Dark scrollbars, so panels do not flash a light strip. */
@@ -87,11 +113,6 @@
 @keyframes scf-view-in {
   from { opacity: 0; transform: scale(0.992); }
   to { opacity: 1; transform: none; }
-}
-
-@keyframes scf-home-out {
-  from { opacity: 1; transform: none; }
-  to { opacity: 0; transform: scale(1.02); }
 }
 
 @keyframes scf-drift {
@@ -165,34 +186,61 @@
 
   /* Motion ------------------------------------------------------------------ */
 
+  /*
+    Everything here animates transform and opacity only. Those two are the
+    properties the compositor can animate by itself; anything else (width, top,
+    margin) puts a layout and a paint in every single frame, which is what
+    turns a 60 fps animation into a 30 fps one while the timeline is busy.
+
+    `will-change` is set only on the handful of elements that really are about
+    to move, and only while they exist - it costs memory on every element that
+    carries it.
+  */
+
   .scf-overlay {
-    animation: scf-fade-in 180ms var(--ease-out) both;
+    animation: scf-fade-in var(--dur-base) var(--ease-out) both;
+    will-change: opacity;
   }
 
   .scf-overlay[data-closing='true'] {
-    animation: scf-fade-out 130ms var(--ease-in) both;
+    animation: scf-fade-out var(--dur-fast) var(--ease-in) both;
     pointer-events: none;
   }
 
   .scf-dialog {
-    animation: scf-pop-in 240ms var(--ease-out) both;
+    animation: scf-pop-in var(--dur-spring) var(--spring-lively) both;
+    will-change: transform, opacity;
   }
 
   .scf-dialog[data-closing='true'] {
-    animation: scf-pop-out 130ms var(--ease-in) both;
+    /* Leaving is quick and linear-ish: a spring on the way out feels reluctant. */
+    animation: scf-pop-out var(--dur-fast) var(--ease-in) both;
   }
 
   .scf-menu {
-    animation: scf-menu-in 130ms var(--ease-out) both;
+    animation: scf-menu-in var(--dur-fast) var(--spring) both;
+    will-change: transform, opacity;
   }
 
   .scf-rise {
-    animation: scf-rise-in 360ms var(--ease-out) both;
+    animation: scf-rise-in var(--dur-spring) var(--spring-soft) both;
     animation-delay: var(--delay, 0ms);
+    will-change: transform, opacity;
   }
 
   .scf-view {
-    animation: scf-view-in 220ms var(--ease-out) both;
+    animation: scf-view-in var(--dur-base) var(--ease-out) both;
+  }
+
+  /*
+    A progress bar that scales instead of resizing: width animates layout,
+    scaleX rides the compositor. The inner bar is drawn full width and
+    squeezed from the left.
+  */
+  .scf-progress-bar {
+    transform-origin: left center;
+    transition: transform var(--dur-base) var(--ease-standard);
+    will-change: transform;
   }
 
   .scf-dirty-dot {
@@ -201,15 +249,6 @@
 
   /* Start screen ------------------------------------------------------------ */
 
-  /* Fades in over the editor, and out to reveal it, a touch larger as it goes. */
-  .scf-home-layer {
-    animation: scf-fade-in 220ms var(--ease-out) both;
-  }
-
-  .scf-home-layer[data-closing='true'] {
-    animation: scf-home-out 200ms var(--ease-in) both;
-    pointer-events: none;
-  }
 
   .scf-home {
     background:
@@ -276,7 +315,12 @@
   }
 
   .scf-thumb {
-    transition: transform 400ms var(--ease-out);
+    opacity: 0;
+    transition: transform 400ms var(--ease-out), opacity var(--dur-base) var(--ease-out);
+  }
+
+  .scf-thumb[data-loaded='true'] {
+    opacity: 1;
   }
 
   .scf-card:hover:not(:disabled) .scf-thumb {
@@ -303,6 +347,30 @@
 }
 
 /*
+  Going between the start screen and the editor.
+
+  The browser snapshots both states on the compositor and cross-fades them
+  there, so the swap costs no JavaScript per frame even though a whole screen
+  of panels, a canvas and an hour of timeline are being replaced. See
+  motion/viewTransition.ts for the other half.
+*/
+@keyframes scf-vt-out {
+  to { opacity: 0; transform: scale(0.99); }
+}
+
+@keyframes scf-vt-in {
+  from { opacity: 0; transform: scale(1.012); }
+}
+
+::view-transition-old(root) {
+  animation: scf-vt-out 200ms var(--ease-in) both;
+}
+
+::view-transition-new(root) {
+  animation: scf-vt-in 280ms var(--ease-out) both;
+}
+
+/*
   Reduced motion: every state change still happens and is still visible, it
   just happens at once. Around a third of people report some sensitivity to
   motion, and an operating-system setting is how they say so.
@@ -315,5 +383,12 @@
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+  }
+
+  /* View transitions have their own pseudo-elements, which the rule above misses. */
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

@@ -26,6 +26,7 @@
     "test:bench:audio": "node ./tests/bench/audio-stream.mjs",
     "test:stress": "node ./tests/stress/run.mjs",
     "test:stress:projects": "node ./tests/stress/projects.mjs",
+    "test:motion": "node ./tests/stress/motion.mjs",
     "test:bench:av-sync": "node ./tests/bench/av-sync.mjs",
     "test:bench:audio-seek": "node ./tests/bench/audio-seek.mjs",
     "test:bench:audio-chunks": "node ./tests/bench/audio-chunks.mjs",

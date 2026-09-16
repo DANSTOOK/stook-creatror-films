@@ -95,7 +95,6 @@ export default function App(): JSX.Element {
   const projectPath = useSessionStore((state) => state.projectPath);
   const dirty = useIsDirty();
   const actions = useProjectActions(setStatus);
-  const homePresence = usePresence(view === 'home', 200);
 
   // The window title names the project, as editors do; the start screen keeps
   // the plain app name.
@@ -369,8 +368,10 @@ export default function App(): JSX.Element {
         )}
       </div>
 
-      {homePresence.mounted && (
-        <div data-closing={homePresence.closing} className="scf-home-layer absolute inset-0 z-40">
+      {/* The swap itself is a view transition (motion/viewTransition.ts), so this
+          is a plain switch: the browser cross-fades the two states for us. */}
+      {view === 'home' && (
+        <div className="absolute inset-0 z-40">
           <Home
             status={status}
             onBlank={() => void actions.newBlank()}
