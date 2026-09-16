@@ -29,6 +29,15 @@ export interface NewProjectOptions {
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
+ * The file's own name, for a status line.
+ *
+ * A full path is most of a toolbar wide and tells the user nothing they did
+ * not just choose; where the project lives is on its card on the start screen
+ * and under the project name in the toolbar.
+ */
+const fileName = (path: string): string => path.split(/[\\/]/).pop() || path;
+
+/**
  * A small JPEG of the frame under the playhead, for the start screen.
  *
  * Rendered the way an export renders it, so it is the real picture rather
@@ -130,7 +139,7 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
       if (!path) return false;
 
       useSessionStore.getState().markSaved(marker, path, projectNameFromPath(path));
-      setStatus(`Saved to ${path}`);
+      setStatus(`Saved to ${fileName(path)}`);
       pendingRecord = recordRecent(path, true).catch(() => undefined);
       return true;
     },
@@ -165,8 +174,8 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         const missing = assets.filter((asset) => asset.missing);
         setStatus(
           missing.length > 0
-            ? `Opened ${opened.path} - ${missing.length} media file(s) could not be found`
-            : `Opened ${opened.path}`,
+            ? `Opened ${fileName(opened.path)} - ${missing.length} media file(s) could not be found`
+            : `Opened ${fileName(opened.path)}`,
         );
         void recordRecent(opened.path, false);
         return true;
@@ -221,7 +230,7 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         await withViewTransition(() => {
           useSessionStore.getState().startProject(path, projectNameFromPath(path), currentMarker());
         });
-        setStatus(`Created ${path}`);
+        setStatus(`Created ${fileName(path)}`);
         void recordRecent(path, false);
         return true;
       } catch (error) {

@@ -543,7 +543,7 @@ export function MediaLibrary(): JSX.Element {
                       event.dataTransfer.effectAllowed = 'copyMove';
                     }}
                     onDragEnd={() => setDropBin(undefined)}
-                    className="group flex cursor-grab items-center gap-2 rounded border border-transparent px-2 py-2 hover:border-panel-600 hover:bg-panel-800 active:cursor-grabbing"
+                    className="list-item group cursor-grab active:cursor-grabbing"
                     onContextMenu={(event) =>
                       openMenu(event, [
                         {

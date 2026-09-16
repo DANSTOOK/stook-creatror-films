@@ -63,7 +63,7 @@ function Section({ title, children, right }: { title: string; children: React.Re
   return (
     <section className="border-b border-panel-800 px-3 py-3">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-2xs font-semibold uppercase tracking-wide text-slate-400">{title}</h3>
+        <h3 className="section-title">{title}</h3>
         {right}
       </div>
       <div className="flex flex-col gap-2">{children}</div>

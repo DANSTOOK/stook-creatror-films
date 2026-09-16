@@ -11,8 +11,49 @@ Cifras de referencia al día de hoy: **542 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **67/67 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **11/11 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, incluso con el vídeo reproduciéndose), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **68/68** con la v1.12.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **68/68** con la v1.13.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.13.0-beta.1 — El resto del editor, con el mismo diseño
+2026-09-15 · pre-release para probar
+
+Te gustó cómo quedó la sala principal, así que ese lenguaje visual pasa ahora
+al editor entero.
+
+### Añadido
+- **Los paneles son superficies, no cajas.** Esquina redondeada, borde suave,
+  una sombra que los despega del fondo y una línea de luz en el canto
+  superior, donde una superficie real la recogería. Las cabeceras son algo más
+  altas, con un degradado y el texto más espaciado.
+  - Van en color sólido y **sin desenfoque**, a diferencia de la sala: la sala
+    puede permitírselo porque detrás no se mueve nada, pero estos paneles están
+    sobre un vídeo reproduciéndose y un fondo desenfocado se recalcularía en
+    cada fotograma. Por el mismo motivo, **el marco del visor se queda plano y
+    neutro**: el color se juzga contra él.
+- **La barra de la línea de tiempo va agrupada** como la barra superior:
+  herramientas, edición y marcadores a la izquierda; pistas y zoom a la
+  derecha, cada grupo sobre su propia bandeja, en vez de veinte botones
+  seguidos separados por rayitas.
+- **Los títulos del inspector llevan el acento** de la sala, y las filas de la
+  biblioteca se comportan como fichas: se elevan un pixel y toman el color de
+  acento al pasar por encima.
+- **Los mensajes de estado dicen el nombre del archivo**, no la ruta entera,
+  que ocupaba media barra y no decía nada que no acabaras de elegir tú. La
+  ruta sigue estando en el nombre del proyecto y en la ficha de la sala.
+
+### Cómo se comprobó
+- La prueba de movimiento (11/11) vuelve a medir la cadencia con el diseño
+  nuevo: 0 congelaciones en diálogos, menús, listas, buscador y cambios de
+  pantalla, incluso con el vídeo reproduciéndose; y sigue fallando si algún
+  elemento en pantalla anima una propiedad de diseño.
+- Interfaz 67/67, proyectos 41/41, extremo a extremo 21/21, 542 unitarias, y
+  68/68 contra el ejecutable empaquetado con la red cortada. Las medidas de la
+  ventana de exportación (que Start export quede por encima de los ajustes) y
+  los tamaños de panel siguen cuadrando con las cabeceras más altas.
+- Revisado a ojo con un proyecto real cargado: editor, inspector con un clip
+  seleccionado, menú contextual y diálogo de ajustes.
 
 ---
 

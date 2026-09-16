@@ -127,13 +127,54 @@
 }
 
 @layer components {
+  /*
+    The panels share the start screen's surface: a soft border, a rounded
+    corner, a shadow to lift them off the ground, and a hairline of light along
+    the top edge where a real surface would catch it.
+
+    Solid, not translucent, and with no backdrop blur. The start screen can
+    afford blur because nothing moves behind it; these sit over a playing
+    video, and a blurred backdrop would be recomputed on every frame of it. The
+    one that matters most is the viewport: its surround stays flat and neutral,
+    because colour is judged against it.
+  */
   .panel {
-    @apply bg-panel-900 border border-panel-700 rounded-md overflow-hidden flex flex-col min-h-0;
+    @apply bg-panel-900 border border-panel-700/80 rounded-lg overflow-hidden flex flex-col min-h-0
+           shadow-lg shadow-black/20;
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 10px 15px -3px rgb(0 0 0 / 0.2);
   }
 
   .panel-header {
-    @apply flex items-center gap-2 px-3 h-9 shrink-0 text-xs font-medium uppercase tracking-wide
-           text-slate-400 bg-panel-800 border-b border-panel-700;
+    @apply flex items-center gap-2 px-3 h-10 shrink-0 text-xs font-medium uppercase tracking-wider
+           text-slate-400 border-b border-panel-700/80;
+    background: linear-gradient(to bottom, theme('colors.panel.800'), theme('colors.panel.900'));
+  }
+
+
+  /* A row in a list of things - media clips, and anything else that is picked. */
+  .list-item {
+    @apply flex items-center gap-2 rounded-md border border-transparent px-2 py-2
+           hover:border-accent/40 hover:bg-panel-800;
+    transition: background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-out);
+  }
+
+  .list-item:hover {
+    transform: translateY(-1px);
+  }
+
+  .list-item:active {
+    transform: translateY(0);
+  }
+
+  /* A heading inside a panel, with the accent ticking it off. */
+  .section-title {
+    @apply flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider text-slate-400;
+  }
+
+  .section-title::before {
+    content: '';
+    @apply h-3 w-0.5 shrink-0 rounded-full bg-accent/70;
   }
 
   .tool-button {

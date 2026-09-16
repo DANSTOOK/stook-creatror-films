@@ -931,134 +931,141 @@ export function Timeline(): JSX.Element {
   return (
     <section className="panel h-full">
       <header className="panel-header justify-between">
-        <div className="flex items-center gap-1 normal-case tracking-normal">
-          {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
-          {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to cut it at the playhead', Scissors)}
-          {toolButton('hand', 'Pan', 'Hand tool (H)', Hand)}
+        <div className="flex items-center gap-1.5 normal-case tracking-normal">
+          <div className="toolbar-group">
+            {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
+            {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to cut it at the playhead', Scissors)}
+            {toolButton('hand', 'Pan', 'Hand tool (H)', Hand)}
+          </div>
 
-          <span className="mx-1 h-5 w-px bg-panel-600" />
+          <div className="toolbar-group">
+            <button
+              type="button"
+              title="Split at playhead (B)"
+              className="tool-button"
+              onClick={() => store.getState().razorAtFrame()}
+            >
+              <Scissors size={14} />
+              Split at playhead
+            </button>
 
-          <button
-            type="button"
-            title="Split at playhead (B)"
-            className="tool-button"
-            onClick={() => store.getState().razorAtFrame()}
-          >
-            <Scissors size={14} />
-            Split at playhead
-          </button>
+            <button
+              type="button"
+              title="Delete selected clips (Del)"
+              className="tool-button hover:text-red-400"
+              disabled={ui.selectedClipIds.length === 0}
+              onClick={() => store.getState().removeClips(ui.selectedClipIds)}
+            >
+              <Trash2 size={14} />
+              Delete
+            </button>
 
-          <button
-            type="button"
-            title="Delete selected clips (Del)"
-            className="tool-button hover:text-red-400"
-            disabled={ui.selectedClipIds.length === 0}
-            onClick={() => store.getState().removeClips(ui.selectedClipIds)}
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
+            <button
+              type="button"
+              title="Snap to clip edges, the playhead and markers (S)"
+              aria-pressed={ui.snappingEnabled}
+              className={`tool-button ${ui.snappingEnabled ? 'tool-button-active' : ''}`}
+              onClick={() => store.getState().setUi({ snappingEnabled: !ui.snappingEnabled })}
+            >
+              <Crosshair size={14} />
+              Snap
+            </button>
 
-          <button
-            type="button"
-            title="Snap to clip edges, the playhead and markers (S)"
-            aria-pressed={ui.snappingEnabled}
-            className={`tool-button ${ui.snappingEnabled ? 'tool-button-active' : ''}`}
-            onClick={() => store.getState().setUi({ snappingEnabled: !ui.snappingEnabled })}
-          >
-            <Crosshair size={14} />
-            Snap
-          </button>
+            <button
+              type="button"
+              title="Magnet (N): deleting, moving or trimming a clip closes the gap it leaves"
+              aria-pressed={ui.rippleEnabled}
+              className={`tool-button ${ui.rippleEnabled ? 'tool-button-active' : ''}`}
+              onClick={() => store.getState().setUi({ rippleEnabled: !ui.rippleEnabled })}
+            >
+              <Magnet size={14} />
+              Magnet
+            </button>
+          </div>
 
-          <button
-            type="button"
-            title="Magnet (N): deleting, moving or trimming a clip closes the gap it leaves"
-            aria-pressed={ui.rippleEnabled}
-            className={`tool-button ${ui.rippleEnabled ? 'tool-button-active' : ''}`}
-            onClick={() => store.getState().setUi({ rippleEnabled: !ui.rippleEnabled })}
-          >
-            <Magnet size={14} />
-            Magnet
-          </button>
-
-          <span className="mx-1 h-5 w-px bg-panel-600" />
-
-          <button
-            type="button"
-            title="Add marker at the playhead (M)"
-            className="tool-button"
-            onClick={() => {
-              const id = store.getState().addMarker();
-              if (id) setRenamingMarkerId(id);
-            }}
-          >
-            <Flag size={14} />
-            Marker
-          </button>
-          <button
-            type="button"
-            title="Previous marker"
-            className="tool-button"
-            disabled={project.markers.length === 0}
-            onClick={() => store.getState().goToMarker(-1)}
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button
-            type="button"
-            title="Next marker"
-            className="tool-button"
-            disabled={project.markers.length === 0}
-            onClick={() => store.getState().goToMarker(1)}
-          >
-            <ChevronRight size={14} />
-          </button>
+          <div className="toolbar-group">
+            <button
+              type="button"
+              title="Add marker at the playhead (M)"
+              className="tool-button"
+              onClick={() => {
+                const id = store.getState().addMarker();
+                if (id) setRenamingMarkerId(id);
+              }}
+            >
+              <Flag size={14} />
+              Marker
+            </button>
+            <button
+              type="button"
+              title="Previous marker"
+              className="tool-button"
+              disabled={project.markers.length === 0}
+              onClick={() => store.getState().goToMarker(-1)}
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button
+              type="button"
+              title="Next marker"
+              className="tool-button"
+              disabled={project.markers.length === 0}
+              onClick={() => store.getState().goToMarker(1)}
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 normal-case tracking-normal">
-          <button
-            type="button"
-            title="Add video track"
-            className="tool-button"
-            onClick={() => store.getState().addTrack('video')}
-          >
-            <Plus size={14} />
-            Video
-          </button>
-          <button
-            type="button"
-            title="Add audio track"
-            className="tool-button"
-            onClick={() => store.getState().addTrack('audio')}
-          >
-            <Plus size={14} />
-            Audio
-          </button>
-          <button
-            type="button"
-            title="Zoom out (-, or Ctrl+wheel)"
-            className="tool-button"
-            onClick={() => store.getState().zoomBy(1 / 1.4)}
-          >
-            <ZoomOut size={14} />
-          </button>
-          <button
-            type="button"
-            title="Zoom in (=, or Ctrl+wheel)"
-            className="tool-button"
-            onClick={() => store.getState().zoomBy(1.4)}
-          >
-            <ZoomIn size={14} />
-          </button>
-          <button
-            type="button"
-            title="Fit the whole timeline in view (\)"
-            className="tool-button"
-            onClick={() => store.getState().zoomToFit()}
-          >
-            <Maximize2 size={14} />
-            Fit
-          </button>
+        <div className="flex items-center gap-1.5 normal-case tracking-normal">
+          <div className="toolbar-group">
+            <button
+              type="button"
+              title="Add video track"
+              className="tool-button"
+              onClick={() => store.getState().addTrack('video')}
+            >
+              <Plus size={14} />
+              Video
+            </button>
+            <button
+              type="button"
+              title="Add audio track"
+              className="tool-button"
+              onClick={() => store.getState().addTrack('audio')}
+            >
+              <Plus size={14} />
+              Audio
+            </button>
+          </div>
+
+          <div className="toolbar-group">
+            <button
+              type="button"
+              title="Zoom out (-, or Ctrl+wheel)"
+              className="tool-button"
+              onClick={() => store.getState().zoomBy(1 / 1.4)}
+            >
+              <ZoomOut size={14} />
+            </button>
+            <button
+              type="button"
+              title="Zoom in (=, or Ctrl+wheel)"
+              className="tool-button"
+              onClick={() => store.getState().zoomBy(1.4)}
+            >
+              <ZoomIn size={14} />
+            </button>
+            <button
+              type="button"
+              title="Fit the whole timeline in view (\)"
+              className="tool-button"
+              onClick={() => store.getState().zoomToFit()}
+            >
+              <Maximize2 size={14} />
+              Fit
+            </button>
+          </div>
         </div>
       </header>
 
