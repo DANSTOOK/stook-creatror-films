@@ -244,6 +244,15 @@ async function main() {
     check('window opens with the app title', (await app.evaluate(async ({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.getTitle())) === 'STOOK CREATOR FILMS');
 
+    // The app opens on its start screen, as Resolve opens on its Project
+    // Manager; a blank project is one click from there.
+    const home = window.getByRole('main', { name: 'Start screen' });
+    check('the app opens on the start screen', await home.isVisible());
+    await window.getByRole('button', { name: 'Blank project' }).click();
+    const leftHome = await home.waitFor({ state: 'detached', timeout: 5_000 }).then(() => true, () => false);
+    check('Blank project goes straight to an empty, untitled editor',
+      leftHome && (await window.getByTestId('project-name').innerText()) === 'Untitled project');
+
     check('media panel starts empty',
       await window.getByText('Drop files here').isVisible());
 
@@ -252,6 +261,10 @@ async function main() {
     await app.evaluate(({ dialog }, { video, output }) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [video] });
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: output });
+      // "Don't save" by default, so that closing the window at the end of the
+      // run never waits on a native prompt nobody is there to answer. The
+      // close-prompt check below installs its own stub while it runs.
+      dialog.showMessageBox = async () => ({ response: 1 });
     }, { video: sourceVideo, output: exportPath });
 
     /* Import ------------------------------------------------------------- */
@@ -630,7 +643,10 @@ async function main() {
       `enabled ${duckOn}, warning ${duckWarned ? 'shown' : 'missing'}`);
 
     await mixer.getByRole('button', { name: 'Close', exact: true }).last().click();
-    const mixerClosed = await mixer.isHidden();
+    // Dialogs play a short exit animation, so this waits for it to go rather
+    // than looking the instant the button is clicked.
+    await mixer.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+    const mixerClosed = (await mixer.count()) === 0;
     const afterMixer = await projectNow();
     check('the mixer closes and leaves the mix as it was',
       mixerClosed && afterMixer.master === 1 && afterMixer.muted.length === 0 && !afterMixer.ducking,
@@ -672,7 +688,7 @@ async function main() {
       afterSettings.duration === beforeSettings.duration &&
       afterSettings.clips.every((c) => beforeSettings.clips.find((b) => b.id === c.id)?.start === c.start);
     check('project settings close and put back exactly what was there',
-      (await settings.isHidden()) && settingsRestored,
+      (await settings.waitFor({ state: 'detached', timeout: 5_000 }).then(() => true, () => false)) && settingsRestored,
       `${afterSettings.width}x${afterSettings.height} @ ${afterSettings.fps} fps, ` +
         `${afterSettings.duration} frames long (was ${beforeSettings.duration})`);
 
@@ -998,6 +1014,67 @@ async function main() {
     check('no console errors during the whole session', consoleIssues.length === 0,
       consoleIssues.length ? consoleIssues[0] : 'clean');
 
+    /* Unsaved changes ------------------------------------------------------ */
+    // The export section leaves its dialog open, and its dimmed backdrop takes
+    // the clicks meant for the toolbar.
+    const exportStillOpen = window.getByRole('dialog', { name: 'Export' });
+    if ((await exportStillOpen.count()) > 0) {
+      await exportStillOpen.getByTitle('Close').click();
+      await exportStillOpen.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+    }
+
+    await window.evaluate(() => window.__scfStore.getState().addTrack('video'));
+    // Timed, not just awaited: this runs right after a full export, and how
+    // long the header takes to catch up is worth seeing in the log.
+    const dirtyAt = Date.now();
+    let dirtyError = '';
+    const markedDirty = await window.getByTestId('unsaved-indicator')
+      .waitFor({ state: 'visible', timeout: 30_000 })
+      .then(() => true, (error) => {
+        dirtyError = String(error.message).split('\n').slice(0, 2).join(' ');
+        return false;
+      });
+    const dirtyMs = Date.now() - dirtyAt;
+    if (!markedDirty) await window.screenshot({ path: join(workDir, 'dirty-dot-failure.png') }).catch(() => undefined);
+    check('an edit after saving shows the unsaved-changes dot', markedDirty,
+      markedDirty ? `${dirtyMs} ms after the edit` : `${dirtyError} | ` + await window.evaluate(() => JSON.stringify({
+        dots: document.querySelectorAll('[data-testid="unsaved-indicator"]').length,
+        dotRects: [...document.querySelectorAll('[data-testid="unsaved-indicator"]')]
+          .map((dot) => { const r = dot.getBoundingClientRect(); return `${Math.round(r.x)},${Math.round(r.y)} ${r.width}x${r.height}`; }),
+        roots: document.querySelectorAll('#root').length,
+        tracks: Object.keys(window.__scfStore.getState().project.tracks).length,
+        title: document.title,
+        onHome: Boolean(document.querySelector('main[aria-label="Start screen"]')),
+        header: document.querySelector('[data-testid="project-name"]')?.textContent ?? null,
+      })).catch(() => 'could not read the page'));
+
+    await window.getByRole('button', { name: 'Home', exact: true }).click();
+    const prompt = window.getByRole('alertdialog');
+    const asked = await prompt.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
+    await prompt.getByRole('button', { name: 'Cancel' }).click().catch(() => undefined);
+    await prompt.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+    const stayed = (await window.getByRole('main', { name: 'Start screen' }).count()) === 0
+      && await window.getByTestId('unsaved-indicator').isVisible();
+    check('going home with unsaved changes asks first, and Cancel stays in the editor with the change', asked && stayed);
+
+    // Closing the window asks too - natively, from the main process.
+    const closeAsk = await app.evaluate(async ({ dialog, BrowserWindow }) => {
+      const asks = [];
+      dialog.showMessageBox = async (_window, options) => {
+        asks.push(options.message);
+        return { response: 2 };
+      };
+      BrowserWindow.getAllWindows()[0].close();
+      await new Promise((done) => setTimeout(done, 700));
+      return { asks, windows: BrowserWindow.getAllWindows().length };
+    });
+    check('closing the window with unsaved changes asks, and Cancel keeps it open',
+      closeAsk.asks.length === 1 && /Save changes to/.test(closeAsk.asks[0]) && closeAsk.windows === 1,
+      JSON.stringify(closeAsk));
+    // Don't save, for the close below.
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 });
+    });
     // Last on purpose: Playwright keeps waiting for the navigation it saw start,
     // even though the app cancelled it, so nothing can run after this.
     // The main process refuses navigation: this is the backstop for a file
@@ -1011,6 +1088,7 @@ async function main() {
     const stillEditor = window.url() === urlBefore
       && await window.getByRole('button', { name: 'Import' }).isVisible().catch(() => false);
     check('a stray file cannot replace the editor', stillEditor, window.url());
+
   } finally {
     await app.close().catch(() => undefined);
   }
@@ -1030,10 +1108,16 @@ async function main() {
   });
   try {
     const window = await second.firstWindow();
-    await second.evaluate(({ dialog }, project) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
-    }, projectPath);
-    await window.getByRole('button', { name: 'Open' }).click();
+    // No dialog this time: the start screen lists the project the first
+    // session saved, with a picture of it, and one click reopens it.
+    const recentCard = window.getByRole('button', { name: 'Open ui-project', exact: true });
+    const listed = await recentCard.waitFor({ state: 'visible', timeout: 30_000 }).then(() => true, () => false);
+    const thumbnailShown = await window.waitForFunction(() => [...document.querySelectorAll('main[aria-label="Start screen"] img')]
+      .some((image) => image.src.startsWith('media') && image.complete && image.naturalWidth > 0), null, { timeout: 15_000 })
+      .then(() => true, () => false);
+    check('a new session starts on a list with the saved project and its thumbnail', listed && thumbnailShown,
+      `listed ${listed}, thumbnail ${thumbnailShown}`);
+    await recentCard.click();
     const status = await window.getByText('Opened', { exact: false }).first()
       .waitFor({ state: 'visible', timeout: 60_000 })
       .then(() => window.getByText('Opened', { exact: false }).first().innerText())
@@ -1055,6 +1139,9 @@ async function main() {
     const reopenedMediaWidth = Math.round(
       (await window.locator('aside').filter({ hasText: 'Transparent background' }).first().boundingBox()).width,
     );
+    const reopenedTitle = await second.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle());
+    check('the window is titled after the open project', reopenedTitle === 'ui-project - STOOK CREATOR FILMS', reopenedTitle);
+
     check('panel sizes are remembered in a new session',
       persistedMediaWidth !== null && Math.abs(reopenedMediaWidth - persistedMediaWidth) <= 2,
       `media panel ${reopenedMediaWidth} px (left at ${persistedMediaWidth})`);

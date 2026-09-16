@@ -211,9 +211,11 @@ function ClipStrip({ clip }: { clip: Clip }): JSX.Element {
 
 export interface MixerProps {
   onClose(): void;
+  /** Playing its exit animation; see usePresence. */
+  closing?: boolean;
 }
 
-export function Mixer({ onClose }: MixerProps): JSX.Element {
+export function Mixer({ onClose, closing = false }: MixerProps): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const selectedIds = useProjectStore((state) => state.ui.selectedClipIds);
   const setMasterVolume = useProjectStore((state) => state.setMasterVolume);
@@ -230,8 +232,8 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
   const dialogueTracks = tracks.filter((track) => track.bus === 'dialogue');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="panel w-[560px] max-h-[86vh]">
+    <div data-closing={closing} className="scf-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div data-closing={closing} className="scf-dialog panel w-[560px] max-h-[86vh] shadow-2xl shadow-black/60">
         <header className="panel-header justify-between">
           <span className="flex items-center gap-2">
             <Headphones size={13} />

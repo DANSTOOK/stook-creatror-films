@@ -6,7 +6,16 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import type { ExportSettings, MediaKind } from '@shared/types';
-import { IPC, type MediaProbe, type PickedFile } from '@shared/types/ipc';
+import { IPC, type MediaProbe, type PickedFile, type RecentProject, type RecentProjectInput } from '@shared/types/ipc';
+import {
+  RecentProjectsStore,
+  cleanProjectName,
+  findRecent,
+  recordRecent,
+  removeRecent,
+  renameWithRetry,
+  thumbnailNameFor,
+} from '../projects/recentProjects';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
@@ -444,6 +453,155 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const contents = await readFile(path, 'utf8');
     await allowProjectReferences(contents);
     return { path, contents };
+  });
+
+  /* Projects and the start screen -------------------------------------- */
+
+  const recentProjects = new RecentProjectsStore(join(app.getPath('userData'), 'scf'));
+
+  ipcMain.handle(IPC.projectsList, async (): Promise<RecentProject[]> => {
+    const list = await recentProjects.read();
+    return Promise.all(
+      list.map(async (entry) => {
+        const exists = await stat(entry.path).then((info) => info.isFile(), () => false);
+        let thumbnailUrl: string | undefined;
+        if (entry.thumbnail) {
+          const file = recentProjects.thumbnailPath(entry.thumbnail);
+          if (await stat(file).then(() => true, () => false)) {
+            allowedPaths.add(file);
+            thumbnailUrl = mediaUrlFor(file);
+          }
+        }
+        const { thumbnail: _file, ...rest } = entry;
+        void _file;
+        return { ...rest, exists, ...(thumbnailUrl ? { thumbnailUrl } : {}) };
+      }),
+    );
+  });
+
+  /**
+   * Open a recent project without a dialog.
+   *
+   * Only for a path the list itself holds: the list is written by this
+   * process when the user opens, creates or saves a project, so a page cannot
+   * talk its way into reading an arbitrary file by naming it.
+   */
+  ipcMain.handle(IPC.projectsOpenRecent, async (_event, path: unknown) => {
+    if (typeof path !== 'string') return null;
+    const list = await recentProjects.read();
+    if (!findRecent(list, path)) throw new Error('That project is not in the recent list');
+    const contents = await readFile(path, 'utf8');
+    allowedPaths.add(path);
+    await allowProjectReferences(contents);
+    app.addRecentDocument(path);
+    return { path, contents };
+  });
+
+  ipcMain.handle(IPC.projectsForget, async (_event, path: unknown) => {
+    if (typeof path !== 'string') return;
+    await recentProjects.update((list) => {
+      const { list: next, removed } = removeRecent(list, path);
+      return { list: next, deleteThumbnails: removed?.thumbnail ? [removed.thumbnail] : [] };
+    });
+  });
+
+  ipcMain.handle(IPC.projectsDefaultFolder, async (): Promise<string> => {
+    const folder = join(app.getPath('documents'), 'STOOK CREATOR FILMS', 'Projects');
+    await mkdir(folder, { recursive: true });
+    allowedFolders.add(folder);
+    return folder;
+  });
+
+  ipcMain.handle(IPC.projectsChooseFolder, async (): Promise<string | null> => {
+    const window = getWindow();
+    if (!window) return null;
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Choose where to keep the project',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    allowedFolders.add(result.filePaths[0]);
+    return result.filePaths[0];
+  });
+
+  /** A new project file, named after the project and never over an existing one. */
+  ipcMain.handle(IPC.projectsCreate, async (_event, folder: unknown, name: unknown, contents: unknown): Promise<string> => {
+    if (typeof folder !== 'string' || !allowedFolders.has(folder)) throw new Error('Choose the folder for the project first');
+    if (typeof contents !== 'string') throw new Error('Nothing to write');
+    const base = cleanProjectName(typeof name === 'string' ? name : '') || 'Untitled project';
+    await mkdir(folder, { recursive: true });
+    let target = join(folder, `${base}.scf`);
+    for (let copy = 2; await stat(target).then(() => true, () => false); copy += 1) {
+      target = join(folder, `${base} (${copy}).scf`);
+    }
+    await writeFile(target, contents, { encoding: 'utf8', flag: 'wx' });
+    allowedPaths.add(target);
+    return target;
+  });
+
+  /** Saves waiting their turn, per project file. */
+  const saveQueues = new Map<string, Promise<void>>();
+  let saveCounter = 0;
+
+  /**
+   * Save over an existing project file.
+   *
+   * Written aside and renamed over, so a crash or a full disk mid-save leaves
+   * the previous save intact instead of a truncated project.
+   */
+  ipcMain.handle(IPC.projectsSave, async (_event, path: unknown, contents: unknown): Promise<string> => {
+    if (typeof path !== 'string' || typeof contents !== 'string') throw new Error('Nothing to save');
+    assertAllowed(path);
+    // One at a time per file, in the order asked: two saves racing to rename
+    // could otherwise leave the older one on disk.
+    const previous = saveQueues.get(path) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(async () => {
+      saveCounter += 1;
+      const temporary = `${path}.saving-${process.pid}-${saveCounter}`;
+      try {
+        await writeFile(temporary, contents, 'utf8');
+        await renameWithRetry(temporary, path);
+      } catch (error) {
+        await rm(temporary, { force: true });
+        throw error;
+      }
+    });
+    saveQueues.set(path, write);
+    try {
+      await write;
+    } finally {
+      if (saveQueues.get(path) === write) saveQueues.delete(path);
+    }
+    return path;
+  });
+
+  ipcMain.handle(IPC.projectsRecord, async (_event, input: unknown, thumbnail: unknown) => {
+    if (!input || typeof input !== 'object') return;
+    const project = input as RecentProjectInput;
+    if (typeof project.path !== 'string') return;
+    // Only a project this session really opened, created or saved.
+    assertAllowed(project.path);
+
+    const name = thumbnailNameFor(project.path);
+    const hasThumbnail = thumbnail instanceof ArrayBuffer && thumbnail.byteLength > 0 && thumbnail.byteLength < 2 * 1024 * 1024;
+    if (hasThumbnail) await recentProjects.writeThumbnail(name, new Uint8Array(thumbnail));
+
+    await recentProjects.update((list) => {
+      const previous = findRecent(list, project.path);
+      const { list: next, dropped } = recordRecent(list, {
+        path: project.path,
+        name: typeof project.name === 'string' && project.name.trim() ? project.name.trim() : 'Untitled project',
+        lastOpened: new Date().toISOString(),
+        width: Number(project.width) || 0,
+        height: Number(project.height) || 0,
+        fps: Number(project.fps) || 0,
+        durationFrames: Number(project.durationFrames) || 0,
+        clipCount: Number(project.clipCount) || 0,
+        ...(hasThumbnail ? { thumbnail: name } : previous?.thumbnail ? { thumbnail: previous.thumbnail } : {}),
+      });
+      return { list: next, deleteThumbnails: dropped.flatMap((entry) => (entry.thumbnail ? [entry.thumbnail] : [])) };
+    });
+    app.addRecentDocument(project.path);
   });
 
   ipcMain.handle(IPC.openLut, async () => {

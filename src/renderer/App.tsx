@@ -3,6 +3,7 @@ import {
   FilePlus2,
   FolderOpen,
   Headphones,
+  Home as HomeIcon,
   LayoutDashboard,
   Redo2,
   Save,
@@ -11,6 +12,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { ExportDialog } from './components/ExportDialog';
+import { Home } from './components/Home/Home';
 import { Inspector } from './components/Inspector';
 import { Splitter } from './components/Layout/Splitter';
 import { MediaLibrary } from './components/MediaLibrary';
@@ -18,7 +20,9 @@ import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
+import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
+import { usePresence } from './hooks/usePresence';
 import { useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
 import {
   DEFAULT_LAYOUT,
@@ -30,20 +34,26 @@ import {
   type LayoutKey,
   type PanelLayout,
 } from './layout/layoutSizes';
-import { hasNativeBridge, rehydrateDocument } from './media/importMedia';
+import { hasNativeBridge } from './media/importMedia';
+import { useProjectActions } from './project/useProjectActions';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
-import type { ProjectDocument } from './store/types';
+import { useIsDirty, useSessionStore } from './store/useSessionStore';
 
 /** The project logo, bundled by Vite with the rest of the page. */
 const LOGO_URL = new URL('./assets/logo.png', import.meta.url).href;
+const APP_TITLE = 'STOOK CREATOR FILMS';
 
 /**
- * Main layout: a fixed toolbar over a three-column editing row (media,
- * viewport, inspector) with the timeline docked underneath.
+ * Main layout: the start screen, or a fixed toolbar over a three-column
+ * editing row (media, viewport, inspector) with the timeline docked underneath.
  *
  * Every border between them drags, as in DaVinci Resolve - see layoutSizes.ts.
  * The preview takes whatever the other panels leave.
+ *
+ * The start screen covers the editor rather than replacing it: the preview's
+ * GPU context, the decoders and the audio graph stay alive across a trip
+ * home, so coming back or opening the next project does not rebuild them.
  */
 export default function App(): JSX.Element {
   // The clock advances the playhead and must exist exactly once in the tree.
@@ -73,7 +83,81 @@ export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false);
   const [mixerOpen, setMixerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const exportPresence = usePresence(exportOpen);
+  const mixerPresence = usePresence(mixerOpen);
+  const settingsPresence = usePresence(settingsOpen);
   const [status, setStatus] = useState<string | null>(null);
+
+  /* Session ----------------------------------------------------------------- */
+
+  const view = useSessionStore((state) => state.view);
+  const projectName = useSessionStore((state) => state.projectName);
+  const projectPath = useSessionStore((state) => state.projectPath);
+  const dirty = useIsDirty();
+  const actions = useProjectActions(setStatus);
+  const homePresence = usePresence(view === 'home', 200);
+
+  // The window title names the project, as editors do; the start screen keeps
+  // the plain app name.
+  useEffect(() => {
+    document.title = view === 'editor' && projectPath ? `${dirty ? '* ' : ''}${projectName} - ${APP_TITLE}` : APP_TITLE;
+  }, [view, projectPath, projectName, dirty]);
+
+  // The main process asks before closing a window with unsaved changes.
+  useEffect(() => {
+    if (!hasNativeBridge()) return;
+    window.filmora.documentState({ dirty: view === 'editor' && dirty, name: projectName });
+  }, [dirty, projectName, view]);
+
+  useEffect(() => {
+    if (!hasNativeBridge()) return undefined;
+    return window.filmora.onSaveBeforeClose(() => {
+      void actions.save(false).then((saved) => {
+        if (saved) void window.filmora.closeAfterSave();
+      });
+    });
+  }, [actions]);
+
+  // Project shortcuts. Registered in the capture phase so Ctrl+S saves instead
+  // of also reaching the editor's plain S (snapping).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      let run: (() => void) | null = null;
+      if (key === 's' && view === 'editor') run = () => void actions.save(event.shiftKey);
+      else if (key === 'o' && !event.shiftKey) run = () => void actions.openFromDialog();
+      if (!run) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!useSessionStore.getState().unsavedPrompt) run();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [actions, view]);
+
+  // Escape closes the mixer and project settings, like any dialog. Export is
+  // left to its own buttons: Escape must not be a way to lose a render.
+  useEffect(() => {
+    if (!mixerOpen && !settingsOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || useSessionStore.getState().unsavedPrompt) return;
+      event.preventDefault();
+      if (settingsOpen) setSettingsOpen(false);
+      else setMixerOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [mixerOpen, settingsOpen]);
+
+  // Behind the start screen the editor is inert: no focus, no clicks, no screen reader.
+  const editorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = editorRef.current;
+    if (!element) return;
+    element.toggleAttribute('inert', view !== 'editor');
+    if (view !== 'editor') useProjectStore.getState().setPlaying(false);
+  }, [view]);
 
   /* Panel sizes ------------------------------------------------------------- */
 
@@ -133,174 +217,171 @@ export default function App(): JSX.Element {
   const canRedo = useHistoryStore((state) => state.canRedo);
   const undo = useProjectStore((state) => state.undo);
   const redo = useProjectStore((state) => state.redo);
-  const newProject = useProjectStore((state) => state.newProject);
 
-  const saveProject = useCallback(async () => {
-    const document = useProjectStore.getState().toDocument();
-    const path = await window.filmora.saveProjectAs(JSON.stringify(document, null, 2));
-    setStatus(path ? `Saved to ${path}` : null);
-  }, []);
-
-  const openProject = useCallback(async () => {
-    const opened = await window.filmora.openProject();
-    if (!opened) return;
-
-    try {
-      const document = JSON.parse(opened.contents) as ProjectDocument;
-
-      // Media and LUTs are re-read from disk and every clip is remapped onto
-      // the fresh URLs: the ones the project was authored with died with that
-      // session.
-      const { assets, project } = await rehydrateDocument(
-        document.assets ?? [],
-        document.project,
-      );
-      useProjectStore.getState().loadDocument({ ...document, assets, project });
-
-      const missing = assets.filter((asset) => asset.missing);
-      setStatus(
-        missing.length > 0
-          ? `Opened ${opened.path} - ${missing.length} media file(s) could not be found`
-          : `Opened ${opened.path}`,
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    }
-  }, []);
+  const desktopOnly = (title: string): string => (nativeAvailable ? title : 'Only available in the desktop app');
 
   return (
-    <div className="flex h-full flex-col gap-1.5 bg-panel-950 p-1.5">
-      <header className="flex h-10 shrink-0 items-center gap-1 rounded-md border border-panel-700 bg-panel-900 px-2">
-        <span className="flex items-center gap-2 px-2">
-          {/* The project logo. It has its own light ground, so it sits in a
-              rounded tile rather than being cut out against the dark header. */}
-          <img src={LOGO_URL} alt="SCF" className="h-6 w-6 rounded-md" draggable={false} />
-          <span className="text-sm font-semibold tracking-wide text-slate-100">STOOK CREATOR FILMS</span>
-        </span>
+    <div className="relative h-full">
+      <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col gap-1.5 bg-panel-950 p-1.5">
+        <header className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-panel-700 bg-panel-900 px-2 shadow-md shadow-black/30">
+          <button
+            type="button"
+            className="group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-panel-800"
+            onClick={() => void actions.goHome()}
+            title="Back to the start screen"
+            aria-label="Home"
+          >
+            {/* The project logo. It has its own light ground, so it sits in a
+                rounded tile rather than being cut out against the dark header. */}
+            <img
+              src={LOGO_URL}
+              alt="SCF"
+              className="h-6 w-6 rounded-md transition-transform duration-200 group-hover:scale-110"
+              draggable={false}
+            />
+            <HomeIcon size={13} className="text-slate-500 transition-colors duration-150 group-hover:text-slate-200" />
+          </button>
 
-        <span className="mx-1 h-5 w-px bg-panel-600" />
-
-        <button type="button" className="tool-button" onClick={() => newProject()} title="New project">
-          <FilePlus2 size={14} />
-          New
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          disabled={!nativeAvailable}
-          onClick={() => void openProject()}
-          title={nativeAvailable ? 'Open project' : 'Only available in the desktop app'}
-        >
-          <FolderOpen size={14} />
-          Open
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          disabled={!nativeAvailable}
-          onClick={() => void saveProject()}
-          title={nativeAvailable ? 'Save project' : 'Only available in the desktop app'}
-        >
-          <Save size={14} />
-          Save
-        </button>
-
-        <span className="mx-1 h-5 w-px bg-panel-600" />
-
-        <button
-          type="button"
-          className="tool-button"
-          disabled={!canUndo}
-          onClick={undo}
-          title="Undo (Ctrl+Z)"
-        >
-          <Undo2 size={14} />
-          Undo
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          disabled={!canRedo}
-          onClick={redo}
-          title="Redo (Ctrl+Shift+Z)"
-        >
-          <Redo2 size={14} />
-          Redo
-        </button>
-
-        <span className="mx-1 h-5 w-px bg-panel-600" />
-
-        <button
-          type="button"
-          className="tool-button"
-          onClick={() => setMixerOpen(true)}
-          title="Mixer - levels, pan, EQ and auto ducking"
-        >
-          <Headphones size={14} />
-          Mixer
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          onClick={() => setSettingsOpen(true)}
-          title="Project settings - frame rate, resolution and duration"
-        >
-          <Settings2 size={14} />
-          Settings
-        </button>
-        <button
-          type="button"
-          className="tool-button"
-          onClick={() => commitLayout({ ...DEFAULT_LAYOUT })}
-          title="Put every panel back to its default size (double-click one border to reset just that panel)"
-        >
-          <LayoutDashboard size={14} />
-          Reset layout
-        </button>
-
-        <div className="flex-1" />
-
-        {status && <span className="truncate px-2 text-2xs text-slate-500">{status}</span>}
-
-        <button
-          type="button"
-          className="tool-button tool-button-active"
-          disabled={!nativeAvailable}
-          onClick={() => setExportOpen(true)}
-          title={
-            nativeAvailable
-              ? 'Export video or sprite frames'
-              : 'Exporting needs the desktop app, which bundles FFmpeg'
-          }
-        >
-          <Share2 size={14} />
-          Export
-        </button>
-      </header>
-
-      <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
-        <main className="flex min-h-0 flex-1">
-          <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
-            <MediaLibrary />
+          <div className="toolbar-group">
+            <button type="button" className="tool-button" onClick={() => void actions.newBlank()} title="New blank project">
+              <FilePlus2 size={14} />
+              New
+            </button>
+            <button
+              type="button"
+              className="tool-button"
+              disabled={!nativeAvailable}
+              onClick={() => void actions.openFromDialog()}
+              title={desktopOnly('Open project (Ctrl+O)')}
+            >
+              <FolderOpen size={14} />
+              Open
+            </button>
+            <button
+              type="button"
+              className="tool-button"
+              disabled={!nativeAvailable}
+              onClick={() => void actions.save(false)}
+              title={desktopOnly('Save project (Ctrl+S) - Save as: Ctrl+Shift+S')}
+            >
+              <Save size={14} />
+              Save
+            </button>
           </div>
-          {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
-          <PreviewViewport />
-          {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
-          <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
-            <Inspector />
+
+          <div className="toolbar-group">
+            <button type="button" className="tool-button" disabled={!canUndo} onClick={undo} title="Undo (Ctrl+Z)">
+              <Undo2 size={14} />
+              Undo
+            </button>
+            <button type="button" className="tool-button" disabled={!canRedo} onClick={redo} title="Redo (Ctrl+Shift+Z)">
+              <Redo2 size={14} />
+              Redo
+            </button>
           </div>
-        </main>
 
-        {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
+          <div className="toolbar-group">
+            <button
+              type="button"
+              className={`tool-button ${mixerOpen ? 'tool-button-active' : ''}`}
+              onClick={() => setMixerOpen(true)}
+              title="Mixer - levels, pan, EQ and auto ducking"
+            >
+              <Headphones size={14} />
+              Mixer
+            </button>
+            <button
+              type="button"
+              className={`tool-button ${settingsOpen ? 'tool-button-active' : ''}`}
+              onClick={() => setSettingsOpen(true)}
+              title="Project settings - frame rate, resolution and duration"
+            >
+              <Settings2 size={14} />
+              Settings
+            </button>
+            <button
+              type="button"
+              className="tool-button"
+              onClick={() => commitLayout({ ...DEFAULT_LAYOUT })}
+              title="Put every panel back to its default size (double-click one border to reset just that panel)"
+            >
+              <LayoutDashboard size={14} />
+              Reset layout
+            </button>
+          </div>
 
-        <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
-          <Timeline />
+          {/* The open project, and whether it has unsaved changes. */}
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-3" title={projectPath ?? 'Not saved yet'}>
+            <span data-testid="project-name" className="truncate text-xs font-medium text-slate-200">
+              {projectName}
+            </span>
+            {dirty && (
+              <span
+                data-testid="unsaved-indicator"
+                className="scf-dirty-dot h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
+                title="Unsaved changes"
+              />
+            )}
+          </div>
+
+          {status && (
+            <span key={status} className="scf-view max-w-[34%] truncate px-2 text-2xs text-slate-500" title={status}>
+              {status}
+            </span>
+          )}
+
+          <button
+            type="button"
+            className="tool-button tool-button-active px-3.5"
+            disabled={!nativeAvailable}
+            onClick={() => setExportOpen(true)}
+            title={nativeAvailable ? 'Export video or sprite frames' : 'Exporting needs the desktop app, which bundles FFmpeg'}
+          >
+            <Share2 size={14} />
+            Export
+          </button>
+        </header>
+
+        <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
+          <main className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
+              <MediaLibrary />
+            </div>
+            {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
+            <PreviewViewport />
+            {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
+            <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
+              <Inspector />
+            </div>
+          </main>
+
+          {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
+
+          <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
+            <Timeline />
+          </div>
         </div>
+
+        {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
+        {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
+        {settingsPresence.mounted && (
+          <ProjectSettings closing={settingsPresence.closing} onClose={() => setSettingsOpen(false)} />
+        )}
       </div>
 
-      {exportOpen && <ExportDialog onClose={() => setExportOpen(false)} />}
-      {mixerOpen && <Mixer onClose={() => setMixerOpen(false)} />}
-      {settingsOpen && <ProjectSettings onClose={() => setSettingsOpen(false)} />}
+      {homePresence.mounted && (
+        <div data-closing={homePresence.closing} className="scf-home-layer absolute inset-0 z-40">
+          <Home
+            status={status}
+            onBlank={() => void actions.newBlank()}
+            onCreate={actions.createProject}
+            onOpenDialog={() => void actions.openFromDialog()}
+            onOpenRecent={(path) => void actions.openRecent(path)}
+          />
+        </div>
+      )}
+
+      <UnsavedChangesDialog />
     </div>
   );
 }

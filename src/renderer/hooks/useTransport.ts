@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { useSessionStore } from '@renderer/store/useSessionStore';
 
 /**
  * Playback transport.
@@ -182,6 +183,8 @@ export function useEditorShortcuts(): void {
       const target = event.target as HTMLElement | null;
       // Never steal keys from a field the user is typing into.
       if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      // The start screen is not the editor: no playing, cutting or nudging behind it.
+      if (useSessionStore.getState().view !== 'editor') return;
 
       const store = useProjectStore.getState();
       const modifier = event.ctrlKey || event.metaKey;

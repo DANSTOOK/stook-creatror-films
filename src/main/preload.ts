@@ -5,7 +5,7 @@ import type {
   GpuReport,
   HardwareEncoder,
 } from '@shared/types';
-import { IPC, type FilmoraApi, type MediaProbe, type PickedFile } from '@shared/types/ipc';
+import { IPC, type FilmoraApi, type MediaProbe, type PickedFile, type RecentProject } from '@shared/types/ipc';
 
 /**
  * The only bridge between the renderer and Node.
@@ -33,6 +33,25 @@ const api: FilmoraApi = {
       IPC.registerDroppedFolders,
       folders.map((folder) => webUtils.getPathForFile(folder)).filter((path) => path !== ''),
     ) as Promise<PickedFile[]>,
+  projectsList: () => ipcRenderer.invoke(IPC.projectsList) as Promise<RecentProject[]>,
+  projectsOpenRecent: (path) =>
+    ipcRenderer.invoke(IPC.projectsOpenRecent, path) as Promise<{ path: string; contents: string } | null>,
+  projectsForget: (path) => ipcRenderer.invoke(IPC.projectsForget, path) as Promise<void>,
+  projectsDefaultFolder: () => ipcRenderer.invoke(IPC.projectsDefaultFolder) as Promise<string>,
+  projectsChooseFolder: () => ipcRenderer.invoke(IPC.projectsChooseFolder) as Promise<string | null>,
+  projectsCreate: (folder, name, contents) =>
+    ipcRenderer.invoke(IPC.projectsCreate, folder, name, contents) as Promise<string>,
+  projectsSave: (path, contents) => ipcRenderer.invoke(IPC.projectsSave, path, contents) as Promise<string>,
+  projectsRecord: (project, thumbnail) => ipcRenderer.invoke(IPC.projectsRecord, project, thumbnail) as Promise<void>,
+  documentState: (state) => ipcRenderer.send(IPC.documentState, state),
+  onSaveBeforeClose(listener) {
+    const handler = (): void => listener();
+    ipcRenderer.on(IPC.saveBeforeClose, handler);
+    return () => {
+      ipcRenderer.off(IPC.saveBeforeClose, handler);
+    };
+  },
+  closeAfterSave: () => ipcRenderer.invoke(IPC.closeAfterSave) as Promise<void>,
   openProject: () =>
     ipcRenderer.invoke(IPC.openProject) as Promise<{ path: string; contents: string } | null>,
   openLut: () =>

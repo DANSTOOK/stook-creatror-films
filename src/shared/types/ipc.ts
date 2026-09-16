@@ -16,6 +16,17 @@ export const IPC = {
   mediaUrl: 'media:url',
   extractAudio: 'media:extract-audio',
   openProject: 'dialog:open-project',
+  projectsList: 'projects:list',
+  projectsOpenRecent: 'projects:open-recent',
+  projectsForget: 'projects:forget',
+  projectsDefaultFolder: 'projects:default-folder',
+  projectsChooseFolder: 'projects:choose-folder',
+  projectsCreate: 'projects:create',
+  projectsSave: 'projects:save',
+  projectsRecord: 'projects:record',
+  documentState: 'app:document-state',
+  saveBeforeClose: 'app:save-before-close',
+  closeAfterSave: 'app:close-after-save',
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
   chooseExportPath: 'dialog:choose-export-path',
@@ -76,6 +87,34 @@ export interface ExportStartResult {
  * Everything is promise-based and takes plain structured-cloneable data, so no
  * Node primitive ever leaks into the renderer.
  */
+/** A project on the start screen. */
+export interface RecentProject {
+  path: string;
+  name: string;
+  /** ISO time it was last opened, created or saved. */
+  lastOpened: string;
+  width: number;
+  height: number;
+  fps: number;
+  durationFrames: number;
+  clipCount: number;
+  /** The file is still where it was. */
+  exists: boolean;
+  /** A media:// URL for its thumbnail, when one was taken. */
+  thumbnailUrl?: string;
+}
+
+/** What a save records about a project for the start screen. */
+export interface RecentProjectInput {
+  path: string;
+  name: string;
+  width: number;
+  height: number;
+  fps: number;
+  durationFrames: number;
+  clipCount: number;
+}
+
 export interface FilmoraApi {
   openMedia(): Promise<PickedFile[]>;
   /**
@@ -105,6 +144,26 @@ export interface FilmoraApi {
    */
   extractAudio(path: string): Promise<string | null>;
   openProject(): Promise<{ path: string; contents: string } | null>;
+  /** Recent projects, newest first, each with whether its file still exists. */
+  projectsList(): Promise<RecentProject[]>;
+  /** Open a project from the recent list without a dialog; refused for any other path. */
+  projectsOpenRecent(path: string): Promise<{ path: string; contents: string } | null>;
+  /** Take a project off the list. The file itself is left alone. */
+  projectsForget(path: string): Promise<void>;
+  /** Documents\STOOK CREATOR FILMS\Projects, created if needed. */
+  projectsDefaultFolder(): Promise<string>;
+  projectsChooseFolder(): Promise<string | null>;
+  /** Write a new project file in `folder`, named after `name` (made unique); returns its path. */
+  projectsCreate(folder: string, name: string, contents: string): Promise<string>;
+  /** Save over a project file this session opened, created or saved. */
+  projectsSave(path: string, contents: string): Promise<string>;
+  /** Put a project at the top of the recent list, with an optional JPEG thumbnail. */
+  projectsRecord(project: RecentProjectInput, thumbnail?: ArrayBuffer): Promise<void>;
+  /** Tell the window whether there are unsaved changes, so closing can ask. */
+  documentState(state: { dirty: boolean; name: string }): void;
+  /** The window asked to save before closing; save, then call closeAfterSave. */
+  onSaveBeforeClose(listener: () => void): () => void;
+  closeAfterSave(): Promise<void>;
   /**
    * Pick a `.cube` LUT. Returns the path as well as the contents, because the
    * path is what lets the look survive saving and reopening the project.

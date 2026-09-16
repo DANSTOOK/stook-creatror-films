@@ -86,7 +86,7 @@ async function main() {
   const app = await electron.launch({
     args: [`--user-data-dir=${join(projectRoot, '.bench-tmp', 'profile-irregular-head')}`, join(projectRoot, 'dist-electron/main/index.js')],
     cwd: projectRoot,
-    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined },
+    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined, SCF_SKIP_HOME: '1', SCF_NO_CLOSE_PROMPT: '1' },
   });
 
   let passed = 0;

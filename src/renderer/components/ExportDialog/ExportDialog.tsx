@@ -81,9 +81,11 @@ function defaultFileName(assets: readonly MediaAsset[]): string {
 
 export interface ExportDialogProps {
   onClose(): void;
+  /** Playing its exit animation; see usePresence. */
+  closing?: boolean;
 }
 
-export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
+export function ExportDialog({ onClose, closing = false }: ExportDialogProps): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const assets = useProjectStore((state) => state.assets);
   const settings = useProjectStore((state) => state.exportSettings);
@@ -450,8 +452,8 @@ export function ExportDialog({ onClose }: ExportDialogProps): JSX.Element {
 
   return (
     // The editor behind is blurred, so the dialog is the only thing in focus.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Export" className="panel w-[min(980px,95vw)] max-h-[92vh]">
+    <div data-closing={closing} className="scf-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div role="dialog" aria-modal="true" aria-label="Export" data-closing={closing} className="scf-dialog panel w-[min(980px,95vw)] max-h-[92vh] shadow-2xl shadow-black/60">
         {/*
           The actions live at the top, beside the title: what everything below
           is for, always in reach without scrolling.

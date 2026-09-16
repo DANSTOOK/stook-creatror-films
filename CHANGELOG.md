@@ -7,12 +7,103 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **528 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **61/61 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación y reapertura en una sesión nueva), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`) y
+Cifras de referencia al día de hoy: **542 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **67/67 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **60/60** con la v1.10.0-beta.1 (ninguna petición a la red, los 60
-fotogramas exportados correctos); antes solo se había hecho con la v1.0.
+y sin red: **68/68** con la v1.11.0-beta.1 (ninguna petición a la red, los 60
+fotogramas exportados correctos).
+
+---
+
+## v1.11.0-beta.1 — Sala principal, proyectos y menús con movimiento
+2026-09-15 · pre-release para probar
+
+Tomando como referencia el Project Manager de DaVinci Resolve y la pantalla
+Home de Premiere, la guía de documentos recientes y de datos de usuario de
+Electron, y las pautas de movimiento de Material (entradas de 200–300 ms que
+frenan al llegar, salidas en la mitad, y respetar «reducir movimiento»).
+
+### Añadido
+- **Sala principal al abrir la app.** A la izquierda, **New project** con
+  nombre, resolución (1080p, 4K, 720p, vertical, cuadrado), fotogramas por
+  segundo y carpeta (por defecto `Documentos\STOOK CREATOR FILMS\Projects`);
+  debajo, **Blank project** y **Open project…**. A la derecha, **Recent
+  projects**: los 20 últimos, el más reciente primero, cada uno con una
+  miniatura de la edición, resolución, fps, duración, clips y «hace cuánto».
+  Tiene buscador; un proyecto cuyo archivo ya no está sale marcado **File not
+  found** y no se puede abrir; la **X** lo quita de la lista sin tocar el
+  archivo.
+  - Cómo se comprobó: prueba de estrés de proyectos (`npm run
+    test:stress:projects`, 41/41): crea 26 proyectos desde la sala y la lista
+    se queda en los 20 más nuevos (en pantalla y en el archivo), la miniatura
+    del proyecto con metraje es la imagen real (6,3 KB, luminancia media 128,
+    no negra) y la del que sale de la lista se borra; un proyecto borrado del
+    disco sale marcado y desactivado; **Remove** lo quita; el buscador muestra
+    exactamente los 10 que coinciden; y una sesión nueva abre con la misma
+    lista. Un `recent-projects.json` dañado a propósito no rompe nada.
+    Prueba de interfaz: la app abre en la sala, Blank project lleva al editor
+    vacío, y en una sesión nueva el proyecto guardado aparece con su miniatura
+    y se abre con un clic, con todo su metraje. Pruebas unitarias
+    (`tests/RecentProjects.test.ts`, `tests/ProjectSession.test.ts`).
+- **Sistema de proyectos.** El nombre del proyecto va en el centro de la barra
+  y en el título de la ventana, con un punto ámbar si hay cambios sin guardar.
+  **Ctrl+S** guarda directamente en su archivo (solo pregunta dónde la primera
+  vez) y **Ctrl+Shift+S** es *Guardar como*; **Ctrl+O** abre. El guardado
+  escribe aparte y renombra encima, así que un corte de luz a mitad no deja un
+  proyecto a medias; varios guardados seguidos se aplican en orden. Un nombre
+  repetido nunca sobrescribe otro proyecto (`Nombre (2)`) y los caracteres que
+  Windows no admite se quitan del nombre del archivo.
+  - **¿Guardar cambios?** antes de perder trabajo: al ir a la sala, al abrir
+    otro proyecto, al crear uno nuevo y al cerrar la ventana. *Save* guarda y
+    sigue, *Don't save* lo descarta y *Cancel* te deja donde estabas.
+    Deshacer hasta el punto guardado cuenta como guardado.
+  - Cómo se comprobó: prueba de estrés de proyectos: 21 veces «¿guardar
+    cambios?» (7 de cada respuesta) comprobando el archivo en disco y el
+    proyecto reabierto cada vez; deshacer vuelve a «guardado»; 40 ediciones
+    con Ctrl+S sin esperar dejan en el archivo la última edición entera y
+    ningún temporal; Ctrl+S nunca activa el imán (la S sola); cerrar la
+    ventana con cambios pregunta, Cancel la deja abierta y Save guarda (53/53
+    pistas en disco) y cierra. Nombres repetidos y con `: / ?` en la misma
+    prueba. La página no puede leer, sobrescribir ni crear archivos fuera de
+    lo que eligió el usuario (tres intentos rechazados). Prueba de interfaz:
+    el punto de cambios, Cancel en la sala y en el cierre de la ventana.
+- **Menús y animaciones.** Los menús del botón derecho crecen desde el punto
+  del clic (130 ms), con esquinas redondeadas, fondo translúcido, el atajo en
+  su tecla y color al pasar; si no caben, se abren hacia arriba. Los diálogos
+  (Export, Mixer, Settings) entran con un ligero desplazamiento y escala
+  (240 ms) y ahora también **salen** animados (130 ms); Mixer y Settings se
+  cierran con Escape. La barra superior agrupa sus botones (proyecto,
+  deshacer, paneles), los botones se hunden al pulsarlos y la sala entra
+  escalonada. Con «reducir movimiento» activado en Windows no se anima nada.
+  - Cómo se comprobó: prueba de estrés de proyectos: 60 aperturas y cierres
+    de diálogos, algunos a mitad de animación, sin dejar ninguna capa
+    oscura encima y con el editor respondiendo al instante; 10 veces la
+    ventana de exportación; 100 menús contextuales por toda la línea de
+    tiempo, 100/100 abiertos (22 ms de mediana), ninguno fuera de la ventana,
+    ninguno se queda abierto y ninguno cambia el proyecto; duraciones medidas
+    en la página (0,24 s y 0,13 s); con reducir movimiento, 0,001 s y el
+    diálogo desaparece en 26 ms. 40 viajes sala ↔ proyecto: el montón de JS
+    no crece (14 → 14 MB) ni la página (1613 → 1613 elementos), 294 ms de
+    mediana por viaje.
+
+### Arreglado durante el desarrollo
+- **«No guardar» volvía a preguntar.** Tras elegir *Don't save* e ir a la
+  sala, el cambio descartado seguía en memoria y abrir otro proyecto
+  preguntaba otra vez. Ahora ir a la sala cierra el proyecto.
+  - Cómo se comprobó: lo encontró la prueba de estrés de proyectos (se quedaba
+    atascada en el primer *Don't save*); tras el arreglo pasan las 21
+    respuestas.
+- **Menús que se salían unos píxeles por el borde.** El menú se medía en su
+  primer fotograma, todavía al 95 % de la animación de entrada, y calculaba
+  mal el sitio junto al borde.
+  - Cómo se comprobó: la prueba de estrés contó 7 de 100 recortados; tras el
+    arreglo, 0 de 100.
+- **Dos guardados a la vez podían pisarse.** Compartían el archivo temporal;
+  ahora van en fila por archivo y con nombre propio, y el renombrado reintenta
+  si Windows tiene el archivo ocupado un instante.
+  - Cómo se comprobó: las 40 ediciones con Ctrl+S sin esperar de la prueba de
+    estrés.
 
 ---
 

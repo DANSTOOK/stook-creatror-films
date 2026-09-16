@@ -3,7 +3,7 @@
   "configurations": [
     {
       "name": "filmora-renderer-preview",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "scripts\\node.cmd",
       "runtimeArgs": ["./node_modules/vite/bin/vite.js", "preview", "--port", "5274", "--strictPort"],
       "port": 5274
     }

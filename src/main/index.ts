@@ -1,4 +1,5 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
@@ -22,6 +23,11 @@ const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow: BrowserWindow | null = null;
 let pipeline: EncoderPipeline | null = null;
+
+/** What the renderer last said about the open project, for the close prompt. */
+let documentState = { dirty: false, name: 'Untitled project' };
+/** Set once closing has been answered, so the second close goes through. */
+let closeApproved = false;
 
 // A single instance keeps two windows from fighting over the same project file.
 if (!app.requestSingleInstanceLock()) {
@@ -91,11 +97,42 @@ function createWindow(): void {
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
 
   if (devServerUrl) {
-    void mainWindow.loadURL(devServerUrl);
+    void mainWindow.loadURL(process.env.SCF_SKIP_HOME ? `${devServerUrl}?start=editor` : devServerUrl);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    void mainWindow.loadFile(join(RENDERER_DIST, 'index.html'));
+    // Automation that drives the editor directly skips the start screen.
+    void mainWindow.loadFile(join(RENDERER_DIST, 'index.html'), process.env.SCF_SKIP_HOME ? { query: { start: 'editor' } } : undefined);
   }
+
+  // Unsaved work: ask before the window goes, as every editor does. "Save"
+  // hands back to the renderer, which saves (asking where, for a project
+  // never saved) and closes only if the save went through. Automation that
+  // quits on purpose sets SCF_NO_CLOSE_PROMPT.
+  mainWindow.on('close', (event) => {
+    if (closeApproved || !documentState.dirty || process.env.SCF_NO_CLOSE_PROMPT) return;
+    event.preventDefault();
+    const window = mainWindow;
+    if (!window) return;
+    void dialog
+      .showMessageBox(window, {
+        type: 'warning',
+        buttons: ['Save', "Don't save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        title: 'Unsaved changes',
+        message: `Save changes to "${documentState.name}"?`,
+        detail: "Your changes will be lost if you don't save them.",
+      })
+      .then(({ response }) => {
+        if (response === 2 || window.isDestroyed()) return;
+        if (response === 1) {
+          closeApproved = true;
+          window.close();
+          return;
+        }
+        window.webContents.send(IPC.saveBeforeClose);
+      });
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -105,6 +142,17 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerMediaProtocolHandler();
   pipeline = registerFileSystemHandlers(() => mainWindow);
+
+  ipcMain.on(IPC.documentState, (_event, state: unknown) => {
+    if (!state || typeof state !== 'object') return;
+    const { dirty, name } = state as { dirty?: unknown; name?: unknown };
+    documentState = { dirty: dirty === true, name: typeof name === 'string' && name ? name : 'Untitled project' };
+  });
+
+  ipcMain.handle(IPC.closeAfterSave, () => {
+    closeApproved = true;
+    mainWindow?.close();
+  });
   createWindow();
 
   app.on('activate', () => {
