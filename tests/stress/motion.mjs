@@ -173,11 +173,6 @@ async function main() {
       dialogMotion.easing.startsWith('linear(') && dialogMotion.duration === '0.42s',
       `${dialogMotion.duration} ${dialogMotion.easing.slice(0, 40)}...`);
 
-    const barTransition = await window.evaluate(() => {
-      const bar = document.querySelector('.scf-progress-bar');
-      return bar ? getComputedStyle(bar).transitionProperty : 'no bar on screen';
-    });
-
     /* Scenarios -------------------------------------------------------------- */
     step('dialogs, 15 times');
     const dialogs = await sampler('dialogs', async () => {
@@ -258,6 +253,39 @@ async function main() {
     });
     check('dialogs stay smooth even while the preview is playing', playing.freezes === 0 && playing.p95 < 45, describe(playing));
 
+    /* The progress bar, while it really exists -------------------------------- */
+    // It only exists during a render, so the sweep below never saw the one
+    // element the change was about: it used to animate its width, laying the
+    // dialog out again on every update, dozens of times a second.
+    step('rendering, with the progress bar on screen');
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, workDir);
+    await window.getByRole('button', { name: 'Export', exact: true }).click();
+    const exportDialog = window.getByRole('dialog', { name: 'Export' });
+    await exportDialog.getByText('This render:').waitFor({ timeout: 60_000 });
+    await exportDialog.getByLabel('File name').fill('motion-export');
+    await exportDialog.getByRole('button', { name: 'Browse' }).click();
+    await exportDialog.getByText('Will ', { exact: false }).first().waitFor({ timeout: 10_000 });
+    await exportDialog.getByLabel('End frame').fill('150');
+
+    let bar = null;
+    const rendering = await sampler('rendering', async () => {
+      await exportDialog.getByRole('button', { name: 'Start export' }).click();
+      await sleep(1200);
+      bar = await window.evaluate(() => {
+        const element = document.querySelector('.scf-progress-bar');
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return { transition: style.transitionProperty, transform: style.transform, width: style.width };
+      });
+      await exportDialog.getByText('Export finished', { exact: false }).waitFor({ timeout: 300_000 }).catch(() => undefined);
+    }, 300);
+    check('the progress bar was on screen to be judged, and it scales rather than resizes',
+      bar !== null && bar.transition === 'transform' && bar.transform.startsWith('matrix'),
+      bar ? `transition ${bar.transition}, transform ${bar.transform}, width ${bar.width}` : 'no progress bar found');
+    check('the picture stays smooth while a render is running', rendering.freezes === 0 && rendering.p95 < 45, describe(rendering));
+
     /* The details that make it smooth ---------------------------------------- */
     step('what is being animated');
     const properties = await window.evaluate(() => {
@@ -274,7 +302,10 @@ async function main() {
       return offenders.slice(0, 6);
     });
     check('nothing on screen animates a layout property', properties.length === 0,
-      properties.length ? properties.join(' | ') : `progress bar transitions ${barTransition}`);
+      properties.length ? properties.join(' | ') : `swept with the progress bar on screen (${bar?.transition ?? 'bar gone'})`);
+
+    await exportDialog.getByTitle('Close').click().catch(() => undefined);
+    await exportDialog.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
 
     step('reduced motion');
     await window.emulateMedia({ reducedMotion: 'reduce' });
