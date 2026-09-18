@@ -14,6 +14,7 @@ import { framesToTimecode } from '@shared/utils/timecode';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useTransport } from '@renderer/hooks/useTransport';
 import { useCompositor } from './useCompositor';
+import { ViewportControls } from './ViewportControls';
 
 /** WebGL canvas player with scrubber and transport controls. */
 export function PreviewViewport(): JSX.Element {
@@ -75,6 +76,8 @@ export function PreviewViewport(): JSX.Element {
               className="block h-full w-full object-contain"
               style={{ imageRendering: ui.pixelArtViewport ? 'pixelated' : 'auto' }}
             />
+            {/* Drag the picture itself: move, scale, rotate. */}
+            <ViewportControls />
           </div>
         )}
       </div>

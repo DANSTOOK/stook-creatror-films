@@ -692,6 +692,65 @@ async function main() {
       `${afterSettings.width}x${afterSettings.height} @ ${afterSettings.fps} fps, ` +
         `${afterSettings.duration} frames long (was ${beforeSettings.duration})`);
 
+    /* Dragging the picture in the viewer ------------------------------------ */
+    // Select the clip on the timeline, then push it around in the viewer the
+    // way an editor would, and read back the same numbers the inspector shows.
+    // The controls only show for a clip that is actually on screen, so the
+    // playhead goes onto it first - the same rule Filmora and Premiere follow.
+    await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const clip = Object.values(store.project.clips)[0];
+      store.setCurrentFrame(clip.startFrame + 5);
+      store.setUi({ selectedClipIds: [clip.id], selectedTrackId: clip.trackId });
+    });
+    const viewportTransformNow = () => window.evaluate(() => {
+      const { project, ui } = window.__scfStore.getState();
+      const clip = project.clips[ui.selectedClipIds[0]];
+      const last = (track, fallback) => (track.length ? track[track.length - 1].value : fallback);
+      return {
+        position: last(clip.transform.position, { x: 0, y: 0 }),
+        scale: last(clip.transform.scale, { x: 1, y: 1 }),
+        rotation: last(clip.transform.rotation, 0),
+      };
+    });
+
+    const viewportGrip = window.getByTestId('viewport-handle-topRight');
+    const viewportGripShown = await viewportGrip.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
+    check('selecting a clip puts handles on it in the viewer', viewportGripShown);
+
+    const beforeViewportDrag = await viewportTransformNow();
+    const viewportGripBox = await viewportGrip.boundingBox();
+    await window.mouse.move(viewportGripBox.x + viewportGripBox.width / 2, viewportGripBox.y + viewportGripBox.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(viewportGripBox.x + viewportGripBox.width / 2 - 60, viewportGripBox.y + viewportGripBox.height / 2 + 34, { steps: 10 });
+    await window.mouse.up();
+    const afterViewportScale = await viewportTransformNow();
+    const viewportShrank = afterViewportScale.scale.x < beforeViewportDrag.scale.x && afterViewportScale.scale.y < beforeViewportDrag.scale.y;
+    const viewportKeptProportions = Math.abs(afterViewportScale.scale.x - afterViewportScale.scale.y) < 0.001;
+    check('dragging a corner handle scales the clip, keeping its proportions', viewportShrank && viewportKeptProportions,
+      `scale ${beforeViewportDrag.scale.x.toFixed(3)} -> ${afterViewportScale.scale.x.toFixed(3)} x ${afterViewportScale.scale.y.toFixed(3)}`);
+
+    const previewCanvas = window.locator('canvas').first();
+    const previewCanvasBox = await previewCanvas.boundingBox();
+    await window.mouse.move(previewCanvasBox.x + previewCanvasBox.width / 2, previewCanvasBox.y + previewCanvasBox.height / 2);
+    await window.mouse.down();
+    await window.mouse.move(previewCanvasBox.x + previewCanvasBox.width / 2 + 70, previewCanvasBox.y + previewCanvasBox.height / 2 - 30, { steps: 8 });
+    await window.mouse.up();
+    const afterViewportMove = await viewportTransformNow();
+    check('dragging the picture moves the clip',
+      afterViewportMove.position.x > afterViewportScale.position.x && afterViewportMove.position.y < afterViewportScale.position.y,
+      `position ${afterViewportScale.position.x.toFixed(0)},${afterViewportScale.position.y.toFixed(0)} -> ${afterViewportMove.position.x.toFixed(0)},${afterViewportMove.position.y.toFixed(0)}`);
+
+    // One drag is one edit: two of them, two undos, back where it started.
+    await window.keyboard.press('Control+z');
+    await window.keyboard.press('Control+z');
+    const afterViewportUndo = await viewportTransformNow();
+    check('each drag in the viewer is a single undo step',
+      Math.abs(afterViewportUndo.scale.x - beforeViewportDrag.scale.x) < 0.001
+      && Math.abs(afterViewportUndo.position.x - beforeViewportDrag.position.x) < 0.5
+      && Math.abs(afterViewportUndo.position.y - beforeViewportDrag.position.y) < 0.5,
+      `back to scale ${afterViewportUndo.scale.x.toFixed(3)}, position ${afterViewportUndo.position.x.toFixed(0)},${afterViewportUndo.position.y.toFixed(0)}`);
+
     // Markers: drop one at the playhead, walk away, and jump back to it.
     // Placed by pixels, not frames: a ruler click within a few pixels of a
     // flag selects that marker, and zoomed out to fit a long clip, thirty

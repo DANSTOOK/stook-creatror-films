@@ -229,6 +229,17 @@ interface ProjectStore {
   /* Keyframes ------------------------------------------------------------ */
   setVectorKeyframe(clipId: string, property: VectorProperty, frame: number, value: Vector2D): void;
   setNumberKeyframe(clipId: string, property: NumberProperty, frame: number, value: number): void;
+  /**
+   * Write several transform properties at one frame as a single edit.
+   *
+   * Dragging a clip in the viewer moves and scales it at the same time; as two
+   * separate keyframe edits, undo would take back half a drag.
+   */
+  setTransformAt(
+    clipId: string,
+    frame: number,
+    patch: { position?: Vector2D; scale?: Vector2D; rotation?: number },
+  ): void;
   removeKeyframe(clipId: string, property: VectorProperty | NumberProperty, keyframeId: string): void;
   clearKeyframes(clipId: string, property: VectorProperty | NumberProperty): void;
 
@@ -1093,6 +1104,24 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         };
       },
       `kf:${clipId}:${property}:${frame}`,
+    );
+  },
+
+  setTransformAt(clipId, frame, patch) {
+    get().transact(
+      'Transform',
+      (project) => {
+        const clip = project.clips[clipId];
+        if (!clip) return project;
+
+        const transform = { ...clip.transform };
+        if (patch.position) transform.position = upsertKeyframe(transform.position, frame, { ...patch.position });
+        if (patch.scale) transform.scale = upsertKeyframe(transform.scale, frame, { ...patch.scale });
+        if (patch.rotation !== undefined) transform.rotation = upsertKeyframe(transform.rotation, frame, patch.rotation);
+
+        return { ...project, clips: { ...project.clips, [clipId]: { ...clip, transform } } };
+      },
+      `kf:${clipId}:transform:${frame}`,
     );
   },
 

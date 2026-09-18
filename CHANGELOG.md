@@ -7,12 +7,61 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **542 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **67/67 comprobaciones de interfaz** (exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **557 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **71/71 comprobaciones de interfaz** (mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **68/68** con la v1.14.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **72/72** con la v1.15.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.15.0-beta.1 — Mueve y escala el clip directamente en el visor
+2026-09-17 · pre-release para probar
+
+Como en Filmora: seleccionas una imagen o un vídeo y lo colocas arrastrándolo
+en el visor, en vez de escribir números en el inspector.
+
+### Añadido
+- **Controles de transformación en el visor.** Con un clip seleccionado (y la
+  cabeza lectora sobre él, que es cuando se ve), aparece su contorno con ocho
+  tiradores:
+  - **Arrastrar la imagen** la mueve.
+  - **Las esquinas escalan manteniendo la proporción**; con **Mayús**, libre.
+    La esquina opuesta se queda quieta, que es lo que el ojo espera.
+  - **Los laterales** estiran solo en su eje.
+  - **El tirador de arriba gira** el clip alrededor de su punto de anclaje;
+    con **Mayús**, de 15 en 15 grados.
+  - Un clic en la imagen **selecciona el clip que hay debajo** (el de la pista
+    más alta primero); un clic fuera deselecciona.
+  - Son los mismos valores que el inspector (posición, escala, rotación) y se
+    escriben en la cabeza lectora, así que quedan en la pista de keyframes y se
+    animan como cualquier otro. **Cada arrastre es un solo paso de deshacer.**
+  - Cómo se comprobó: prueba de interfaz que selecciona un clip, arrastra la
+    esquina (escala 1,000 → 0,858 en ambos ejes), arrastra la imagen (la
+    posición sigue al ratón) y deshace dos veces: vuelve exactamente a escala
+    1 y posición 0,0. Pasa también contra el ejecutable empaquetado sin red.
+    Quince pruebas unitarias de la geometría (`tests/ViewportTransform.test.ts`),
+    incluidos clips girados y con el anclaje fuera del centro.
+
+### Arreglado durante el desarrollo
+- **Un clip girado se escalaba mal.** El compositor gira en su espacio
+  normalizado, donde X e Y no tienen la misma densidad de píxeles (1920 frente
+  a 1080): girado un cuarto de vuelta, el ancho propio de un clip mide 540
+  píxeles en pantalla, no 960. Medir el arrastre en píxeles daba escalas
+  equivocadas; ahora la geometría se calcula en el mismo espacio que el
+  compositor.
+  - Cómo se comprobó: lo encontró la prueba unitaria del clip girado; ahora
+    arrastrar una esquina a donde ya estaba no cambia nada, y la esquina
+    opuesta no se mueve.
+- **Con el clip a pantalla completa los tiradores no se podían agarrar.** A
+  escala 1, el caso por defecto, caían justo en el borde del visor y quedaban
+  cortados por la mitad. El control ahora sobresale unos píxeles del fotograma.
+  - Cómo se comprobó: arrastre real sobre un clip a escala 1 en la app.
+- **Un arrastre de escala dejaba dos pasos de deshacer** (escala y posición
+  por separado), así que un Ctrl+Z dejaba el clip donde nunca estuvo. Ahora
+  hay una acción que escribe ambos como una sola edición.
+  - Cómo se comprobó: la comprobación de deshacer de la prueba de interfaz.
 
 ---
 
