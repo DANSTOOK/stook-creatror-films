@@ -70,6 +70,10 @@ export function useAudioPlayback(): void {
 
   const assets = useProjectStore((state) => state.assets);
   const isPlaying = useProjectStore((state) => state.ui.isPlaying);
+  // Shuttling with J and L is a search through the picture: the sound cannot
+  // follow at 2x or backwards, and trying leaves the engine rescheduling on
+  // every frame, which is worse than silence.
+  const playbackRate = useProjectStore((state) => state.ui.playbackRate);
   // Only the mixer-relevant part of the project, as a comparable string: the
   // project object itself is replaced on every scrub, and rebuilding the audio
   // graph once per frame of playhead movement is not something to do.
@@ -237,7 +241,7 @@ export function useAudioPlayback(): void {
     const engine = engineRef.current;
     if (!engine) return;
 
-    if (!isPlaying) {
+    if (!isPlaying || playbackRate !== 1) {
       engine.stop();
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -268,5 +272,5 @@ export function useAudioPlayback(): void {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [isPlaying]);
+  }, [isPlaying, playbackRate]);
 }

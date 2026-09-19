@@ -1073,6 +1073,97 @@ async function main() {
     check('no console errors during the whole session', consoleIssues.length === 0,
       consoleIssues.length ? consoleIssues[0] : 'clean');
 
+    /* In and out, the shuttle, and three-point edits ------------------------- */
+    // The export section leaves its dialog open, and its backdrop takes clicks.
+    const openExport = window.getByRole('dialog', { name: 'Export' });
+    if ((await openExport.count()) > 0) {
+      await openExport.getByTitle('Close').click();
+      await openExport.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+    }
+
+    // Keys go to the window, so focus something that is not a field first.
+    await window.getByTestId('project-name').click();
+    const markState = () => window.evaluate(() => {
+      const { ui, project } = window.__scfStore.getState();
+      const clips = Object.values(project.clips);
+      return {
+        in: ui.inFrame,
+        out: ui.outFrame,
+        rate: ui.playbackRate,
+        playing: ui.isPlaying,
+        count: clips.length,
+        end: clips.reduce((last, clip) => Math.max(last, clip.startFrame + clip.durationFrames), 0),
+        atTwenty: clips.filter((clip) => clip.startFrame === 20).map((clip) => ({ id: clip.id, length: clip.durationFrames })),
+      };
+    });
+
+    await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(20));
+    await window.keyboard.press('i');
+    await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(80));
+    await window.keyboard.press('o');
+    const marked = await markState();
+    // Out sits one past the frame it keeps, so 20..80 inclusive is 61 frames.
+    check('I and O mark a range, the out point keeping its own frame',
+      marked.in === 20 && marked.out === 81, `in ${marked.in}, out ${marked.out}`);
+
+    await window.keyboard.press('l');
+    await window.keyboard.press('l');
+    const shuttling = await markState();
+    await window.keyboard.press('j');
+    const slowed = await markState();
+    await window.keyboard.press('k');
+    const halted = await markState();
+    check('L shuttles faster each press, J slows it, K stops',
+      shuttling.rate === 2 && shuttling.playing && slowed.rate === 1 && !halted.playing,
+      `L L = ${shuttling.rate}x, then J = ${slowed.rate}x, playing after K ${halted.playing}`);
+
+    const beforeEdits = await markState();
+    await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      store.setUi({ selectedAssetId: video.id, selectedTrackId: store.project.tracks.find((t) => t.type === 'video').id });
+      store.setCurrentFrame(20);
+    });
+
+    await window.keyboard.press(',');
+    const inserted = await markState();
+    check('comma inserts the marked length at the in point, pushing what follows',
+      inserted.atTwenty.length === 1 && inserted.atTwenty[0].length === 61 && inserted.end === beforeEdits.end + 61,
+      `clip at 20 is ${inserted.atTwenty[0]?.length} frames; timeline ${beforeEdits.end} -> ${inserted.end}`);
+
+    await window.keyboard.press('.');
+    const overwritten = await markState();
+    check('full stop overwrites in place, leaving the length alone',
+      overwritten.atTwenty.length === 1 && overwritten.atTwenty[0].length === 61
+      && overwritten.atTwenty[0].id !== inserted.atTwenty[0]?.id && overwritten.end === inserted.end,
+      `timeline ${inserted.end} -> ${overwritten.end}`);
+
+    // The export renders exactly what is marked.
+    await window.getByRole('button', { name: 'Export' }).click();
+    const rangeDialog = window.getByRole('dialog', { name: 'Export' });
+    await rangeDialog.getByText('This render:').waitFor({ timeout: 60_000 });
+    await rangeDialog.getByRole('button', { name: 'In to out' }).click();
+    const exportRange = {
+      start: Number(await rangeDialog.getByLabel('Start frame').inputValue()),
+      end: Number(await rangeDialog.getByLabel('End frame').inputValue()),
+    };
+    await rangeDialog.getByTitle('Close').click();
+    await rangeDialog.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
+    check('the export can render the marked range only',
+      exportRange.start === 20 && exportRange.end === 81, JSON.stringify(exportRange));
+
+    // Put the timeline back: one undo each, and the marks cleared.
+    await window.getByTestId('project-name').click();
+    await window.keyboard.press('Control+z');
+    await window.keyboard.press('Control+z');
+    const undone = await markState();
+    check('each three-point edit is a single undo step',
+      undone.count === beforeEdits.count && undone.end === beforeEdits.end,
+      `${undone.count} clips ending at ${undone.end}, was ${beforeEdits.count} ending at ${beforeEdits.end}`);
+    await window.keyboard.press('Control+Shift+x');
+    const cleared = await markState();
+    check('Ctrl+Shift+X clears the marks', cleared.in === null && cleared.out === null);
+
     /* Unsaved changes ------------------------------------------------------ */
     // The export section leaves its dialog open, and its dimmed backdrop takes
     // the clicks meant for the toolbar.

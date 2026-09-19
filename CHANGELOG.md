@@ -7,12 +7,66 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **573 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **71/71 comprobaciones de interfaz** (mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **589 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **78/78 comprobaciones de interfaz** (mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **72/72** con la v1.17.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **79/79** con la v1.18.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.18.0-beta.1 — Marcar, lanzadera J/K/L y edición a tres puntos
+2026-09-19 · pre-release para probar
+
+El músculo de edición que usan a diario en Premiere y DaVinci Resolve, y que
+aquí faltaba. Nada de esto toca el motor de render.
+
+### Añadido
+- **Puntos de entrada y salida (I y O).** Marcan el tramo con el que se
+  trabaja. Se ven sombreados en la regla, con un corchete en cada extremo. La
+  salida se marca **una posición por delante** del fotograma que conserva, así
+  que marcar en 20 y en 80 da 61 fotogramas exactos, no 60.
+  - **Ctrl+Mayús+I** y **Ctrl+Mayús+O** borran cada marca; **Ctrl+Mayús+X**,
+    las dos.
+  - **La ventana de exportación ofrece «In to out»**, que renderiza solo lo
+    marcado.
+- **Lanzadera J / K / L.** **L** reproduce hacia delante y cada pulsación
+  dobla la velocidad (1×, 2×, 4×, 8×); **J** hace lo mismo hacia atrás; **K**
+  para. Pulsar la tecla contraria **frena antes de girar**, como en Premiere y
+  Resolve: tras L L L, una J deja 4×, no marcha atrás de golpe. Al parar se
+  vuelve a velocidad normal, así que la barra espaciadora siempre reproduce a
+  1×.
+  - **El sonido enmudece mientras se busca** (a cualquier velocidad que no sea
+    1×, incluida la marcha atrás): no puede seguir el ritmo, y forzarlo dejaba
+    al motor de audio reprogramándose en cada fotograma, que suena peor que el
+    silencio.
+- **Edición a tres puntos: insertar (,) y sobrescribir (.)** con el clip
+  seleccionado en la biblioteca (ahora se marca al pulsarlo). El tramo marcado
+  decide **cuánto** entra y **dónde**; sin marcas, entra entero en la cabeza
+  lectora.
+  - **Insertar parte el clip** que hay debajo y desplaza lo que sigue **en esa
+    pista**; las demás mantienen su tiempo, que es lo que hace segura una
+    inserción en una pista de rótulos.
+  - **Sobrescribir** reemplaza exactamente el tramo que cubre y no cambia la
+    duración: recorta por la cabeza, por la cola, o parte en dos el clip que
+    lo atraviesa, conservando el trozo de metraje correcto.
+  - Cada edición es **un solo paso de deshacer**.
+
+### Cómo se comprobó
+- 16 pruebas unitarias de la lógica: las reglas de las marcas (cuál cede
+  cuando una se cruza con la otra), la escalera de velocidades con su frenada
+  antes de girar, y el vaciado de un tramo en todos sus casos —tragado entero,
+  recortado por cabeza o cola, partido en dos con el desfase de origen
+  correcto, y sin tocar otras pistas—.
+- Prueba de interfaz (78/78, siete nuevas): marcar 20 y 80 da 61 fotogramas;
+  L L da 2× y una J lo deja en 1×; la coma inserta 61 fotogramas en el punto
+  de entrada y alarga la línea de tiempo de 825 a 886; el punto sobrescribe
+  sin cambiar la duración; la exportación toma el rango 20–81; y dos
+  deshacer devuelven la línea de tiempo exactamente a como estaba. También
+  79/79 contra el ejecutable empaquetado con la red cortada.
+- En la app, con una pieza de 10 s: J durante 0,7 s desde el fotograma 200
+  deja la cabeza en el 175, hacia atrás.
 
 ---
 

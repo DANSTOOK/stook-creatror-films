@@ -27,6 +27,8 @@ import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/component
 import { planDrop, type DropPlacement } from '@renderer/components/Timeline/dropPlacement';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { fitScale } from '@renderer/media/fitToFrame';
+import { clearRange, editLength } from '@renderer/components/Timeline/threePoint';
+import { rangeLength, withInPoint, withOutPoint } from './markRange';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import {
   insertionRow,
@@ -142,6 +144,27 @@ interface ProjectStore {
   /* UI ------------------------------------------------------------------- */
   setUi(patch: Partial<EditorUiState>): void;
   setTool(tool: TimelineTool): void;
+
+  /* The marked range, and the shuttle ------------------------------------- */
+  /** Mark the in point at `frame`, or at the playhead (I). */
+  markIn(frame?: number): void;
+  /** Mark the out point, which sits one past the frame it keeps (O). */
+  markOut(frame?: number): void;
+  clearMarks(): void;
+  /**
+   * Play at a speed and direction: 1 plays, 8 is L pressed three times, -2
+   * runs backwards, 0 stops (J, K, L).
+   */
+  setPlaybackRate(rate: number): void;
+
+  /**
+   * Three-point edits from the library clip in hand.
+   *
+   * The marked range says how long and where; the source says what. Insert
+   * pushes what follows along, overwrite replaces what it covers.
+   */
+  insertSelectedAsset(): void;
+  overwriteSelectedAsset(): void;
   selectClips(clipIds: string[], additive?: boolean): void;
   /**
    * Zoom by `factor` around `anchorPx` (a position in the viewport); without an
@@ -424,6 +447,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   setPlaying(playing) {
+    if (!playing && get().ui.playbackRate !== 1) get().setUi({ playbackRate: 1 });
     set({ ui: { ...get().ui, isPlaying: playing } });
   },
 
@@ -551,6 +575,111 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setUi(patch) {
     set({ ui: { ...get().ui, ...patch } });
+  },
+
+  markIn(frame) {
+    const { ui, project } = get();
+    get().setUi(withInPoint({ inFrame: ui.inFrame, outFrame: ui.outFrame }, frame ?? project.currentFrame));
+  },
+
+  markOut(frame) {
+    const { ui, project } = get();
+    get().setUi(withOutPoint({ inFrame: ui.inFrame, outFrame: ui.outFrame }, frame ?? project.currentFrame));
+  },
+
+  clearMarks() {
+    get().setUi({ inFrame: null, outFrame: null });
+  },
+
+  setPlaybackRate(rate) {
+    const clamped = Math.max(-8, Math.min(8, rate));
+    // Stopping is a rate of zero, so K is the same action as L and J.
+    get().setUi({ playbackRate: clamped === 0 ? 1 : clamped, isPlaying: clamped !== 0 });
+  },
+
+  insertSelectedAsset() {
+    const plan = threePointPlan(get());
+    if (!plan) return;
+    const trackId = plan.placement.trackId;
+    if (!trackId) {
+      // No track of that kind yet: let the drop path make one.
+      get().placeAssets([plan.asset], [{ ...plan.placement, startFrame: plan.start, durationFrames: plan.length }]);
+      get().setCurrentFrame(plan.start + plan.length);
+      return;
+    }
+
+    let placed: string | null = null;
+    get().transact('Insert', (project) => {
+      const clips = { ...project.clips };
+
+      // Cut whatever is under the point, so the insert lands exactly there
+      // rather than before the clip it fell inside.
+      const straddling = Object.values(clips).find(
+        (clip) => clip.trackId === trackId && clip.startFrame < plan.start && clipEndFrame(clip) > plan.start,
+      );
+      if (straddling) {
+        const halves = splitClip(straddling, plan.start);
+        if (halves) {
+          clips[halves[0].id] = halves[0];
+          clips[halves[1].id] = halves[1];
+        }
+      }
+
+      // Everything from the point on moves along by the length going in.
+      // Only this track: the others keep their timing, which is what makes
+      // an insert on an overlay track safe.
+      for (const clip of Object.values(clips)) {
+        if (clip.trackId === trackId && clip.startFrame >= plan.start) {
+          clips[clip.id] = moveClip(clip, clip.startFrame + plan.length);
+        }
+      }
+
+      const clip = createClip({
+        trackId,
+        name: plan.asset.name,
+        sourceUri: plan.asset.uri,
+        startFrame: plan.start,
+        durationFrames: plan.length,
+        hasAlphaChannel: plan.asset.hasAlphaChannel,
+        ...placedWhole(plan.asset, project),
+      });
+      placed = clip.id;
+      clips[clip.id] = clip;
+      return { ...project, clips };
+    });
+
+    if (placed) get().setUi({ selectedClipIds: [placed], selectedTrackId: trackId });
+    get().setCurrentFrame(plan.start + plan.length);
+  },
+
+  overwriteSelectedAsset() {
+    const plan = threePointPlan(get());
+    if (!plan) return;
+    const trackId = plan.placement.trackId;
+    if (!trackId) {
+      // No track of that kind yet, so there is nothing to overwrite.
+      get().insertSelectedAsset();
+      return;
+    }
+
+    let placed: string | null = null;
+    get().transact('Overwrite', (project) => {
+      const cleared = clearRange(project.clips, trackId, plan.start, plan.start + plan.length);
+      const clip = createClip({
+        trackId,
+        name: plan.asset.name,
+        sourceUri: plan.asset.uri,
+        startFrame: plan.start,
+        durationFrames: plan.length,
+        hasAlphaChannel: plan.asset.hasAlphaChannel,
+        ...placedWhole(plan.asset, project),
+      });
+      placed = clip.id;
+      return { ...project, clips: { ...cleared.clips, [clip.id]: clip } };
+    });
+
+    if (placed) get().setUi({ selectedClipIds: [placed], selectedTrackId: trackId });
+    get().setCurrentFrame(plan.start + plan.length);
   },
 
   setTool(tool) {
@@ -1326,6 +1455,31 @@ function placedWhole(
   if (asset.kind === 'audio') return {};
   const scale = fitScale(asset, project);
   return scale ? { initialScale: scale } : {};
+}
+
+/**
+ * What a three-point edit would do: which clip, where, and how long.
+ *
+ * The marked range decides the length and the landing point; with nothing
+ * marked it is the whole source, at the playhead.
+ */
+function threePointPlan(state: ProjectStore): {
+  asset: MediaAsset;
+  placement: DropPlacement;
+  start: number;
+  length: number;
+} | null {
+  const { project, ui, assets } = state;
+  const asset = assets.find((candidate) => candidate.id === ui.selectedAssetId);
+  if (!asset) return null;
+
+  const start = ui.inFrame ?? project.currentFrame;
+  const length = editLength(
+    assetLengthFrames(asset, project.fps),
+    rangeLength({ inFrame: ui.inFrame, outFrame: ui.outFrame }),
+  );
+  const [placement] = planDrop(project, [asset], ui.selectedTrackId, start);
+  return placement ? { asset, placement, start, length } : null;
 }
 
 /* Selectors ----------------------------------------------------------------- */

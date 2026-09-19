@@ -65,6 +65,9 @@ export function MediaLibrary(): JSX.Element {
   const assets = useProjectStore((state) => state.assets);
   const bins = useProjectStore((state) => state.bins);
   const currentBinId = useProjectStore((state) => state.currentBinId);
+  // The clip a three-point edit (comma, full stop) takes its source from.
+  const selectedAssetId = useProjectStore((state) => state.ui.selectedAssetId);
+  const setUi = useProjectStore((state) => state.setUi);
   const project = useProjectStore((state) => state.project);
   const addAssets = useProjectStore((state) => state.addAssets);
   const removeAsset = useProjectStore((state) => state.removeAsset);
@@ -544,7 +547,11 @@ export function MediaLibrary(): JSX.Element {
                       event.dataTransfer.effectAllowed = 'copyMove';
                     }}
                     onDragEnd={() => setDropBin(undefined)}
-                    className="list-item group cursor-grab active:cursor-grabbing"
+                    onClick={() => setUi({ selectedAssetId: asset.id })}
+                    aria-selected={selectedAssetId === asset.id}
+                    className={`list-item group cursor-grab active:cursor-grabbing ${
+                      selectedAssetId === asset.id ? 'border-accent/70 bg-panel-800' : ''
+                    }`}
                     onContextMenu={(event) =>
                       openMenu(event, [
                         {

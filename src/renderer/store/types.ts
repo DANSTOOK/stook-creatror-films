@@ -74,6 +74,17 @@ export interface EditorUiState {
   viewportWidthPx: number;
   /** Marker the ruler is highlighting, for rename and delete. */
   selectedMarkerId: string | null;
+  /** First frame of the marked range (I), or null. */
+  inFrame: number | null;
+  /** One past its last frame (O), so out - in is a length. */
+  outFrame: number | null;
+  /** The library clip a three-point edit takes its source from. */
+  selectedAssetId: string | null;
+  /**
+   * Playback speed and direction: 1 is ordinary play, 8 is L pressed three
+   * times, -2 is running backwards. Only meaningful while playing.
+   */
+  playbackRate: number;
 }
 
 export const DEFAULT_UI_STATE: EditorUiState = {
@@ -92,6 +103,10 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   showTransparencyGrid: true,
   viewportWidthPx: 0,
   selectedMarkerId: null,
+  inFrame: null,
+  outFrame: null,
+  selectedAssetId: null,
+  playbackRate: 1,
 };
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {

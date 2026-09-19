@@ -153,6 +153,34 @@ function drawRuler(
   context.lineTo(width, RULER_HEIGHT - 0.5);
   context.stroke();
 
+  // The marked stretch (I and O): shaded, with a bracket at each end, so
+  // what an export or a three-point edit will use is visible at a glance.
+  if (ui.inFrame !== null || ui.outFrame !== null) {
+    const from = frameToPixel(ui.inFrame ?? 0, ui.pixelsPerFrame, ui.scrollLeftPx);
+    const to = frameToPixel(ui.outFrame ?? Number.MAX_SAFE_INTEGER / 2, ui.pixelsPerFrame, ui.scrollLeftPx);
+    const left = Math.max(-2, Math.min(from, to));
+    const right = Math.min(width + 2, Math.max(from, to));
+    if (right > left) {
+      context.fillStyle = 'rgba(96, 165, 250, 0.16)';
+      context.fillRect(left, 0, right - left, RULER_HEIGHT - 1);
+      context.strokeStyle = '#60a5fa';
+      context.lineWidth = 2;
+      for (const [x, facing] of [[from, 1], [to, -1]]) {
+        if ( x < -8 || x > width + 8) continue;
+        const edge = Math.round(x) + 0.5;
+        context.beginPath();
+        context.moveTo(edge, 1);
+        context.lineTo(edge, RULER_HEIGHT - 2);
+        context.moveTo(edge, 1);
+        context.lineTo(edge + 6 * facing, 1);
+        context.moveTo(edge, RULER_HEIGHT - 2);
+        context.lineTo(edge + 6 * facing, RULER_HEIGHT - 2);
+        context.stroke();
+      }
+      context.lineWidth = 1;
+    }
+  }
+
   const step = rulerStep(ui.pixelsPerFrame, project.fps);
   const firstFrame = Math.floor(ui.scrollLeftPx / ui.pixelsPerFrame / step) * step;
   const lastFrame = firstFrame + Math.ceil(width / ui.pixelsPerFrame) + step;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
+import { shuttleRate } from './shuttle';
 
 /**
  * Playback transport.
@@ -67,19 +68,30 @@ export function advancePlayhead(
     durationFrames: number;
     fps: number;
     loop: boolean;
+    /** Speed and direction; 1 is ordinary play, negative runs backwards. */
+    rate?: number;
   },
   elapsedSeconds: number,
   accumulator: number,
 ): ClockTick {
-  const carried = accumulator + Math.max(0, elapsedSeconds) * options.fps;
-  const wholeFrames = Math.floor(carried);
+  const rate = options.rate ?? 1;
+  const carried = accumulator + Math.max(0, elapsedSeconds) * options.fps * rate;
+  // Truncated towards zero, so running backwards counts whole frames too.
+  const wholeFrames = Math.trunc(carried);
 
-  if (wholeFrames < 1) {
+  if (wholeFrames === 0) {
     return { frame: options.currentFrame, accumulator: carried, stopped: false };
   }
 
   const remainder = carried - wholeFrames;
   const next = options.currentFrame + wholeFrames;
+
+  if (wholeFrames < 0) {
+    if (next > 0) return { frame: next, accumulator: remainder, stopped: false };
+    // Back at the head: round again when looping, otherwise stand there.
+    if (options.loop) return { frame: Math.max(0, options.durationFrames - 1), accumulator: remainder, stopped: false };
+    return { frame: 0, accumulator: 0, stopped: true };
+  }
 
   if (next >= options.durationFrames) {
     if (options.loop) return { frame: 0, accumulator: remainder, stopped: false };
@@ -149,6 +161,7 @@ export function usePlaybackClock(): void {
           durationFrames: project.durationFrames,
           fps: project.fps,
           loop: ui.loopPlayback,
+          rate: ui.playbackRate,
         },
         elapsedSeconds,
         frameAccumulator.current,
@@ -198,6 +211,26 @@ export function useEditorShortcuts(): void {
 
       // Copy, cut and paste clips (point 10). Handled here, before the single
       // letters below: Ctrl+C used to fall through to "C" and pick the razor.
+      // Clearing the marks, before Ctrl+X is read as cut.
+      if (modifier && event.shiftKey) {
+        switch (event.key.toLowerCase()) {
+          case 'i':
+            event.preventDefault();
+            store.setUi({ inFrame: null });
+            return;
+          case 'o':
+            event.preventDefault();
+            store.setUi({ outFrame: null });
+            return;
+          case 'x':
+            event.preventDefault();
+            store.clearMarks();
+            return;
+          default:
+            break;
+        }
+      }
+
       if (modifier) {
         switch (event.key.toLowerCase()) {
           case 'c':
@@ -307,6 +340,29 @@ export function useEditorShortcuts(): void {
         case 'm':
           // Drop a marker at the playhead, the way every NLE spells it.
           store.addMarker();
+          return;
+        case 'i':
+          store.markIn();
+          return;
+        case 'o':
+          store.markOut();
+          return;
+        case 'l':
+          // The shuttle: L forward, J back, K stopped, each press faster.
+          store.setPlaybackRate(shuttleRate(store.ui.isPlaying ? store.ui.playbackRate : 0, 1));
+          return;
+        case 'j':
+          store.setPlaybackRate(shuttleRate(store.ui.isPlaying ? store.ui.playbackRate : 0, -1));
+          return;
+        case 'k':
+          store.setPlaybackRate(0);
+          return;
+        case ',':
+          // Three-point edits from the library clip in hand.
+          store.insertSelectedAsset();
+          return;
+        case '.':
+          store.overwriteSelectedAsset();
           return;
         default:
           break;

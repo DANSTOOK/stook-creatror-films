@@ -90,6 +90,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const assets = useProjectStore((state) => state.assets);
   const settings = useProjectStore((state) => state.exportSettings);
   const setExportSettings = useProjectStore((state) => state.setExportSettings);
+  // What the ruler has marked, when both ends are: the range this can render.
+  const marked = useProjectStore((state) =>
+    state.ui.inFrame !== null && state.ui.outFrame !== null
+      ? { start: state.ui.inFrame, end: state.ui.outFrame }
+      : null);
 
   const [gpu, setGpu] = useState<GpuReport | null>(null);
   const [webCodecs, setWebCodecs] = useState<CodecSupport | null>(null);
@@ -742,6 +747,16 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   >
                     Whole timeline
                   </button>
+                  {marked && (
+                    <button
+                      type="button"
+                      className="tool-button h-7 shrink-0"
+                      title="Export only what is marked on the ruler, between the in and out points"
+                      onClick={() => setExportSettings({ startFrame: marked.start, endFrame: marked.end })}
+                    >
+                      In to out
+                    </button>
+                  )}
                 </div>
               </Section>
             </div>
