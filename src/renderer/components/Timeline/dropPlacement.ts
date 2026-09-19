@@ -1,3 +1,4 @@
+import { assetLengthFrames } from '@renderer/media/assetLength';
 import type { MediaKind, ProjectState, Track } from '@shared/types';
 
 /**
@@ -23,6 +24,7 @@ export interface DroppedAsset {
   id: string;
   kind: MediaKind;
   durationFrames: number;
+  durationSeconds?: number;
 }
 
 export interface DropPlacement {
@@ -61,7 +63,7 @@ export function planDrop(
     // A track that does not exist yet is keyed by type, so two dropped clips
     // bound for the same new track still follow one another.
     const key = track?.id ?? `new:${trackType}`;
-    const length = Math.max(1, Math.round(asset.durationFrames));
+    const length = assetLengthFrames(asset, project.fps);
 
     const startFrame = Math.max(0, Math.round(cursor.get(key) ?? frame));
     cursor.set(key, startFrame + length);

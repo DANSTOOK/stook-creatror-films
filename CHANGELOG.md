@@ -7,12 +7,75 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **557 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **563 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **71/71 comprobaciones de interfaz** (mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **72/72** con la v1.15.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **72/72** con la v1.16.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.16.0-beta.1 — Cambiar los fps ya no descuadra la biblioteca
+2026-09-19 · pre-release para probar
+
+Salido de una prueba de estrés con el vídeo de Kratos y 16 fotos reales de
+Descargas: 55 minutos editados a 24 fps, con cada foto escalada y colocada
+arrastrando sus tiradores en el visor, copiar y pegar con el teclado, y
+exportación completa comprobada fotograma a fotograma.
+
+### Arreglado
+- **Después de cambiar los fps del proyecto, el metraje entraba con la
+  duración equivocada.** La biblioteca guardaba la duración de cada archivo en
+  fotogramas, contados a la velocidad que tenía el proyecto el día de la
+  importación. Ajustes del proyecto reescalaba los clips de la línea de tiempo,
+  pero no la biblioteca: todo lo que se añadía después entraba con la longitud
+  de la velocidad anterior. De 30 a 24 fps, un cuarto más largo que el propio
+  archivo, con el final en negro y en silencio. La prueba de 55 minutos acabó en
+  66.
+  - Ahora cada medio guarda su duración en **segundos** y se convierte a
+    fotogramas con la velocidad del proyecto en el momento de usarlo. Así es
+    correcta a cualquier velocidad y **también al deshacer** el cambio de fps,
+    algo que reescalar la biblioteca nunca habría conseguido. Los proyectos
+    guardados antes siguen funcionando como hasta ahora.
+  - Cómo se comprobó: la prueba de estrés a 24 fps acaba exactamente en su
+    fotograma, 79.200 en 55 minutos (3.300,00 s) y 7.200 en 5, con 0 de 79.200
+    marcas de tiempo desviadas y el sonido en sincronía. Seis pruebas unitarias
+    (`tests/AssetLength.test.ts`), incluida la de deshacer.
+
+### La prueba de estrés, más capaz
+- **Cualquier duración y velocidad** (`STRESS_MINUTES`, `STRESS_FPS`), y
+  **tus propias fotos** (`STRESS_PHOTOS`, que se copian y no se tocan).
+- **Fase del visor:** cada foto se escala por la esquina y se arrastra a su
+  sitio con el ratón, sobre los tiradores de verdad.
+- **Fase de copiar y pegar** con Ctrl+C / Ctrl+V, comprobando que la copia
+  conserva el tamaño y que la edición sigue cuadrando.
+- **Pruebas de 5 minutos:** algo más de un minuto en total, en vez de siete.
+  Para que tuvieran sentido tan cortas, la mezcla de material (metraje,
+  diapositivas, fotos, logotipos) se reparte según la duración.
+- **Comparación de imagen exacta al fotograma.** La anterior pedía cada
+  imagen a mitad de fotograma, y ffmpeg devuelve el primer fotograma que
+  empieza en ese instante o después: leía el siguiente, en los dos lados.
+  Mientras el metraje y el proyecto iban a la misma velocidad los dos
+  desfases se anulaban, y por eso ninguna prueba a 30 fps falló. Con 30 fps de
+  metraje en un proyecto de 24, uno de cada cuatro fotogramas parecía
+  equivocado.
+  - Cómo se comprobó: extrayendo exacto, los 24 fotogramas de un segundo
+    completo y todos los descubiertos de otro son justo el fotograma de origen
+    que elige la app, y 12 de 12 bordes de clip caen en su fotograma. La
+    diferencia media bajó de 1,2 a 0,6.
+- **El sonido se juzga donde se oye.** Un tramo casi en silencio (−41 dB en el
+  original y −41 dB en la exportación: el mismo sonido, sincronizado) daba una
+  correlación baja que no significa nada sobre ruido de fondo. Ahora esos
+  tramos se saltan y se cuentan, y los candidatos salen de todo el metraje
+  limpio, no solo de los instantes muestreados para la imagen.
+
+### Verificación
+Estrés de 5 minutos con tus fotos: 29/29 a 24 fps y 29/29 a 30 fps (unos 2
+minutos cada uno). El de 55 minutos
+a 24 fps, tras el arreglo, dejó el vídeo exacto (3.300,00 s, 79.200
+fotogramas). Interfaz 71/71, 72/72 contra el ejecutable empaquetado sin red,
+proyectos 41/41, extremo a extremo 21/21, 563 unitarias.
 
 ---
 

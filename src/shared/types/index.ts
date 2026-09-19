@@ -269,7 +269,14 @@ export interface MediaAsset {
    */
   sourcePath?: string;
   kind: MediaKind;
+  /**
+   * Length in frames at the rate the project had when this was imported.
+   * Kept for older projects; use `assetLengthFrames`, which prefers
+   * `durationSeconds` and so stays right after a frame rate change.
+   */
   durationFrames: number;
+  /** The file's own length in seconds, as measured on import. */
+  durationSeconds?: number;
   width: number;
   height: number;
   hasAlphaChannel: boolean;

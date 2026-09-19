@@ -25,6 +25,7 @@ import {
 } from '@renderer/components/Timeline/timelineOps';
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
 import { planDrop, type DropPlacement } from '@renderer/components/Timeline/dropPlacement';
+import { assetLengthFrames } from '@renderer/media/assetLength';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import {
   insertionRow,
@@ -657,7 +658,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       name: asset.name,
       sourceUri: asset.uri,
       startFrame,
-      durationFrames: Math.max(1, asset.durationFrames),
+      // At the project's rate now, not the one it had when this was imported.
+      durationFrames: assetLengthFrames(asset, get().project.fps),
       hasAlphaChannel: asset.hasAlphaChannel,
     });
   },

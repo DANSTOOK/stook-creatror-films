@@ -115,6 +115,7 @@ export async function buildAsset(input: RawImport, fps: number): Promise<MediaAs
     ...(input.sourcePath ? { sourcePath: input.sourcePath } : {}),
     kind,
     durationFrames,
+    durationSeconds: kind === 'image' ? 5 : probe.durationSeconds,
     width: probe.width,
     height: probe.height,
     hasAlphaChannel: probe.hasAlphaChannel,
