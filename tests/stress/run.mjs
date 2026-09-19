@@ -662,22 +662,34 @@ async function main() {
         const shown = await grip.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
         if (!shown) { dragProblems.push(`${id}: no handles`); continue; }
         const frameBox = await window.locator('canvas').first().boundingBox();
-        const gripBox = await grip.boundingBox();
+        const centreOf = (box) => ({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+        const topRight = centreOf(await grip.boundingBox());
+        const bottomLeft = centreOf(await window.getByTestId('viewport-handle-bottomLeft').boundingBox());
+        const fitted = await readTransform(id);
         const shrink = 0.35 + ((i * 37) % 30) / 100;
-        await window.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+        // Corner: pulled towards the opposite one, which stays put, keeping the
+        // photo's own proportions - whatever shape it came in at.
+        await window.mouse.move(topRight.x, topRight.y);
         await window.mouse.down();
-        await window.mouse.move(frameBox.x + frameBox.width * shrink, frameBox.y + frameBox.height * (1 - shrink), { steps: 6 });
+        await window.mouse.move(bottomLeft.x + (topRight.x - bottomLeft.x) * shrink, bottomLeft.y + (topRight.y - bottomLeft.y) * shrink, { steps: 6 });
         await window.mouse.up();
         const afterCorner = await readTransform(id);
         const column = i % 3;
         const row = Math.floor(i / 3) % 3;
-        await window.mouse.move(frameBox.x + (frameBox.width * shrink) / 2, frameBox.y + frameBox.height * (1 - shrink / 2));
+        // Picture: grabbed by its middle, dropped at one of nine places.
+        const middle = {
+          x: bottomLeft.x + ((topRight.x - bottomLeft.x) * shrink) / 2,
+          y: bottomLeft.y + ((topRight.y - bottomLeft.y) * shrink) / 2,
+        };
+        await window.mouse.move(middle.x, middle.y);
         await window.mouse.down();
         await window.mouse.move(frameBox.x + frameBox.width * (0.2 + column * 0.3), frameBox.y + frameBox.height * (0.25 + row * 0.25), { steps: 6 });
         await window.mouse.up();
         const result = await readTransform(id);
-        const proportional = result && Math.abs(result.scale.x - result.scale.y) < 0.002;
-        const nearAsked = result && Math.abs(result.scale.x - shrink) < 0.03;
+        // Proportions as it came in, and the size asked for relative to that.
+        const proportional = result && fitted
+          && Math.abs(result.scale.x / result.scale.y - fitted.scale.x / fitted.scale.y) < 0.005;
+        const nearAsked = result && fitted && Math.abs(result.scale.x / fitted.scale.x - shrink) < 0.03;
         const moved = result && afterCorner
           && (Math.abs(result.position.x - afterCorner.position.x) > 1 || Math.abs(result.position.y - afterCorner.position.y) > 1);
         if (!proportional || !nearAsked || !moved) {

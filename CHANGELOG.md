@@ -7,12 +7,59 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **563 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **573 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **71/71 comprobaciones de interfaz** (mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **72/72** con la v1.16.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **72/72** con la v1.17.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.17.0-beta.1 — Las fotos entran enteras, sin deformarse
+2026-09-19 · pre-release para probar
+
+### Añadido
+- **Una imagen o un vídeo de otra forma entra encajado, no estirado.** Antes,
+  todo lo que se colocaba llenaba el fotograma: una foto vertical de móvil en
+  un proyecto 16:9 salía ensanchada, y había que corregirla a mano. Ahora
+  entra entera, a su propia proporción, con bandas a los lados (o arriba y
+  abajo si es más ancha), como en Filmora y como la opción «escalar la imagen
+  entera para encajar» de Resolve. Desde ahí se escala y se mueve con los
+  tiradores del visor.
+  - Se aplica **al colocar** el clip, no cambiando lo que significa «escala 1»
+    en el render: los proyectos guardados antes se ven exactamente igual. El
+    inspector muestra la escala real (una foto 9:16 en 16:9: 0,3164 × 1).
+  - Cómo se comprobó: cinco pruebas unitarias de la geometría (vertical,
+    panorámica, nunca se sale del fotograma, las de la misma forma no se tocan)
+    y cinco del store: entra encajada como un único valor, el sonido y las
+    imágenes de la misma forma no cambian, y **colocarla es un solo paso de
+    deshacer**, encaje incluido. En la app, una foto de WhatsApp 738×1600 entra
+    entera con bandas (revisado a ojo).
+
+### Cambiado
+- **Arrastrar en el visor fija la colocación del clip, no crea una
+  animación.** Hasta ahora, cada arrastre escribía en la cabeza lectora: con la
+  foto ya encajada al inicio, redimensionarla a mitad del clip habría dejado
+  dos keyframes y la foto habría crecido durante toda su duración sin que
+  nadie lo pidiera. Ahora, si la propiedad tiene un solo valor, el arrastre lo
+  sustituye; solo se edita en la cabeza lectora una animación que ya existe
+  (dos keyframes o más). El inspector sigue como estaba.
+  - Cómo se comprobó: prueba unitaria que redimensiona la foto a mitad del
+    clip y comprueba que sigue teniendo un solo valor, y otra que confirma que
+    una animación existente se edita en la cabeza lectora.
+
+### Verificación
+Estrés de 5 minutos a 24 fps con tus 16 fotos: 29/29; las 19 fotos colocadas
+entran encajadas y se escalan arrastrando desde su contorno real (0,10–0,59 del
+fotograma). Interfaz 71/71, 72/72 contra el ejecutable empaquetado sin red,
+proyectos 41/41, extremo a extremo 21/21, 573 unitarias.
+
+### Pendiente de decidir
+- Al importar fotos en un proyecto vacío, el proyecto adopta la resolución
+  de la primera (en una prueba, 890×422 a 25 fps por una captura de pantalla).
+  Tiene sentido con vídeo; con fotos da tamaños de proyecto raros. No se ha
+  cambiado todavía.
 
 ---
 

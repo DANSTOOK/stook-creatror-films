@@ -26,6 +26,7 @@ import {
 import { collectSnapTargets, snapClipMove, snapFrame } from '@renderer/components/Timeline/snapping';
 import { planDrop, type DropPlacement } from '@renderer/components/Timeline/dropPlacement';
 import { assetLengthFrames } from '@renderer/media/assetLength';
+import { fitScale } from '@renderer/media/fitToFrame';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import {
   insertionRow,
@@ -661,6 +662,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // At the project's rate now, not the one it had when this was imported.
       durationFrames: assetLengthFrames(asset, get().project.fps),
       hasAlphaChannel: asset.hasAlphaChannel,
+      ...placedWhole(asset, get().project),
     });
   },
 
@@ -709,6 +711,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           startFrame: insertion.startFrame,
           durationFrames: placement.durationFrames,
           hasAlphaChannel: asset.hasAlphaChannel,
+          ...placedWhole(asset, project),
         });
         clips[clip.id] = clip;
         created.push(clip.id);
@@ -1116,10 +1119,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const clip = project.clips[clipId];
         if (!clip) return project;
 
+        // A property with one keyframe or none is a fixed value, and a drag
+        // changes it in place. Writing a second keyframe at the playhead
+        // instead would quietly animate the clip from its old size to the new
+        // one - a photo placed fitted, then resized half-way through, would
+        // grow across its whole length. Only an animation already there (two
+        // keyframes or more) is edited at the playhead.
+        const place = <T extends Vector2D | number>(track: Keyframe<T>[], value: T): Keyframe<T>[] =>
+          track.length === 1 ? [{ ...track[0], value }] : upsertKeyframe(track, frame, value);
         const transform = { ...clip.transform };
-        if (patch.position) transform.position = upsertKeyframe(transform.position, frame, { ...patch.position });
-        if (patch.scale) transform.scale = upsertKeyframe(transform.scale, frame, { ...patch.scale });
-        if (patch.rotation !== undefined) transform.rotation = upsertKeyframe(transform.rotation, frame, patch.rotation);
+        if (patch.position) transform.position = place(transform.position, { ...patch.position });
+        if (patch.scale) transform.scale = place(transform.scale, { ...patch.scale });
+        if (patch.rotation !== undefined) transform.rotation = place(transform.rotation, patch.rotation);
 
         return { ...project, clips: { ...project.clips, [clipId]: { ...clip, transform } } };
       },
@@ -1302,6 +1313,19 @@ function upsertKeyframe<T extends Vector2D | number>(
     : [...track, { id: createId('kf'), frame: rounded, value, easing: 'linear' as const }];
 
   return next.sort((a, b) => a.frame - b.frame);
+}
+
+/**
+ * A picture comes in whole, at its own shape: fitted inside the frame with
+ * bars, not stretched to fill it. Sound has no shape.
+ */
+function placedWhole(
+  asset: { kind: string; width: number; height: number },
+  project: { width: number; height: number },
+): { initialScale?: Vector2D } {
+  if (asset.kind === 'audio') return {};
+  const scale = fitScale(asset, project);
+  return scale ? { initialScale: scale } : {};
 }
 
 /* Selectors ----------------------------------------------------------------- */

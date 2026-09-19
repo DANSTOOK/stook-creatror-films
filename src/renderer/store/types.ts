@@ -9,6 +9,7 @@ import type {
   ProjectState,
   Track,
   TrackType,
+  Vector2D,
 } from '@shared/types';
 import {
   DEFAULT_DUCKING,
@@ -162,6 +163,8 @@ export interface CreateClipInput {
   durationFrames: number;
   sourceOffsetFrames?: number;
   hasAlphaChannel?: boolean;
+  /** Starting size, e.g. to fit a picture whole inside a frame of another shape. */
+  initialScale?: Vector2D;
 }
 
 export function createClip(input: CreateClipInput): Clip {
@@ -176,7 +179,10 @@ export function createClip(input: CreateClipInput): Clip {
     hasAlphaChannel: input.hasAlphaChannel ?? false,
     transform: {
       position: [],
-      scale: [],
+      // One keyframe is a fixed value, not an animation.
+      scale: input.initialScale
+        ? [{ id: createId('kf'), frame: Math.max(0, Math.round(input.startFrame)), value: { ...input.initialScale }, easing: 'linear' }]
+        : [],
       rotation: [],
       opacity: [],
       anchorPoint: { x: 0.5, y: 0.5 },
