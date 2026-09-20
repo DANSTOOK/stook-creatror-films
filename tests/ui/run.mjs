@@ -1164,6 +1164,119 @@ async function main() {
     const cleared = await markState();
     check('Ctrl+Shift+X clears the marks', cleared.in === null && cleared.out === null);
 
+    /* The trim tool: roll, slip, slide and ripple ---------------------------- */
+    // Built on a track of its own so the rest of the timeline is left alone,
+    // then undone at the end, step by step.
+    const beforeTrims = await window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return { clips: Object.keys(project.clips).length, tracks: project.tracks.length };
+    });
+
+    const trimSetup = await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      // Cut to the footage that exists: a clip longer than its source leaves
+      // every trim pinned to the end of the media instead of moving.
+      const fps = store.project.fps;
+      const source = video.durationSeconds !== undefined
+        ? Math.round(video.durationSeconds * fps)
+        : video.durationFrames;
+      const unit = Math.floor(source / 3);
+      store.addTrack('video');
+      const state = window.__scfStore.getState();
+      const track = state.project.tracks.reduce((top, candidate) =>
+        candidate.type === 'video' && candidate.order > top.order ? candidate : top,
+        state.project.tracks.find((candidate) => candidate.type === 'video'));
+      const id = store.addAssetToTimeline(video, track.id, 0);
+      store.trimClip(id, 'end', unit * 3);
+      store.razorAtFrame(unit, [id]);
+      const middle = Object.values(window.__scfStore.getState().project.clips)
+        .find((clip) => clip.trackId === track.id && clip.startFrame === unit);
+      store.razorAtFrame(unit * 2, [middle.id]);
+      store.setUi({ pixelsPerFrame: 2, scrollLeftPx: 0, tool: 'trim' });
+
+      // Which row the canvas draws this track on: videos top down, then audio.
+      const tracks = window.__scfStore.getState().project.tracks;
+      const videos = tracks.filter((t) => t.type === 'video').sort((a, b) => b.order - a.order);
+      const rest = tracks.filter((t) => t.type !== 'video').sort((a, b) => b.order - a.order);
+      return { trackId: track.id, unit, row: [...videos, ...rest].findIndex((t) => t.id === track.id) };
+    });
+
+    const trimShape = () => window.evaluate((trackId) => Object.values(window.__scfStore.getState().project.clips)
+      .filter((clip) => clip.trackId === trackId)
+      .sort((a, b) => a.startFrame - b.startFrame)
+      .map((clip) => `${clip.startFrame}+${clip.durationFrames}@${clip.sourceOffsetFrames}`), trimSetup.trackId);
+
+    // The timeline may be scrolled: put it back to the head and read where it
+    // really sits, rather than assuming the canvas starts at frame zero.
+    await window.evaluate(() => {
+      const canvas = [...document.querySelectorAll('canvas')].pop();
+      let element = canvas?.parentElement;
+      while (element && element.scrollWidth <= element.clientWidth) element = element.parentElement;
+      if (element) element.scrollLeft = 0;
+    });
+    await window.waitForTimeout(150);
+    const trimView = await window.evaluate(() => {
+      const { ui } = window.__scfStore.getState();
+      return { perFrame: ui.pixelsPerFrame, scroll: ui.scrollLeftPx };
+    });
+    const trimBox = await surface.boundingBox();
+    const trimRowTop = trimBox.y + 24 + trimSetup.row * 58;
+    const atFrame = (frame) => trimBox.x + frame * trimView.perFrame - trimView.scroll;
+    const trimDrag = async (fromFrame, y, toFrame) => {
+      await window.mouse.move(atFrame(fromFrame), y);
+      await window.mouse.down();
+      await window.mouse.move(atFrame(toFrame), y, { steps: 8 });
+      await window.mouse.up();
+      await window.waitForTimeout(120);
+    };
+
+    const unit = trimSetup.unit;
+    const step = Math.max(4, Math.round(unit / 3));
+    const laid = await trimShape();
+    check('the trim tool starts from three clips in a row',
+      laid.join(' ') === `0+${unit}@0 ${unit}+${unit}@${unit} ${unit * 2}+${unit}@${unit * 2}`, laid.join('  '));
+
+    await trimDrag(unit, trimRowTop + 28, unit + step);
+    const rolled = await trimShape();
+    check('dragging a shared join rolls it: one gives what the other takes',
+      rolled[0] === `0+${unit + step}@0`
+      && rolled[1] === `${unit + step}+${unit - step}@${unit + step}`
+      && rolled[2] === laid[2],
+      rolled.join('  '));
+
+    const slipFrom = Math.round(unit * 1.5) + step;
+    await trimDrag(slipFrom, trimRowTop + 14, slipFrom + step);
+    const slipped = await trimShape();
+    check('dragging the top of a clip slips the footage inside it, and nothing moves',
+      slipped[1] === `${unit + step}+${unit - step}@${unit}` && slipped[0] === rolled[0] && slipped[2] === rolled[2],
+      slipped.join('  '));
+
+    await trimDrag(slipFrom, trimRowTop + 44, slipFrom + step);
+    const slid = await trimShape();
+    check('dragging the bottom slides it, and its neighbours give and take',
+      slid[0] === `0+${unit + step * 2}@0`
+      && slid[1] === `${unit + step * 2}+${unit - step}@${unit}`
+      && slid[2] === `${unit * 2 + step}+${unit - step}@${unit * 2 + step}`,
+      slid.join('  '));
+
+    await trimDrag(unit * 3, trimRowTop + 28, unit * 3 - step);
+    const rippled = await trimShape();
+    check('dragging a free edge ripples it',
+      rippled[2] === `${unit * 2 + step}+${unit - step * 2}@${unit * 2 + step}`, rippled.join('  '));
+
+    // Each trim is one step, and so is each piece of the setup: nine in all.
+    await window.getByTestId('project-name').click();
+    for (let undoStep = 0; undoStep < 9; undoStep += 1) await window.keyboard.press('Control+z');
+    const afterTrims = await window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return { clips: Object.keys(project.clips).length, tracks: project.tracks.length };
+    });
+    await window.evaluate(() => window.__scfStore.getState().setTool('select'));
+    check('every trim is a single undo step, and the timeline comes back',
+      afterTrims.clips === beforeTrims.clips && afterTrims.tracks === beforeTrims.tracks,
+      `${afterTrims.clips} clips on ${afterTrims.tracks} tracks, was ${beforeTrims.clips} on ${beforeTrims.tracks}`);
+
     /* Unsaved changes ------------------------------------------------------ */
     // The export section leaves its dialog open, and its dimmed backdrop takes
     // the clicks meant for the toolbar.

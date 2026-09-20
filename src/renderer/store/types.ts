@@ -47,7 +47,7 @@ export interface ProjectDocument {
   bins?: import('@shared/types').MediaBin[];
 }
 
-export type TimelineTool = 'select' | 'razor' | 'hand';
+export type TimelineTool = 'select' | 'razor' | 'hand' | 'trim';
 
 export interface EditorUiState {
   selectedClipIds: string[];

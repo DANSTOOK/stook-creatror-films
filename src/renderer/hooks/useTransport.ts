@@ -326,6 +326,10 @@ export function useEditorShortcuts(): void {
         case 'h':
           store.setTool('hand');
           return;
+        case 't':
+          // The trim tool: ripple, roll, slip or slide, by where the pointer is.
+          store.setTool('trim');
+          return;
         case 'b':
           // Razor at the playhead, the keyboard equivalent of a razor click.
           store.razorAtFrame();

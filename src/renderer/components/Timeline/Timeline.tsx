@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ArrowLeftRight,
   ArrowDown,
   ArrowUp,
   Copy,
@@ -30,6 +31,7 @@ import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/com
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
+import { trimTargetAt, type TrimTarget } from './trimModes';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
 import { clipsInMarquee } from './marquee';
@@ -64,6 +66,12 @@ type DragMode =
       base: Record<string, Clip>;
     }
   | { kind: 'trim'; clipId: string; edge: 'start' | 'end' }
+  /**
+   * The trim tool: which trim was picked up, where the drag began, and the
+   * clips as they were then - slip and slide are worked out from that start,
+   * so dragging back and forth does not pile trims onto the neighbours.
+   */
+  | { kind: 'smartTrim'; target: TrimTarget; startFrame: number; base: Record<string, Clip> }
   | { kind: 'pan'; startClientX: number; startScrollLeft: number }
   | {
       /** Rubber band from an empty spot; a plain click still moves the playhead. */
@@ -590,6 +598,28 @@ export function Timeline(): JSX.Element {
       // clip, which made moving several clips together impossible.
       if (!alreadySelected) state.selectClips([hit.clip.id], event.shiftKey);
 
+      if (state.ui.tool === 'trim') {
+        // Which trim depends on where on the clip the pointer is: a shared
+        // join rolls, a free edge ripples, the top half slips and the
+        // bottom half slides - the way Resolve's trim tool decides.
+        const frameAt = (x + ui.scrollLeftPx) / ui.pixelsPerFrame;
+        const withinRow = (y - RULER_HEIGHT) % (TRACK_HEIGHT + TRACK_GAP);
+        const target = trimTargetAt(
+          state.project.clips,
+          hit.clip,
+          frameAt,
+          Math.min(1, Math.max(0, withinRow / TRACK_HEIGHT)),
+          TRIM_HANDLE_PX / ui.pixelsPerFrame,
+        );
+        dragRef.current = {
+          kind: 'smartTrim',
+          target,
+          startFrame: frameAt,
+          base: { ...state.project.clips },
+        };
+        return;
+      }
+
       if (hit.edge) {
         dragRef.current = { kind: 'trim', clipId: hit.clip.id, edge: hit.edge };
         return;
@@ -675,6 +705,23 @@ export function Timeline(): JSX.Element {
 
       if (drag.kind === 'trim') {
         state.trimClip(drag.clipId, drag.edge, frame);
+        return;
+      }
+
+      if (drag.kind === 'smartTrim') {
+        const { target } = drag;
+        const delta = frame - drag.startFrame;
+        if (target.mode === 'ripple' && target.edge) {
+          state.rippleTrimClip(target.clipId, target.edge, frame);
+        } else if (target.mode === 'roll' && target.otherId) {
+          state.rollEditAt(target.clipId, target.otherId, frame);
+        } else if (target.mode === 'slip') {
+          // Dragging right shows later footage, which means the picture
+          // moves left under the clip - hence the sign.
+          state.slipClipBy(target.clipId, -delta, drag.base);
+        } else {
+          state.slideClipBy(target.clipId, delta, drag.base);
+        }
         return;
       }
 
@@ -896,6 +943,16 @@ export function Timeline(): JSX.Element {
       ? drag.kind === 'pan'
         ? 'grabbing'
         : 'grab'
+      : ui.tool === 'trim'
+        ? drag.kind === 'smartTrim'
+          ? drag.target.mode === 'slip'
+            ? 'grabbing'
+            : drag.target.mode === 'slide'
+              ? 'move'
+              : 'col-resize'
+          : hover?.edge
+            ? 'col-resize'
+            : 'grab'
       : ui.tool === 'razor'
         ? 'crosshair'
         : drag.kind === 'trim'
@@ -911,7 +968,7 @@ export function Timeline(): JSX.Element {
                   : 'default';
 
   const toolButton = (
-    tool: 'select' | 'razor' | 'hand',
+    tool: 'select' | 'razor' | 'hand' | 'trim',
     label: string,
     hint: string,
     Icon: typeof MousePointer2,
@@ -936,6 +993,12 @@ export function Timeline(): JSX.Element {
             {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
             {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to cut it at the playhead', Scissors)}
             {toolButton('hand', 'Pan', 'Hand tool (H)', Hand)}
+            {toolButton(
+              'trim',
+              'Trim',
+              'Trim tool (T): a shared join rolls, a free edge ripples, the top of a clip slips and the bottom slides',
+              ArrowLeftRight,
+            )}
           </div>
 
           <div className="toolbar-group">

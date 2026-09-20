@@ -7,12 +7,75 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **589 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **78/78 comprobaciones de interfaz** (mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **607 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **84/84 comprobaciones de interfaz** (los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **79/79** con la v1.18.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **85/85** con la v1.19.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.19.0-beta.1 — La herramienta de recorte: empalmar, deslizar y arrastrar
+2026-09-19 · pre-release para probar
+
+La otra mitad del músculo de edición: los cuatro recortes que en Premiere y
+DaVinci Resolve se hacen con una sola herramienta, eligiendo el recorte según
+dónde pongas el puntero. Tampoco toca el motor de render.
+
+### Añadido
+- **Herramienta de recorte (T)**, junto a las demás en la barra de la línea de
+  tiempo. Con ella, el puntero decide qué recorte haces, como el *trim* de
+  Resolve:
+  - **Un empalme entre dos clips pegados: recorte de rodillo.** Mueves la
+    unión; uno da lo que el otro quita y **la duración total no cambia**.
+  - **Un borde libre: recorte en cascada.** Arrastras el borde y **lo que
+    viene detrás en esa pista se mueve con él**, sin dejar hueco. Recortar por
+    la cabeza no mueve el clip de sitio: cierra el hueco por detrás.
+  - **La mitad de arriba de un clip: deslizar el metraje dentro (*slip*).**
+    Cambia **qué** se ve sin mover el clip ni tocar a los vecinos; arrastrar a
+    la derecha muestra metraje más tardío.
+  - **La mitad de abajo: deslizar el clip entre sus vecinos (*slide*).** El
+    clip se mueve con su metraje intacto y **los vecinos dan y quitan** para
+    cerrar los huecos.
+- **El puntero dice qué va a pasar** antes de pulsar: flecha doble en un
+  empalme o un borde, mano para deslizar dentro, cruz de mover para deslizar
+  entre vecinos.
+- **Ningún recorte se pasa del metraje que existe.** Un clip no puede mostrar
+  fotogramas que su archivo no tiene, así que los cuatro se frenan en el final
+  del material. Las **imágenes fijas no tienen ese tope**: se pueden sostener
+  todo lo que haga falta.
+- **Cada arrastre es un solo paso de deshacer**, por largo que sea: el
+  resultado se calcula desde los clips tal como estaban al empezar, así que ir
+  y volver con el ratón no amontona recortes sobre los vecinos.
+
+### Cómo se comprobó
+- 18 pruebas unitarias de la lógica de los cuatro recortes: el rodillo con sus
+  dos topes de metraje, la cascada cerrando el hueco por delante y por detrás,
+  deslizar dentro con el desfase de origen limitado a lo que hay, deslizar
+  entre vecinos sin cambiar la duración del clip, y la elección del recorte
+  según la posición del puntero (empalme, borde libre, mitad de arriba, mitad
+  de abajo).
+- 6 comprobaciones nuevas de interfaz, **arrastrando de verdad con el ratón**
+  sobre la línea de tiempo (84/84 en total): tres clips seguidos cortados del
+  mismo material, un rodillo en el empalme, un deslizamiento dentro, uno entre
+  vecinos y una cascada en la cola, comparando el estado exacto de los tres
+  clips (posición, duración y desfase de origen) después de cada uno, y
+  deshaciendo los nueve pasos hasta dejar la línea de tiempo como estaba.
+  - Este bloque **empezó fallando**, y el fallo era de la prueba: pedía clips
+    de 100 fotogramas de un vídeo de 90, y la aplicación frenaba los recortes
+    en el final del material —que es lo correcto—. Ahora el montaje se calcula
+    a partir de la duración real del archivo.
+- La batería completa contra esta versión: **607 unitarias**, **21/21** de
+  extremo a extremo, **84/84** de interfaz, **41/41** de proyectos, **13/13**
+  de movimiento, una prueba de estrés de **5 minutos a 24 fps** con tu vídeo
+  (**27/27**: 7.200 fotogramas, sin deriva, imagen y sonido en su sitio) y
+  **85/85** contra el ejecutable empaquetado y sin red.
+
+### Sin verificar
+- El recorte de rodillo y la cascada se han probado dentro de una pista. Con
+  varias pistas enlazadas (vídeo y su sonido como una sola unidad) no hay nada
+  hecho todavía: el enlace de pistas sigue sin existir.
 
 ---
 

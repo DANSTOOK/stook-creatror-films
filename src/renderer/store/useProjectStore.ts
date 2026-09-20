@@ -28,6 +28,7 @@ import { planDrop, type DropPlacement } from '@renderer/components/Timeline/drop
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { fitScale } from '@renderer/media/fitToFrame';
 import { clearRange, editLength } from '@renderer/components/Timeline/threePoint';
+import { rippleTrim, rollEdit, slideClip, slipClip } from '@renderer/components/Timeline/trimModes';
 import { rangeLength, withInPoint, withOutPoint } from './markRange';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import {
@@ -248,6 +249,20 @@ interface ProjectStore {
    */
   nudgeSelection(frames: number, tracks: number, repeat?: boolean): void;
   trimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
+
+  /* The trim tool -------------------------------------------------------- */
+  /** Drag one edge and take the rest of the track with it. */
+  rippleTrimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
+  /** Move the join between two touching clips; the timeline keeps its length. */
+  rollEditAt(leftId: string, rightId: string, frame: number): void;
+  /**
+   * Change which footage a clip shows without moving it (slip), or move it
+   * between its neighbours, which give and take (slide). `base` is the clips
+   * as the drag began, so the whole drag is worked out from one start and
+   * lands as a single undo step.
+   */
+  slipClipBy(clipId: string, deltaFrames: number, base: Record<string, Clip>): void;
+  slideClipBy(clipId: string, deltaFrames: number, base: Record<string, Clip>): void;
   /** Razor tool: split at the playhead. */
   razorAtFrame(frame?: number, clipIds?: string[]): void;
 
@@ -1267,6 +1282,67 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
+  rippleTrimClip(clipId, edge, frame) {
+    get().transact(
+      'Ripple trim',
+      (project) => ({
+        ...project,
+        clips: rippleTrim(project.clips, clipId, edge, frame, sourceFramesFor(get(), project.clips[clipId])),
+      }),
+      `ripple:${clipId}:${edge}`,
+    );
+  },
+
+  rollEditAt(leftId, rightId, frame) {
+    get().transact(
+      'Roll edit',
+      (project) => ({
+        ...project,
+        clips: rollEdit(project.clips, leftId, rightId, frame, {
+          left: sourceFramesFor(get(), project.clips[leftId]),
+          right: sourceFramesFor(get(), project.clips[rightId]),
+        }),
+      }),
+      `roll:${leftId}:${rightId}`,
+    );
+  },
+
+  slipClipBy(clipId, deltaFrames, base) {
+    const from = base[clipId];
+    if (!from) return;
+    get().transact(
+      'Slip',
+      (project) => ({
+        ...project,
+        clips: { ...project.clips, [clipId]: slipClip(from, deltaFrames, sourceFramesFor(get(), from)) },
+      }),
+      `slip:${clipId}`,
+    );
+  },
+
+  slideClipBy(clipId, deltaFrames, base) {
+    const from = base[clipId];
+    if (!from) return;
+    get().transact(
+      'Slide',
+      (project) => {
+        // From the clips as they were when the drag began, so dragging back
+        // and forth does not stack up trims on the neighbours.
+        const restored = { ...project.clips };
+        for (const clip of Object.values(base)) {
+          if (clip.trackId === from.trackId && restored[clip.id]) restored[clip.id] = clip;
+        }
+        return {
+          ...project,
+          clips: slideClip(restored, clipId, deltaFrames, {
+            previous: sourceFramesFor(get(), neighbourBefore(restored, from)),
+          }),
+        };
+      },
+      `slide:${clipId}`,
+    );
+  },
+
   removeKeyframe(clipId, property, keyframeId) {
     get().transact('Delete keyframe', (project) => {
       const clip = project.clips[clipId];
@@ -1480,6 +1556,31 @@ function threePointPlan(state: ProjectStore): {
   );
   const [placement] = planDrop(project, [asset], ui.selectedTrackId, start);
   return placement ? { asset, placement, start, length } : null;
+}
+
+/**
+ * How many frames of footage a clip has to draw on.
+ *
+ * A still has no end - it can be held for as long as anyone likes - so it
+ * reports none, and the trims leave it unlimited.
+ */
+function sourceFramesFor(state: ProjectStore, clip: Clip | null | undefined): number | undefined {
+  if (!clip) return undefined;
+  const asset = state.assets.find((candidate) => candidate.uri === clip.sourceUri);
+  if (!asset || asset.kind === 'image') return undefined;
+  return assetLengthFrames(asset, state.project.fps);
+}
+
+/** The clip that ends where `clip` begins, if one does. */
+function neighbourBefore(clips: Record<string, Clip>, clip: Clip): Clip | null {
+  return (
+    Object.values(clips).find(
+      (candidate) =>
+        candidate.trackId === clip.trackId &&
+        candidate.id !== clip.id &&
+        candidate.startFrame + candidate.durationFrames === clip.startFrame,
+    ) ?? null
+  );
 }
 
 /* Selectors ----------------------------------------------------------------- */
