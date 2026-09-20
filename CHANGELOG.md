@@ -7,12 +7,80 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **607 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **84/84 comprobaciones de interfaz** (los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **638 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **92/92 comprobaciones de interfaz** (clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **85/85** con la v1.19.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **93/93** con la v1.20.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.20.0-beta.1 — Clips enlazados, y las fotos dejan de mandar en el proyecto
+2026-09-19 · pre-release para probar
+
+Dos cosas: enlazar clips para que se comporten como uno, y quitarle a las
+fotos la potestad de decidir la resolución de todo el proyecto.
+
+### Añadido
+- **Clips enlazados (Ctrl+L / Ctrl+Shift+L).** Selecciona dos o más clips y
+  enlázalos: a partir de ahí son una sola cosa.
+  - **Seleccionar uno los selecciona todos**, así que todo lo que sigue a la
+    selección —mover, borrar, copiar, duplicar— se lleva el grupo entero.
+  - **Recortar uno recorta a todos por igual**, y se **para donde se para el
+    más justo**: si a uno le quedan 60 fotogramas de metraje y al otro 100, el
+    recorte se detiene en 60 y el par conserva su forma en vez de descuadrarse.
+  - **Alt+clic trabaja sobre un solo clip del grupo** sin romper el enlace,
+    para el empujón puntual.
+  - **Cortar un par enlazado da dos pares**, no un grupo de cuatro: cada mitad
+    queda enlazada con la mitad que le toca, como en Premiere.
+  - **Las copias se enlazan entre ellas**, nunca con el original: pegar un par
+    no te deja la copia soldada a lo que copiaste.
+  - **Los clips enlazados llevan una cadena** dibujada junto al nombre, así que
+    se ve qué se moverá antes de tocar nada.
+  - También está en el **menú contextual** del clip («Link N clips» /
+    «Unlink clips»).
+  - Un enlace que se queda sin la otra mitad **deja de llamarse enlace**: al
+    borrar un clip del par, o al abrir un proyecto guardado así, el que queda
+    vuelve a ser un clip normal.
+
+### Arreglado
+- **Importar una foto ya no cambia la resolución del proyecto.** Arrastrar
+  primero una captura de pantalla dejaba el proyecto entero en 890×422, que
+  era el tamaño de la captura. La secuencia se construye a partir de metraje,
+  como en Premiere y Resolve; una foto se **encaja dentro** de la secuencia
+  (lo que ya hacía desde la v1.17). El vídeo sigue marcando tamaño y
+  frecuencia en un proyecto recién empezado.
+
+### Cómo se comprobó
+- 29 pruebas unitarias nuevas: 17 de las reglas del enlace (unir dos grupos en
+  uno, desenlazar el grupo entero, el reparto del recorte según quién tiene
+  menos sitio, las copias con enlace propio, el grupo que se queda solo) y 12
+  por la tienda de verdad —seleccionar, mover, recortar, borrar, deshacer,
+  cortar en dos pares y abrir un proyecto con un enlace huérfano—.
+- 8 comprobaciones nuevas de interfaz (92/92 en total), **con el ratón**: dos
+  clips en pistas distintas enlazados con Ctrl+L, un clic que selecciona los
+  dos, un arrastre que mueve a ambos, un recorte que recorta a ambos, Alt+clic
+  que se queda con uno, Ctrl+Shift+L que los separa y un arrastre final que ya
+  mueve solo uno, más los 11 pasos de deshacer hasta dejarlo todo como estaba.
+  - Aquí también **falló primero la prueba, no la aplicación**: Alt+clic
+    parecía no funcionar, y resultó que `modifiers: ['Alt']` de Playwright no
+    llega como `altKey` a este Electron. Con la tecla mantenida, la aplicación
+    hacía lo correcto desde el principio.
+  - Lo que sí era un fallo de verdad y se arregló: al soltar el botón, el clic
+    dentro de una selección volvía a expandirla, así que Alt+clic duraba solo
+    hasta levantar el dedo.
+- 3 pruebas unitarias nuevas sobre lo de las fotos, incluida la captura de
+  890×422 que lo destapó.
+- La batería completa contra esta versión: **638 unitarias**, **21/21** de
+  extremo a extremo, **92/92** de interfaz, **41/41** de proyectos, **13/13**
+  de movimiento, una prueba de estrés de **5 minutos a 24 fps** con tu vídeo
+  (**27/27**) y **93/93** contra el ejecutable empaquetado y sin red.
+
+### Sin verificar
+- Los cuatro recortes de la herramienta de recorte (rodillo, cascada, deslizar
+  dentro y entre vecinos) **no siguen el enlace**: actúan sobre el clip que
+  agarras. El recorte normal de los bordes sí lo sigue.
 
 ---
 

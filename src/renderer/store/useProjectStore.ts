@@ -29,6 +29,16 @@ import { assetLengthFrames } from '@renderer/media/assetLength';
 import { fitScale } from '@renderer/media/fitToFrame';
 import { clearRange, editLength } from '@renderer/components/Timeline/threePoint';
 import { rippleTrim, rollEdit, slideClip, slipClip } from '@renderer/components/Timeline/trimModes';
+import {
+  clipTrimRoom,
+  expandSelection,
+  linkClips,
+  partnersOf,
+  regroupCopies,
+  sharedTrimDelta,
+  tidyLinkGroups,
+  unlinkClips,
+} from '@renderer/components/Timeline/linkGroups';
 import { rangeLength, withInPoint, withOutPoint } from './markRange';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import {
@@ -166,7 +176,18 @@ interface ProjectStore {
    */
   insertSelectedAsset(): void;
   overwriteSelectedAsset(): void;
-  selectClips(clipIds: string[], additive?: boolean): void;
+  /**
+   * Select clips, bringing in every linked partner of what is named.
+   * `exact` keeps to the clips given - Alt+click, to work on one half of
+   * a linked pair without breaking the link.
+   */
+  selectClips(clipIds: string[], additive?: boolean, exact?: boolean): void;
+
+  /* Linked clips -------------------------------------------------------- */
+  /** Link the selection, so it moves, trims and is deleted as one. */
+  linkSelection(): void;
+  /** Take the selection out of its link groups. */
+  unlinkSelection(): void;
   /**
    * Zoom by `factor` around `anchorPx` (a position in the viewport); without an
    * anchor, around the playhead when it is on screen.
@@ -701,10 +722,26 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ ui: { ...get().ui, tool } });
   },
 
-  selectClips(clipIds, additive = false) {
+  selectClips(clipIds, additive = false, exact = false) {
     const current = get().ui.selectedClipIds;
-    const next = additive ? [...new Set([...current, ...clipIds])] : clipIds;
+    const asked = exact ? clipIds : expandSelection(get().project.clips, clipIds);
+    const next = additive ? [...new Set([...current, ...asked])] : asked;
     set({ ui: { ...get().ui, selectedClipIds: next } });
+  },
+
+  linkSelection() {
+    const ids = get().ui.selectedClipIds.filter((id) => get().project.clips[id]);
+    if (ids.length < 2) return;
+    get().transact('Link clips', (project) => ({ ...project, clips: linkClips(project.clips, ids) }));
+    // The group is now the selection, however it was picked.
+    get().selectClips(ids);
+  },
+
+  unlinkSelection() {
+    const { project, ui } = get();
+    const ids = ui.selectedClipIds.filter((id) => project.clips[id]);
+    if (!ids.some((id) => project.clips[id].linkGroup)) return;
+    get().transact('Unlink clips', (current) => ({ ...current, clips: unlinkClips(current.clips, ids) }));
   },
 
   zoomBy(factor, anchorPx) {
@@ -928,7 +965,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (ripple) {
         for (const [id, start] of rippleDelete(project.clips, doomed)) clips[id] = moveClip(clips[id], start);
       }
-      return { ...project, clips };
+      // Deleting one half of a pair leaves the other linked to nothing.
+      return { ...project, clips: tidyLinkGroups(clips) };
     });
     set({ ui: { ...get().ui, selectedClipIds: [] } });
   },
@@ -989,6 +1027,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         clips[copy.id] = copy;
         copies.push(copy);
       }
+
+      const linked = regroupCopies(copies);
+      for (const copy of linked) clips[copy.id] = copy;
+      copies.splice(0, copies.length, ...linked);
 
       return { ...project, clips };
     });
@@ -1158,6 +1200,25 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       snapped = edge === 'start' ? Math.max(snapped, limit) : Math.min(snapped, limit);
     }
 
+    // Linked clips keep the same edges: the one with the least footage or
+    // the closest neighbour decides how far the trim goes, so they do not
+    // come back from a drag at different lengths.
+    const partners = partnersOf(project.clips, clipId).filter((id) => id !== clipId);
+    if (partners.length > 0) {
+      const wanted = snapped - (edge === 'start' ? clip.startFrame : clipEndFrame(clip));
+      const rooms = [clipId, ...partners].map((id) => {
+        const member = project.clips[id];
+        return clipTrimRoom(
+          member,
+          edge,
+          trimLimit(project.clips, member, edge),
+          sourceFramesFor(get(), member),
+        );
+      });
+      const delta = sharedTrimDelta(rooms, wanted);
+      snapped = (edge === 'start' ? clip.startFrame : clipEndFrame(clip)) + delta;
+    }
+
     get().transact(
       edge === 'start' ? 'Trim clip in' : 'Trim clip out',
       (current) => {
@@ -1166,6 +1227,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const trimmed =
           edge === 'start' ? trimClipStart(target, snapped) : trimClipEnd(target, snapped);
         const clips = { ...current.clips, [clipId]: trimmed };
+
+        // Every partner moves the same edge by the same number of frames.
+        const moved = edge === 'start'
+          ? trimmed.startFrame - target.startFrame
+          : clipEndFrame(trimmed) - clipEndFrame(target);
+        for (const id of partners) {
+          const member = current.clips[id];
+          if (!member || moved === 0) continue;
+          clips[id] = edge === 'start'
+            ? trimClipStart(member, member.startFrame + moved)
+            : trimClipEnd(member, clipEndFrame(member) + moved);
+        }
 
         if (rippleEnd) {
           // Everything after the old end moves by exactly what the end moved.
@@ -1204,11 +1277,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
     get().transact('Split clip', (current) => {
       const clips = { ...current.clips };
-      for (const [left, right] of splits) {
+      // The halves to the right of the cut are linked to each other from
+      // here on, not to the halves on the left: cutting a linked pair gives
+      // two pairs, the way Premiere cuts one.
+      const rights = regroupCopies(splits.map(([, right]) => right));
+      splits.forEach(([left], index) => {
         clips[left.id] = left;
-        clips[right.id] = right;
-      }
-      return { ...current, clips };
+        clips[rights[index].id] = rights[index];
+      });
+      return { ...current, clips: tidyLinkGroups(clips) };
     });
 
     set({ ui: { ...ui, selectedClipIds: splits.map(([, right]) => right.id) } });

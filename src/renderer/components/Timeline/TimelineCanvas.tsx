@@ -268,6 +268,18 @@ function drawWaveform(
   context.restore();
 }
 
+/** Two links of a chain: the mark a linked clip carries. */
+function drawLinkMark(context: CanvasRenderingContext2D, x: number, y: number): void {
+  context.save();
+  context.strokeStyle = '#cbd5f5';
+  context.lineWidth = 1.2;
+  context.beginPath();
+  context.roundRect(x, y, 7, 5, 2.5);
+  context.roundRect(x + 4, y + 2, 7, 5, 2.5);
+  context.stroke();
+  context.restore();
+}
+
 function drawClip(
   context: CanvasRenderingContext2D,
   clip: Clip,
@@ -328,10 +340,15 @@ function drawClip(
     // starts off screen still says what it is.
     const labelX = Math.max(x, 0) + 7;
 
+    // A linked clip wears a chain, so a group is visible without having to
+    // click one to find out what else moves with it.
+    const nameX = clip.linkGroup ? labelX + 16 : labelX;
+    if (clip.linkGroup) drawLinkMark(context, labelX, top + 8);
+
     context.fillStyle = '#e2e8f0';
     context.font = '11px system-ui, sans-serif';
     context.textBaseline = 'top';
-    context.fillText(clip.name, labelX, top + 7);
+    context.fillText(clip.name, nameX, top + 7);
 
     const keyframeCount =
       clip.transform.position.length +

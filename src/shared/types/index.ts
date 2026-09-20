@@ -185,6 +185,12 @@ export interface Clip {
   pan: number;
   /** Per-clip corrective EQ, applied before the track strip. */
   eq: EqSettings;
+  /**
+   * Clips sharing this id are linked: selecting one selects them all, so
+   * they move, trim and are deleted as one. Absent on a clip that stands
+   * alone, which is nearly all of them.
+   */
+  linkGroup?: string;
 }
 
 export interface Track {

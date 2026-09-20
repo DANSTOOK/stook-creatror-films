@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import {
   ArrowLeftRight,
   ArrowDown,
+  Link2,
   ArrowUp,
   Copy,
   ChevronLeft,
@@ -32,6 +33,7 @@ import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
+import { isLinked } from './linkGroups';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
 import { clipsInMarquee } from './marquee';
@@ -94,6 +96,8 @@ type DragMode =
       base: Record<string, Clip>;
       /** A click (no drag) on a clip inside a selection narrows to that clip. */
       collapseTo: string | null;
+      /** Alt was held: narrow to that clip alone, linked partners and all. */
+      collapseExact: boolean;
       moved: boolean;
     };
 
@@ -303,6 +307,20 @@ export function Timeline(): JSX.Element {
           label: selected.length > 1 ? `Duplicate ${selected.length} clips` : 'Duplicate',
           icon: Copy,
           onSelect: () => state.duplicateClips(selected),
+        },
+        { separator: true },
+        {
+          label: isLinked(state.project.clips, selected)
+            ? 'Unlink clips'
+            : `Link ${selected.length} clips`,
+          icon: Link2,
+          shortcut: isLinked(state.project.clips, selected) ? 'Ctrl+Shift+L' : 'Ctrl+L',
+          disabled: selected.length < 2 && !clip.linkGroup,
+          onSelect: () => {
+            state.selectClips(selected);
+            if (clip.linkGroup) state.unlinkSelection();
+            else state.linkSelection();
+          },
         },
         { separator: true },
         {
@@ -596,7 +614,12 @@ export function Timeline(): JSX.Element {
       // Pressing on a clip that is already part of a selection keeps the
       // selection, so the group can be dragged. It used to collapse to the one
       // clip, which made moving several clips together impossible.
-      if (!alreadySelected) state.selectClips([hit.clip.id], event.shiftKey);
+      //
+      // Alt takes just this clip, linked or not: the way to nudge one half of
+      // a linked pair without having to unlink it first.
+      if (!alreadySelected || (event.altKey && state.ui.selectedClipIds.length > 1)) {
+        state.selectClips([hit.clip.id], event.shiftKey, event.altKey);
+      }
 
       if (state.ui.tool === 'trim') {
         // Which trim depends on where on the clip the pointer is: a shared
@@ -641,6 +664,7 @@ export function Timeline(): JSX.Element {
           ),
           base: current,
           collapseTo: alreadySelected && !event.shiftKey ? hit.clip.id : null,
+          collapseExact: event.altKey,
           moved: false,
         };
         return;
@@ -922,7 +946,9 @@ export function Timeline(): JSX.Element {
 
       // A click (no drag) on one clip of a selection narrows it to that clip.
       if (drag.kind === 'group' && !drag.moved && drag.collapseTo) {
-        state.selectClips([drag.collapseTo]);
+        // Without Alt this keeps a linked group whole, which is the point of
+        // linking; with Alt it holds the one clip that was clicked.
+        state.selectClips([drag.collapseTo], false, drag.collapseExact);
       }
 
       dragRef.current = { kind: 'none' };

@@ -226,6 +226,11 @@ export function useEditorShortcuts(): void {
             event.preventDefault();
             store.clearMarks();
             return;
+          case 'l':
+            // Ctrl+Shift+L unlinks, the mirror of Ctrl+L, as in Premiere.
+            event.preventDefault();
+            store.unlinkSelection();
+            return;
           default:
             break;
         }
@@ -248,6 +253,11 @@ export function useEditorShortcuts(): void {
           case 'y':
             event.preventDefault();
             store.redo();
+            return;
+          case 'l':
+            // Link the selection: from here on it moves and trims as one.
+            event.preventDefault();
+            store.linkSelection();
             return;
           default:
             // Any other Ctrl combination belongs to the app or the system, not

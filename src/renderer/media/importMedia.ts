@@ -135,7 +135,12 @@ export async function buildAsset(input: RawImport, fps: number): Promise<MediaAs
 export function settingsFromAsset(
   asset: MediaAsset,
 ): { fps?: number; width?: number; height?: number } | null {
-  if (asset.kind === 'audio') return null;
+  // Sound has no picture to lend, and a still has none worth lending: its size
+  // is whatever the camera or the screen grab happened to be. Importing a
+  // screenshot first left the whole project at 890x422. Premiere and Resolve
+  // build a sequence from footage, not from photos - a photo is fitted into
+  // the sequence instead (see fitToFrame).
+  if (asset.kind === 'audio' || asset.kind === 'image') return null;
 
   const settings: { fps?: number; width?: number; height?: number } = {};
 

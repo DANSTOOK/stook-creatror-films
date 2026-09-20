@@ -71,12 +71,16 @@ describe('what a newly imported asset is allowed to change', () => {
   });
 
   it('rounds an odd size down to something a video codec can encode', () => {
-    const settings = settingsFromAsset(asset({ kind: 'image', width: 2071, height: 1081 }));
+    const settings = settingsFromAsset(asset({ kind: 'video', width: 2071, height: 1081 }));
     expect(settings).toMatchObject({ width: 2070, height: 1080 });
   });
 
   it('takes nothing at all from audio', () => {
     expect(settingsFromAsset(asset({ kind: 'audio', sourceFps: 30 }))).toBeNull();
+  });
+
+  it('takes nothing from a still either: the sequence is built from footage', () => {
+    expect(settingsFromAsset(asset({ kind: 'image', width: 890, height: 422 }))).toBeNull();
   });
 });
 

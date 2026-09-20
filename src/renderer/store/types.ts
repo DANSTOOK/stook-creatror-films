@@ -20,6 +20,7 @@ import {
 import { createId } from '@shared/utils/id';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
+import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -344,11 +345,15 @@ export function normalizeProject(project: ProjectState): ProjectState {
       solo: track.solo === true,
       bus: track.bus === 'dialogue' || track.bus === 'music' ? track.bus : defaultBusForName(track.name),
     })),
-    clips: Object.fromEntries(
-      Object.entries(project.clips).map(([id, clip]) => [
-        id,
-        { ...clip, volume: finite(clip.volume, 1), pan: finite(clip.pan, 0), eq: normalizeEq(clip.eq) },
-      ]),
+    // A link group whose other members are gone means nothing, and a clip that
+    // says it is linked but moves alone is worse than one that never said it.
+    clips: tidyLinkGroups(
+      Object.fromEntries(
+        Object.entries(project.clips).map(([id, clip]) => [
+          id,
+          { ...clip, volume: finite(clip.volume, 1), pan: finite(clip.pan, 0), eq: normalizeEq(clip.eq) },
+        ]),
+      ),
     ),
   };
 }

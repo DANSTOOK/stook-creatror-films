@@ -1277,6 +1277,145 @@ async function main() {
       afterTrims.clips === beforeTrims.clips && afterTrims.tracks === beforeTrims.tracks,
       `${afterTrims.clips} clips on ${afterTrims.tracks} tracks, was ${beforeTrims.clips} on ${beforeTrims.tracks}`);
 
+    /* Linked clips ---------------------------------------------------------- */
+    // A shot and the title over it, linked: from then on they are one thing.
+    const beforeLinks = await window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return { clips: Object.keys(project.clips).length, tracks: project.tracks.length };
+    });
+
+    const linkSetup = await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      const length = Math.floor((video.durationSeconds
+        ? Math.round(video.durationSeconds * store.project.fps)
+        : video.durationFrames) / 2);
+
+      store.addTrack('video');
+      window.__scfStore.getState().addTrack('video');
+      const tracks = window.__scfStore.getState().project.tracks
+        .filter((track) => track.type === 'video')
+        .sort((a, b) => a.order - b.order);
+      const [lower, upper] = tracks.slice(-2);
+
+      const lowerId = window.__scfStore.getState().addAssetToTimeline(video, lower.id, 0);
+      const upperId = window.__scfStore.getState().addAssetToTimeline(video, upper.id, 0);
+      const state = window.__scfStore.getState();
+      state.trimClip(lowerId, 'end', length);
+      window.__scfStore.getState().trimClip(upperId, 'end', length);
+      window.__scfStore.getState().setUi({ pixelsPerFrame: 2, scrollLeftPx: 0, tool: 'select' });
+
+      const ordered = window.__scfStore.getState().project.tracks;
+      const videos = ordered.filter((t) => t.type === 'video').sort((a, b) => b.order - a.order);
+      const rest = ordered.filter((t) => t.type !== 'video').sort((a, b) => b.order - a.order);
+      const rows = [...videos, ...rest];
+      return {
+        lowerId,
+        upperId,
+        length,
+        lowerRow: rows.findIndex((t) => t.id === lower.id),
+        upperRow: rows.findIndex((t) => t.id === upper.id),
+      };
+    });
+
+    const linkState = () => window.evaluate((ids) => {
+      const { project, ui } = window.__scfStore.getState();
+      const lower = project.clips[ids.lowerId];
+      const upper = project.clips[ids.upperId];
+      return {
+        linked: Boolean(lower.linkGroup) && lower.linkGroup === upper.linkGroup,
+        selected: ui.selectedClipIds.length,
+        lower: `${lower.startFrame}+${lower.durationFrames}`,
+        upper: `${upper.startFrame}+${upper.durationFrames}`,
+      };
+    }, linkSetup);
+
+    await window.evaluate(() => {
+      const canvas = [...document.querySelectorAll('canvas')].pop();
+      let element = canvas?.parentElement;
+      while (element && element.scrollWidth <= element.clientWidth) element = element.parentElement;
+      if (element) element.scrollLeft = 0;
+    });
+    await window.waitForTimeout(150);
+    const linkView = await window.evaluate(() => {
+      const { ui } = window.__scfStore.getState();
+      return { perFrame: ui.pixelsPerFrame, scroll: ui.scrollLeftPx };
+    });
+    const linkBox = await surface.boundingBox();
+    const linkX = (frame) => linkBox.x + frame * linkView.perFrame - linkView.scroll;
+    const linkY = (row) => linkBox.y + 24 + row * 58 + 28;
+    const linkDrag = async (fromFrame, row, toFrame, modifiers = []) => {
+      await window.mouse.move(linkX(fromFrame), linkY(row));
+      await window.mouse.down();
+      await window.mouse.move(linkX(toFrame), linkY(row), { steps: 8 });
+      await window.mouse.up();
+      await window.waitForTimeout(150);
+    };
+
+    const half = Math.round(linkSetup.length / 2);
+    const nudge = Math.max(10, Math.round(linkSetup.length / 4));
+
+    await window.evaluate((ids) => window.__scfStore.getState().selectClips([ids.lowerId, ids.upperId]), linkSetup);
+    await window.keyboard.press('Control+l');
+    await window.waitForTimeout(120);
+    const linked = await linkState();
+    check('Ctrl+L links the selected clips', linked.linked, JSON.stringify(linked));
+
+    // Clicking one of them, with the mouse, selects the pair.
+    await window.mouse.click(linkX(half), linkY(linkSetup.lowerRow));
+    await window.waitForTimeout(120);
+    const clicked = await linkState();
+    check('clicking one linked clip selects both', clicked.selected === 2, `${clicked.selected} selected`);
+
+    await linkDrag(half, linkSetup.lowerRow, half + nudge);
+    const dragged = await linkState();
+    check('dragging one linked clip moves the other with it',
+      dragged.lower === `${nudge}+${linkSetup.length}` && dragged.upper === dragged.lower,
+      `${dragged.lower} / ${dragged.upper}`);
+
+    await window.evaluate((ids) => {
+      const store = window.__scfStore.getState();
+      const clip = store.project.clips[ids.lowerId];
+      store.trimClip(ids.lowerId, 'end', clip.startFrame + clip.durationFrames - 20);
+    }, linkSetup);
+    await window.waitForTimeout(120);
+    const trimmed = await linkState();
+    check('trimming one linked clip trims the other by the same amount',
+      trimmed.lower === `${nudge}+${linkSetup.length - 20}` && trimmed.upper === trimmed.lower,
+      `${trimmed.lower} / ${trimmed.upper}`);
+
+    // Alt+click works on one half of the pair without breaking the link.
+    await window.keyboard.down('Alt');
+    await window.mouse.click(linkX(nudge + half), linkY(linkSetup.upperRow));
+    await window.keyboard.up('Alt');
+    await window.waitForTimeout(120);
+    const isolated = await linkState();
+    check('Alt+click holds just the one clip, and the link survives',
+      isolated.selected === 1 && isolated.linked, JSON.stringify(isolated));
+
+    await window.evaluate((ids) => window.__scfStore.getState().selectClips([ids.lowerId]), linkSetup);
+    await window.keyboard.press('Control+Shift+l');
+    await window.waitForTimeout(120);
+    const unlinked = await linkState();
+    check('Ctrl+Shift+L unlinks them again', !unlinked.linked, JSON.stringify(unlinked));
+
+    await linkDrag(nudge + half, linkSetup.lowerRow, nudge + half + nudge);
+    const apart = await linkState();
+    check('once unlinked, one moves without the other',
+      apart.lower !== apart.upper, `${apart.lower} / ${apart.upper}`);
+
+    // Setup was six steps; linking, the drag, the trim, unlinking and the last
+    // drag are five more.
+    await window.getByTestId('project-name').click();
+    for (let undoStep = 0; undoStep < 11; undoStep += 1) await window.keyboard.press('Control+z');
+    const afterLinks = await window.evaluate(() => {
+      const { project } = window.__scfStore.getState();
+      return { clips: Object.keys(project.clips).length, tracks: project.tracks.length };
+    });
+    check('linking and unlinking are undo steps like any other',
+      afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
+      `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
+
     /* Unsaved changes ------------------------------------------------------ */
     // The export section leaves its dialog open, and its dimmed backdrop takes
     // the clicks meant for the toolbar.

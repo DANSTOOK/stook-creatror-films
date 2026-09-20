@@ -1,6 +1,7 @@
 import type { Clip, MediaAsset, ProjectState, Track } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { clipEndFrame, moveClip } from './timelineOps';
+import { regroupCopies } from './linkGroups';
 import { insertIntoTrack } from './trackPacking';
 import { trackAccepts } from './trackRows';
 
@@ -92,6 +93,10 @@ export function pasteClips(
     pastedIds.push(pasted.id);
     endFrame = Math.max(endFrame, clipEndFrame(pasted));
   }
+
+  // Pasted clips are linked to each other when they came over linked, and
+  // never to the clips they were copied from.
+  for (const pasted of regroupCopies(pastedIds.map((id) => clips[id]))) clips[pasted.id] = pasted;
 
   return { clips, pastedIds, endFrame };
 }

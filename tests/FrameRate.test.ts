@@ -143,6 +143,14 @@ describe('settingsFromAsset', () => {
     expect(settingsFromAsset(asset({ kind: 'audio' }))).toBeNull();
   });
 
+  it('ignores a still, whose size is the camera\'s business and not the sequence\'s', () => {
+    // A screenshot dragged in first used to make the whole project 890x422.
+    expect(settingsFromAsset(asset({ kind: 'image', width: 890, height: 422, sourceFps: undefined })))
+      .toBeNull();
+    // Even one that claims a rate: a picture does not have one.
+    expect(settingsFromAsset(asset({ kind: 'image' }))).toBeNull();
+  });
+
   it('omits what it does not know', () => {
     expect(settingsFromAsset(asset({ sourceFps: undefined }))).toEqual({
       width: 1920,
