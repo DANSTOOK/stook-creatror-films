@@ -16,6 +16,7 @@ import {
   renameWithRetry,
   thumbnailNameFor,
 } from '../projects/recentProjects';
+import { BackupStore, RecoveryStore } from '../projects/backups';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
@@ -458,6 +459,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   /* Projects and the start screen -------------------------------------- */
 
   const recentProjects = new RecentProjectsStore(join(app.getPath('userData'), 'scf'));
+  const backups = new BackupStore(join(app.getPath('userData'), 'scf', 'backups'));
+  const recovery = new RecoveryStore(join(app.getPath('userData'), 'scf'));
 
   ipcMain.handle(IPC.projectsList, async (): Promise<RecentProject[]> => {
     const list = await recentProjects.read();
@@ -557,6 +560,9 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const previous = saveQueues.get(path) ?? Promise.resolve();
     const write = previous.catch(() => undefined).then(async () => {
       saveCounter += 1;
+      // The file as it stands now, kept before it is written over. Best
+      // effort: a project that cannot be backed up must still save.
+      await backups.keep(path).catch(() => null);
       const temporary = `${path}.saving-${process.pid}-${saveCounter}`;
       try {
         await writeFile(temporary, contents, 'utf8');
@@ -573,6 +579,47 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       if (saveQueues.get(path) === write) saveQueues.delete(path);
     }
     return path;
+  });
+
+  ipcMain.handle(IPC.projectsBackups, async (_event, path: unknown) => {
+    if (typeof path !== 'string') return [];
+    assertAllowed(path);
+    return backups.list(path);
+  });
+
+  ipcMain.handle(IPC.projectsBackupRead, async (_event, file: unknown) => {
+    if (typeof file !== 'string') return null;
+    // Only out of the backups folder: this reads a file the renderer named.
+    return backups.read(file);
+  });
+
+  ipcMain.handle(IPC.projectsRecoveryWrite, async (_event, snapshot: unknown) => {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    const entry = snapshot as { name?: unknown; path?: unknown; contents?: unknown };
+    if (typeof entry.contents !== 'string' || entry.contents.length === 0) return;
+    await recovery.write({
+      name: typeof entry.name === 'string' && entry.name.trim() ? entry.name : 'Untitled project',
+      path: typeof entry.path === 'string' ? entry.path : null,
+      savedAt: new Date().toISOString(),
+      contents: entry.contents,
+    });
+  });
+
+  ipcMain.handle(IPC.projectsRecoveryRead, async () => {
+    const snapshot = await recovery.read();
+    if (!snapshot) return null;
+    // Opening it later has to be allowed, the same as any project this
+    // session opened itself.
+    if (snapshot.path) allowedPaths.add(snapshot.path);
+    // And so does the media it names, by the same rule a project file gets:
+    // recovering work is as deliberate as opening it, and without this every
+    // clip came back marked missing, pointing at a URL from the dead session.
+    await allowProjectReferences(snapshot.contents);
+    return snapshot;
+  });
+
+  ipcMain.handle(IPC.projectsRecoveryClear, async () => {
+    await recovery.clear();
   });
 
   ipcMain.handle(IPC.projectsRecord, async (_event, input: unknown, thumbnail: unknown) => {

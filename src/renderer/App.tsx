@@ -36,6 +36,8 @@ import {
 } from './layout/layoutSizes';
 import { hasNativeBridge } from './media/importMedia';
 import { useProjectActions } from './project/useProjectActions';
+import { useAutosave } from './project/useAutosave';
+import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import { useIsDirty, useSessionStore } from './store/useSessionStore';
@@ -95,6 +97,14 @@ export default function App(): JSX.Element {
   const projectPath = useSessionStore((state) => state.projectPath);
   const dirty = useIsDirty();
   const actions = useProjectActions(setStatus);
+
+  // Saving on a timer, so a crash or a closed laptop costs minutes rather
+  // than an afternoon. Never while the renderer is taken: an export owns it.
+  useAutosave({
+    save: useCallback(() => actions.save(false, { automatic: true }), [actions]),
+    isBusy: useCallback(() => getActiveFrameRenderer()?.isExclusive === true, []),
+    report: setStatus,
+  });
 
   // The window title names the project, as editors do; the start screen keeps
   // the plain app name.
@@ -364,7 +374,16 @@ export default function App(): JSX.Element {
         {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
         {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
         {settingsPresence.mounted && (
-          <ProjectSettings closing={settingsPresence.closing} onClose={() => setSettingsOpen(false)} />
+          <ProjectSettings
+            closing={settingsPresence.closing}
+            onClose={() => setSettingsOpen(false)}
+            onRestore={async (contents, savedAt) => {
+              // The panel goes first: what it was showing belongs to the
+              // project that is being replaced.
+              setSettingsOpen(false);
+              await actions.restoreContents(contents, savedAt);
+            }}
+          />
         )}
       </div>
 
@@ -378,6 +397,7 @@ export default function App(): JSX.Element {
             onCreate={actions.createProject}
             onOpenDialog={() => void actions.openFromDialog()}
             onOpenRecent={(path) => void actions.openRecent(path)}
+            onRecover={() => void actions.recoverUnsaved()}
           />
         </div>
       )}

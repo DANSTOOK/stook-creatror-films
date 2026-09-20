@@ -24,6 +24,11 @@ export const IPC = {
   projectsCreate: 'projects:create',
   projectsSave: 'projects:save',
   projectsRecord: 'projects:record',
+  projectsBackups: 'projects:backups',
+  projectsBackupRead: 'projects:backup-read',
+  projectsRecoveryWrite: 'projects:recovery-write',
+  projectsRecoveryRead: 'projects:recovery-read',
+  projectsRecoveryClear: 'projects:recovery-clear',
   documentState: 'app:document-state',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
@@ -105,6 +110,23 @@ export interface RecentProject {
 }
 
 /** What a save records about a project for the start screen. */
+/** A copy of a project as it stood before one of its saves. */
+export interface ProjectBackup {
+  /** Pass this back to `projectsBackupRead`. */
+  file: string;
+  /** When the save that replaced this copy happened, as an ISO string. */
+  savedAt: string;
+  bytes: number;
+}
+
+/** Unsaved work a previous session left behind. */
+export interface ProjectRecovery {
+  name: string;
+  path: string | null;
+  savedAt: string;
+  contents: string;
+}
+
 export interface RecentProjectInput {
   path: string;
   name: string;
@@ -159,6 +181,17 @@ export interface FilmoraApi {
   projectsSave(path: string, contents: string): Promise<string>;
   /** Put a project at the top of the recent list, with an optional JPEG thumbnail. */
   projectsRecord(project: RecentProjectInput, thumbnail?: ArrayBuffer): Promise<void>;
+
+  /** The copies kept of this project, newest first. */
+  projectsBackups(path: string): Promise<ProjectBackup[]>;
+  /** One copy, ready to open. Null if it is not a copy this app keeps. */
+  projectsBackupRead(file: string): Promise<string | null>;
+  /** Keep unsaved work where the next start can find it. */
+  projectsRecoveryWrite(snapshot: { name: string; path: string | null; contents: string }): Promise<void>;
+  /** Work left behind by a session that never saved it, if any. */
+  projectsRecoveryRead(): Promise<ProjectRecovery | null>;
+  /** Nothing left to recover: throw the snapshot away. */
+  projectsRecoveryClear(): Promise<void>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
   /** The window asked to save before closing; save, then call closeAfterSave. */

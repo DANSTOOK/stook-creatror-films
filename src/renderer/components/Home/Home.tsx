@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Clock, Film, FolderOpen, FolderPlus, Plus, Search, Sparkles, X } from 'lucide-react';
-import type { RecentProject } from '@shared/types/ipc';
+import { Clock, Film, FolderOpen, FolderPlus, LifeBuoy, Plus, Search, Sparkles, X } from 'lucide-react';
+import type { ProjectRecovery, RecentProject } from '@shared/types/ipc';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { useFlip } from '@renderer/motion/useFlip';
 import { formatLength, nextUntitledName, relativeTime } from '@renderer/project/projectSession';
@@ -35,9 +35,11 @@ export interface HomeProps {
   onCreate(options: NewProjectOptions): Promise<boolean>;
   onOpenDialog(): void;
   onOpenRecent(path: string): void;
+  /** Take back up work a previous session never saved. */
+  onRecover(): void;
 }
 
-export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent }: HomeProps): JSX.Element {
+export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover }: HomeProps): JSX.Element {
   const native = hasNativeBridge();
   const [recent, setRecent] = useState<RecentProject[] | null>(null);
   const [query, setQuery] = useState('');
@@ -59,6 +61,15 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent }: 
     void refresh();
     if (native) void window.filmora.projectsDefaultFolder().then(setFolder).catch(() => undefined);
   }, [native, refresh]);
+
+  // Work a previous session was in the middle of and never saved. Offered
+  // here rather than in a dialog on top of everything: it is a thing to
+  // open, and this is the screen for opening things.
+  const [recovery, setRecovery] = useState<ProjectRecovery | null>(null);
+  useEffect(() => {
+    if (!native) return;
+    void window.filmora.projectsRecoveryRead().then(setRecovery).catch(() => undefined);
+  }, [native]);
 
   // A sensible name ready to accept, not one the user must invent first.
   useEffect(() => {
@@ -212,6 +223,36 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent }: 
 
         {/* Carry on */}
         <section className="flex min-w-0 flex-1 flex-col">
+          {recovery && (
+            <div
+              data-testid="recovery-card"
+              className="scf-rise scf-surface mb-4 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3"
+            >
+              <LifeBuoy size={18} className="shrink-0 text-amber-400" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm text-slate-100">
+                  Unsaved work from {recovery.name}
+                </p>
+                <p className="text-2xs text-slate-400">
+                  Kept automatically {relativeTime(recovery.savedAt)}, when the app closed before it was saved.
+                </p>
+              </div>
+              <button type="button" className="tool-button tool-button-active shrink-0" onClick={onRecover}>
+                Recover
+              </button>
+              <button
+                type="button"
+                className="tool-button shrink-0"
+                title="Throw this away"
+                onClick={() => {
+                  setRecovery(null);
+                  void window.filmora.projectsRecoveryClear().catch(() => undefined);
+                }}
+              >
+                Discard
+              </button>
+            </div>
+          )}
           <div className="scf-rise mb-4 flex items-center gap-3" style={stagger(1)}>
             <h2 className="flex items-center gap-2 text-sm font-medium text-slate-100">
               <Clock size={15} className="text-slate-400" />

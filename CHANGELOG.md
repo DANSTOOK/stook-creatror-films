@@ -7,12 +7,89 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **638 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **92/92 comprobaciones de interfaz** (clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **656 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **99/99 comprobaciones de interfaz** (autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **93/93** con la v1.20.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **100/100** con la v1.21.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.21.0-beta.1 — Autoguardado, copias de seguridad y recuperación
+2026-09-19 · pre-release para probar
+
+Para no perder trabajo: la aplicación guarda sola, conserva cómo estaba el
+proyecto antes de cada guardado, y si la ventana se cierra con trabajo sin
+guardar te lo ofrece de vuelta al arrancar.
+
+### Añadido
+- **Autoguardado cada 5 minutos** (ajustable en Ajustes: apagado, 2, 5, 10 o
+  15 minutos).
+  - Un proyecto **que ya tiene archivo** se escribe en su propio archivo, y lo
+    dice en la barra de estado: «Autosaved to proyecto.scf at 23:01».
+  - Un proyecto **que nunca se ha guardado** no se escribe en ningún sitio que
+    tú no hayas elegido: se queda una **instantánea dentro de la aplicación**,
+    y se ofrece al arrancar.
+  - **Nunca guarda mientras exportas**: un guardado automático a mitad de una
+    exportación se pelearía por los decodificadores. Tampoco renderiza
+    miniatura, que es lo que obliga a tomar el renderizador en exclusiva.
+  - Si guardas a mano, o deshaces hasta volver al punto guardado, **la
+    instantánea se borra**: que te ofrezca recuperar algo siempre significa
+    que de verdad quedó algo por recuperar.
+- **Copias de seguridad en cada guardado.** Antes de escribir encima, el
+  archivo tal y como estaba se guarda aparte. Se conservan **las 20 más
+  recientes** por proyecto, que a 5 minutos de autoguardado es una tarde de
+  trabajo.
+  - Viven en la carpeta de la aplicación, **no junto a tu proyecto**: una
+    carpeta llena de copias fechadas al lado del archivo es un estorbo, y en
+    una unidad compartida, un desastre.
+  - Dos proyectos con el mismo nombre en carpetas distintas **no comparten**
+    copias.
+- **Restaurar una versión anterior**, desde Ajustes: la lista de copias con su
+  fecha y un botón en cada una. Al restaurar, esa versión se abre en el editor
+  **sin guardar**, así que el archivo del proyecto sigue intacto hasta que tú
+  decidas; y si guardas, la versión que acabas de sustituir pasa a ser copia a
+  su vez. Mirar cómo estaba hace una hora no puede costarte la última hora.
+- **Recuperar trabajo sin guardar**, desde la sala principal: si la sesión
+  anterior se fue sin guardar, aparece una tarjeta con lo que quedó y cuándo,
+  con «Recover» y «Discard».
+
+### Arreglado
+- **El trabajo recuperado vuelve con su metraje.** Al recuperar, todos los
+  clips salían marcados como «falta el archivo» y apuntando a direcciones de
+  la sesión muerta: la lista de archivos permitidos se vacía en cada sesión, y
+  la recuperación no autorizaba el metraje que la instantánea nombra —cosa que
+  abrir un proyecto sí hace desde la v1.10—. Lo encontró la prueba: dos 404 de
+  `media://` en la consola durante la recuperación.
+
+### Cómo se comprobó
+- 18 pruebas unitarias nuevas: cuándo toca guardar y cuándo no (proyecto sin
+  cambios, ocupado exportando, apagado, con archivo y sin archivo, la
+  instantánea que se limpia sola), la lectura del ajuste —incluido que «no hay
+  nada guardado» no se lea como «apagado», que habría dejado el autoguardado
+  apagado para todo el mundo—, el nombre y la fecha de cada copia, el descarte
+  de las viejas, que dos proyectos homónimos no se mezclen y la instantánea
+  escrita por una versión anterior.
+- 7 comprobaciones nuevas de interfaz (99/99 en total) **en la aplicación
+  real**: un autoguardado disparado por la misma función que dispara el
+  temporizador, la copia que queda, la lista en Ajustes, restaurar una versión
+  anterior (y que quede sin guardar), y —en una **segunda sesión**, tras
+  cerrar la ventana— la tarjeta de recuperación, con el trabajo volviendo
+  entero, con su metraje y sin guardar.
+- La batería completa contra esta versión: **656 unitarias**, **21/21** de
+  extremo a extremo, **99/99** de interfaz, **41/41** de proyectos, **13/13**
+  de movimiento, una prueba de estrés de **5 minutos a 24 fps** con tu vídeo
+  (**27/27**) y **100/100** contra el ejecutable empaquetado y sin red.
+
+### Sin verificar
+- El temporizador de verdad —esperar cinco minutos sin tocar nada— no se ha
+  cronometrado en una prueba; lo que sí está probado es la decisión que toma
+  (unitarias) y lo que hace cuando le toca (interfaz, con la misma función que
+  llama el temporizador).
+- Las copias no se borran nunca solas más allá de las 20 por proyecto: si
+  borras un proyecto, sus copias se quedan ocupando sitio en la carpeta de la
+  aplicación.
 
 ---
 

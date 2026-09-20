@@ -6,6 +6,7 @@ import type { ProjectDocument } from '@renderer/store/types';
 import { currentMarker, documentIsDirty, useSessionStore } from '@renderer/store/useSessionStore';
 import { withViewTransition } from '@renderer/motion/viewTransition';
 import { projectNameFromPath } from './projectSession';
+import { savedAtLabel } from './autosave';
 
 /**
  * Everything that starts, opens or keeps a project.
@@ -107,18 +108,40 @@ async function recordRecent(path: string, withThumbnail: boolean): Promise<void>
     .catch(() => undefined);
 }
 
+/** What a save is for: the user asked, or the clock did. */
+export interface SaveOptions {
+  /**
+   * An automatic save: no thumbnail, and a quieter line in the status bar.
+   *
+   * The thumbnail is rendered by taking the renderer exclusively, which is
+   * fine when somebody pressed Ctrl+S and is waiting, and not fine at all
+   * five minutes into an afternoon somebody else is having.
+   */
+  automatic?: boolean;
+}
+
 export interface ProjectActions {
-  save(saveAs?: boolean): Promise<boolean>;
+  save(saveAs?: boolean, options?: SaveOptions): Promise<boolean>;
   openFromDialog(): Promise<boolean>;
   openRecent(path: string): Promise<boolean>;
   newBlank(): Promise<boolean>;
+  /**
+   * Put an earlier version of the open project on screen, unsaved.
+   *
+   * The project file is left exactly as it is: looking at how things were
+   * an hour ago must not cost the last hour. Saving afterwards is an
+   * ordinary save, which keeps the current version as a backup in turn.
+   */
+  restoreContents(contents: string, savedAt: string): Promise<boolean>;
+  /** Take back up the work a previous session never saved. */
+  recoverUnsaved(): Promise<boolean>;
   createProject(options: NewProjectOptions): Promise<boolean>;
   goHome(): Promise<boolean>;
 }
 
 export function useProjectActions(setStatus: (message: string | null) => void): ProjectActions {
   const save = useCallback(
-    async (saveAs = false): Promise<boolean> => {
+    async (saveAs = false, { automatic = false }: SaveOptions = {}): Promise<boolean> => {
       if (!hasNativeBridge()) return false;
       const session = useSessionStore.getState();
       // Taken before writing: an edit made while the file is being written
@@ -139,8 +162,12 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
       if (!path) return false;
 
       useSessionStore.getState().markSaved(marker, path, projectNameFromPath(path));
-      setStatus(`Saved to ${fileName(path)}`);
-      pendingRecord = recordRecent(path, true).catch(() => undefined);
+      setStatus(
+        automatic
+          ? `Autosaved to ${fileName(path)} at ${savedAtLabel(new Date())}`
+          : `Saved to ${fileName(path)}`,
+      );
+      pendingRecord = recordRecent(path, !automatic).catch(() => undefined);
       return true;
     },
     [setStatus],
@@ -186,6 +213,63 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
     },
     [setStatus],
   );
+
+  /**
+   * A document that came from somewhere other than a project file.
+   *
+   * It counts as unsaved on purpose, so the dot in the toolbar is on and
+   * closing the window asks: what is on screen is not what is in the file.
+   * The marker cannot be mistaken for a real one - a library signature is
+   * never this word - so it is dirty however the history looks.
+   */
+  const loadDetached = useCallback(
+    async (contents: string, path: string | null, name: string, message: string): Promise<boolean> => {
+      try {
+        await pendingRecord;
+        const document = JSON.parse(contents) as ProjectDocument;
+        const { assets, project } = await rehydrateDocument(document.assets ?? [], document.project);
+        await withViewTransition(() => {
+          useProjectStore.getState().loadDocument({ ...document, assets, project });
+          useSessionStore.getState().startProject(path, name, { undoTopId: 'restored', library: 'restored' });
+        });
+        setStatus(message);
+        return true;
+      } catch (error) {
+        setStatus(describe(error));
+        return false;
+      }
+    },
+    [setStatus],
+  );
+
+  const restoreContents = useCallback(
+    async (contents: string, savedAt: string): Promise<boolean> => {
+      if (!(await confirmLeave())) return false;
+      const session = useSessionStore.getState();
+      return loadDetached(
+        contents,
+        session.projectPath,
+        session.projectName,
+        `Restored the version from ${new Date(savedAt).toLocaleString()} - not saved yet`,
+      );
+    },
+    [confirmLeave, loadDetached],
+  );
+
+  const recoverUnsaved = useCallback(async (): Promise<boolean> => {
+    if (!hasNativeBridge() || !(await confirmLeave())) return false;
+    const snapshot = await window.filmora.projectsRecoveryRead().catch(() => null);
+    if (!snapshot) {
+      setStatus('There is nothing left to recover');
+      return false;
+    }
+    return loadDetached(
+      snapshot.contents,
+      snapshot.path,
+      snapshot.name,
+      `Recovered the work from ${new Date(snapshot.savedAt).toLocaleString()} - not saved yet`,
+    );
+  }, [confirmLeave, loadDetached, setStatus]);
 
   const openFromDialog = useCallback(async (): Promise<boolean> => {
     if (!hasNativeBridge() || !(await confirmLeave())) return false;
@@ -257,7 +341,7 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
   }, [confirmLeave]);
 
   return useMemo(
-    () => ({ save, openFromDialog, openRecent, newBlank, createProject, goHome }),
-    [save, openFromDialog, openRecent, newBlank, createProject, goHome],
+    () => ({ save, openFromDialog, openRecent, newBlank, createProject, goHome, restoreContents, recoverUnsaved }),
+    [save, openFromDialog, openRecent, newBlank, createProject, goHome, restoreContents, recoverUnsaved],
   );
 }

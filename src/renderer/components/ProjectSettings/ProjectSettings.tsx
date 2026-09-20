@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { COMMON_FPS } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { BackupSettings } from './BackupSettings';
 
 /**
  * Project settings.
@@ -28,11 +29,13 @@ const PRESETS: { label: string; width: number; height: number }[] = [
 
 export interface ProjectSettingsProps {
   onClose(): void;
+  /** Put an earlier version of this project on screen, unsaved. */
+  onRestore(contents: string, savedAt: string): Promise<void> | void;
   /** Playing its exit animation; see usePresence. */
   closing?: boolean;
 }
 
-export function ProjectSettings({ onClose, closing = false }: ProjectSettingsProps): JSX.Element {
+export function ProjectSettings({ onClose, onRestore, closing = false }: ProjectSettingsProps): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const setProjectSettings = useProjectStore((state) => state.setProjectSettings);
   const adoptedFrom = useProjectStore((state) => state.adoptedSettingsFrom);
@@ -191,6 +194,8 @@ export function ProjectSettings({ onClose, closing = false }: ProjectSettingsPro
             Leaves the scene empty instead of opaque black, so exports to PNG,
             ProRes 4444 or WebM carry a real alpha channel.
           </p>
+
+          <BackupSettings onRestore={onRestore} />
 
           {adoptedFrom && (
             <p className="text-2xs text-slate-600">

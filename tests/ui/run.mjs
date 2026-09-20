@@ -1416,6 +1416,65 @@ async function main() {
       afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
       `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
 
+    /* Autosave, backups and recovery ---------------------------------------- */
+    // The project has a file by now, so an automatic save writes back to it -
+    // and keeps what was there as a copy. The timer's own decision is driven
+    // here rather than waited out; it is the same function the timer calls.
+    const beforeAutosave = await window.evaluate(() => ({
+      clips: Object.keys(window.__scfStore.getState().project.clips).length,
+      hook: Boolean(window.__scfAutosave),
+    }));
+    check('the editor has autosave running', beforeAutosave.hook, JSON.stringify(beforeAutosave));
+
+    // Something to save that was not there at the last save.
+    await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const track = store.project.tracks.find((candidate) => candidate.type === 'video');
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      store.addAssetToTimeline(video, track.id, 4000);
+    });
+    await window.evaluate(async () => {
+      window.__scfAutosave.due();
+      await window.__scfAutosave.tick();
+    });
+    await window.waitForTimeout(600);
+    const autosaved = await window.evaluate(() => ({
+      status: document.body.innerText.match(/Autosaved[^\n]*/)?.[0] ?? '',
+      dirty: document.querySelectorAll('[data-testid="unsaved-indicator"]').length,
+    }));
+    check('autosave writes the project back to its own file, and it is saved afterwards',
+      /^Autosaved to ui-project\.scf at /.test(autosaved.status) && autosaved.dirty === 0,
+      JSON.stringify(autosaved));
+
+    const kept = await window.evaluate((path) => window.filmora.projectsBackups(path), projectPath);
+    check('the save kept the previous version as a backup', kept.length >= 1,
+      `${kept.length} copies, newest ${kept[0]?.savedAt ?? 'none'}`);
+
+    // The backups are listed in Settings, and one can be put back on screen.
+    await window.getByRole('button', { name: 'Settings' }).click();
+    await window.waitForTimeout(400);
+    const listed = await window.getByTestId('backup-list').count();
+    const intervalShown = await window.getByTestId('autosave-interval').inputValue().catch(() => 'none');
+    check('Settings lists the earlier versions and the autosave interval',
+      listed === 1 && intervalShown === '5', `list ${listed}, every ${intervalShown} min`);
+
+    const clipsBeforeRestore = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
+    await window.getByRole('button', { name: 'Restore' }).first().click();
+    await window.waitForTimeout(900);
+    const restored = await window.evaluate(() => ({
+      clips: Object.keys(window.__scfStore.getState().project.clips).length,
+      dirty: document.querySelectorAll('[data-testid="unsaved-indicator"]').length,
+    }));
+    check('restoring an earlier version puts it on screen, unsaved, without touching the file',
+      restored.clips === clipsBeforeRestore - 1 && restored.dirty === 1,
+      `${restored.clips} clips (was ${clipsBeforeRestore}), unsaved ${restored.dirty === 1}`);
+
+    // Back to where the rest of the checks expect the project to be.
+    await window.keyboard.press('Control+z');
+    await window.waitForTimeout(200);
+    await window.keyboard.press('Control+s');
+    await window.waitForTimeout(600);
+
     /* Unsaved changes ------------------------------------------------------ */
     // The export section leaves its dialog open, and its dimmed backdrop takes
     // the clicks meant for the toolbar.
@@ -1543,6 +1602,44 @@ async function main() {
     );
     const reopenedTitle = await second.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle());
     check('the window is titled after the open project', reopenedTitle === 'ui-project - STOOK CREATOR FILMS', reopenedTitle);
+
+    // Work that was never saved: written by the running app the way the timer
+    // writes it, then offered back here after the window closed.
+    await window.evaluate(async () => {
+      const store = window.__scfStore.getState();
+      const track = store.project.tracks.find((candidate) => candidate.type === 'video');
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      store.addAssetToTimeline(video, track.id, 6000);
+      await window.filmora.projectsRecoveryWrite({
+        name: 'left behind',
+        path: null,
+        contents: JSON.stringify(window.__scfStore.getState().toDocument()),
+      });
+    });
+    const snapshotClips = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
+    // The snapshot has the extra clip; the project on screen goes back to what
+    // the file holds, so leaving for the start screen asks nothing.
+    await window.keyboard.press('Control+z');
+    await window.waitForTimeout(300);
+
+    await window.getByRole('button', { name: 'Home' }).click();
+    await window.waitForTimeout(700);
+    const offered = await window.getByTestId('recovery-card').count();
+    check('unsaved work is offered back on the start screen', offered === 1, `${offered} cards`);
+
+    await window.getByRole('button', { name: 'Recover' }).click();
+    await window.waitForTimeout(1500);
+    const recovered = await window.evaluate(() => {
+      const { assets, project } = window.__scfStore.getState();
+      return {
+        clips: Object.keys(project.clips).length,
+        missing: assets.filter((asset) => asset.missing).length,
+        dirty: document.querySelectorAll('[data-testid="unsaved-indicator"]').length,
+      };
+    });
+    check('recovered work comes back whole, with its media, and still unsaved',
+      recovered.clips === snapshotClips && recovered.missing === 0 && recovered.dirty === 1,
+      JSON.stringify(recovered));
 
     check('panel sizes are remembered in a new session',
       persistedMediaWidth !== null && Math.abs(reopenedMediaWidth - persistedMediaWidth) <= 2,

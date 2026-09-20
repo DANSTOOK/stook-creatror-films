@@ -5,7 +5,15 @@ import type {
   GpuReport,
   HardwareEncoder,
 } from '@shared/types';
-import { IPC, type FilmoraApi, type MediaProbe, type PickedFile, type RecentProject } from '@shared/types/ipc';
+import {
+  IPC,
+  type FilmoraApi,
+  type MediaProbe,
+  type PickedFile,
+  type ProjectBackup,
+  type ProjectRecovery,
+  type RecentProject,
+} from '@shared/types/ipc';
 
 /**
  * The only bridge between the renderer and Node.
@@ -58,6 +66,11 @@ const api: FilmoraApi = {
     ipcRenderer.invoke(IPC.openLut) as Promise<{ path: string; contents: string } | null>,
   saveProjectAs: (contents, suggestedName) =>
     ipcRenderer.invoke(IPC.saveProjectAs, contents, suggestedName) as Promise<string | null>,
+  projectsBackups: (path) => ipcRenderer.invoke(IPC.projectsBackups, path) as Promise<ProjectBackup[]>,
+  projectsBackupRead: (file) => ipcRenderer.invoke(IPC.projectsBackupRead, file) as Promise<string | null>,
+  projectsRecoveryWrite: (snapshot) => ipcRenderer.invoke(IPC.projectsRecoveryWrite, snapshot) as Promise<void>,
+  projectsRecoveryRead: () => ipcRenderer.invoke(IPC.projectsRecoveryRead) as Promise<ProjectRecovery | null>,
+  projectsRecoveryClear: () => ipcRenderer.invoke(IPC.projectsRecoveryClear) as Promise<void>,
   chooseExportFolder: () => ipcRenderer.invoke(IPC.chooseExportFolder) as Promise<string | null>,
   resolveExportTarget: (folder, name, format) =>
     ipcRenderer.invoke(IPC.resolveExportTarget, folder, name, format) as Promise<{ path: string; exists: boolean; inUse: boolean }>,
