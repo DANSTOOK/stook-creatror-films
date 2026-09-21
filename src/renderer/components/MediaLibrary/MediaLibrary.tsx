@@ -34,6 +34,7 @@ import {
 import { assetsInBin, binPath, childBins, countAssetsDeep } from '@renderer/media/bins';
 import { useFlip } from '@renderer/motion/useFlip';
 import { assetLengthSeconds } from '@renderer/media/assetLength';
+import { ProxyBar } from './ProxyBar';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
@@ -435,6 +436,8 @@ export function MediaLibrary(): JSX.Element {
         </div>
       </header>
 
+      <ProxyBar />
+
       <input
         ref={fileInputRef}
         type="file"
@@ -601,6 +604,14 @@ export function MediaLibrary(): JSX.Element {
                       <p className="text-2xs text-slate-500">
                         {asset.width > 0 ? `${asset.width}x${asset.height} - ` : ''}
                         {Math.round(assetLengthSeconds(asset, project.fps))}s
+                        {asset.proxyUri && (
+                          <span
+                            className="ml-1 rounded bg-sky-900/60 px-1 text-sky-300"
+                            title="Edited from a small stand-in; the export reads this file"
+                          >
+                            proxy
+                          </span>
+                        )}
                         {asset.hasAlphaChannel && (
                           <span className="ml-1 rounded bg-emerald-900/60 px-1 text-emerald-300">
                             alpha

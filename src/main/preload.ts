@@ -12,6 +12,8 @@ import {
   type PickedFile,
   type ProjectBackup,
   type ProjectRecovery,
+  type ProxyProgressEvent,
+  type ProxyUsage,
   type RecentProject,
 } from '@shared/types/ipc';
 
@@ -71,6 +73,20 @@ const api: FilmoraApi = {
   projectsRecoveryWrite: (snapshot) => ipcRenderer.invoke(IPC.projectsRecoveryWrite, snapshot) as Promise<void>,
   projectsRecoveryRead: () => ipcRenderer.invoke(IPC.projectsRecoveryRead) as Promise<ProjectRecovery | null>,
   projectsRecoveryClear: () => ipcRenderer.invoke(IPC.projectsRecoveryClear) as Promise<void>,
+  proxiesFind: (path) => ipcRenderer.invoke(IPC.proxiesFind, path) as Promise<string | null>,
+  proxiesBuild: (path, width, height, seconds) =>
+    ipcRenderer.invoke(IPC.proxiesBuild, path, width, height, seconds) as Promise<string | null>,
+  proxiesCancel: () => ipcRenderer.invoke(IPC.proxiesCancel) as Promise<void>,
+  proxiesClear: () => ipcRenderer.invoke(IPC.proxiesClear) as Promise<ProxyUsage>,
+  proxiesUsage: () => ipcRenderer.invoke(IPC.proxiesUsage) as Promise<ProxyUsage>,
+
+  onProxyProgress(listener) {
+    const handler = (_event: unknown, progress: ProxyProgressEvent): void => listener(progress);
+    ipcRenderer.on(IPC.proxiesProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.proxiesProgress, handler);
+    };
+  },
   chooseExportFolder: () => ipcRenderer.invoke(IPC.chooseExportFolder) as Promise<string | null>,
   resolveExportTarget: (folder, name, format) =>
     ipcRenderer.invoke(IPC.resolveExportTarget, folder, name, format) as Promise<{ path: string; exists: boolean; inUse: boolean }>,

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+﻿import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { execFile } from 'node:child_process';
 import { mkdir, open, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join } from 'node:path';
@@ -17,6 +17,7 @@ import {
   thumbnailNameFor,
 } from '../projects/recentProjects';
 import { BackupStore, RecoveryStore } from '../projects/backups';
+import { ProxyStore, proxySize } from '../media/proxies';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
@@ -461,6 +462,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   const recentProjects = new RecentProjectsStore(join(app.getPath('userData'), 'scf'));
   const backups = new BackupStore(join(app.getPath('userData'), 'scf', 'backups'));
   const recovery = new RecoveryStore(join(app.getPath('userData'), 'scf'));
+  const proxies = new ProxyStore(join(app.getPath('userData'), 'scf', 'proxies'), resolveFfmpegPath());
 
   ipcMain.handle(IPC.projectsList, async (): Promise<RecentProject[]> => {
     const list = await recentProjects.read();
@@ -579,6 +581,45 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       if (saveQueues.get(path) === write) saveQueues.delete(path);
     }
     return path;
+  });
+
+  ipcMain.handle(IPC.proxiesFind, async (_event, path: unknown) => {
+    if (typeof path !== 'string') return null;
+    assertAllowed(path);
+    const found = await proxies.find(path);
+    if (!found) return null;
+    allowedPaths.add(found.file);
+    return mediaUrlFor(found.file);
+  });
+
+  ipcMain.handle(
+    IPC.proxiesBuild,
+    async (_event, path: unknown, width: unknown, height: unknown, seconds: unknown) => {
+      if (typeof path !== 'string') return null;
+      assertAllowed(path);
+      const size = proxySize(Number(width) || 0, Number(height) || 0);
+      const built = await proxies.build(path, size, Number(seconds) || 0, (fraction) => {
+        getWindow()?.webContents.send(IPC.proxiesProgress, { path, fraction });
+      });
+      if (!built) throw new Error(proxies.lastError ?? 'the proxy could not be built');
+      allowedPaths.add(built.file);
+      return mediaUrlFor(built.file);
+    },
+  );
+
+  ipcMain.handle(IPC.proxiesCancel, async () => {
+    proxies.cancel();
+  });
+
+  ipcMain.handle(IPC.proxiesClear, async () => {
+    const before = await proxies.list();
+    await proxies.clear();
+    return { count: before.length, bytes: before.reduce((sum, record) => sum + record.bytes, 0) };
+  });
+
+  ipcMain.handle(IPC.proxiesUsage, async () => {
+    const records = await proxies.list();
+    return { count: records.length, bytes: records.reduce((sum, record) => sum + record.bytes, 0) };
   });
 
   ipcMain.handle(IPC.projectsBackups, async (_event, path: unknown) => {

@@ -1416,6 +1416,117 @@ async function main() {
       afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
       `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
 
+    /* Proxies ---------------------------------------------------------------- */
+    // Heavy footage is edited from a small stand-in and delivered from the
+    // original. The check that matters is the last one: the same frame,
+    // rendered the way an export renders it, is identical either way.
+    const heavySource = join(workDir, 'uhd.mp4');
+    if (!(await stat(heavySource).then(() => true, () => false))) {
+      await run(ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi',
+        '-i', 'testsrc2=size=3840x2160:rate=30:duration=2',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '300', '-pix_fmt', 'yuv420p', heavySource]);
+    }
+
+    await app.evaluate(({ dialog }, target) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+    }, heavySource);
+    const assetsBefore = await window.evaluate(() => window.__scfStore.getState().assets.length);
+    await window.getByRole('button', { name: 'Import' }).click();
+    await window.waitForFunction(
+      (count) => window.__scfStore.getState().assets.length > count,
+      assetsBefore,
+      { timeout: 120_000 },
+    );
+
+    const heavyId = await window.evaluate(() => {
+      const { assets } = window.__scfStore.getState();
+      const heavy = assets.find((asset) => asset.name === 'uhd.mp4');
+      const store = window.__scfStore.getState();
+      const track = store.project.tracks.find((candidate) => candidate.type === 'video');
+      store.addAssetToTimeline(heavy, track.id, 2000);
+      return heavy.id;
+    });
+
+    const barShown = await window.getByTestId('proxy-bar').count();
+    check('4K footage brings up the proxy strip', barShown === 1, `${barShown} strips`);
+
+    await window.getByTestId('build-proxies').click();
+    await window.waitForFunction(
+      (id) => window.__scfStore.getState().assets.find((asset) => asset.id === id)?.proxyUri !== undefined,
+      heavyId,
+      { timeout: 300_000 },
+    );
+
+    const proxyShape = await window.evaluate(async (id) => {
+      const asset = window.__scfStore.getState().assets.find((candidate) => candidate.id === id);
+      const measure = (url) => new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.addEventListener('loadedmetadata', () => resolve(`${video.videoWidth}x${video.videoHeight}`), { once: true });
+        video.addEventListener('error', () => resolve('error'), { once: true });
+        video.src = url;
+      });
+      return { original: await measure(asset.uri), proxy: await measure(asset.proxyUri) };
+    }, heavyId);
+    check('the proxy is a quarter-size copy of the 4K file',
+      proxyShape.original === '3840x2160' && proxyShape.proxy === '960x540',
+      `${proxyShape.original} -> ${proxyShape.proxy}`);
+
+    const drawing = await window.evaluate((id) => {
+      const renderer = window.__scfRenderer();
+      const asset = window.__scfStore.getState().assets.find((candidate) => candidate.id === id);
+      renderer.useProxies(true);
+      const on = renderer.previewSourceFor(asset.uri);
+      renderer.useProxies(false);
+      const off = renderer.previewSourceFor(asset.uri);
+      renderer.useProxies(true);
+      return { usesProxy: on === asset.proxyUri, usesOriginal: off === asset.uri };
+    }, heavyId);
+    check('the preview draws the proxy, and the original when proxies are off',
+      drawing.usesProxy && drawing.usesOriginal, JSON.stringify(drawing));
+
+    const rendered = await window.evaluate(async (id) => {
+      const renderer = window.__scfRenderer();
+      const { project, assets } = window.__scfStore.getState();
+      const asset = assets.find((candidate) => candidate.id === id);
+      const clip = Object.values(project.clips).find((candidate) => candidate.sourceUri === asset.uri);
+      const frame = clip.startFrame + 20;
+
+      const digest = async (bytes) => {
+        const hash = await crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      };
+
+      // One render to let the 4K decoder land on the frame: the first exact
+      // render of a fresh file arrives before its seek does, proxies or no
+      // proxies.
+      renderer.useProxies(true);
+      await renderer.renderExact(project, frame, false);
+      const withProxies = await digest(await renderer.renderExact(project, frame, false));
+
+      renderer.useProxies(false);
+      const withoutProxies = await digest(await renderer.renderExact(project, frame, false));
+      renderer.useProxies(true);
+      return { withProxies, withoutProxies };
+    }, heavyId);
+    check('an export renders the same picture whether proxies are on or off',
+      rendered.withProxies === rendered.withoutProxies,
+      `${rendered.withProxies.slice(0, 16)} vs ${rendered.withoutProxies.slice(0, 16)}`);
+
+    // Built once, found again: the next session does not re-encode the file.
+    const foundAgain = await window.evaluate((path) => window.filmora.proxiesFind(path), heavySource);
+    check('a proxy built once is found again rather than built twice',
+      typeof foundAgain === 'string' && foundAgain.length > 0, String(foundAgain));
+
+    // Out of the way of the checks that follow, which count clips.
+    await window.evaluate((id) => {
+      const store = window.__scfStore.getState();
+      const asset = store.assets.find((candidate) => candidate.id === id);
+      const clip = Object.values(store.project.clips).find((candidate) => candidate.sourceUri === asset.uri);
+      store.removeClips([clip.id]);
+      store.removeAsset(id);
+    }, heavyId);
+    await window.waitForTimeout(200);
+
     /* Autosave, backups and recovery ---------------------------------------- */
     // The project has a file by now, so an automatic save writes back to it -
     // and keeps what was there as a copy. The timer's own decision is driven

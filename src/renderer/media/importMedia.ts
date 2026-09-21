@@ -362,8 +362,12 @@ export async function rehydrateAssets(assets: MediaAsset[]): Promise<MediaAsset[
             ? Promise.resolve(null)
             : window.filmora.extractAudio(asset.sourcePath).catch(() => null),
         ]);
-        const { audioUri: _stale, ...rest } = asset;
+        // Both of these are URLs this session cannot have made: they are
+        // rebuilt here (audio) or looked up again on disk (the proxy), and a
+        // dead one left in place would be requested and 404.
+        const { audioUri: _stale, proxyUri: _staleProxy, ...rest } = asset;
         void _stale;
+        void _staleProxy;
         return { ...rest, uri, ...(audioUri ? { audioUri } : {}), missing: false };
       } catch {
         // The file was moved or deleted since the project was saved.

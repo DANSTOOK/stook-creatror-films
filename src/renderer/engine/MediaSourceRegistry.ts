@@ -44,6 +44,15 @@ export class MediaSourceRegistry {
   private readonly lastCorrection = new Map<string, number>();
 
   register(asset: MediaAsset): MediaElement {
+    // The proxy is an element of its own, under its own URI, so the
+    // original stays loaded for the export and for a toggle back.
+    if (asset.proxyUri && asset.kind !== 'image') {
+      this.proxies.set(asset.uri, asset.proxyUri);
+      if (!this.elements.has(asset.proxyUri)) {
+        this.registerVideo(asset.proxyUri);
+      }
+    }
+
     const existing = this.elements.get(asset.uri);
     if (existing) return existing;
 
@@ -59,21 +68,49 @@ export class MediaSourceRegistry {
       return image;
     }
 
+    return this.registerVideo(asset.uri);
+  }
+
+  /** A video element for one URI - the source itself, or its proxy. */
+  private registerVideo(uri: string): HTMLVideoElement {
     const video = document.createElement('video');
-    video.src = asset.uri;
+    video.src = uri;
     video.crossOrigin = 'anonymous';
     video.preload = 'auto';
     video.muted = true; // Audio is played by AudioEngine, not by the element.
     video.playsInline = true;
-    video.addEventListener('loadeddata', () => this.ready.add(asset.uri), { once: true });
+    video.addEventListener('loadeddata', () => this.ready.add(uri), { once: true });
     video.load();
 
-    this.elements.set(asset.uri, video);
+    this.kinds.set(uri, 'video');
+    this.elements.set(uri, video);
     return video;
   }
 
   get(uri: string): MediaElement | undefined {
     return this.elements.get(uri);
+  }
+
+  /**
+   * Small stand-ins for heavy footage, by the original URI.
+   *
+   * The preview asks for these through `previewUriFor`; nothing else does,
+   * which is what keeps an export reading the original file.
+   */
+  private readonly proxies = new Map<string, string>();
+
+  private proxiesOn = true;
+
+  /** Turn proxy playback on or off for the preview. */
+  useProxies(enabled: boolean): void {
+    this.proxiesOn = enabled;
+  }
+
+  /** What the preview should draw for this source: its proxy, or itself. */
+  previewUriFor(uri: string): string {
+    if (!this.proxiesOn) return uri;
+    const proxy = this.proxies.get(uri);
+    return proxy && this.elements.has(proxy) ? proxy : uri;
   }
 
   isReady(uri: string): boolean {

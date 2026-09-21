@@ -7,12 +7,90 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **656 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **99/99 comprobaciones de interfaz** (autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **687 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **104/104 comprobaciones de interfaz** (proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **100/100** con la v1.21.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **105/105** con la v1.22.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.22.0-beta.1 — Proxies: editar ligero, exportar en original
+2026-09-21 · pre-release para probar
+
+Tu vídeo de Kratos son 4K a pantalla completa, y eso no se mueve con soltura
+en ninguna máquina. La respuesta de siempre en Premiere y Resolve: montar
+contra una copia pequeña y renderizar desde el archivo de verdad.
+
+### Añadido
+- **Proxies para metraje pesado.** En el panel de medios aparece una franja
+  cuando hay material de 1920 px o más, con lo que hay que hacer y un botón
+  para hacerlo.
+  - El proxy es una copia **de 960 px en el lado largo** (un cuarto de 4K,
+    la mitad de 1080p), H.264, **con un fotograma clave cada segundo**. Eso
+    último es la razón de todo: un archivo de cámara con grupos largos tiene
+    que descodificar segundos enteros para enseñar un fotograma del medio, y
+    un proxy no.
+  - **La exportación lee siempre el archivo original.** El proxy solo existe
+    para la previsualización; el interruptor de la franja no cambia lo que
+    sale renderizado.
+  - **Sin pista de sonido**: el audio ya suena desde el original, no es lo que
+    hace lento un montaje 4K, y una segunda copia sería una segunda ocasión de
+    desincronizarse.
+  - **Se construyen de uno en uno**, para no quitarle la máquina al editor que
+    vienen a hacer fluido. Se puede parar a medias; lo terminado se queda.
+  - **Se guardan por archivo, tamaño y fecha**: el mismo archivo siempre
+    encuentra su proxy, y un archivo re-renderizado con el mismo nombre nunca
+    encuentra uno viejo que ya no le corresponde.
+  - **Construido una vez, se reutiliza**: al abrir otra sesión o volver al
+    proyecto, el proxy que ya está en disco se busca y se usa, sin volver a
+    codificar.
+  - Cada clip con proxy lleva la etiqueta **proxy** en la biblioteca, y el
+    interruptor **«Editar con proxies»** se puede apagar en cualquier momento
+    para ver el original en el visor.
+  - Viven en la carpeta de la aplicación, no junto a tu metraje.
+
+### Arreglado
+- **Un proxy que fallaba ya dice por qué.** La primera construcción devolvía
+  un silencio: ni proxy, ni error. Ahora el mensaje de ffmpeg llega hasta
+  arriba —y fue lo que destapó el fallo de verdad: el archivo temporal no
+  terminaba en `.mp4`, así que ffmpeg no sabía qué contenedor escribir
+  («Error opening output files: Invalid argument»).
+- **Las direcciones de proxy no se guardan en el proyecto.** Son de la sesión
+  que las creó; al reabrir se busca el proxy en disco otra vez, igual que se
+  hace con el sonido extraído.
+
+### Cómo se comprobó
+- 31 pruebas unitarias nuevas: 19 de las reglas del proxy (qué archivo va con
+  qué proxy —incluida la misma ruta escrita de otra forma—, el tamaño con
+  ambos lados pares y sin agrandar nunca el original, los argumentos del
+  codificador, la lectura del progreso de ffmpeg) y 12 de lo que muestra la
+  interfaz (qué material lo necesita, el recuento de listos, el porcentaje
+  mientras construye).
+- 5 comprobaciones nuevas de interfaz (104/104 en total), **en la aplicación
+  real y con metraje 4K de verdad**: la franja aparece, el proxy sale a
+  960x540 de un 3840x2160, la previsualización dibuja el proxy y el original
+  cuando se apaga, el proxy ya construido se reencuentra... y la que importa:
+  **el mismo fotograma, renderizado como lo renderiza una exportación, sale
+  idéntico con proxies encendidos y apagados**.
+  - Esa última empezó dando distinto, y no era la exportación mirando el
+    proxy: era el primer fotograma de un 4K recién abierto llegando antes que
+    su propia búsqueda. Con un render previo para calentar, los dos hash
+    coinciden exactamente.
+- La batería completa contra esta versión: **687 unitarias**, **21/21** de
+  extremo a extremo, **104/104** de interfaz, **41/41** de proyectos,
+  **13/13** de movimiento, una prueba de estrés de **5 minutos a 24 fps** con
+  tu vídeo (**27/27**) y **105/105** contra el ejecutable empaquetado y sin
+  red.
+
+### Sin verificar
+- **No está medido cuánto más fluido va.** Que la previsualización dibuja el
+  proxy está comprobado; que eso se traduce en X fotogramas por segundo más
+  al arrastrar el cursor sobre 4K, no: haría falta una medición de cadencia
+  con y sin proxies, y no la he hecho.
+- Los proxies **no se borran solos**. No hay todavía un sitio donde ver cuánto
+  ocupan ni un botón para vaciarlos, aunque el mecanismo está hecho.
 
 ---
 

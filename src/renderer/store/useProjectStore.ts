@@ -309,6 +309,13 @@ interface ProjectStore {
   addAssets(assets: MediaAsset[], binId?: string | null): void;
   removeAsset(assetId: string): void;
 
+  /**
+   * Point an asset at its proxy - the small stand-in the preview draws while
+   * editing. Not an undoable edit: it says what is on disk, not what the
+   * project is, and undoing a build would not delete the file anyway.
+   */
+  setAssetProxy(assetId: string, proxyUri: string): void;
+
   /* Media bins ----------------------------------------------------------- */
   setCurrentBin(binId: string | null): void;
   /** Returns the new bin's id. */
@@ -1523,6 +1530,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   removeAsset(assetId) {
     set({ assets: get().assets.filter((asset) => asset.id !== assetId) });
+  },
+
+  setAssetProxy(assetId, proxyUri) {
+    set({
+      assets: get().assets.map((asset) => (asset.id === assetId ? { ...asset, proxyUri } : asset)),
+    });
   },
 
   /* Media bins ----------------------------------------------------------- */

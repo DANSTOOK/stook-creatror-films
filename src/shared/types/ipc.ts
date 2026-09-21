@@ -29,6 +29,12 @@ export const IPC = {
   projectsRecoveryWrite: 'projects:recovery-write',
   projectsRecoveryRead: 'projects:recovery-read',
   projectsRecoveryClear: 'projects:recovery-clear',
+  proxiesFind: 'proxies:find',
+  proxiesBuild: 'proxies:build',
+  proxiesCancel: 'proxies:cancel',
+  proxiesClear: 'proxies:clear',
+  proxiesUsage: 'proxies:usage',
+  proxiesProgress: 'proxies:progress',
   documentState: 'app:document-state',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
@@ -110,6 +116,19 @@ export interface RecentProject {
 }
 
 /** What a save records about a project for the start screen. */
+/** How a proxy build is getting on, by source path. */
+export interface ProxyProgressEvent {
+  path: string;
+  /** 0 to 1. */
+  fraction: number;
+}
+
+/** What the proxies take up on disk. */
+export interface ProxyUsage {
+  count: number;
+  bytes: number;
+}
+
 /** A copy of a project as it stood before one of its saves. */
 export interface ProjectBackup {
   /** Pass this back to `projectsBackupRead`. */
@@ -192,6 +211,21 @@ export interface FilmoraApi {
   projectsRecoveryRead(): Promise<ProjectRecovery | null>;
   /** Nothing left to recover: throw the snapshot away. */
   projectsRecoveryClear(): Promise<void>;
+
+  /** The proxy this file already has, as a URL the preview can play, or null. */
+  proxiesFind(path: string): Promise<string | null>;
+  /**
+   * Build one, or hand back the one that is there. Reports progress on
+   * `onProxyProgress` while it runs.
+   */
+  proxiesBuild(path: string, width: number, height: number, seconds: number): Promise<string | null>;
+  /** Stop every build in progress. */
+  proxiesCancel(): Promise<void>;
+  /** Throw every proxy away; they are rebuilt on demand. */
+  proxiesClear(): Promise<ProxyUsage>;
+  /** How many proxies are kept, and how much room they take. */
+  proxiesUsage(): Promise<ProxyUsage>;
+  onProxyProgress(listener: (progress: ProxyProgressEvent) => void): () => void;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
   /** The window asked to save before closing; save, then call closeAfterSave. */

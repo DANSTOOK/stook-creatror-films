@@ -291,6 +291,13 @@ export interface MediaAsset {
   /** Data URL of a poster frame, when one has been decoded. */
   thumbnailUri?: string;
   /**
+   * A small stand-in used by the preview only, when proxies are on.
+   *
+   * The export reads the original file, always: a proxy is a way to edit
+   * heavy footage, never a thing to deliver.
+   */
+  proxyUri?: string;
+  /**
    * The audio track alone, extracted by ffmpeg, for decoding. Decoding needs
    * the whole encoded file in memory, and for a long video the whole file is
    * gigabytes of pictures; this is megabytes. Session-only, like `uri`.

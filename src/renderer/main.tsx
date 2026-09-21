@@ -1,10 +1,11 @@
-import { StrictMode } from 'react';
+﻿import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { AudioStream } from './audio/AudioStream';
 import { renderTimelineAudio, streamTimelineAudio } from './audio/renderMix';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
+import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import './index.css';
 
 // For the interface tests, which check what an interaction did to the project
@@ -14,6 +15,11 @@ import './index.css';
 // The stress test storms undo and redo and has to stop exactly where it began,
 // which only the history itself can say.
 (window as { __scfHistory?: typeof useHistoryStore }).__scfHistory = useHistoryStore;
+
+// Which file the preview is drawing from: with proxies on it is the small
+// stand-in, and the interface tests check exactly that - and that an export
+// still reads the original.
+(window as { __scfRenderer?: typeof getActiveFrameRenderer }).__scfRenderer = getActiveFrameRenderer;
 
 // Streamed audio can only be checked in a real page - WebCodecs does not
 // exist under the unit tests - so the harness that compares it against a full

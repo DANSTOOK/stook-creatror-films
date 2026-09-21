@@ -79,6 +79,22 @@ export class FrameRenderer {
     for (const asset of assets) this.media.register(asset);
   }
 
+  /** Draw the preview from proxies where they exist. Exports are unaffected. */
+  useProxies(enabled: boolean): void {
+    this.media.useProxies(enabled);
+  }
+
+  /**
+   * What the preview would draw for this source right now.
+   *
+   * The proxy when there is one and they are on, the file itself otherwise.
+   * An export never asks: it reads the file, which is the difference the
+   * interface tests check.
+   */
+  previewSourceFor(uri: string): string {
+    return this.media.previewUriFor(uri);
+  }
+
   /** Load any LUT referenced by a clip that is not resident yet. */
   async ensureLUTs(project: ProjectState): Promise<void> {
     const uris = new Set<string>();
@@ -95,14 +111,18 @@ export class FrameRenderer {
     );
   }
 
-  private uploadFor(clip: Clip, fps: number, pixelArtViewport: boolean): ClipSource | null {
-    const element = this.media.get(clip.sourceUri);
+  /**
+   * `uri` is what to draw from: the clip's own file, or - in the preview
+   * only - its proxy. Every export path leaves it out and gets the file.
+   */
+  private uploadFor(clip: Clip, fps: number, pixelArtViewport: boolean, uri = clip.sourceUri): ClipSource | null {
+    const element = this.media.get(uri);
     if (!element) return null;
 
     const gl = this.compositor.context;
     const applyFilter = (): void => {
       this.textures.setFilter(
-        clip.sourceUri,
+        uri,
         clip.pixelArt.enabled || pixelArtViewport ? gl.NEAREST : gl.LINEAR,
       );
     };
@@ -111,17 +131,17 @@ export class FrameRenderer {
     // Dropping the layer for those frames is what makes playback flicker, so the
     // last decoded frame is held instead. Only a source that has never produced
     // a frame contributes nothing.
-    if (!this.media.isReady(clip.sourceUri)) {
-      const cached = this.textures.get(clip.sourceUri);
+    if (!this.media.isReady(uri)) {
+      const cached = this.textures.get(uri);
       if (!cached) return null;
       applyFilter();
       return { texture: cached, flipY: true };
     }
 
     const texture = this.textures.upload(
-      clip.sourceUri,
+      uri,
       element,
-      this.media.revision(clip.sourceUri, fps),
+      this.media.revision(uri, fps),
     );
     applyFilter();
 
@@ -131,8 +151,8 @@ export class FrameRenderer {
   /** Forward decoders for a paused playhead, by clip and file. See ScrubDecoder. */
   private readonly scrubbers = new Map<string, ScrubDecoder>();
 
-  private static scrubKey(clip: Clip): string {
-    return `${clip.id}|${clip.sourceUri}`;
+  private static scrubKey(clip: Clip, uri = clip.sourceUri): string {
+    return `${clip.id}|${uri}`;
   }
 
   /**
@@ -141,9 +161,14 @@ export class FrameRenderer {
    * than closed, so what it decoded is not decoded again. See scrubHandover.
    */
   private closeScrubbers(keep: readonly Clip[] = []): void {
+    // Keyed by what the preview actually decodes, so switching proxies on
+    // or off retires the decoders of the file that is no longer drawn.
     keepScrubbers(
       this.scrubbers,
-      new Map(keep.map((clip) => [FrameRenderer.scrubKey(clip), clip.sourceUri])),
+      new Map(keep.map((clip) => {
+        const uri = this.media.previewUriFor(clip.sourceUri);
+        return [FrameRenderer.scrubKey(clip, uri), uri];
+      })),
     );
   }
 
@@ -152,23 +177,29 @@ export class FrameRenderer {
    * can walk to it cheaply, otherwise from a seek - whichever lands, the
    * texture keeps the last good picture until then.
    */
-  private scrubUploadFor(clip: Clip, sourceFrame: number, fps: number, pixelArtViewport: boolean): ClipSource | null {
+  private scrubUploadFor(
+    clip: Clip,
+    sourceFrame: number,
+    fps: number,
+    pixelArtViewport: boolean,
+    uri = clip.sourceUri,
+  ): ClipSource | null {
     // Keyed by the file too: a relinked clip must not keep the old file's decoder.
-    const key = FrameRenderer.scrubKey(clip);
+    const key = FrameRenderer.scrubKey(clip, uri);
     let scrubber = this.scrubbers.get(key);
     if (!scrubber) {
-      scrubber = new ScrubDecoder(clip.sourceUri, fps, () => undefined);
+      scrubber = new ScrubDecoder(uri, fps, () => undefined);
       this.scrubbers.set(key, scrubber);
     }
 
     const gl = this.compositor.context;
     const filter = clip.pixelArt.enabled || pixelArtViewport ? gl.NEAREST : gl.LINEAR;
-    const revision = `${clip.sourceUri}:${sourceFrame}`;
+    const revision = `${uri}:${sourceFrame}`;
 
     const decoded = scrubber.frameFor(sourceFrame);
     if (decoded) {
-      const texture = this.textures.upload(clip.sourceUri, decoded, revision);
-      this.textures.setFilter(clip.sourceUri, filter);
+      const texture = this.textures.upload(uri, decoded, revision);
+      this.textures.setFilter(uri, filter);
       return { texture, flipY: true };
     }
 
@@ -178,8 +209,8 @@ export class FrameRenderer {
     // playhead rests.
     const preview = scrubber.previewFor(sourceFrame);
     if (preview) {
-      const texture = this.textures.upload(clip.sourceUri, preview, `${revision}:preview`);
-      this.textures.setFilter(clip.sourceUri, filter);
+      const texture = this.textures.upload(uri, preview, `${revision}:preview`);
+      this.textures.setFilter(uri, filter);
       scrubber.requestWhenSettled(sourceFrame, performance.now());
       if (sourceFrame < scrubber.position) scrubber.fillBehind(sourceFrame);
       return { texture, flipY: true };
@@ -192,16 +223,16 @@ export class FrameRenderer {
       // Too far for a walk: the element seeks, as it always did, and the
       // decoder follows once the playhead rests.
       scrubber.requestWhenSettled(sourceFrame, performance.now());
-      this.media.syncToFrame(clip.sourceUri, sourceFrame, fps, false);
-      return this.uploadFor(clip, fps, pixelArtViewport);
+      this.media.syncToFrame(uri, sourceFrame, fps, false);
+      return this.uploadFor(clip, fps, pixelArtViewport, uri);
     }
     scrubber.request(sourceFrame);
 
     // A few milliseconds away: hold the current picture rather than start a
     // seek that would land later than the decoder does.
-    const held = this.textures.get(clip.sourceUri);
-    if (!held) return this.uploadFor(clip, fps, pixelArtViewport);
-    this.textures.setFilter(clip.sourceUri, filter);
+    const held = this.textures.get(uri);
+    if (!held) return this.uploadFor(clip, fps, pixelArtViewport, uri);
+    this.textures.setFilter(uri, filter);
     return { texture: held, flipY: true };
   }
 
@@ -220,13 +251,16 @@ export class FrameRenderer {
       project,
       project.currentFrame,
       (clip, sourceFrame) => {
-        const isVideo = this.media.get(clip.sourceUri) instanceof HTMLVideoElement;
+        // The preview - and only the preview - draws the proxy when there
+        // is one and proxies are on.
+        const uri = this.media.previewUriFor(clip.sourceUri);
+        const isVideo = this.media.get(uri) instanceof HTMLVideoElement;
         let source: ClipSource | null;
         if (scrubbing && isVideo) {
-          source = this.scrubUploadFor(clip, sourceFrame, project.fps, pixelArtViewport);
+          source = this.scrubUploadFor(clip, sourceFrame, project.fps, pixelArtViewport, uri);
         } else {
-          this.media.syncToFrame(clip.sourceUri, sourceFrame, project.fps, playing);
-          source = this.uploadFor(clip, project.fps, pixelArtViewport);
+          this.media.syncToFrame(uri, sourceFrame, project.fps, playing);
+          source = this.uploadFor(clip, project.fps, pixelArtViewport, uri);
         }
 
         // Test instrumentation: how often a paused preview shows exactly the
@@ -235,8 +269,8 @@ export class FrameRenderer {
         if (stats && isVideo && !playing) {
           stats.draws += 1;
           // A kept small copy of the right frame is the right frame.
-          const shown = this.textures.revisionOf(clip.sourceUri);
-          const wanted = `${clip.sourceUri}:${sourceFrame}`;
+          const shown = this.textures.revisionOf(uri);
+          const wanted = `${uri}:${sourceFrame}`;
           if (shown === wanted || shown === `${wanted}:preview`) stats.exact += 1;
         }
         return source;
