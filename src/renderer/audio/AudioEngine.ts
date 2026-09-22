@@ -1,6 +1,7 @@
 import type { AudioBus, Clip, EqSettings, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { clipGain, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
+import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
 import type { ScrubGrain } from './scrubAudio';
 import type { AudioStream } from './AudioStream';
 import {
@@ -267,7 +268,8 @@ export class AudioEngine {
     const track = project.tracks.find((candidate) => candidate.id === clip?.trackId);
     if (!stream || !clip || !track) return;
 
-    const decoded = await stream.span(span.sourceFrom, span.seconds);
+    // A retimed clip eats footage faster or slower than the timeline runs.
+    const decoded = await stream.span(span.sourceFrom, span.seconds * span.rate);
     if (!this.playing) return;
 
     const when = this.startedAtContextTime + (span.atTimeline - this.startedAtSeconds);
@@ -287,6 +289,7 @@ export class AudioEngine {
     const strip = this.stripFor(clip, track, hasSoloedTrack(project));
     const source = this.context.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = span.rate;
     source.connect(strip.gain);
     source.onended = () => {
       const at = strip.sources.indexOf(source);
@@ -365,6 +368,9 @@ export class AudioEngine {
 
       const buffer = this.buffers.get(clip.sourceUri);
       if (!buffer) continue;
+      // Backwards has no sound yet; see audioFollowsSpeed.
+      if (!audioFollowsSpeed(clip)) continue;
+      const rate = speedOf(clip);
 
       const clipStart = clip.startFrame / fps;
       const clipEnd = (clip.startFrame + clip.durationFrames) / fps;
@@ -385,9 +391,12 @@ export class AudioEngine {
 
       const sourceOffset = clip.sourceOffsetFrames / fps;
       const whenSeconds = Math.max(0, clipStart - startSeconds);
-      const offsetSeconds = sourceOffset + Math.max(0, startSeconds - clipStart);
-      const durationSeconds = clipEnd - Math.max(clipStart, startSeconds);
+      // Into the footage at the clip's own rate, and the stretch it needs
+      // is that much longer or shorter than the time it fills.
+      const offsetSeconds = sourceOffset + Math.max(0, startSeconds - clipStart) * rate;
+      const durationSeconds = (clipEnd - Math.max(clipStart, startSeconds)) * rate;
 
+      source.playbackRate.value = rate;
       source.start(this.context.currentTime + whenSeconds, offsetSeconds, durationSeconds);
       this.strips.set(clip.id, strip);
     }

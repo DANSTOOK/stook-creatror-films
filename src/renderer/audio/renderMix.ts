@@ -2,6 +2,7 @@ import type { Clip, MediaAsset, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { encodeWavFloat32 } from '@shared/utils/wav';
 import { clipGain, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
+import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
 import { duckOffline } from './DynamicDucking';
 import { AudioStream } from './AudioStream';
 
@@ -163,6 +164,11 @@ async function renderClips(
     const stream = streams.get(clip.sourceUri);
     const whole = buffers.get(clip.sourceUri);
     if (!track || (!stream && !whole)) continue;
+    // Backwards is silent in the render too, so what is exported is what
+    // was heard while editing.
+    if (!audioFollowsSpeed(clip)) continue;
+
+    const rate = speedOf(clip);
 
     // Clip position expressed relative to the start of the export range.
     const clipStartSeconds = (clip.startFrame - startFrame) / fps;
@@ -171,7 +177,7 @@ async function renderClips(
     // Trimmed-off head: skip that much further into the source instead.
     const skippedSeconds = Math.max(0, -clipStartSeconds);
     const when = Math.max(0, clipStartSeconds);
-    const offset = clip.sourceOffsetFrames / fps + skippedSeconds;
+    const offset = clip.sourceOffsetFrames / fps + skippedSeconds * rate;
 
     const sourceDuration = stream ? stream.duration : (whole as AudioBuffer).duration;
     const playSeconds = Math.min(clipEndSeconds, durationSeconds) - when;
@@ -180,7 +186,8 @@ async function renderClips(
     // A streamed source hands over exactly the stretch this clip needs, so
     // it starts at the beginning of what it was given; a whole buffer is
     // played from the offset, as before.
-    const wanted = Math.min(playSeconds, sourceDuration - offset);
+    // The footage this stretch of timeline consumes, at the clip's rate.
+    const wanted = Math.min(playSeconds * rate, sourceDuration - offset);
     let buffer: AudioBuffer;
     let startOffset: number;
 
@@ -198,6 +205,7 @@ async function renderClips(
 
     const source = context.createBufferSource();
     source.buffer = buffer;
+    source.playbackRate.value = rate;
 
     const gain = context.createGain();
     gain.gain.value = clipGain(clip);

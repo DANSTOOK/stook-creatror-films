@@ -29,6 +29,7 @@ import { assetLengthFrames } from '@renderer/media/assetLength';
 import { fitScale } from '@renderer/media/fitToFrame';
 import { clearRange, editLength } from '@renderer/components/Timeline/threePoint';
 import { rippleTrim, rollEdit, slideClip, slipClip } from '@renderer/components/Timeline/trimModes';
+import { retimed, speedOf } from '@renderer/timing/clipSpeed';
 import {
   clipTrimRoom,
   expandSelection,
@@ -270,6 +271,17 @@ interface ProjectStore {
    */
   nudgeSelection(frames: number, tracks: number, repeat?: boolean): void;
   trimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
+
+  /* Speed ---------------------------------------------------------------- */
+  /**
+   * Retime a clip: the footage it shows stays, the time it takes changes.
+   *
+   * `ripple` moves everything after it on that track, which is Premiere's
+   * "Ripple Edit, Shifting Trailing Clips"; without it the clip stops at
+   * its neighbour rather than growing over it, by the rule every trim here
+   * already follows.
+   */
+  setClipSpeed(clipId: string, change: { speed: number; reversed: boolean; ripple: boolean }): void;
 
   /* The trim tool -------------------------------------------------------- */
   /** Drag one edge and take the rest of the track with it. */
@@ -1219,7 +1231,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           member,
           edge,
           trimLimit(project.clips, member, edge),
-          sourceFramesFor(get(), member),
+          timelineFramesFor(get(), member),
         );
       });
       const delta = sharedTrimDelta(rooms, wanted);
@@ -1366,12 +1378,49 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
+  setClipSpeed(clipId, { speed, reversed, ripple }) {
+    const source = sourceFramesFor(get(), get().project.clips[clipId]);
+    get().transact(
+      'Change speed',
+      (project) => {
+        const clip = project.clips[clipId];
+        if (!clip) return project;
+
+        const next = retimed(clip, { speed, reversed }, source);
+        const delta = next.durationFrames - clip.durationFrames;
+        const clips = { ...project.clips, [clipId]: next };
+
+        if (delta === 0) return { ...project, clips };
+
+        if (ripple) {
+          // Everything that starts after this clip ended moves by what the
+          // clip gained or lost.
+          const wasEnd = clip.startFrame + clip.durationFrames;
+          for (const other of Object.values(project.clips)) {
+            if (other.id === clipId || other.trackId !== clip.trackId) continue;
+            if (other.startFrame < wasEnd) continue;
+            clips[other.id] = moveClip(other, Math.max(0, other.startFrame + delta));
+          }
+          return { ...project, clips };
+        }
+
+        // No ripple: a clip that grew stops where its neighbour begins,
+        // because clips on a track never overlap.
+        const limit = trimLimit(project.clips, clip, 'end');
+        const capped = Math.max(1, Math.min(next.durationFrames, limit - clip.startFrame));
+        clips[clipId] = { ...next, durationFrames: capped };
+        return { ...project, clips };
+      },
+      `speed:${clipId}`,
+    );
+  },
+
   rippleTrimClip(clipId, edge, frame) {
     get().transact(
       'Ripple trim',
       (project) => ({
         ...project,
-        clips: rippleTrim(project.clips, clipId, edge, frame, sourceFramesFor(get(), project.clips[clipId])),
+        clips: rippleTrim(project.clips, clipId, edge, frame, timelineFramesFor(get(), project.clips[clipId])),
       }),
       `ripple:${clipId}:${edge}`,
     );
@@ -1383,8 +1432,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       (project) => ({
         ...project,
         clips: rollEdit(project.clips, leftId, rightId, frame, {
-          left: sourceFramesFor(get(), project.clips[leftId]),
-          right: sourceFramesFor(get(), project.clips[rightId]),
+          left: timelineFramesFor(get(), project.clips[leftId]),
+          right: timelineFramesFor(get(), project.clips[rightId]),
         }),
       }),
       `roll:${leftId}:${rightId}`,
@@ -1398,7 +1447,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       'Slip',
       (project) => ({
         ...project,
-        clips: { ...project.clips, [clipId]: slipClip(from, deltaFrames, sourceFramesFor(get(), from)) },
+        // Slipping a retimed clip moves the footage by what that drag is
+        // worth in film: at 200%, a frame of timeline is two frames of it.
+        clips: {
+          ...project.clips,
+          [clipId]: slipClip(from, deltaFrames * speedOf(from), timelineFramesFor(get(), from)),
+        },
       }),
       `slip:${clipId}`,
     );
@@ -1419,7 +1473,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         return {
           ...project,
           clips: slideClip(restored, clipId, deltaFrames, {
-            previous: sourceFramesFor(get(), neighbourBefore(restored, from)),
+            previous: timelineFramesFor(get(), neighbourBefore(restored, from)),
           }),
         };
       },
@@ -1659,6 +1713,20 @@ function sourceFramesFor(state: ProjectStore, clip: Clip | null | undefined): nu
   const asset = state.assets.find((candidate) => candidate.uri === clip.sourceUri);
   if (!asset || asset.kind === 'image') return undefined;
   return assetLengthFrames(asset, state.project.fps);
+}
+
+/**
+ * The same footage, counted in frames of the timeline.
+ *
+ * The trims measure room against a clip's duration, which is timeline
+ * time; at 200% a clip spends two frames of film for each of those, so the
+ * room it has is half. Without this a retimed clip could be trimmed past
+ * the end of its own footage.
+ */
+function timelineFramesFor(state: ProjectStore, clip: Clip | null | undefined): number | undefined {
+  const frames = sourceFramesFor(state, clip);
+  if (frames === undefined || !clip) return undefined;
+  return Math.max(1, Math.floor(frames / speedOf(clip)));
 }
 
 /** The clip that ends where `clip` begins, if one does. */

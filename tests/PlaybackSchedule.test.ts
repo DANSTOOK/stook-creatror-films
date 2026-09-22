@@ -125,7 +125,7 @@ describe('planPlaybackSpans', () => {
 
 describe('keeping track of what is scheduled', () => {
   const span = (clipId: string, atTimeline: number, seconds: number): ScheduledSpan => ({
-    clipId, sourceUri: 'media://a', sourceFrom: 0, seconds, atTimeline,
+    clipId, sourceUri: 'media://a', sourceFrom: 0, seconds, rate: 1, atTimeline,
   });
 
   it('moves a clip mark forward, never back', () => {

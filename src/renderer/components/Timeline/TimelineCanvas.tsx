@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef } from 'react';
+﻿import { useCallback, useEffect, useRef } from 'react';
 import type { Clip, Marker, ProjectState, Track } from '@shared/types';
 import { framesToShortLabel } from '@shared/utils/timecode';
 import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
 import type { EditorUiState } from '@renderer/store/types';
 import { clipEndFrame, clipsInPaintOrder } from './timelineOps';
 import { frameToPixel, type SnapTarget } from './snapping';
+import { sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
 
 /**
  * Multi-track drawing surface.
@@ -222,8 +223,11 @@ function drawWaveform(
 ): void {
   if (peaks.durationSeconds <= 0 || clipWidth < 4) return;
 
+  // A retimed clip covers more or less footage than the time it fills: at
+  // 200% the wave is squeezed into half the width, which is what it sounds
+  // like. Drawn from the footage the clip consumes, not from its length.
   const sourceStart = clip.sourceOffsetFrames / fps;
-  const sourceEnd = sourceStart + clip.durationFrames / fps;
+  const sourceEnd = sourceStart + sourceFramesUsed(clip) / fps;
 
   const firstBucket = Math.floor((sourceStart / peaks.durationSeconds) * peaks.bucketCount);
   const lastBucket = Math.ceil((sourceEnd / peaks.durationSeconds) * peaks.bucketCount);
@@ -356,10 +360,18 @@ function drawClip(
       clip.transform.rotation.length +
       clip.transform.opacity.length;
 
+    // A retimed clip says so, the way every editor marks one.
+    const speed = speedLabel(clip);
+    if (speed) {
+      context.fillStyle = '#fcd34d';
+      context.font = '9px system-ui, sans-serif';
+      context.fillText(speed, labelX, top + 24);
+    }
+
     if (keyframeCount > 0) {
       context.fillStyle = '#cbd5f5';
       context.font = '9px system-ui, sans-serif';
-      context.fillText(`${keyframeCount} keyframes`, labelX, top + 24);
+      context.fillText(`${keyframeCount} keyframes`, speed ? labelX + 42 : labelX, top + 24);
     }
     context.restore();
   }
@@ -461,7 +473,7 @@ function drawPlayhead(
   context.font = '11px sans-serif';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText('✂', x, SCISSORS_Y + 0.5);
+  context.fillText('âœ‚', x, SCISSORS_Y + 0.5);
   context.textAlign = 'start';
   context.textBaseline = 'alphabetic';
 

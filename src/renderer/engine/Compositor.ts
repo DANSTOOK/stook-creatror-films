@@ -1,4 +1,5 @@
 import type { Clip, ProjectState, Track } from '@shared/types';
+import { sourceFrameFor } from '@renderer/timing/clipSpeed';
 import { degToRad } from '@shared/utils/math';
 import { evaluateTransform } from './KeyframeEvaluator';
 import { FULLSCREEN_MATRIX, GLProgram, RenderTarget, makeQuadMatrix } from './GLProgram';
@@ -507,7 +508,7 @@ export class Compositor {
     this.scene.clearTransparent();
 
     for (const clip of Compositor.visibleClips(project, frame)) {
-      const sourceFrame = clip.sourceOffsetFrames + (frame - clip.startFrame);
+      const sourceFrame = sourceFrameFor(clip, frame);
       const source = resolveSource(clip, sourceFrame);
       if (!source) continue;
 

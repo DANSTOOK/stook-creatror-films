@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Serializable project data schema.
  *
  * Everything in this file must survive `JSON.stringify` / `JSON.parse` without
@@ -185,6 +185,13 @@ export interface Clip {
   pan: number;
   /** Per-clip corrective EQ, applied before the track strip. */
   eq: EqSettings;
+  /**
+   * Playback speed, 1 being the footage's own. Absent on clips saved before
+   * retiming existed, which means the same thing.
+   */
+  speed?: number;
+  /** Play the footage backwards. The picture only; see audioFollowsSpeed. */
+  reversed?: boolean;
   /**
    * Clips sharing this id are linked: selecting one selects them all, so
    * they move, trim and are deleted as one. Absent on a clip that stands

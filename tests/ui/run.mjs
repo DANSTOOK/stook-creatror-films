@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+﻿import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1415,6 +1415,152 @@ async function main() {
     check('linking and unlinking are undo steps like any other',
       afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
       `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
+
+    /* Clip speed ------------------------------------------------------------- */
+    // Retiming, on a track of its own. The checks that matter are the two
+    // about the picture: a retimed clip has to show the frame of footage the
+    // sum says it shows, and a reversed one has to start at the end.
+    const speedSetup = await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      store.addTrack('video');
+      const state = window.__scfStore.getState();
+      const track = state.project.tracks
+        .filter((candidate) => candidate.type === 'video')
+        .sort((a, b) => a.order - b.order)
+        .slice(-1)[0];
+
+      const length = 40;
+      const first = window.__scfStore.getState().addAssetToTimeline(video, track.id, 0);
+      window.__scfStore.getState().trimClip(first, 'end', length);
+      const second = window.__scfStore.getState().addAssetToTimeline(video, track.id, length);
+      window.__scfStore.getState().trimClip(second, 'end', length * 2);
+      // A third clip of the same footage, parked further along, to compare
+      // pictures against: it is trimmed into the film rather than retimed.
+      const witness = window.__scfStore.getState().addAssetToTimeline(video, track.id, 400);
+      window.__scfStore.getState().trimClip(witness, 'end', 400 + length);
+      window.__scfStore.getState().setUi({ selectedClipIds: [first] });
+      return { first, second, witness, track: track.id, length };
+    });
+
+    const speedShape = () => window.evaluate((ids) => Object.values(window.__scfStore.getState().project.clips)
+      .filter((clip) => clip.trackId === ids.track)
+      .sort((a, b) => a.startFrame - b.startFrame)
+      .map((clip) => `${clip.startFrame}+${clip.durationFrames}@${clip.sourceOffsetFrames}x${clip.speed ?? 1}${clip.reversed ? 'R' : ''}`), speedSetup);
+
+    // Only the retimed clip's own track is visible while its picture is
+    // measured: every other track lies under it at some of these frames, and
+    // a composited frame would be comparing the whole timeline instead.
+    const onlySpeedTrack = (visible) => window.evaluate(({ ids, on }) => {
+      const store = window.__scfStore.getState();
+      for (const track of store.project.tracks) {
+        if (track.id !== ids.track) store.updateTrack(track.id, { visible: on });
+      }
+    }, { ids: speedSetup, on: visible });
+
+    await window.getByTestId('project-name').click();
+    await window.evaluate((ids) => window.__scfStore.getState().selectClips([ids.first]), speedSetup);
+    await window.keyboard.press('Control+r');
+    await window.waitForTimeout(400);
+    const dialogOpen = await window.getByTestId('speed-dialog').count();
+    await window.getByTestId('speed-percent').fill('200');
+    await window.waitForTimeout(200);
+    const durationShown = await window.getByTestId('speed-duration').inputValue();
+    check('Ctrl+R opens Speed/Duration, and the two numbers move together',
+      dialogOpen === 1 && durationShown === String(speedSetup.length / 2),
+      `dialog ${dialogOpen}, duration ${durationShown}`);
+
+    await window.getByTestId('speed-apply').click();
+    await window.waitForTimeout(400);
+    const halved = await speedShape();
+    check('200% halves the clip and moves what follows',
+      halved[0] === `0+${speedSetup.length / 2}@0x2` && halved[1].startsWith(`${speedSetup.length / 2}+`),
+      halved.join('  '));
+
+    // The picture: frame 10 of a clip at 200% is frame 20 of the footage, and
+    // the witness clip trimmed to frame 20 shows exactly that.
+    await onlySpeedTrack(false);
+    const sampled = await window.evaluate(async (ids) => {
+      const renderer = window.__scfRenderer();
+      const digest = async (bytes) => {
+        const hash = await crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      };
+
+      const store = window.__scfStore.getState();
+      // The witness shows footage frame 20 at its own first frame.
+      store.updateClip(ids.witness, { sourceOffsetFrames: 20 });
+      const project = window.__scfStore.getState().project;
+
+      // Warm each one: the first exact render of a file lands before its seek.
+      await renderer.renderExact(project, project.clips[ids.first].startFrame + 10, false);
+      const retimed = await digest(await renderer.renderExact(project, project.clips[ids.first].startFrame + 10, false));
+      await renderer.renderExact(project, project.clips[ids.witness].startFrame, false);
+      const plain = await digest(await renderer.renderExact(project, project.clips[ids.witness].startFrame, false));
+      return { retimed, plain };
+    }, speedSetup);
+    await onlySpeedTrack(true);
+    check('a clip at 200% shows the frame of footage the sum says it does',
+      sampled.retimed === sampled.plain,
+      `${sampled.retimed.slice(0, 16)} vs ${sampled.plain.slice(0, 16)}`);
+
+    // Reversed: the first frame on the timeline is the last frame of footage.
+    await onlySpeedTrack(false);
+    const backwards = await window.evaluate(async (ids) => {
+      const store = window.__scfStore.getState();
+      store.setClipSpeed(ids.first, { speed: 1, reversed: true, ripple: true });
+
+      const renderer = window.__scfRenderer();
+      const digest = async (bytes) => {
+        const hash = await crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      };
+
+      const after = window.__scfStore.getState();
+      const clip = after.project.clips[ids.first];
+      const lastFootageFrame = clip.sourceOffsetFrames + Math.round(clip.durationFrames * (clip.speed ?? 1)) - 1;
+      after.updateClip(ids.witness, { sourceOffsetFrames: lastFootageFrame });
+      const project = window.__scfStore.getState().project;
+
+      await renderer.renderExact(project, clip.startFrame, false);
+      const reversedFirst = await digest(await renderer.renderExact(project, clip.startFrame, false));
+      await renderer.renderExact(project, project.clips[ids.witness].startFrame, false);
+      const lastOfFootage = await digest(await renderer.renderExact(project, project.clips[ids.witness].startFrame, false));
+      return { reversedFirst, lastOfFootage, length: clip.durationFrames };
+    }, speedSetup);
+    await onlySpeedTrack(true);
+    check('a reversed clip starts at the last frame of its footage',
+      backwards.reversedFirst === backwards.lastOfFootage,
+      `${backwards.reversedFirst.slice(0, 16)} vs ${backwards.lastOfFootage.slice(0, 16)}`);
+
+    // Without the ripple, a clip that grows stops at its neighbour.
+    const held = await window.evaluate((ids) => {
+      const store = window.__scfStore.getState();
+      store.setClipSpeed(ids.first, { speed: 0.25, reversed: false, ripple: false });
+      const after = window.__scfStore.getState().project.clips;
+      return {
+        first: after[ids.first].durationFrames,
+        nextStart: after[ids.second].startFrame,
+      };
+    }, speedSetup);
+    check('with the ripple off, a slowed clip stops where its neighbour begins',
+      held.first === held.nextStart, `${held.first} frames, neighbour at ${held.nextStart}`);
+
+    // Four changes of speed, four undos, and the track is as it was.
+    for (let step = 0; step < 6; step += 1) await window.keyboard.press('Control+z');
+    await window.waitForTimeout(300);
+    const speedClipsLeft = await window.evaluate((ids) => Object.values(window.__scfStore.getState().project.clips)
+      .filter((clip) => clip.trackId === ids.track).length, speedSetup);
+    check('every change of speed is one undo step', speedClipsLeft === 3, `${speedClipsLeft} clips left`);
+
+    // Out of the way of the checks that count clips further down.
+    await window.evaluate((ids) => {
+      const store = window.__scfStore.getState();
+      const clips = Object.values(store.project.clips).filter((clip) => clip.trackId === ids.track);
+      store.removeClips(clips.map((clip) => clip.id));
+      store.removeTrack(ids.track);
+    }, speedSetup);
+    await window.waitForTimeout(200);
 
     /* Proxies ---------------------------------------------------------------- */
     // Heavy footage is edited from a small stand-in and delivered from the

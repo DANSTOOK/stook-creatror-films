@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
   ArrowDown,
+  Gauge,
   Link2,
   ArrowUp,
   Copy,
@@ -34,6 +35,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
 import { isLinked } from './linkGroups';
+import { SpeedDialog } from './SpeedDialog';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
 import { clipsInMarquee } from './marquee';
@@ -121,6 +123,22 @@ export function Timeline(): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragMode>({ kind: 'none' });
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
+  /** The clip whose Speed/Duration dialog is open, if any. */
+  const [speedFor, setSpeedFor] = useState<string | null>(null);
+
+  // Ctrl+R opens it for the selected clip, the key Resolve uses for its
+  // Retime controls. Premiere puts this on the right-click menu only.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'r') return;
+      const selected = store.getState().ui.selectedClipIds;
+      if (selected.length !== 1) return;
+      event.preventDefault();
+      setSpeedFor(selected[0]);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [store]);
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renamingMarkerId, setRenamingMarkerId] = useState<string | null>(null);
@@ -302,6 +320,12 @@ export function Timeline(): JSX.Element {
           shortcut: 'B',
           disabled: !canSplit,
           onSelect: () => state.razorAtFrame(state.project.currentFrame, [clip.id]),
+        },
+        {
+          label: 'Speed / Duration...',
+          icon: Gauge,
+          shortcut: 'Ctrl+R',
+          onSelect: () => setSpeedFor(clip.id),
         },
         {
           label: selected.length > 1 ? `Duplicate ${selected.length} clips` : 'Duplicate',
@@ -1324,6 +1348,18 @@ export function Timeline(): JSX.Element {
       </div>
 
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
+
+      {speedFor && project.clips[speedFor] && (
+        <SpeedDialog
+          clip={project.clips[speedFor]}
+          fps={project.fps}
+          onClose={() => setSpeedFor(null)}
+          onApply={(change) => {
+            store.getState().setClipSpeed(speedFor, change);
+            setSpeedFor(null);
+          }}
+        />
+      )}
     </section>
   );
 }

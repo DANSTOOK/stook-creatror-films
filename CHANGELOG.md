@@ -7,12 +7,95 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **687 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **104/104 comprobaciones de interfaz** (proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **701 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **110/110 comprobaciones de interfaz** (velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **105/105** con la v1.22.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **111/111** con la v1.23.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.23.0-beta.1 — Velocidad de clip y reversa
+2026-09-21 · pre-release para probar
+
+Lo que más se echaba en falta frente a cualquier editor. Antes de escribir
+una línea miré cómo lo resuelven los demás, y estas son las reglas que he
+copiado a propósito:
+
+- **Premiere** (*Speed/Duration*): velocidad y duración **encadenadas** —el
+  botón de cadena las separa—, **Reverse Speed**, **Maintain Audio Pitch**
+  (apagado por defecto, así que el tono cambia) y **Ripple Edit, Shifting
+  Trailing Clips** para empujar lo que sigue.
+- Su **Rate Stretch** es la misma cuenta por el otro lado: arrastras el borde
+  y la velocidad sale sola.
+- La interpolación por defecto es **frame sampling**: repite o salta
+  fotogramas, no inventa ninguno.
+- **Resolve** (*Retime Controls*, Ctrl+R) y **Filmora** (0,01x–100x con
+  presets de rampa) van más lejos con curvas y segmentos; eso no está aquí
+  todavía.
+
+### Añadido
+- **Velocidad de clip (Ctrl+R, o botón derecho → «Speed / Duration…»).**
+  - Del **10 % al 1000 %**. El metraje que muestra el clip se conserva y lo
+    que cambia es el tiempo que tarda: al 200 % dura la mitad, al 50 % el
+    doble, y volver al 100 % lo deja exactamente como estaba.
+  - **Velocidad y duración encadenadas**, con el botón de cadena para
+    separarlas, como el «gang» de Premiere.
+  - **Reproducir al revés**: el primer fotograma del clip pasa a ser el
+    último del metraje.
+  - **«Mover lo que sigue en esta pista»** (el ripple de Premiere). Apagado,
+    un clip que se alarga **se detiene donde empieza su vecino**, porque aquí
+    los clips nunca se solapan.
+  - **No puede pasarse del final de su propio metraje**: al ralentizarlo, la
+    duración se limita a lo que queda de película. Una foto fija no tiene ese
+    tope.
+  - Los fotogramas se **muestrean**: a media velocidad cada uno se sostiene
+    dos veces. Ni mezcla de fotogramas ni flujo óptico, que son otra función.
+  - El clip lleva su **etiqueta** («200%», «◀ 50%») y la **forma de onda se
+    comprime o se estira** con la velocidad, que es como suena.
+  - Cada cambio es **un solo paso de deshacer**.
+- **El sonido sigue la velocidad**, más agudo o más grave, que es lo que hace
+  Premiere con «Maintain Audio Pitch» apagado. Vale tanto en reproducción
+  como en la exportación.
+- Los **recortes conocen la velocidad**: a 200 % un fotograma de la línea de
+  tiempo son dos de película, así que el sitio disponible es la mitad, y
+  deslizar el metraje dentro de un clip retimed lo mueve en película, no en
+  tiempo.
+
+### Cómo se comprobó
+- 14 pruebas unitarias de la cuenta: la cadena velocidad–duración en los dos
+  sentidos, el tope del metraje, el fotograma exacto que toca a cada
+  velocidad (sostenido, saltado, con recorte de entrada y al revés), y que un
+  clip al 100 % cae exactamente donde caía antes de que existiera esto.
+- 6 comprobaciones nuevas de interfaz (110/110 en total) **en la aplicación
+  real**, y dos de ellas son las que importan: se renderiza un fotograma
+  **como lo renderiza una exportación** y se compara su hash con el de un
+  clip testigo recortado a ese mismo fotograma de película. Al 200 %
+  coinciden; en reversa, el primer fotograma del clip coincide con el último
+  del metraje.
+  - Esas dos **fallaron primero**, y el fallo era de la prueba: comparaba
+    fotogramas compuestos con otras pistas visibles debajo, así que comparaba
+    la línea de tiempo entera. Aislando la pista, los hash coinciden exactos
+    —y son los mismos que ya daba el testigo—.
+- La batería completa contra esta versión: **701 unitarias**, **21/21** de
+  extremo a extremo, **110/110** de interfaz, **41/41** de proyectos,
+  **13/13** de movimiento, una prueba de estrés de **5 minutos a 24 fps** con
+  tu vídeo (**27/27**) y **111/111** contra el ejecutable empaquetado y sin
+  red.
+
+### Sin verificar
+- **Un clip al revés no suena.** Reproducir un búfer de audio hacia atrás no
+  es algo que una velocidad de reproducción pueda expresar; hace falta darle
+  la vuelta a las muestras. Premiere sí lo hace; aquí, de momento, la reversa
+  es solo imagen, y la ventana lo dice.
+- **No hay «mantener el tono»**: al cambiar la velocidad, el tono cambia. Es
+  el comportamiento por defecto de Premiere, pero su casilla no está.
+- **No hay rampas de velocidad** (los puntos y curvas de Resolve, los presets
+  de Filmora): la velocidad es una sola para todo el clip. Es lo siguiente
+  natural de esta función.
+- **No hay mezcla de fotogramas ni flujo óptico.** A cámara muy lenta se ve
+  el escalón, exactamente como con el Rate Stretch de Premiere.
 
 ---
 

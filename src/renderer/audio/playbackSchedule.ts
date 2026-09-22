@@ -1,5 +1,6 @@
 import type { ProjectState } from '@shared/types';
 import { hasSoloedTrack, isTrackAudible } from './mixRouting';
+import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
 
 /**
  * What to decode and sound next, while playing.
@@ -20,6 +21,11 @@ export interface ScheduledSpan {
   sourceUri: string;
   /** Where to read in the source, in seconds from its start. */
   sourceFrom: number;
+  /**
+   * How fast to play it: the clip's speed. One span of timeline needs
+   * `seconds * rate` of footage, played at `rate`.
+   */
+  rate: number;
   seconds: number;
   /** When it sounds, in timeline seconds. */
   atTimeline: number;
@@ -59,6 +65,11 @@ export function planPlaybackSpans(project: ProjectState, options: PlanOptions): 
     const track = tracks.get(clip.trackId);
     if (!track || !isTrackAudible(track, anySolo)) continue;
     if (!canStream(clip.sourceUri)) continue;
+    // A clip played backwards has no sound yet: reading a stream
+    // back-to-front is not something a playback rate can express.
+    if (!audioFollowsSpeed(clip)) continue;
+
+    const rate = speedOf(clip);
 
     const clipStart = clip.startFrame / fps;
     const clipEnd = (clip.startFrame + clip.durationFrames) / fps;
@@ -75,8 +86,9 @@ export function planPlaybackSpans(project: ProjectState, options: PlanOptions): 
         clipId: clip.id,
         sourceUri: clip.sourceUri,
         // Where this instant sits in the source, trimming included.
-        sourceFrom: clip.sourceOffsetFrames / fps + (at - clipStart),
+        sourceFrom: clip.sourceOffsetFrames / fps + (at - clipStart) * rate,
         seconds,
+        rate,
         atTimeline: at,
       });
       at += seconds;

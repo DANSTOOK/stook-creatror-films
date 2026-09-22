@@ -1,4 +1,4 @@
-import type { Clip, MediaAsset, ProjectState } from '@shared/types';
+﻿import type { Clip, MediaAsset, ProjectState } from '@shared/types';
 import { Compositor, type ClipSource, type CompositorOptions } from './Compositor';
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
@@ -6,6 +6,7 @@ import { ScrubDecoder } from './ScrubDecoder';
 import { keepScrubbers } from './scrubHandover';
 import { SequentialVideoReader } from './SequentialVideoReader';
 import { TextureManager } from './TextureManager';
+import { sourceFrameFor } from '@renderer/timing/clipSpeed';
 
 /**
  * Bundles the compositor with the caches it needs, and offers the two ways a
@@ -338,7 +339,7 @@ export class FrameRenderer {
 
     await Promise.all(
       clips.map(async (clip) => {
-        const sourceFrame = clip.sourceOffsetFrames + (frame - clip.startFrame);
+        const sourceFrame = sourceFrameFor(clip, frame);
         if (this.sequential && this.media.get(clip.sourceUri) instanceof HTMLVideoElement) {
           let reader = this.sequential.get(clip.id);
           if (!reader) {
