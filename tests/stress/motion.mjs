@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+﻿import { execFile } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,7 +48,12 @@ const percentile = (values, p) => {
   return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
 };
 
-async function main() {
+/** Project settings now live in the Window menu, as they do on a Mac. */
+async function openSettingsIn(window) {
+  await window.getByTestId('window-menu-button').click();
+  await window.getByRole('menuitem', { name: 'Project settings...' }).click();
+}
+ async function main() {
   await rm(workDir, { recursive: true, force: true });
   await mkdir(projectsDir, { recursive: true });
 
@@ -161,7 +166,7 @@ async function main() {
 
     /* The animations themselves --------------------------------------------- */
     step('what the animations are made of');
-    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    await openSettingsIn(window);
     await sleep(60);
     const dialogMotion = await window.locator('.scf-dialog').evaluate((element) => {
       const style = getComputedStyle(element);
@@ -177,7 +182,8 @@ async function main() {
     step('dialogs, 15 times');
     const dialogs = await sampler('dialogs', async () => {
       for (let i = 0; i < 15; i += 1) {
-        await window.getByRole('button', { name: i % 2 ? 'Mixer' : 'Settings', exact: true }).click();
+        if (i % 2) await window.getByRole('button', { name: 'Mixer', exact: true }).click();
+        else await openSettingsIn(window);
         await sleep(220);
         await window.keyboard.press('Escape');
         await sleep(180);
@@ -244,7 +250,7 @@ async function main() {
       await window.evaluate(() => window.__scfStore.getState().setPlaying(true));
       await sleep(400);
       for (let i = 0; i < 6; i += 1) {
-        await window.getByRole('button', { name: 'Settings', exact: true }).click();
+        await openSettingsIn(window);
         await sleep(260);
         await window.keyboard.press('Escape');
         await sleep(200);
@@ -309,7 +315,7 @@ async function main() {
 
     step('reduced motion');
     await window.emulateMedia({ reducedMotion: 'reduce' });
-    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    await openSettingsIn(window);
     await sleep(60);
     const reduced = await window.locator('.scf-dialog').evaluate((element) => getComputedStyle(element).animationDuration);
     await window.keyboard.press('Escape');

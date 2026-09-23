@@ -95,7 +95,7 @@ export function PreviewViewport(): JSX.Element {
 
         <div className="mt-2 flex items-center justify-between">
           <span className="font-mono text-xs text-slate-400">
-            {timecode} <span className="text-slate-600">/ {duration}</span>
+            {timecode} <span className="text-slate-400">/ {duration}</span>
           </span>
 
           <div className="flex items-center gap-1">
@@ -135,7 +135,7 @@ export function PreviewViewport(): JSX.Element {
             </button>
           </div>
 
-          <span className="text-2xs text-slate-500">
+          <span className="text-2xs text-slate-400">
             {project.width}x{project.height} @ {project.fps}fps
             {project.hasAlphaBackground ? ' - alpha' : ''}
           </span>

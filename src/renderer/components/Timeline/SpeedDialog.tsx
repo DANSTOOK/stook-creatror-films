@@ -73,7 +73,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
                   value={percent}
                   onChange={(event) => setPercent(Number(event.target.value))}
                 />
-                <span className="text-2xs text-slate-500">%</span>
+                <span className="text-2xs text-slate-400">%</span>
               </div>
             </label>
 
@@ -101,7 +101,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
             </label>
           </div>
 
-          <p className="text-2xs text-slate-500">
+          <p className="text-2xs text-slate-400">
             {used} frames of footage, playing in {duration} - {framesToTimecode(duration, fps)}.
             Frames are sampled, not blended: at half speed each one is held
             twice.
@@ -133,7 +133,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
             />
             Move what follows on this track
           </label>
-          <p className="pl-6 text-2xs text-slate-500">
+          <p className="pl-6 text-2xs text-slate-400">
             Off, a clip that grew stops where its neighbour begins.
           </p>
         </div>

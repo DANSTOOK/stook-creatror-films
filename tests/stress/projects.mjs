@@ -90,6 +90,12 @@ async function averageLuma(file) {
   }
 }
 
+/** Project settings now live in the Window menu, as they do on a Mac. */
+async function openSettingsIn(window) {
+  await window.getByTestId('window-menu-button').click();
+  await window.getByRole('menuitem', { name: 'Project settings...' }).click();
+}
+
 async function main() {
   const started = Date.now();
   await rm(workDir, { recursive: true, force: true });
@@ -340,8 +346,10 @@ async function main() {
     step('60 dialog opens and closes, some mid-animation');
     t = Date.now();
     for (let i = 0; i < 60; i += 1) {
-      const which = i % 2 === 0 ? 'Settings' : 'Mixer';
-      await window.getByRole('button', { name: which, exact: true }).click();
+      // Every other pass goes through the Window menu, which is now part of
+      // what opening the settings costs.
+      if (i % 2 === 0) await openSettingsIn(window);
+      else await window.getByRole('button', { name: 'Mixer', exact: true }).click();
       if (i % 3 !== 0) await sleep(i % 3 === 1 ? 40 : 280);
       await window.keyboard.press('Escape');
     }
@@ -359,9 +367,8 @@ async function main() {
     check('the export dialog opens and closes ten times cleanly',
       await waitFor(async () => (await window.getByRole('dialog', { name: 'Export' }).count()) === 0, 3_000));
 
+    await openSettingsIn(window);
     const normalMotion = await window.evaluate(async () => {
-      const buttons = [...document.querySelectorAll('button')];
-      buttons.find((button) => button.textContent?.trim() === 'Settings')?.click();
       await new Promise((done) => setTimeout(done, 50));
       const dialog = document.querySelector('.scf-dialog');
       return dialog ? getComputedStyle(dialog).animationDuration : 'none';
@@ -475,7 +482,7 @@ async function main() {
     step('reduced motion');
     await window.emulateMedia({ reducedMotion: 'reduce' });
     await openCard('Stress 25');
-    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    await openSettingsIn(window);
     const reducedDuration = await window.locator('.scf-dialog').evaluate((element) => getComputedStyle(element).animationDuration);
     const closeStarted = Date.now();
     await window.keyboard.press('Escape');

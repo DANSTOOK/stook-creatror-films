@@ -20,9 +20,9 @@ export const TRACK_GAP = 2;
 export const RULER_HEIGHT = 24;
 
 const TRACK_COLORS: Record<Track['type'], string> = {
-  video: '#2b4c7e',
-  audio: '#2f6f5b',
-  text: '#7a4c86',
+  video: '#456698',
+  audio: '#33785f',
+  text: '#82548e',
   adjustment: '#8a6a2f',
 };
 
@@ -100,7 +100,7 @@ function drawTrimHandles(
 
     // Two grip lines, the conventional "you can pull this" mark.
     if (handleWidth > 3) {
-      context.strokeStyle = hot ? '#0d0f14' : 'rgba(13, 15, 20, 0.6)';
+      context.strokeStyle = hot ? '#0e0f11' : 'rgba(13, 15, 20, 0.6)';
       context.lineWidth = 1;
       const mid = left + handleWidth / 2;
       const gripTop = bodyTop + bodyHeight / 2 - 6;
@@ -145,10 +145,10 @@ function drawRuler(
   ui: EditorUiState,
   width: number,
 ): void {
-  context.fillStyle = '#1a1f2e';
+  context.fillStyle = '#1d2025';
   context.fillRect(0, 0, width, RULER_HEIGHT);
 
-  context.strokeStyle = '#2e364d';
+  context.strokeStyle = '#343840';
   context.beginPath();
   context.moveTo(0, RULER_HEIGHT - 0.5);
   context.lineTo(width, RULER_HEIGHT - 0.5);
@@ -193,7 +193,7 @@ function drawRuler(
     const x = Math.round(frameToPixel(frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
     if (x < -40 || x > width + 40) continue;
 
-    context.strokeStyle = '#3a4360';
+    context.strokeStyle = '#41454e';
     context.beginPath();
     context.moveTo(x, RULER_HEIGHT - 8);
     context.lineTo(x, RULER_HEIGHT);
@@ -318,7 +318,7 @@ function drawClip(
 
   context.globalAlpha = 1;
   context.lineWidth = selected ? 2 : 1;
-  context.strokeStyle = selected ? '#60a5fa' : '#0d0f14';
+  context.strokeStyle = selected ? '#dbeafe' : '#0e0f11';
   context.stroke();
 
   if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps, canvasWidth);
@@ -469,7 +469,7 @@ function drawPlayhead(
   context.beginPath();
   context.roundRect(x - SCISSORS_HALF, SCISSORS_Y - SCISSORS_HALF, SCISSORS_HALF * 2, SCISSORS_HALF * 2, 3);
   context.fill();
-  context.fillStyle = '#1a1a1f';
+  context.fillStyle = '#1a1b1e';
   context.font = '11px sans-serif';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
@@ -527,7 +527,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    context.fillStyle = '#0d0f14';
+    context.fillStyle = '#0e0f11';
     context.fillRect(0, 0, width, height);
 
     const selected = new Set(ui.selectedClipIds);
@@ -536,7 +536,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       const top = trackRowTop(index);
       if (top > height) return;
 
-      context.fillStyle = index % 2 === 0 ? '#131722' : '#161b27';
+      context.fillStyle = index % 2 === 0 ? '#16181c' : '#191b20';
       context.fillRect(0, top, width, TRACK_HEIGHT);
 
       if (track.locked) {

@@ -51,6 +51,22 @@
     --dur-fast: 140ms;
     --dur-base: 220ms;
     --dur-spring: 420ms;
+
+    /*
+      The grid. Everything in a panel sits on multiples of 4, and the two
+      control heights are the only two there are: 28px for the dense rows a
+      toolbar is made of, 32px for the things a hand reaches for. A panel
+      breathes by 12px at its edges. Before this, padding ranged from 8px to
+      16px panel by panel and nothing lined up across a border.
+    */
+    --pad-panel: 12px;
+    --gap-tight: 4px;
+    --gap: 8px;
+    --control-h: 28px;
+    --control-h-lg: 32px;
+    --radius: 6px;
+    /* A rule is light over the surface, never a darker line drawn on it. */
+    --hairline: rgb(255 255 255 / 0.08);
   }
 
   /* Dark scrollbars, so panels do not flash a light strip. */
@@ -145,9 +161,21 @@
   }
 
   .panel-header {
-    @apply flex items-center gap-2 px-3 h-10 shrink-0 text-xs font-medium uppercase tracking-wider
-           text-slate-400 border-b border-panel-700/80;
+    @apply flex items-center gap-2 shrink-0 text-xs font-medium uppercase tracking-wider text-slate-400;
+    height: 36px;
+    padding-inline: var(--pad-panel);
+    gap: var(--gap);
+    border-bottom: 1px solid var(--hairline);
     background: linear-gradient(to bottom, theme('colors.panel.800'), theme('colors.panel.900'));
+  }
+
+  /* A row of controls inside a panel, on the same rhythm as its header. */
+  .panel-bar {
+    @apply flex items-center shrink-0;
+    min-height: 36px;
+    padding: var(--gap-tight) var(--pad-panel);
+    gap: var(--gap);
+    border-bottom: 1px solid var(--hairline);
   }
 
 
@@ -178,11 +206,12 @@
   }
 
   .tool-button {
-    @apply inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-md text-xs
+    @apply inline-flex items-center justify-center gap-1.5 px-2.5 rounded-md text-xs
            text-slate-300 hover:bg-panel-700 hover:text-slate-100
            disabled:opacity-40 disabled:pointer-events-none;
     transition: background-color 120ms var(--ease-standard), color 120ms var(--ease-standard),
       box-shadow 120ms var(--ease-standard), transform 90ms var(--ease-standard);
+    height: var(--control-h-lg);
   }
 
   /* A press you can feel, kept tiny: buttons are hit constantly. */
@@ -200,7 +229,9 @@
   }
 
   .field-label {
-    @apply text-2xs uppercase tracking-wide text-slate-500;
+    /* Every label above a control: at 10px it has to clear 4.5:1, and
+       slate-500 was 3.0:1 on the lighter panels. */
+    @apply text-2xs uppercase tracking-wide text-slate-400;
   }
 
   .numeric-input {
@@ -215,12 +246,12 @@
 
   /* The transparency checkerboard behind the viewport frame. */
   .alpha-checkerboard {
-    background-color: #1a1f2e;
+    background-color: #1d2025;
     background-image:
-      linear-gradient(45deg, #232a3d 25%, transparent 25%),
-      linear-gradient(-45deg, #232a3d 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #232a3d 75%),
-      linear-gradient(-45deg, transparent 75%, #232a3d 75%);
+      linear-gradient(45deg, #272a31 25%, transparent 25%),
+      linear-gradient(-45deg, #272a31 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #272a31 75%),
+      linear-gradient(-45deg, transparent 75%, #272a31 75%);
     background-size: 16px 16px;
     background-position: 0 0, 0 8px, 8px -8px, -8px 0;
   }

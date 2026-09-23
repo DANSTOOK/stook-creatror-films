@@ -556,7 +556,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               </span>
               <span>{formatClock(totalFrames / renderFps)} of video</span>
               {settings.exportAlpha && !alphaUnsupported && <span className="text-emerald-300">with alpha</span>}
-              <span className="text-slate-500">{plan.label}</span>
+              <span className="text-slate-400">{plan.label}</span>
             </p>
           )}
           {message && <p className="text-2xs leading-relaxed text-slate-300">{message}</p>}
@@ -584,7 +584,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     <Icon size={13} />
                     {preset.label}
                   </span>
-                  <span className="text-2xs text-slate-500">{preset.hint}</span>
+                  <span className="text-2xs text-slate-400">{preset.hint}</span>
                 </button>
               );
             })}
@@ -621,7 +621,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
                     />
                     Export alpha channel
-                    <span className="text-2xs text-slate-500">(PNG / ProRes 4444 / WebM)</span>
+                    <span className="text-2xs text-slate-400">(PNG / ProRes 4444 / WebM)</span>
                   </label>
                   {alphaUnsupported && (
                     <p className="rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
@@ -640,7 +640,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         />
                         Premultiply alpha
                       </label>
-                      <p className="pl-6 text-2xs leading-relaxed text-slate-500">
+                      <p className="pl-6 text-2xs leading-relaxed text-slate-400">
                         Leave this off for Godot. Godot imports straight alpha, and premultiplying here is what
                         produces dark fringes around sprites.
                       </p>
@@ -703,7 +703,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     up, which adds pixels but not detail.
                   </p>
                 )}
-                <p className="text-2xs text-slate-500">
+                <p className="text-2xs text-slate-400">
                   Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
                   {settings.width}x{settings.height} @ {settings.fps} fps.
                 </p>
@@ -713,7 +713,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-1">
                     <span className="text-2xs text-slate-400">
-                      Start frame <span className="text-slate-500">({formatClock(settings.startFrame / renderFps)})</span>
+                      Start frame <span className="text-slate-400">({formatClock(settings.startFrame / renderFps)})</span>
                     </span>
                     <input
                       type="number"
@@ -724,7 +724,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-2xs text-slate-400">
-                      End frame <span className="text-slate-500">({formatClock(settings.endFrame / renderFps)})</span>
+                      End frame <span className="text-slate-400">({formatClock(settings.endFrame / renderFps)})</span>
                     </span>
                     <input
                       type="number"
@@ -737,7 +737,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-slate-300">
                     Renders <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span> of
-                    video <span className="text-slate-500">({totalFrames.toLocaleString()} frames at {renderFps} fps)</span>
+                    video <span className="text-slate-400">({totalFrames.toLocaleString()} frames at {renderFps} fps)</span>
                   </p>
                   <button
                     type="button"
@@ -773,7 +773,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       spellCheck={false}
                       onChange={(event) => setFileName(event.target.value)}
                     />
-                    <span className="shrink-0 text-2xs text-slate-500">{extension}</span>
+                    <span className="shrink-0 text-2xs text-slate-400">{extension}</span>
                   </div>
                 </label>
 
@@ -789,7 +789,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 </div>
 
                 {folder && settings.outputPath && (
-                  <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-500'}`}>
+                  <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-400'}`}>
                     {targetExists ? 'Will replace the existing ' : 'Will save as '}
                     <span className="text-slate-300">{settings.outputPath}</span>
                   </p>
@@ -815,7 +815,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         {thumbnailPreview ? (
                           <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
                         ) : (
-                          <span className="text-2xs text-slate-600">None</span>
+                          <span className="text-2xs text-slate-400">None</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1">
@@ -828,7 +828,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         {thumbnailPath && (
                           <button
                             type="button"
-                            className="tool-button h-7 justify-start text-slate-500"
+                            className="tool-button h-7 justify-start text-slate-400"
                             onClick={() => {
                               setThumbnailPath(null);
                               setThumbnailPreview(null);
@@ -839,12 +839,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         )}
                       </div>
                     </div>
-                    <p className="text-2xs text-slate-600">
+                    <p className="text-2xs text-slate-400">
                       Embedded as the file&apos;s cover - what Explorer and video players show.
                     </p>
                   </>
                 ) : (
-                  <p className="text-2xs text-slate-500">
+                  <p className="text-2xs text-slate-400">
                     {selectedFormat?.label} has no place for a cover image. MP4 and ProRes do.
                   </p>
                 )}
@@ -862,7 +862,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
                 <div className="mt-3 space-y-2">
                   {gpu === null ? (
-                    <p className="flex items-center gap-2 text-2xs text-slate-500">
+                    <p className="flex items-center gap-2 text-2xs text-slate-400">
                       <Loader2 size={12} className="animate-spin" />
                       Testing which GPUs and encoders work on this machine...
                     </p>
@@ -890,7 +890,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                             );
                           })}
                         </select>
-                        <span className="text-2xs text-slate-500">
+                        <span className="text-2xs text-slate-400">
                           Running on: {activeGpu?.name ?? 'unknown GPU'}
                         </span>
                       </label>
@@ -932,7 +932,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
                       {plan.note && <p className="text-2xs text-amber-300">{plan.note}</p>}
                       {gpu.encoders.length === 0 && (
-                        <p className="text-2xs text-slate-500">
+                        <p className="text-2xs text-slate-400">
                           No hardware encoder produced frames on this machine, so only the CPU is offered.
                         </p>
                       )}

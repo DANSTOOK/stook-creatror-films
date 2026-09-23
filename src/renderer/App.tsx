@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   FilePlus2,
   FolderOpen,
   Headphones,
   Home as HomeIcon,
+  Keyboard,
   LayoutDashboard,
+  PanelLeft,
+  PanelRight,
+  PanelsTopLeft,
   Redo2,
   Save,
   Settings2,
@@ -18,6 +22,8 @@ import { Splitter } from './components/Layout/Splitter';
 import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
+import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { ContextMenu, useContextMenu } from './components/ContextMenu';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
@@ -85,6 +91,17 @@ export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false);
   const [mixerOpen, setMixerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /**
+   * Areas that are put away.
+   *
+   * Final Cut hides the browser and the inspector from its Window menu, and
+   * for the same reason: on a laptop the picture is worth more than either
+   * of them. The timeline and the viewer cannot be hidden - with both gone
+   * there is no editor left.
+   */
+  const [hidden, setHidden] = useState({ media: false, inspector: false });
+  const { menu: windowMenu, open: openWindowMenu, close: closeWindowMenu } = useContextMenu();
   const exportPresence = usePresence(exportOpen);
   const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
@@ -148,16 +165,34 @@ export default function App(): JSX.Element {
   // Escape closes the mixer and project settings, like any dialog. Export is
   // left to its own buttons: Escape must not be a way to lose a render.
   useEffect(() => {
-    if (!mixerOpen && !settingsOpen) return undefined;
+    if (!mixerOpen && !settingsOpen && !shortcutsOpen) return undefined;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || useSessionStore.getState().unsavedPrompt) return;
       event.preventDefault();
-      if (settingsOpen) setSettingsOpen(false);
+      if (shortcutsOpen) setShortcutsOpen(false);
+      else if (settingsOpen) setSettingsOpen(false);
       else setMixerOpen(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [mixerOpen, settingsOpen]);
+  }, [mixerOpen, settingsOpen, shortcutsOpen]);
+
+  /**
+   * "?" opens the list of keys, as it does in Resolve and in most things built
+   * for the keyboard. Not while typing: a question mark belongs in the field.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== '?' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+      if (typing || useSessionStore.getState().unsavedPrompt) return;
+      event.preventDefault();
+      setShortcutsOpen((open) => !open);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Behind the start screen the editor is inert: no focus, no clicks, no screen reader.
   const editorRef = useRef<HTMLDivElement>(null);
@@ -248,7 +283,7 @@ export default function App(): JSX.Element {
               className="h-6 w-6 rounded-md transition-transform duration-200 group-hover:scale-110"
               draggable={false}
             />
-            <HomeIcon size={13} className="text-slate-500 transition-colors duration-150 group-hover:text-slate-200" />
+            <HomeIcon size={13} className="text-slate-400 transition-colors duration-150 group-hover:text-slate-200" />
           </button>
 
           <div className="toolbar-group">
@@ -299,23 +334,57 @@ export default function App(): JSX.Element {
               <Headphones size={14} />
               Mixer
             </button>
+            {/*
+              One menu for the window itself, the way a Mac editor keeps it:
+              which areas are showing, how they are arranged, and the settings
+              that belong to the project rather than to a clip. Four loose
+              buttons of four different kinds were four decisions in the way.
+            */}
             <button
               type="button"
-              className={`tool-button ${settingsOpen ? 'tool-button-active' : ''}`}
-              onClick={() => setSettingsOpen(true)}
-              title="Project settings - frame rate, resolution and duration"
+              className={`tool-button ${windowMenu ? 'tool-button-active' : ''}`}
+              data-testid="window-menu-button"
+              aria-haspopup="menu"
+              onClick={(event) => {
+                const box = event.currentTarget.getBoundingClientRect();
+                openWindowMenu({ preventDefault: () => undefined, clientX: box.left, clientY: box.bottom + 4 }, [
+                  {
+                    label: hidden.media ? 'Show media' : 'Hide media',
+                    icon: PanelLeft,
+                    onSelect: () => setHidden((current) => ({ ...current, media: !current.media })),
+                  },
+                  {
+                    label: hidden.inspector ? 'Show inspector' : 'Hide inspector',
+                    icon: PanelRight,
+                    onSelect: () => setHidden((current) => ({ ...current, inspector: !current.inspector })),
+                  },
+                  { separator: true },
+                  {
+                    label: 'Reset layout',
+                    icon: LayoutDashboard,
+                    onSelect: () => {
+                      setHidden({ media: false, inspector: false });
+                      commitLayout({ ...DEFAULT_LAYOUT });
+                    },
+                  },
+                  { separator: true },
+                  {
+                    label: 'Project settings...',
+                    icon: Settings2,
+                    onSelect: () => setSettingsOpen(true),
+                  },
+                  {
+                    label: 'Keyboard shortcuts',
+                    icon: Keyboard,
+                    shortcut: '?',
+                    onSelect: () => setShortcutsOpen(true),
+                  },
+                ]);
+              }}
+              title="Window - panels, layout, project settings and the keys"
             >
-              <Settings2 size={14} />
-              Settings
-            </button>
-            <button
-              type="button"
-              className="tool-button"
-              onClick={() => commitLayout({ ...DEFAULT_LAYOUT })}
-              title="Put every panel back to its default size (double-click one border to reset just that panel)"
-            >
-              <LayoutDashboard size={14} />
-              Reset layout
+              <PanelsTopLeft size={14} />
+              Window
             </button>
           </div>
 
@@ -334,7 +403,7 @@ export default function App(): JSX.Element {
           </div>
 
           {status && (
-            <span key={status} className="scf-view max-w-[34%] truncate px-2 text-2xs text-slate-500" title={status}>
+            <span key={status} className="scf-view max-w-[34%] truncate px-2 text-2xs text-slate-400" title={status}>
               {status}
             </span>
           )}
@@ -353,15 +422,26 @@ export default function App(): JSX.Element {
 
         <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
           <main className="flex min-h-0 flex-1">
-            <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
-              <MediaLibrary />
-            </div>
-            {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
+            {/* A hidden area gives its width to the picture, and its border
+                goes with it: a splitter for something that is not there is a
+                handle that does nothing. */}
+            {!hidden.media && (
+              <>
+                <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
+                  <MediaLibrary />
+                </div>
+                {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
+              </>
+            )}
             <PreviewViewport />
-            {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
-            <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
-              <Inspector />
-            </div>
+            {!hidden.inspector && (
+              <>
+                {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
+                <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
+                  <Inspector />
+                </div>
+              </>
+            )}
           </main>
 
           {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
@@ -373,6 +453,8 @@ export default function App(): JSX.Element {
 
         {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
         {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
+        {windowMenu && <ContextMenu {...windowMenu} onClose={closeWindowMenu} />}
+        {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
         {settingsPresence.mounted && (
           <ProjectSettings
             closing={settingsPresence.closing}

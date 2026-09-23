@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react';
+﻿import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
   AlertTriangle,
   ArrowRightToLine,
@@ -347,7 +347,7 @@ export function MediaLibrary(): JSX.Element {
           <button
             type="button"
             aria-label={open ? `Collapse ${bin.name}` : `Expand ${bin.name}`}
-            className="flex h-5 w-4 shrink-0 items-center justify-center text-slate-500 hover:text-slate-200"
+            className="flex h-5 w-4 shrink-0 items-center justify-center text-slate-400 hover:text-slate-200"
             onClick={(event) => {
               event.stopPropagation();
               toggleBin(bin.id);
@@ -358,13 +358,13 @@ export function MediaLibrary(): JSX.Element {
         ) : (
           <span className="w-4 shrink-0" />
         )}
-        <Icon size={13} className={`shrink-0 ${selected ? 'text-accent-hover' : 'text-slate-500'}`} />
+        <Icon size={13} className={`shrink-0 ${selected ? 'text-accent-hover' : 'text-slate-400'}`} />
         {bin && renamingBinId === bin.id ? (
           renameField(bin)
         ) : (
           <span className="min-w-0 flex-1 truncate">{bin ? bin.name : 'Master'}</span>
         )}
-        <span className="shrink-0 text-2xs tabular-nums text-slate-500">{count}</span>
+        <span className="shrink-0 text-2xs tabular-nums text-slate-400">{count}</span>
       </div>
     );
   };
@@ -394,6 +394,7 @@ export function MediaLibrary(): JSX.Element {
 
   return (
     <aside
+      data-testid="media-panel"
       className={`panel relative w-full ${dragActive ? 'ring-2 ring-accent' : ''}`}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
@@ -483,16 +484,16 @@ export function MediaLibrary(): JSX.Element {
             onClick={handleImportClick}
             className="flex w-full flex-col items-center gap-2 rounded border border-dashed border-panel-600 p-6 text-center hover:border-accent hover:bg-panel-800"
           >
-            <Upload size={20} className="text-slate-500" />
+            <Upload size={20} className="text-slate-400" />
             <span className="text-xs text-slate-300">Drop files here</span>
-            <span className="text-2xs leading-relaxed text-slate-500">
+            <span className="text-2xs leading-relaxed text-slate-400">
               or click to browse. Video, audio, and transparent PNG sprite sheets.
             </span>
           </button>
         ) : (
           <>
             {/* Where the list is, and where an import will land. */}
-            <div className="mb-1.5 flex min-w-0 items-center gap-1 px-1 text-2xs text-slate-500">
+            <div className="mb-1.5 flex min-w-0 items-center gap-1 px-1 text-2xs text-slate-400">
               <button type="button" className="shrink-0 hover:text-slate-200" onClick={() => setCurrentBin(null)}>
                 Master
               </button>
@@ -522,15 +523,15 @@ export function MediaLibrary(): JSX.Element {
                 {...binDropProps(bin.id)}
               >
                 <span className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-panel-950">
-                  <Folder size={16} className="text-slate-500" />
+                  <Folder size={16} className="text-slate-400" />
                 </span>
                 <span className="min-w-0 flex-1 truncate">{bin.name}</span>
-                <span className="text-2xs tabular-nums text-slate-500">{countAssetsDeep(assets, bins, bin.id)}</span>
+                <span className="text-2xs tabular-nums text-slate-400">{countAssetsDeep(assets, bins, bin.id)}</span>
               </div>
             ))}
 
             {visibleAssets.length === 0 && subBins.length === 0 && (
-              <p className="px-2 py-6 text-center text-2xs leading-relaxed text-slate-500">
+              <p className="px-2 py-6 text-center text-2xs leading-relaxed text-slate-400">
                 This bin is empty. Import here, or drag clips onto a bin in the list above.
               </p>
             )}
@@ -595,13 +596,13 @@ export function MediaLibrary(): JSX.Element {
                       />
                     ) : (
                       <span className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-panel-950">
-                        <Icon size={16} className="text-slate-500" />
+                        <Icon size={16} className="text-slate-400" />
                       </span>
                     )}
 
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs text-slate-200">{asset.name}</p>
-                      <p className="text-2xs text-slate-500">
+                      <p className="text-2xs text-slate-400">
                         {asset.width > 0 ? `${asset.width}x${asset.height} - ` : ''}
                         {Math.round(assetLengthSeconds(asset, project.fps))}s
                         {asset.proxyUri && (
@@ -658,29 +659,12 @@ export function MediaLibrary(): JSX.Element {
         </div>
       )}
 
-      <footer className="border-t border-panel-700 px-3 py-2">
-        <label className="flex items-center gap-2 text-xs text-slate-300">
-          <input
-            type="checkbox"
-            className="accent-blue-500"
-            checked={project.hasAlphaBackground}
-            onChange={(event) => {
-              const enabled = event.target.checked;
-              // Also reveal it in the viewport. The canvas is always cleared
-              // transparent, so without this the switch had no visible effect
-              // at all and only quietly changed an export default.
-              useProjectStore.getState().setProjectSettings({ hasAlphaBackground: enabled });
-              useProjectStore.getState().setUi({ showTransparencyGrid: enabled });
-            }}
-          />
-          Transparent background
-        </label>
-        <p className="mt-1 text-2xs leading-relaxed text-slate-600">
-          Shows the transparency checkerboard in the viewport and turns on
-          &ldquo;Export alpha channel&rdquo; by default, for sprites and UI
-          elements headed to a game engine.
-        </p>
-      </footer>
+      {/*
+        The transparent-background switch used to sit here. It is a property
+        of the sequence - it decides what gets rendered - so it belongs with
+        the frame rate and the resolution in Project settings, which is where
+        Premiere keeps its equivalent. The media panel is for files.
+      */}
 
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
     </aside>

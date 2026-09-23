@@ -1038,6 +1038,9 @@ export function Timeline(): JSX.Element {
   return (
     <section className="panel h-full">
       <header className="panel-header justify-between">
+        {/* Named like the other three panels: it was the only one without a
+            title, which made the row read as a floating toolbar. */}
+        <span className="hidden shrink-0 pr-1 xl:inline">Timeline</span>
         <div className="flex items-center gap-1.5 normal-case tracking-normal">
           <div className="toolbar-group">
             {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
@@ -1231,7 +1234,7 @@ export function Timeline(): JSX.Element {
                     >
                       {track.name}
                     </button>
-                    <span className="shrink-0 text-2xs uppercase text-slate-600">
+                    <span className="shrink-0 text-2xs uppercase text-slate-400">
                       {track.type}
                     </span>
                   </>

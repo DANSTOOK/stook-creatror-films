@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react';
+﻿import { useCallback, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Diamond, FolderOpen, Trash2 } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { evaluateNumber, evaluateVector } from '@renderer/engine/KeyframeEvaluator';
@@ -193,9 +193,9 @@ export function Inspector(): JSX.Element {
 
   if (!clip || !resolved) {
     return (
-      <aside className="panel w-full">
+      <aside data-testid="inspector-panel" className="panel w-full">
         <header className="panel-header">Inspector</header>
-        <p className="p-4 text-xs text-slate-500">
+        <p className="p-4 text-xs text-slate-400">
           {selectedIds.length > 1
             ? `${selectedIds.length} clips selected. Select a single clip to edit its properties.`
             : 'Select a clip on the timeline to edit its properties.'}
@@ -213,10 +213,10 @@ export function Inspector(): JSX.Element {
       updateClip(clip.id, { eq: { ...eq, ...patch } }, `eq:${clip.id}`);
 
     return (
-      <aside className="panel w-full">
+      <aside data-testid="inspector-panel" className="panel w-full">
         <header className="panel-header justify-between">
           <span className="truncate">{clip.name}</span>
-          <span className="normal-case tracking-normal text-slate-500">Audio</span>
+          <span className="normal-case tracking-normal text-slate-400">Audio</span>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -241,7 +241,7 @@ export function Inspector(): JSX.Element {
             right={
               <button
                 type="button"
-                className="text-2xs text-slate-500 hover:text-slate-300"
+                className="text-2xs text-slate-400 hover:text-slate-300"
                 onClick={() => updateClip(clip.id, { eq: { low: 0, mid: 0, high: 0 } }, `eq:${clip.id}`)}
               >
                 Reset
@@ -253,7 +253,7 @@ export function Inspector(): JSX.Element {
             <SliderField label="High (8 kHz, dB)" value={eq.high} min={-24} max={24} step={0.5} onChange={(high) => setEq({ high })} />
           </Section>
 
-          <p className="px-3 py-3 text-2xs text-slate-600">
+          <p className="px-3 py-3 text-2xs text-slate-400">
             Track faders, solo, buses and auto ducking are in the Mixer.
           </p>
         </div>
@@ -266,13 +266,13 @@ export function Inspector(): JSX.Element {
     count: number,
   ): JSX.Element => (
     <span className="flex items-center gap-1">
-      <span className="text-2xs text-slate-500">{count}</span>
-      <Diamond size={11} className={count > 0 ? 'text-accent' : 'text-slate-600'} />
+      <span className="text-2xs text-slate-400">{count}</span>
+      <Diamond size={11} className={count > 0 ? 'text-accent' : 'text-slate-400'} />
       {count > 0 && (
         <button
           type="button"
           title={`Clear ${property} keyframes`}
-          className="text-slate-600 hover:text-red-400"
+          className="text-slate-400 hover:text-red-400"
           onClick={() => clearKeyframes(clip.id, property)}
         >
           <Trash2 size={11} />
@@ -282,10 +282,10 @@ export function Inspector(): JSX.Element {
   );
 
   return (
-    <aside className="panel w-full">
+    <aside data-testid="inspector-panel" className="panel w-full">
       <header className="panel-header justify-between">
         <span className="truncate">{clip.name}</span>
-        <span className="normal-case tracking-normal text-slate-500">
+        <span className="normal-case tracking-normal text-slate-400">
           {clip.hasAlphaChannel ? 'RGBA' : 'RGB'}
         </span>
       </header>
@@ -329,7 +329,7 @@ export function Inspector(): JSX.Element {
               onChange={(value) => setNumberKeyframe(clip.id, 'opacity', frame, value)}
             />
           </div>
-          <p className="text-2xs text-slate-600">
+          <p className="text-2xs text-slate-400">
             Editing a value adds a keyframe at frame {frame}.
           </p>
         </Section>
@@ -518,7 +518,7 @@ export function Inspector(): JSX.Element {
             }}
           />
           {lutError && <p className="text-2xs text-red-400">{lutError}</p>}
-          <p className="truncate text-2xs text-slate-600">
+          <p className="truncate text-2xs text-slate-400">
             {clip.colorGrading.lutUri
               ? `${clip.colorGrading.lutName ?? 'LUT loaded'}${
                   clip.colorGrading.lutSourcePath ? '' : ' (not saved with the project)'
@@ -589,7 +589,7 @@ export function Inspector(): JSX.Element {
               updateClip(clip.id, { pixelArt: { ...clip.pixelArt, alphaThreshold } }, `pixel:${clip.id}`)
             }
           />
-          <p className="text-2xs text-slate-600">
+          <p className="text-2xs text-slate-400">
             A hard alpha cutoff removes the antialiased halo that would otherwise
             show up around a sprite in Godot.
           </p>
@@ -609,7 +609,7 @@ export function Inspector(): JSX.Element {
             max={1}
             onChange={(pan) => updateClip(clip.id, { pan }, `pan:${clip.id}`)}
           />
-          <p className="text-2xs text-slate-600">
+          <p className="text-2xs text-slate-400">
             EQ, track faders, solo and auto ducking live in the mixer.
           </p>
         </Section>

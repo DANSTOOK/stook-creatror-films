@@ -117,7 +117,7 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, on
             <img src={LOGO_URL} alt="" className="h-11 w-11 rounded-xl shadow-lg shadow-black/40" draggable={false} />
             <div>
               <h1 className="text-lg font-semibold tracking-wide text-slate-100">STOOK CREATOR FILMS</h1>
-              <p className="text-xs text-slate-500">Start a new edit, or pick up where you left off.</p>
+              <p className="text-xs text-slate-400">Start a new edit, or pick up where you left off.</p>
             </div>
           </header>
 
@@ -262,7 +262,7 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, on
             <div className="flex-1" />
             {recent && recent.length > 0 && (
               <label className="relative w-64">
-                <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   className="numeric-input h-8 pl-8"
                   placeholder="Search projects"
@@ -277,14 +277,14 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, on
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             {recent === null ? null : recent.length === 0 ? (
               <div className="scf-rise scf-surface flex h-64 flex-col items-center justify-center gap-2 rounded-xl text-center" style={stagger(2)}>
-                <Film size={28} className="text-slate-600" />
+                <Film size={28} className="text-slate-400" />
                 <p className="text-sm text-slate-300">No recent projects yet</p>
-                <p className="max-w-sm text-2xs leading-relaxed text-slate-500">
+                <p className="max-w-sm text-2xs leading-relaxed text-slate-400">
                   Projects you create, open or save show up here, with a picture of where you left them.
                 </p>
               </div>
             ) : shown.length === 0 ? (
-              <p className="px-1 py-8 text-center text-xs text-slate-500">No project matches &ldquo;{query}&rdquo;.</p>
+              <p className="px-1 py-8 text-center text-xs text-slate-400">No project matches &ldquo;{query}&rdquo;.</p>
             ) : (
               <ul ref={cardsRef} className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4 pb-4">
                 {shown.map((project, index) => (
@@ -329,7 +329,7 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, on
                           {project.fps > 0 ? ` · ${project.fps} fps` : ''} · {formatLength(project.durationFrames, project.fps)}
                           {project.clipCount > 0 ? ` · ${project.clipCount} clip${project.clipCount === 1 ? '' : 's'}` : ''}
                         </p>
-                        <p className="text-2xs text-slate-500">{relativeTime(project.lastOpened)}</p>
+                        <p className="text-2xs text-slate-400">{relativeTime(project.lastOpened)}</p>
                       </div>
                     </button>
                     <button

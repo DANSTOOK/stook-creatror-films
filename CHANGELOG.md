@@ -7,12 +7,91 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **701 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **110/110 comprobaciones de interfaz** (velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **711 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **117/117 comprobaciones de interfaz** (contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **111/111** con la v1.23.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **118/118** con la v1.24.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.24.0-beta.1 — Interfaz: legible, ordenada y con menos sitios donde mirar
+2026-09-22 · pre-release para probar
+
+Una pasada de interfaz hecha con dos referencias delante: las **guías de Apple
+para macOS** y la anatomía de **Final Cut**, más el principio que comparten
+Premiere y Resolve y que aquí estaba roto: *cómo se ve un panel* se ajusta en
+ese panel, y *lo que cambia el render* vive en los ajustes del proyecto.
+
+### Arreglado
+- **El texto pequeño no llegaba al mínimo legible.** 69 líneas de la interfaz
+  —las explicaciones bajo cada control, las etiquetas de los campos— estaban
+  entre **1,89:1 y 4,03:1** sobre su panel, cuando a ese tamaño hace falta
+  **4,5:1**. Ahora todas lo cumplen, con 5,57:1 en el peor caso.
+- **Un clip apenas se distinguía de la línea de tiempo**: el cuerpo de vídeo
+  daba **2,08:1** contra el fondo, y WCAG pide 3:1 para una forma que
+  significa algo. Los colores de pista se han levantado hasta 3,0:1 o más.
+- **El anillo del clip seleccionado era azul sobre azul** (2,29:1). Ahora es
+  claro, y se ve sobre cualquier color de pista (4,1:1 o mejor).
+- **«Transparent background» estaba duplicado y fuera de sitio**: existía en
+  Ajustes del proyecto y otra vez en el pie del panel de medios, donde además
+  hacía dos cosas a la vez (cambiar el proyecto y encender el cuadriculado del
+  visor). El del panel de medios se ha ido: el panel de medios es para
+  archivos.
+
+### Añadido
+- **Menú «Ventana»**, como el de Final Cut: mostrar u ocultar **Medios** e
+  **Inspector**, restablecer el diseño, abrir los ajustes del proyecto y la
+  lista de atajos. Se ha comido cuatro botones sueltos que eran cuatro
+  conceptos distintos en fila. El mezclador sigue como botón porque se usa a
+  diario.
+  - **Ocultar un área devuelve su sitio a la imagen** de verdad: el panel y su
+    divisor desaparecen, y el visor se ensancha (medido: 984 → 1346 px).
+    Volver a mostrarlo lo deja en el ancho que tenía.
+- **Lista de atajos (tecla «?»)**, que no existía: 27 teclas agrupadas por
+  para qué sirven, con buscador, porque un editor pensado para el teclado es
+  inservible hasta que sabes las teclas.
+- **Una retícula común**: pasos de 4 y 8 px, dos alturas de control (28 y 32),
+  12 px de respiro en el borde de cada panel, esquinas de 6 px y separadores
+  de un píxel de luz en lugar de bordes oscuros. Antes el relleno iba de 8 a
+  16 px según el panel y nada casaba de un lado a otro de un divisor.
+- **Paleta casi neutra**, como los editores de Mac: los paneles pasan de
+  azulados (#131722) a grises (#16181c). Cada valor se midió antes de
+  aplicarlo.
+- La línea de tiempo por fin **se llama TIMELINE**, como los otros tres
+  paneles.
+
+### Cómo se comprobó
+- 10 pruebas unitarias del cálculo de contraste (la fórmula de WCAG, el color
+  translúcido compuesto sobre lo que tiene detrás, y la paleta entera contra
+  sus umbrales).
+- **Una auditoría de contraste sobre la aplicación en marcha**: recorre cada
+  elemento con texto visible, calcula el fondo real componiendo hacia arriba
+  a través de las transparencias, y exige 4,5:1 —o 3:1 solo donde WCAG lo
+  permite por tamaño—. Es la comprobación que impide que esto se vuelva a
+  torcer.
+- Una comprobación que **pulsa Tab de verdad** y mide el anillo de foco: 2 px
+  y 6,46:1 contra el panel. Falló primero porque enfocaba por código, y el
+  anillo es `:focus-visible`, que solo responde al teclado: la prueba estaba
+  mal, no la aplicación.
+- Comprobaciones del menú Ventana (ocultar y mostrar cada área, con el ancho
+  medido) y de que **las teclas que la lista promete hacen lo que dice** —se
+  pulsan V, C, H y T y se comprueba la herramienta activa—.
+- La batería completa: **711 unitarias**, **21/21** de extremo a extremo,
+  **117/117** de interfaz, **41/41** de proyectos, **13/13** de movimiento,
+  estrés de 5 minutos a 24 fps (**27/27**) y **118/118** empaquetado sin red.
+
+### Sin verificar
+- La lista de atajos está **escrita a mano**: se comprueba que existe, que
+  tiene 27 teclas y que las cuatro de herramientas funcionan. Las demás
+  tienen pruebas propias en otros sitios, pero nada garantiza que la lista no
+  se quede atrás cuando se añada una tecla nueva.
+- El contraste se mide **en la pantalla que la prueba abre**. Un panel que
+  solo aparece en otra situación (un diálogo abierto, una lista con error)
+  no está incluido en esa barrida.
+- No se ha tocado el visor: «Pixel art» y «Alpha» siguen sueltos en su
+  cabecera en lugar de agruparse en un menú de vista.
 
 ---
 

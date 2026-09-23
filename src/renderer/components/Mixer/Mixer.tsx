@@ -116,7 +116,7 @@ function TrackStrip({ track, anySolo }: { track: Track; anySolo: boolean }): JSX
         />
       </div>
 
-      <label className="mt-2 flex items-center gap-2 text-2xs text-slate-500">
+      <label className="mt-2 flex items-center gap-2 text-2xs text-slate-400">
         <span className="uppercase tracking-wide">Bus</span>
         <select
           className="numeric-input h-6 flex-1"
@@ -145,7 +145,7 @@ function ClipStrip({ clip }: { clip: Clip }): JSX.Element {
       right={
         <button
           type="button"
-          className="text-2xs text-slate-500 hover:text-slate-300"
+          className="text-2xs text-slate-400 hover:text-slate-300"
           onClick={() =>
             updateClip(clip.id, { volume: 1, pan: 0, eq: { ...NEUTRAL_EQ } }, `eq:${clip.id}`)
           }
@@ -201,7 +201,7 @@ function ClipStrip({ clip }: { clip: Clip }): JSX.Element {
         />
       </div>
 
-      <p className="text-2xs text-slate-600">
+      <p className="text-2xs text-slate-400">
         Low shelf at 120 Hz, peak at 1 kHz, high shelf at 8 kHz - the same three
         filters the export renders through.
       </p>
@@ -272,7 +272,7 @@ export function Mixer({ onClose, closing = false }: MixerProps): JSX.Element {
             <ClipStrip clip={clip} />
           ) : (
             <Section title="Clip">
-              <p className="text-2xs text-slate-500">
+              <p className="text-2xs text-slate-400">
                 {selectedIds.length > 1
                   ? `${selectedIds.length} clips selected. Select one to edit its level, pan and EQ.`
                   : 'Select a clip on the timeline to edit its level, pan and EQ.'}
@@ -338,7 +338,7 @@ export function Mixer({ onClose, closing = false }: MixerProps): JSX.Element {
               />
             </div>
 
-            <p className="text-2xs text-slate-600">
+            <p className="text-2xs text-slate-400">
               Playback follows the dialogue bus live; the export bakes the same
               curve offline, so the rendered file ducks in the same places.
             </p>

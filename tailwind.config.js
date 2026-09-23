@@ -6,20 +6,20 @@ module.exports = {
       colors: {
         // Filmora-style dark editing surface.
         panel: {
-          950: '#0d0f14',
-          900: '#131722',
-          800: '#1a1f2e',
-          700: '#232a3d',
-          600: '#2e364d',
+          950: '#0e0f11',
+          900: '#16181c',
+          800: '#1d2025',
+          700: '#272a31',
+          600: '#343840',
         },
         accent: {
           DEFAULT: '#3b82f6',
           hover: '#60a5fa',
         },
         track: {
-          video: '#2b4c7e',
-          audio: '#2f6f5b',
-          text: '#7a4c86',
+          video: '#456698',
+          audio: '#33785f',
+          text: '#82548e',
           adjustment: '#8a6a2f',
         },
       },

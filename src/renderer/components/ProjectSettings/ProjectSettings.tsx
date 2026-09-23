@@ -105,7 +105,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
             />
             Keep the edit at the same times when the rate changes
           </label>
-          <p className="pl-6 text-2xs leading-relaxed text-slate-500">
+          <p className="pl-6 text-2xs leading-relaxed text-slate-400">
             {retime
               ? `On: every cut, trim, keyframe and marker is rescaled, so a cut at 4s stays at 4s${
                   clipCount > 0 ? ` (${clipCount} clips)` : ''
@@ -174,7 +174,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
                 }
               }}
             />
-            <span className="text-2xs text-slate-500">
+            <span className="text-2xs text-slate-400">
               {project.durationFrames} frames - {framesToTimecode(project.durationFrames, project.fps)}
             </span>
           </label>
@@ -190,7 +190,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
             />
             Transparent background (game sprites)
           </label>
-          <p className="pl-6 text-2xs leading-relaxed text-slate-500">
+          <p className="pl-6 text-2xs leading-relaxed text-slate-400">
             Leaves the scene empty instead of opaque black, so exports to PNG,
             ProRes 4444 or WebM carry a real alpha channel.
           </p>
@@ -198,7 +198,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
           <BackupSettings onRestore={onRestore} />
 
           {adoptedFrom && (
-            <p className="text-2xs text-slate-600">
+            <p className="text-2xs text-slate-400">
               These were adopted from the first import, {adoptedFrom}. Changing
               them here is an undoable edit like any other.
             </p>

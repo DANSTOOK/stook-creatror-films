@@ -177,6 +177,13 @@ const packagedExe = process.env.UI_PACKAGED
  */
 const offline = Boolean(process.env.UI_OFFLINE);
 
+/** Open a Window-menu entry: the menu button, then the item by name. */
+async function openWindowMenu(window, item) {
+  await window.getByTestId('window-menu-button').click();
+  await window.getByRole('menuitem', { name: item }).click();
+  await window.waitForTimeout(250);
+}
+
 async function main() {
   console.log('1. preparing media and building the app');
   await prepare();
@@ -653,7 +660,7 @@ async function main() {
       `closed ${mixerClosed}, master ${afterMixer.master}, ducking ${afterMixer.ducking}`);
 
     const beforeSettings = await projectNow();
-    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    await openWindowMenu(window, 'Project settings...');
     const settings = window.locator('div.panel', { hasText: 'Project settings' });
     await settings.waitFor({ state: 'visible', timeout: 10_000 });
 
@@ -796,7 +803,7 @@ async function main() {
     // Every border drags, as in DaVinci Resolve. Measured on the panels
     // themselves, not on the handle: a handle that moves without resizing
     // anything cannot pass.
-    const mediaPanel = window.locator('aside').filter({ hasText: 'Transparent background' }).first();
+    const mediaPanel = window.getByTestId('media-panel');
     const timelinePanel = window.locator('section.panel').filter({ has: window.getByTitle('Split at playhead (B)') }).first();
     const dragHandle = async (name, dx, dy) => {
       const box = await window.getByRole('separator', { name }).boundingBox();
@@ -1416,6 +1423,192 @@ async function main() {
       afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
       `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
 
+    /* The Window menu -------------------------------------------------------- */
+    // Final Cut hides the browser and the inspector from its Window menu; the
+    // point of hiding one is the room it gives back, so that is what is
+    // measured rather than the menu having been clicked.
+    const previewWidth = () => window.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      const preview = canvas?.closest('section');
+      return preview ? Math.round(preview.getBoundingClientRect().width) : 0;
+    });
+
+    const widthWithMedia = await previewWidth();
+    const mediaWidthBefore = Math.round((await window.getByTestId('media-panel').boundingBox()).width);
+    await openWindowMenu(window, 'Hide media');
+    const mediaGone = await window.getByTestId('media-panel').count();
+    const widthWithout = await previewWidth();
+    check('hiding the media panel gives its room to the picture',
+      mediaGone === 0 && widthWithout > widthWithMedia,
+      `preview ${widthWithMedia} -> ${widthWithout} px, media panel ${mediaGone === 0 ? 'gone' : 'still there'}`);
+
+    await openWindowMenu(window, 'Show media');
+    const mediaBack = await window.getByTestId('media-panel').count();
+    const mediaWidthAfter = Math.round((await window.getByTestId('media-panel').boundingBox()).width);
+    check('showing it again puts it back at the width it had',
+      mediaBack === 1 && Math.abs(mediaWidthAfter - mediaWidthBefore) <= 2,
+      `${mediaWidthAfter} px, was ${mediaWidthBefore} px`);
+
+    await openWindowMenu(window, 'Hide inspector');
+    const inspectorGone = await window.getByTestId('inspector-panel').count();
+    await openWindowMenu(window, 'Show inspector');
+    const inspectorBack = await window.getByTestId('inspector-panel').count();
+    check('the inspector hides and comes back the same way',
+      inspectorGone === 0 && inspectorBack === 1,
+      `hidden ${inspectorGone === 0}, back ${inspectorBack === 1}`);
+
+    /* Readable, reachable interface ----------------------------------------- */
+    // Contrast measured on the running editor rather than on a palette: what
+    // matters is the colour a line of text ends up on after everything behind
+    // it is composited, which only the browser knows.
+    const readContrast = async () => window.evaluate(() => {
+      const parse = (value) => {
+        const match = /^rgba?\(([^)]+)\)$/.exec((value || '').trim().toLowerCase());
+        if (!match) return null;
+        const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number.parseFloat);
+        if (parts.length < 3 || parts.some(Number.isNaN)) return null;
+        return { rgb: parts.slice(0, 3), alpha: parts.length > 3 ? parts[3] : 1 };
+      };
+      const luminance = ([r, g, b]) => {
+        const channel = (eight) => {
+          const v = Math.min(255, Math.max(0, eight)) / 255;
+          return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+        };
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+      };
+      const over = (top, alpha, bottom) => top.map((v, i) => v * alpha + bottom[i] * (1 - alpha));
+      const ratio = (a, b) => {
+        const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+      };
+
+      /** What is really behind an element, walking up through transparency. */
+      const backgroundFor = (element) => {
+        let node = element;
+        let stack = [];
+        while (node) {
+          const colour = parse(getComputedStyle(node).backgroundColor);
+          if (colour && colour.alpha > 0) {
+            if (colour.alpha >= 0.999) {
+              let result = colour.rgb;
+              for (const { rgb, alpha } of stack.reverse()) result = over(rgb, alpha, result);
+              return result;
+            }
+            stack.push(colour);
+          }
+          node = node.parentElement;
+        }
+        return [13, 15, 20]; // the page itself
+      };
+
+      const worst = [];
+      for (const element of document.querySelectorAll('body *')) {
+        const style = getComputedStyle(element);
+        if (style.visibility === 'hidden' || style.display === 'none') continue;
+        if (Number.parseFloat(style.opacity) < 0.95) continue;
+        // Only elements with their own visible words.
+        const own = [...element.childNodes]
+          .filter((node) => node.nodeType === 3)
+          .map((node) => node.textContent.trim())
+          .join('');
+        if (own.length === 0) continue;
+        const box = element.getBoundingClientRect();
+        if (box.width < 2 || box.height < 2) continue;
+        // A disabled control is allowed to look disabled; WCAG exempts it.
+        if (element.closest('[disabled], [aria-disabled="true"]')) continue;
+
+        const colour = parse(style.color);
+        if (!colour) continue;
+        const background = backgroundFor(element);
+        const value = ratio(over(colour.rgb, colour.alpha, background), background);
+        const size = Number.parseFloat(style.fontSize);
+        const bold = Number.parseInt(style.fontWeight, 10) >= 700;
+        // 1.4.3: 3:1 only for 24px, or 18.66px bold. Everything here is small.
+        const needed = size >= 24 || (size >= 18.66 && bold) ? 3 : 4.5;
+        if (value < needed) {
+          worst.push({
+            text: own.slice(0, 40),
+            colour: style.color,
+            size: Math.round(size * 10) / 10,
+            ratio: Math.round(value * 100) / 100,
+            needed,
+          });
+        }
+      }
+      return worst;
+    });
+
+    const lowContrast = await readContrast();
+    check('every line of text on screen reads at 4.5:1 or better',
+      lowContrast.length === 0,
+      lowContrast.length === 0
+        ? 'measured on the running editor'
+        : lowContrast.slice(0, 4).map((entry) => `"${entry.text}" ${entry.ratio}:1 (${entry.colour}, ${entry.size}px)`).join(' | '));
+
+    // The keyboard: Tab has to leave a ring you can see. Pressed for real,
+    // because the ring is :focus-visible - focusing by script shows nothing,
+    // which is the point of that selector.
+    await window.evaluate(() => document.body.focus());
+    await window.keyboard.press('Tab');
+    await window.waitForTimeout(150);
+    const focusRing = await window.evaluate(() => {
+      const element = document.activeElement;
+      if (!element || element === document.body) return { found: false };
+      const style = getComputedStyle(element);
+      const rgb = /rgba?\(([^)]+)\)/.exec(style.outlineColor);
+      return {
+        found: true,
+        on: element.getAttribute('data-testid') ?? element.getAttribute('aria-label') ?? element.tagName,
+        width: Number.parseFloat(style.outlineWidth),
+        style: style.outlineStyle,
+        colour: style.outlineColor,
+        // Against the darkest panel it could sit on, by the 3:1 of 1.4.11.
+        ratio: rgb
+          ? (() => {
+              const channel = (eight) => {
+                const v = Math.min(255, Math.max(0, eight)) / 255;
+                return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+              };
+              const parts = rgb[1].split(/[\s,/]+/).filter(Boolean).map(Number.parseFloat);
+              const lum = (c) => 0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2]);
+              const [hi, lo] = [lum(parts), lum([26, 31, 46])].sort((a, b) => b - a);
+              return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100;
+            })()
+          : 0,
+      };
+    });
+    check('tabbing leaves a ring at least 2px thick, visible against the panel',
+      focusRing.found && focusRing.style !== 'none' && focusRing.width >= 2 && focusRing.ratio >= 3,
+      JSON.stringify(focusRing));
+
+    // "?" brings up the list of keys, and Escape puts it away.
+    await window.getByTestId('project-name').click();
+    await window.keyboard.press('?');
+    await window.waitForTimeout(300);
+    const shortcutsShown = await window.getByTestId('shortcuts-dialog').count();
+    const shortcutLines = await window.evaluate(() =>
+      document.querySelectorAll('[data-testid="shortcuts-dialog"] kbd').length);
+    await window.keyboard.press('Escape');
+    await window.waitForTimeout(300);
+    const shortcutsGone = await window.getByTestId('shortcuts-dialog').count();
+    // What the list claims for the tools, pressed one at a time. The other
+    // claims - the marks, J/K/L, the trims, linking, speed - have checks of
+    // their own further up; this is the part nothing else covers.
+    const toolKeys = [['v', 'select'], ['c', 'razor'], ['h', 'hand'], ['t', 'trim'], ['v', 'select']];
+    const toolResults = [];
+    for (const [key, expected] of toolKeys) {
+      await window.keyboard.press(key);
+      await window.waitForTimeout(80);
+      const tool = await window.evaluate(() => window.__scfStore.getState().ui.tool);
+      toolResults.push(`${key}->${tool}${tool === expected ? '' : ` (wanted ${expected})`}`);
+    }
+    check('the tool keys the list promises really pick those tools',
+      toolResults.every((entry) => !entry.includes('wanted')), toolResults.join(' '));
+
+    check('"?" opens the keyboard shortcuts, Escape closes them',
+      shortcutsShown === 1 && shortcutLines > 20 && shortcutsGone === 0,
+      `open ${shortcutsShown}, ${shortcutLines} keys listed, closed ${shortcutsGone === 0}`);
+
     /* Clip speed ------------------------------------------------------------- */
     // Retiming, on a track of its own. The checks that matter are the two
     // about the picture: a retimed clip has to show the frame of footage the
@@ -1708,7 +1901,7 @@ async function main() {
       `${kept.length} copies, newest ${kept[0]?.savedAt ?? 'none'}`);
 
     // The backups are listed in Settings, and one can be put back on screen.
-    await window.getByRole('button', { name: 'Settings' }).click();
+    await openWindowMenu(window, 'Project settings...');
     await window.waitForTimeout(400);
     const listed = await window.getByTestId('backup-list').count();
     const intervalShown = await window.getByTestId('autosave-interval').inputValue().catch(() => 'none');
@@ -1855,7 +2048,7 @@ async function main() {
       `${reopenedBins.count} bins; still-a.png in ${reopenedBins.dayOne}`);
 
     const reopenedMediaWidth = Math.round(
-      (await window.locator('aside').filter({ hasText: 'Transparent background' }).first().boundingBox()).width,
+      (await window.getByTestId('media-panel').boundingBox()).width,
     );
     const reopenedTitle = await second.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle());
     check('the window is titled after the open project', reopenedTitle === 'ui-project - STOOK CREATOR FILMS', reopenedTitle);

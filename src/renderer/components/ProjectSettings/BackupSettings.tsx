@@ -86,7 +86,7 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
           ))}
         </select>
       </label>
-      <p className="text-2xs leading-relaxed text-slate-500">
+      <p className="text-2xs leading-relaxed text-slate-400">
         A saved project is written back to its own file. Work that has never
         been saved is kept in the app instead, and offered back on the next
         start - nothing is written anywhere you did not choose.
@@ -95,10 +95,10 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
       <div className="space-y-1">
         <span className="field-label">Earlier versions of this project</span>
         {!projectPath && (
-          <p className="text-2xs text-slate-500">Save the project once, and its earlier versions are kept here.</p>
+          <p className="text-2xs text-slate-400">Save the project once, and its earlier versions are kept here.</p>
         )}
         {projectPath && backups?.length === 0 && (
-          <p className="text-2xs text-slate-500">No earlier versions yet - the first save is the first copy.</p>
+          <p className="text-2xs text-slate-400">No earlier versions yet - the first save is the first copy.</p>
         )}
         {backups && backups.length > 0 && (
           <ul className="max-h-40 space-y-1 overflow-y-auto" data-testid="backup-list">
@@ -106,7 +106,7 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
               <li key={backup.file} className="list-item flex items-center justify-between gap-2 px-2 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
                   {new Date(backup.savedAt).toLocaleString()}
-                  <span className="pl-2 text-2xs text-slate-500">{relativeTime(backup.savedAt, now)}</span>
+                  <span className="pl-2 text-2xs text-slate-400">{relativeTime(backup.savedAt, now)}</span>
                 </span>
                 <button
                   type="button"
