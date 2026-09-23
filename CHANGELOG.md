@@ -11,13 +11,19 @@ Cifras de referencia al día de hoy: **730 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **125/125 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **118/118** con la v1.24.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **126/126** con la v1.25.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
 
 ---
 
-## Sin publicar — Fundidos de entrada y salida
-En `main`, sin instalador todavía.
+## v1.25.0-beta.1 — Fundidos, y un visor que se deja mirar
+2026-09-23 · pre-release para probar
+
+Dos tandas de trabajo en una entrega: los fundidos de clip, y el visor.
+
+---
+
+### Fundidos de entrada y salida
 
 ### Añadido
 - **Asas de fundido en cada esquina superior del clip**, como en Resolve:
@@ -57,8 +63,7 @@ En `main`, sin instalador todavía.
 
 ---
 
-## Sin publicar — El visor: se mira, y cuando hace falta se toca
-En `main`, sin instalador todavía.
+### El visor: se mira, y cuando hace falta se toca
 
 ### Arreglado
 - **El recuadro de transformar ya no está siempre puesto.** Se quedaba
