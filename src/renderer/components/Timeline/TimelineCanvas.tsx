@@ -456,6 +456,37 @@ export function hitsPlayheadScissors(project: ProjectState, ui: EditorUiState, x
   return Math.abs(x - playheadX) <= SCISSORS_HALF + 1 && Math.abs(y - SCISSORS_Y) <= SCISSORS_HALF + 1;
 }
 
+/**
+ * The scissors on the playhead's head, drawn rather than typed.
+ *
+ * It used to be the character U+2702 in a `fillText`. Two things were wrong
+ * with that: the glyph depends on whichever font the machine has, and the
+ * character itself did not survive a file being rewritten in the wrong
+ * encoding - it shipped as "â", three letters crammed into a
+ * 14px badge. Paths cannot be mojibaked.
+ */
+function drawScissors(context: CanvasRenderingContext2D, x: number, y: number, colour: string): void {
+  context.save();
+  context.strokeStyle = colour;
+  context.lineWidth = 1;
+  context.lineCap = 'round';
+
+  // Two blades crossing just above the middle.
+  context.beginPath();
+  context.moveTo(x - 2.2, y + 2.4);
+  context.lineTo(x + 1.9, y - 3);
+  context.moveTo(x + 2.2, y + 2.4);
+  context.lineTo(x - 1.9, y - 3);
+  context.stroke();
+
+  // The two rings the fingers go through, kept clear of the tab's point.
+  context.beginPath();
+  context.arc(x - 2.5, y + 3.3, 1.25, 0, Math.PI * 2);
+  context.arc(x + 2.5, y + 3.3, 1.25, 0, Math.PI * 2);
+  context.stroke();
+  context.restore();
+}
+
 function drawPlayhead(
   context: CanvasRenderingContext2D,
   project: ProjectState,
@@ -464,33 +495,46 @@ function drawPlayhead(
 ): void {
   const x = Math.round(frameToPixel(project.currentFrame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
 
-  // Scissors on the playhead, as in Filmora: a click cuts at this line.
-  context.fillStyle = '#f87171';
+  /*
+    One head, not two. There used to be a triangle at the very top and a
+    separate red square below it, which read as two marks arguing about where
+    the playhead was. This is a single tab, rounded at the top and pointed at
+    the bottom, sitting on the line it belongs to - the shape Resolve and
+    Premiere both use - with the scissors inside it, because a click there
+    cuts, as it does in Filmora.
+  */
+  const halfWidth = SCISSORS_HALF;
+  const top = 2;
+  const bottom = SCISSORS_Y + SCISSORS_HALF;
+
+  context.save();
   context.beginPath();
-  context.roundRect(x - SCISSORS_HALF, SCISSORS_Y - SCISSORS_HALF, SCISSORS_HALF * 2, SCISSORS_HALF * 2, 3);
+  context.moveTo(x - halfWidth, top + 3);
+  context.quadraticCurveTo(x - halfWidth, top, x - halfWidth + 3, top);
+  context.lineTo(x + halfWidth - 3, top);
+  context.quadraticCurveTo(x + halfWidth, top, x + halfWidth, top + 3);
+  context.lineTo(x + halfWidth, bottom - 4);
+  context.lineTo(x, bottom);
+  context.lineTo(x - halfWidth, bottom - 4);
+  context.closePath();
+
+  context.fillStyle = '#f87171';
   context.fill();
-  context.fillStyle = '#1a1b1e';
-  context.font = '11px sans-serif';
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  context.fillText('âœ‚', x, SCISSORS_Y + 0.5);
-  context.textAlign = 'start';
-  context.textBaseline = 'alphabetic';
+  // A hairline of shadow under the head, so it lifts off the ruler instead of
+  // sitting in it.
+  context.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+  context.lineWidth = 1;
+  context.stroke();
+  context.restore();
+
+  drawScissors(context, x, SCISSORS_Y - 2, '#1a1b1e');
 
   context.strokeStyle = '#f87171';
   context.lineWidth = 1;
   context.beginPath();
-  context.moveTo(x, SCISSORS_Y + SCISSORS_HALF);
+  context.moveTo(x, bottom);
   context.lineTo(x, height);
   context.stroke();
-
-  context.fillStyle = '#f87171';
-  context.beginPath();
-  context.moveTo(x - 5, 0);
-  context.lineTo(x + 5, 0);
-  context.lineTo(x, 8);
-  context.closePath();
-  context.fill();
 }
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {

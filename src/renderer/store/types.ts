@@ -69,6 +69,21 @@ export interface EditorUiState {
   pixelArtViewport: boolean;
   showTransparencyGrid: boolean;
   /**
+   * The transform handles in the viewer.
+   *
+   * Off until asked for, as in Final Cut: a box drawn over the picture
+   * whenever a clip happens to be selected is a box drawn over the picture
+   * nearly always, and what the viewer is for is watching.
+   */
+  transformMode: boolean;
+  /**
+   * The viewer filling the window, for watching rather than editing.
+   *
+   * The same component, given the whole window: moving it somewhere else
+   * in the tree would rebuild the WebGL context and every decoder with it.
+   */
+  fullscreenViewer: boolean;
+  /**
    * Width of the visible timeline area, measured by the Timeline. Kept here so
    * store actions can fit or reveal content without reaching into the DOM.
    */
@@ -102,6 +117,8 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   loopPlayback: false,
   pixelArtViewport: false,
   showTransparencyGrid: true,
+  transformMode: false,
+  fullscreenViewer: false,
   viewportWidthPx: 0,
   selectedMarkerId: null,
   inFrame: null,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { evaluateTransform } from '@renderer/engine/KeyframeEvaluator';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import type { Clip, ResolvedTransform } from '@shared/types';
@@ -13,6 +13,7 @@ import {
   quadCorners,
   rotationFromPointer,
   scaleFromHandle,
+  snappedPosition,
   type Handle,
   type Point,
 } from './viewportTransform';
@@ -29,8 +30,14 @@ import {
  * exactly where the compositor puts the picture, at any viewer size.
  */
 
-/** How big the grips are on screen, whatever the viewer is scaled to. */
-const HANDLE_CSS_PX = 9;
+/**
+ * How big the grips are on screen, whatever the viewer is scaled to.
+ *
+ * Small and light: Final Cut draws these as little dots on a hairline, and
+ * the picture underneath is the thing being judged. They were 9px squares
+ * on a 1.5px fence, which read as a cage around the shot.
+ */
+const HANDLE_CSS_PX = 7;
 const ROTATE_ARM_CSS_PX = 26;
 /** Shift-rotate lands on multiples of this. */
 const ROTATION_SNAP_DEGREES = 15;
@@ -43,6 +50,16 @@ const ROTATION_SNAP_DEGREES = 15;
  * inside the panel.
  */
 const OVERFLOW_CSS_PX = 14;
+/**
+ * How close a moved picture has to come before the magnet takes it, in pixels
+ * on screen.
+ *
+ * On screen, not in the project: a fraction of the frame width means the
+ * magnet is 38px wide in a 4K project and 3px wide in a 320px one, so the
+ * same gesture sticks in one and slips in the other. Ten pixels of pointer
+ * travel is what it feels like either way.
+ */
+const SNAP_CSS_PX = 10;
 
 /** The cursor that says what a grip will do. */
 const cursorFor = (handle: Handle): string => {
@@ -59,12 +76,16 @@ type Drag =
 export function ViewportControls(): JSX.Element | null {
   const project = useProjectStore((state) => state.project);
   const selectedClipIds = useProjectStore((state) => state.ui.selectedClipIds);
+  const transformMode = useProjectStore((state) => state.ui.transformMode);
+  const snapping = useProjectStore((state) => state.ui.snappingEnabled);
   const setUi = useProjectStore((state) => state.setUi);
   const setTransformAt = useProjectStore((state) => state.setTransformAt);
 
   const surfaceRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
+  /** Which guide lines to draw while a drag is held against them. */
+  const [guides, setGuides] = useState({ vertical: false, horizontal: false });
   const [projectPxPerCssPx, setProjectPxPerCssPx] = useState(1);
 
   const frame = useMemo(() => ({ width: project.width, height: project.height }), [project.width, project.height]);
@@ -82,10 +103,17 @@ export function ViewportControls(): JSX.Element | null {
       .sort((a, b) => (tracks.get(a.trackId)?.order ?? 0) - (tracks.get(b.trackId)?.order ?? 0));
   }, [project.clips, project.tracks, currentFrame]);
 
+  /**
+   * The clip being transformed: one selected clip, with the mode on.
+   *
+   * Both conditions matter. Final Cut asks for the mode (Shift+T) and
+   * Premiere asks for the selection; wanting neither means wanting to
+   * watch the picture, which is what a viewer is for.
+   */
   const selected: Clip | null = useMemo(() => {
-    if (selectedClipIds.length !== 1) return null;
+    if (!transformMode || selectedClipIds.length !== 1) return null;
     return visibleClips.find((clip) => clip.id === selectedClipIds[0]) ?? null;
-  }, [selectedClipIds, visibleClips]);
+  }, [transformMode, selectedClipIds, visibleClips]);
 
   const resolved = useMemo(
     () => (selected ? evaluateTransform(selected.transform, currentFrame) : null),
@@ -128,7 +156,14 @@ export function ViewportControls(): JSX.Element | null {
 
       if (drag.kind === 'move') {
         const delta = { x: pointer.x - drag.startPointer.x, y: pointer.y - drag.startPointer.y };
-        setTransformAt(selected.id, currentFrame, { position: movedPosition(drag.startTransform, delta) });
+        const wanted = movedPosition(drag.startTransform, delta);
+        // The magnet, unless it is switched off or Alt asks for the exact
+        // pixel under the pointer - the escape hatch every snap needs.
+        const snap = snapping && !event.altKey
+          ? snappedPosition(wanted, drag.startTransform, frame, SNAP_CSS_PX * projectPxPerCssPx)
+          : { position: wanted, vertical: false, horizontal: false };
+        setGuides({ vertical: snap.vertical, horizontal: snap.horizontal });
+        setTransformAt(selected.id, currentFrame, { position: snap.position });
         return;
       }
       if (drag.kind === 'scale') {
@@ -148,12 +183,15 @@ export function ViewportControls(): JSX.Element | null {
         }),
       });
     },
-    [selected, pointerToProject, setTransformAt, currentFrame, frame],
+    [selected, pointerToProject, setTransformAt, currentFrame, frame, snapping, projectPxPerCssPx],
   );
 
   const endDrag = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     dragRef.current = null;
     setDragging(false);
+    // The guides say "this is why it stopped here" during a drag; afterwards
+    // they would just be lines across the picture.
+    setGuides({ vertical: false, horizontal: false });
     const surface = surfaceRef.current;
     if (surface?.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
   }, []);
@@ -201,7 +239,7 @@ export function ViewportControls(): JSX.Element | null {
   if (project.width === 0 || project.height === 0) return null;
 
   const handleSize = HANDLE_CSS_PX * projectPxPerCssPx;
-  const stroke = 1.5 * projectPxPerCssPx;
+  const stroke = 1 * projectPxPerCssPx;
   const corners = resolved ? quadCorners(resolved, frame) : [];
   const grips = resolved ? handlePositions(resolved, frame) : null;
   const pivot = resolved ? anchorPosition(resolved, frame) : null;
@@ -234,12 +272,51 @@ export function ViewportControls(): JSX.Element | null {
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
+      {/* Guides, drawn only while a drag is held against them. */}
+      {dragging && guides.vertical && (
+        <line
+          data-testid="viewport-guide-vertical"
+          x1={project.width / 2}
+          y1={-overflow}
+          x2={project.width / 2}
+          y2={project.height + overflow}
+          stroke="#f472b6"
+          strokeWidth={stroke}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
+      )}
+      {dragging && guides.horizontal && (
+        <line
+          data-testid="viewport-guide-horizontal"
+          x1={-overflow}
+          y1={project.height / 2}
+          x2={project.width + overflow}
+          y2={project.height / 2}
+          stroke="#f472b6"
+          strokeWidth={stroke}
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
+      )}
+
       {resolved && grips && corners.length === 4 && (
         <g>
+          {/* Two strokes, one dark under one light: a single colour is
+              invisible on a picture of the same colour, and a thicker line
+              is a fence. */}
           <polygon
             points={corners.map((corner) => `${corner.x},${corner.y}`).join(' ')}
             fill="transparent"
-            stroke="#60a5fa"
+            stroke="rgba(0, 0, 0, 0.45)"
+            strokeWidth={stroke * 2}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+          <polygon
+            points={corners.map((corner) => `${corner.x},${corner.y}`).join(' ')}
+            fill="transparent"
+            stroke="rgba(255, 255, 255, 0.9)"
             strokeWidth={stroke}
             vectorEffect="non-scaling-stroke"
             style={{ cursor: 'move' }}

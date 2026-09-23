@@ -337,8 +337,14 @@ export function useEditorShortcuts(): void {
           store.setTool('hand');
           return;
         case 't':
-          // The trim tool: ripple, roll, slip or slide, by where the pointer is.
-          store.setTool('trim');
+          // Shift+T puts the transform handles on the selected clip, the key
+          // Final Cut uses; plain T is the trim tool.
+          if (event.shiftKey) store.setUi({ transformMode: !store.ui.transformMode });
+          else store.setTool('trim');
+          return;
+        case 'f':
+          // Shift+F fills the window with the picture; Escape comes back.
+          if (event.shiftKey) store.setUi({ fullscreenViewer: !store.ui.fullscreenViewer });
           return;
         case 'b':
           // Razor at the playhead, the keyboard equivalent of a razor click.

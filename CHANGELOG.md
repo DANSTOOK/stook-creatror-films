@@ -7,12 +7,67 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **711 pruebas unitarias**, **21/21
-comprobaciones de extremo a extremo**, **117/117 comprobaciones de interfaz** (contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **720 pruebas unitarias**, **21/21
+comprobaciones de extremo a extremo**, **122/122 comprobaciones de interfaz** (el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **118/118** con la v1.24.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## Sin publicar — El visor: se mira, y cuando hace falta se toca
+En `main`, sin instalador todavía.
+
+### Arreglado
+- **El recuadro de transformar ya no está siempre puesto.** Se quedaba
+  encima de la imagen con solo tener un clip seleccionado, que es casi
+  siempre. Ahora es un **modo**: se enciende con el botón **Transform** del
+  visor o con **Shift+T** —la tecla de Final Cut— y necesita además un clip
+  seleccionado, como en Premiere. Sin eso, el visor está limpio.
+- **El trazo era grueso y tosco**: una valla azul de 1,5 px con tiradores de
+  9. Ahora es un **hilo blanco de 1 px** sobre otro oscuro —para que se vea
+  igual sobre una imagen clara que sobre una oscura— con tiradores de 7.
+- **El cabezal del cursor mostraba letras raras** (`âœ‚`). El carácter de la
+  tijera se estropeó al reescribir ese fichero con la codificación
+  equivocada, en la v1.23, y llegó así a la v1.24. La tijera ahora **se dibuja
+  con vectores**: no depende de ninguna fuente ni de ninguna codificación, así
+  que no puede volver a romperse. De paso, el cursor pasa de **dos marcas
+  discutiendo dónde está** —un triángulo arriba y un cuadrado debajo— a una
+  sola pestaña en punta apoyada en su línea, como en Resolve y Premiere.
+- **El imán del visor se medía en píxeles del proyecto**, así que tiraba 38 px
+  en 4K y 3 px en un proyecto de 320. Ahora son **10 px de pantalla**, y se
+  siente igual con cualquier metraje.
+
+### Añadido
+- **Visor a pantalla completa** (**Shift+F**, o el botón junto a Transform;
+  **Esc** vuelve). Es el mismo panel estirado a la ventana entera, no otro
+  componente: mover el visor en el árbol reconstruiría el contexto de WebGL y
+  con él todos los decodificadores.
+- **Imán al colocar una imagen en el visor.** Al arrastrarla, se pega al
+  **centro del cuadro** y a los **bordes** —la posición en la que el borde de
+  la imagen cae justo sobre el del cuadro—, con una **guía magenta** mientras
+  la sujetas ahí. **Alt** la suelta y da el píxel exacto bajo el puntero.
+  Centrar un encuadre era ir de píxel en píxel.
+
+### Cómo se comprobó
+- 9 pruebas unitarias de las reglas del imán: el centro, los bordes a cualquier
+  escala (incluida una escala negativa), cuál de dos líneas cercanas gana, y
+  que una tolerancia de cero es la forma de apagarlo.
+- 5 comprobaciones de interfaz **en la aplicación**: que los tiradores no
+  aparecen hasta pedirlos y desaparecen al deseleccionar, que Shift+F llena la
+  ventana y Esc la devuelve (984x553 → 1664x921 → 984x553), y un **arrastre
+  con el ratón** que acaba exactamente en 0,0 con las dos guías puestas, más
+  el mismo arrastre con Alt que acaba donde lo dejó el puntero.
+
+### Arreglado en el arnés de pruebas
+- **Una ventana de prueba se quedaba en el escritorio esperando respuesta.** La
+  segunda sesión terminaba sujetando trabajo recuperado sin guardar y disparaba
+  el aviso nativo de «¿guardar cambios?», que bloquea el cierre de Electron; la
+  prueba se quedaba ahí colgada hasta que alguien la respondía. Esa sesión ya
+  no pregunta —el aviso se sigue comprobando en la primera, que es donde
+  toca— y, por si acaso, **el cierre tiene un tope de 8 segundos** tras el cual
+  se termina el proceso y el run continúa.
 
 ---
 

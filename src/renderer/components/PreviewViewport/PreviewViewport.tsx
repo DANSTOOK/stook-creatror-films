@@ -4,6 +4,9 @@ import {
   ChevronLast,
   Grid2x2,
   Grip,
+  Maximize2,
+  Minimize2,
+  Move,
   Pause,
   Play,
   Repeat,
@@ -30,10 +33,38 @@ export function PreviewViewport(): JSX.Element {
   const duration = framesToTimecode(project.durationFrames, project.fps);
 
   return (
-    <section className="panel min-w-0 flex-1">
+    <section
+      data-testid="preview-panel"
+      className={
+        ui.fullscreenViewer
+          ? 'panel fixed inset-0 z-40 rounded-none border-0'
+          : 'panel min-w-0 flex-1'
+      }
+    >
       <header className="panel-header justify-between">
         <span>Preview</span>
         <div className="flex items-center gap-1 normal-case tracking-normal">
+          <button
+            type="button"
+            data-testid="transform-mode"
+            title="Transform (Shift+T) - handles on the selected clip, for moving, scaling and turning it"
+            aria-pressed={ui.transformMode}
+            className={`tool-button ${ui.transformMode ? 'tool-button-active' : ''}`}
+            onClick={() => setUi({ transformMode: !ui.transformMode })}
+          >
+            <Move size={14} />
+            Transform
+          </button>
+          <button
+            type="button"
+            data-testid="fullscreen-viewer"
+            title={ui.fullscreenViewer ? 'Leave full screen (Esc)' : 'Full screen (Shift+F) - Esc to come back'}
+            aria-label={ui.fullscreenViewer ? 'Leave full screen' : 'Full screen'}
+            className={`tool-button ${ui.fullscreenViewer ? 'tool-button-active' : ''}`}
+            onClick={() => setUi({ fullscreenViewer: !ui.fullscreenViewer })}
+          >
+            {ui.fullscreenViewer ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
           <button
             type="button"
             title="Nearest-neighbour scaling (pixel art)"

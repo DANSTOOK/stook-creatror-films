@@ -138,6 +138,62 @@ export function movedPosition(start: ResolvedTransform, deltaPx: Point): Vector2
   return { x: start.position.x + deltaPx.x, y: start.position.y + deltaPx.y };
 }
 
+/** Where a dragged picture was pulled into line, for drawing the guides. */
+export interface SnapResult {
+  position: Vector2D;
+  /** Snapped horizontally: the guide runs down the frame. */
+  vertical: boolean;
+  /** Snapped vertically: the guide runs across it. */
+  horizontal: boolean;
+}
+
+/**
+ * Pull a moved picture onto the lines that matter.
+ *
+ * Centring a shot by hand is a game of one pixel at a time, and every
+ * editor answers it the same way: the drag sticks to the middle of the
+ * frame and to the frame's own edges, and says so with a guide. The
+ * candidates are the centre (position 0) and the offsets that put the
+ * picture's edges on the frame's, so a clip can be pushed flush left or
+ * right without measuring.
+ *
+ * `toleranceP0x` is in project pixels - the same units as the position -
+ * so the stickiness is the same however the viewer is scaled.
+ */
+export function snappedPosition(
+  position: Vector2D,
+  transform: ResolvedTransform,
+  frame: FrameSize,
+  tolerancePx: number,
+): SnapResult {
+  if (tolerancePx <= 0) return { position, vertical: false, horizontal: false };
+
+  // Half the gap between the picture and the frame, which is where an edge
+  // of the picture meets the matching edge of the frame.
+  const halfSpareX = Math.abs((frame.width * (1 - Math.abs(transform.scale.x))) / 2);
+  const halfSpareY = Math.abs((frame.height * (1 - Math.abs(transform.scale.y))) / 2);
+
+  const nearest = (value: number, candidates: readonly number[]): number | null => {
+    let best: number | null = null;
+    for (const candidate of candidates) {
+      const distance = Math.abs(value - candidate);
+      if (distance <= tolerancePx && (best === null || distance < Math.abs(value - best))) {
+        best = candidate;
+      }
+    }
+    return best;
+  };
+
+  const x = nearest(position.x, [0, -halfSpareX, halfSpareX]);
+  const y = nearest(position.y, [0, -halfSpareY, halfSpareY]);
+
+  return {
+    position: { x: x ?? position.x, y: y ?? position.y },
+    vertical: x !== null,
+    horizontal: y !== null,
+  };
+}
+
 /** Is `pointerPx` on the clip? What decides whether a drag starts. */
 export function containsPoint(transform: ResolvedTransform, pointerPx: Point, frame: FrameSize): boolean {
   const quad = quadOf(transform, frame);

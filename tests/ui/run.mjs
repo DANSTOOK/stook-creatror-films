@@ -184,6 +184,28 @@ async function openWindowMenu(window, item) {
   await window.waitForTimeout(250);
 }
 
+/**
+ * Close an app, and give up on asking nicely after a few seconds.
+ *
+ * A native dialog - "Save changes to...?" - blocks Electron's close for as
+ * long as it is open, and Playwright waits for it. Left alone overnight that
+ * is a window sitting on somebody's desktop and a test run that never
+ * finishes. The window is killed if it will not go.
+ */
+async function closeApp(app, seconds = 8) {
+  const closed = app.close().then(() => true, () => true);
+  const timedOut = new Promise((resolve) => setTimeout(() => resolve(false), seconds * 1000));
+  if (await Promise.race([closed, timedOut])) return;
+
+  console.log(`   (a window would not close in ${seconds}s - ending it)`);
+  const process_ = app.process();
+  try {
+    process_.kill('SIGKILL');
+  } catch {
+    // Already gone, which is the outcome wanted anyway.
+  }
+}
+
 async function main() {
   console.log('1. preparing media and building the app');
   await prepare();
@@ -291,7 +313,13 @@ async function main() {
     // The clip lands on Video 1, the lower of the two picture rows (the one
     // above covers it, as in every editor).
     await window.locator('canvas').last().click({ position: { x: 60, y: VIDEO1_ROW_Y } });
-    const inspectorHasClip = await window.getByText('TRANSFORM').isVisible().catch(() => false);
+    // The inspector names the clip it is inspecting, which is proof the click
+    // selected one. "TRANSFORM" is a heading in that panel and also the name
+    // of the viewer's mode, so it is the wrong word to look for.
+    const inspectorHasClip = await window.evaluate(() => {
+      const { ui, project } = window.__scfStore.getState();
+      return ui.selectedClipIds.length === 1 && Boolean(project.clips[ui.selectedClipIds[0]]);
+    });
     check('clip lands on the timeline and can be selected', inspectorHasClip);
 
     /* The hand tool -------------------------------------------------------- */
@@ -721,9 +749,16 @@ async function main() {
       };
     });
 
+    // The handles are a mode, as they are in Final Cut: a selected clip on
+    // its own leaves the viewer alone.
+    const handlesBeforeMode = await window.evaluate(() =>
+      document.querySelectorAll('[data-testid^="viewport-handle-"]').length);
+    await window.evaluate(() => window.__scfStore.getState().setUi({ transformMode: true }));
     const viewportGrip = window.getByTestId('viewport-handle-topRight');
     const viewportGripShown = await viewportGrip.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
-    check('selecting a clip puts handles on it in the viewer', viewportGripShown);
+    check('the transform mode puts handles on the selected clip, and nothing before it',
+      viewportGripShown && handlesBeforeMode === 0,
+      `${handlesBeforeMode} handles before the mode, grip visible ${viewportGripShown}`);
 
     const beforeViewportDrag = await viewportTransformNow();
     const viewportGripBox = await viewportGrip.boundingBox();
@@ -1423,6 +1458,115 @@ async function main() {
       afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
       `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
 
+    /* The viewer: transform mode, full screen, and the magnet ---------------- */
+    const viewerClip = await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      const track = store.project.tracks.find((candidate) => candidate.type === 'video');
+      const id = store.addAssetToTimeline(video, track.id, 3000);
+      const state = window.__scfStore.getState();
+      state.setCurrentFrame(3010);
+      state.selectClips([id]);
+      // An earlier check turned the mode on to drag a grip; this one is about
+      // what happens before anyone asks for it.
+      state.setUi({ transformMode: false });
+      // Half size, so there is room to push it about inside the frame.
+      window.__scfStore.getState().setTransformAt(id, 3010, { scale: { x: 0.5, y: 0.5 } });
+      return id;
+    });
+    await window.waitForTimeout(400);
+
+    const handleCount = () => window.evaluate(() =>
+      document.querySelectorAll('[data-testid^="viewport-handle-"]').length);
+
+    const beforeTransform = await handleCount();
+    await window.getByTestId('project-name').click();
+    await window.keyboard.press('Shift+T');
+    await window.waitForTimeout(300);
+    const withTransform = await handleCount();
+    check('the handles wait to be asked for, and Shift+T asks',
+      beforeTransform === 0 && withTransform > 0,
+      `selected alone ${beforeTransform}, after Shift+T ${withTransform}`);
+
+    await window.evaluate(() => window.__scfStore.getState().selectClips([]));
+    await window.waitForTimeout(250);
+    const withoutSelection = await handleCount();
+    await window.evaluate((id) => window.__scfStore.getState().selectClips([id]), viewerClip);
+    await window.waitForTimeout(250);
+    check('with nothing selected there is nothing to transform', withoutSelection === 0, `${withoutSelection} handles`);
+
+    // Full screen: the viewer takes the window, Escape gives it back.
+    const viewerSize = () => window.evaluate(() => {
+      const box = document.querySelector('[data-testid="preview-panel"]').getBoundingClientRect();
+      return { w: Math.round(box.width), h: Math.round(box.height) };
+    });
+    const docked = await viewerSize();
+    await window.keyboard.press('Shift+F');
+    await window.waitForTimeout(400);
+    const full = await viewerSize();
+    await window.keyboard.press('Escape');
+    await window.waitForTimeout(400);
+    const backAgain = await viewerSize();
+    check('Shift+F fills the window with the picture, and Escape comes back',
+      full.w > docked.w && full.h > docked.h && backAgain.w === docked.w,
+      `${docked.w}x${docked.h} -> ${full.w}x${full.h} -> ${backAgain.w}x${backAgain.h}`);
+
+    // The magnet: a drag that lands near the middle is taken to it exactly.
+    const positionOf = () => window.evaluate((id) => {
+      const keys = window.__scfStore.getState().project.clips[id].transform.position;
+      return keys.length ? keys[keys.length - 1].value : { x: 0, y: 0 };
+    }, viewerClip);
+
+    const canvasBox = await window.locator('canvas').first().boundingBox();
+    const middle = { x: canvasBox.x + canvasBox.width / 2, y: canvasBox.y + canvasBox.height / 2 };
+
+    // Modest steps: this project is 320px wide, and a drag of 150 screen px
+    // takes the picture out from under the pointer, so the grab that follows
+    // lands on empty surface instead of on the clip.
+    await window.mouse.move(middle.x, middle.y);
+    await window.mouse.down();
+    await window.mouse.move(middle.x + 40, middle.y + 26, { steps: 8 });
+    await window.mouse.up();
+    await window.waitForTimeout(200);
+    const movedAway = await positionOf();
+
+    await window.mouse.move(middle.x + 40, middle.y + 26);
+    await window.mouse.down();
+    await window.mouse.move(middle.x + 3, middle.y + 2, { steps: 10 });
+    await window.waitForTimeout(150);
+    const guidesShown = await window.evaluate(() =>
+      document.querySelectorAll('[data-testid^="viewport-guide-"]').length);
+    await window.mouse.up();
+    await window.waitForTimeout(200);
+    const snapped = await positionOf();
+    const guidesGone = await window.evaluate(() =>
+      document.querySelectorAll('[data-testid^="viewport-guide-"]').length);
+
+    check('a drag that lands near the middle is taken to it exactly, with guides while it is held',
+      Math.abs(movedAway.x) > 10 && snapped.x === 0 && snapped.y === 0 && guidesShown === 2 && guidesGone === 0,
+      `moved to ${Math.round(movedAway.x)},${Math.round(movedAway.y)} then ${snapped.x},${snapped.y}; guides ${guidesShown} held, ${guidesGone} after`);
+
+    // Alt is the way out of the magnet.
+    await window.mouse.move(middle.x, middle.y);
+    await window.mouse.down();
+    await window.keyboard.down('Alt');
+    await window.mouse.move(middle.x + 4, middle.y + 3, { steps: 6 });
+    await window.mouse.up();
+    await window.keyboard.up('Alt');
+    await window.waitForTimeout(200);
+    const exact = await positionOf();
+    check('holding Alt gives the pixel under the pointer instead',
+      exact.x !== 0 && exact.y !== 0, `${exact.x.toFixed(1)},${exact.y.toFixed(1)}`);
+
+    // Leave the editor as the rest of the checks expect it.
+    await window.keyboard.press('Shift+T');
+    await window.evaluate((id) => {
+      const store = window.__scfStore.getState();
+      store.removeClips([id]);
+      store.setCurrentFrame(0);
+    }, viewerClip);
+    await window.waitForTimeout(200);
+
     /* The Window menu -------------------------------------------------------- */
     // Final Cut hides the browser and the inspector from its Window menu; the
     // point of hiding one is the room it gives back, so that is what is
@@ -2001,7 +2145,7 @@ async function main() {
     check('a stray file cannot replace the editor', stillEditor, window.url());
 
   } finally {
-    await app.close().catch(() => undefined);
+    await closeApp(app);
   }
 
   /* A fresh session ---------------------------------------------------------- */
@@ -2015,7 +2159,16 @@ async function main() {
       ? { executablePath: packagedExe, args: [profileArg] }
       : { args: [profileArg, join(projectRoot, 'dist-electron/main/index.js')] }),
     cwd: projectRoot,
-    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined },
+    // No close prompt in this session. The prompt itself is checked in the
+    // first one; here the run ends holding recovered, unsaved work, and a
+    // native dialog nobody answers leaves a window sitting on the desktop
+    // with the whole run stuck behind it.
+    env: {
+      ...process.env,
+      ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
+      ELECTRON_RUN_AS_NODE: undefined,
+      SCF_NO_CLOSE_PROMPT: '1',
+    },
   });
   try {
     const window = await second.firstWindow();
@@ -2095,7 +2248,7 @@ async function main() {
       persistedMediaWidth !== null && Math.abs(reopenedMediaWidth - persistedMediaWidth) <= 2,
       `media panel ${reopenedMediaWidth} px (left at ${persistedMediaWidth})`);
   } finally {
-    await second.close().catch(() => undefined);
+    await closeApp(second);
   }
 
   const failures = checks.filter((entry) => !entry.passed).length;
