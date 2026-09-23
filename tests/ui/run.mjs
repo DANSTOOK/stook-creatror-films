@@ -1458,6 +1458,117 @@ async function main() {
       afterLinks.clips === beforeLinks.clips && afterLinks.tracks === beforeLinks.tracks,
       `${afterLinks.clips} clips on ${afterLinks.tracks} tracks, was ${beforeLinks.clips} on ${beforeLinks.tracks}`);
 
+    /* Fades ------------------------------------------------------------------ */
+    // A grip in each top corner, dragged inwards, as in Resolve. What matters
+    // is the last check: the picture really comes up out of nothing.
+    const fadeSetup = await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const video = store.assets.find((asset) => asset.kind === 'video');
+      store.addTrack('video');
+      const state = window.__scfStore.getState();
+      const track = state.project.tracks
+        .filter((candidate) => candidate.type === 'video')
+        .sort((a, b) => a.order - b.order)
+        .slice(-1)[0];
+      // Past everything else on the timeline, so the frames read here hold
+      // this clip and nothing else.
+      const id = window.__scfStore.getState().addAssetToTimeline(video, track.id, 1000);
+      window.__scfStore.getState().trimClip(id, 'end', 1060);
+      window.__scfStore.getState().setUi({ pixelsPerFrame: 4, scrollLeftPx: 0, tool: 'select' });
+
+      const rows = window.__scfStore.getState().project.tracks;
+      const videos = rows.filter((t) => t.type === 'video').sort((a, b) => b.order - a.order);
+      const rest = rows.filter((t) => t.type !== 'video').sort((a, b) => b.order - a.order);
+      return { id, track: track.id, row: [...videos, ...rest].findIndex((t) => t.id === track.id) };
+    });
+    await window.waitForTimeout(300);
+
+    const fadesOf = () => window.evaluate((ids) => {
+      const clip = window.__scfStore.getState().project.clips[ids.id];
+      return { in: clip.fadeInFrames ?? 0, out: clip.fadeOutFrames ?? 0 };
+    }, fadeSetup);
+
+    const fadeBox = await surface.boundingBox();
+    const fadeRowTop = fadeBox.y + 24 + fadeSetup.row * 58;
+    // The clip sits past the others, so the canvas is scrolled to it - and the
+    // scroll that actually took effect is what the clicks are measured from,
+    // because the view clamps it to the content it has.
+    await window.evaluate(() => window.__scfStore.getState().setUi({ scrollLeftPx: 1000 * 4 - 80 }));
+    await window.waitForTimeout(250);
+    const fadeScroll = await window.evaluate(() => window.__scfStore.getState().ui.scrollLeftPx);
+    const fadeX = (frame) => fadeBox.x + frame * 4 - fadeScroll;
+
+    await window.mouse.move(fadeX(1000) + 1, fadeRowTop + 6);
+    await window.mouse.down();
+    await window.mouse.move(fadeX(1020), fadeRowTop + 6, { steps: 8 });
+    await window.mouse.up();
+    await window.waitForTimeout(250);
+    const afterHead = await fadesOf();
+
+    await window.mouse.move(fadeX(1060) - 1, fadeRowTop + 6);
+    await window.mouse.down();
+    await window.mouse.move(fadeX(1048), fadeRowTop + 6, { steps: 8 });
+    await window.mouse.up();
+    await window.waitForTimeout(250);
+    const afterTail = await fadesOf();
+
+    check('a grip in each top corner sets the fade it is dragged to',
+      afterHead.in === 20 && afterTail.out === 12 && afterTail.in === 20,
+      `head ${afterHead.in}, tail ${afterTail.out}`);
+
+    // The picture: nothing at the first frame, half way up in the middle of
+    // the fade, whole once it is over. Read from the alpha channel, because a
+    // faded white clip is still white - at less opacity.
+    const opacity = await window.evaluate(async (ids) => {
+      const renderer = window.__scfRenderer();
+      const project = window.__scfStore.getState().project;
+      const clip = project.clips[ids.id];
+      const mean = async (frame) => {
+        const rgba = await renderer.renderExact(project, frame, false);
+        let total = 0;
+        for (let at = 3; at < rgba.length; at += 4) total += rgba[at];
+        return Math.round(total / (rgba.length / 4));
+      };
+      await renderer.renderExact(project, clip.startFrame + 30, false);
+      return {
+        first: await mean(clip.startFrame),
+        halfway: await mean(clip.startFrame + 10),
+        middle: await mean(clip.startFrame + 30),
+        last: await mean(clip.startFrame + clip.durationFrames - 1),
+      };
+    }, fadeSetup);
+
+    // Read as a fraction of the clip's own full opacity: this project is
+    // 320x720 and the clip is fitted inside it, so "fully opaque" covers about
+    // a third of the frame, not all of it.
+    check('the picture comes up out of nothing and goes back down to it',
+      opacity.first === 0
+      && opacity.middle > 40
+      && Math.abs(opacity.halfway - opacity.middle / 2) <= opacity.middle * 0.08
+      && opacity.last < opacity.middle * 0.15,
+      JSON.stringify(opacity));
+
+    // Two drags, two undo steps, and the track goes back.
+    // One undo takes back the tail fade, the next takes back the head one.
+    await window.getByTestId('project-name').click();
+    await window.keyboard.press('Control+z');
+    await window.waitForTimeout(200);
+    const afterOneUndo = await fadesOf();
+    await window.keyboard.press('Control+z');
+    await window.waitForTimeout(200);
+    const afterTwoUndos = await fadesOf();
+    check('each fade is one undo step',
+      afterOneUndo.out === 0 && afterOneUndo.in === 20 && afterTwoUndos.in === 0,
+      `after one ${JSON.stringify(afterOneUndo)}, after two ${JSON.stringify(afterTwoUndos)}`);
+
+    await window.evaluate((ids) => {
+      const store = window.__scfStore.getState();
+      store.removeClips([ids.id]);
+      window.__scfStore.getState().removeTrack(ids.track);
+      window.__scfStore.getState().setUi({ scrollLeftPx: 0 });
+    }, fadeSetup);
+    await window.waitForTimeout(200);
+
     /* The viewer: transform mode, full screen, and the magnet ---------------- */
     const viewerClip = await window.evaluate(() => {
       const store = window.__scfStore.getState();

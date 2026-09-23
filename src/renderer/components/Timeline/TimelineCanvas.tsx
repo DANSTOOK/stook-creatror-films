@@ -6,6 +6,7 @@ import type { EditorUiState } from '@renderer/store/types';
 import { clipEndFrame, clipsInPaintOrder } from './timelineOps';
 import { frameToPixel, type SnapTarget } from './snapping';
 import { sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
+import { fadeLengths } from '@renderer/timing/clipFades';
 
 /**
  * Multi-track drawing surface.
@@ -284,6 +285,77 @@ function drawLinkMark(context: CanvasRenderingContext2D, x: number, y: number): 
   context.restore();
 }
 
+/** How big a fade grip is on the clip, in pixels. */
+const FADE_GRIP_PX = 7;
+
+/**
+ * The fades on a clip: a wedge for each one, and a grip to drag it by.
+ *
+ * Resolve puts a small handle in each top corner and shows the fade as a
+ * shaded triangle over the clip. The grips only appear when the pointer is on
+ * the clip - they are an offer, not decoration - but a fade that exists is
+ * always drawn, because it is part of the edit.
+ */
+function drawFades(
+  context: CanvasRenderingContext2D,
+  clip: Clip,
+  x: number,
+  clipWidth: number,
+  top: number,
+  pixelsPerFrame: number,
+  hovered: boolean,
+): void {
+  const { fadeIn, fadeOut } = fadeLengths(clip);
+  const bodyTop = top + 2;
+  const bodyBottom = top + TRACK_HEIGHT - 2;
+
+  const wedge = (fromX: number, toX: number, risingRight: boolean): void => {
+    context.save();
+    context.fillStyle = 'rgba(13, 15, 20, 0.55)';
+    context.beginPath();
+    if (risingRight) {
+      context.moveTo(fromX, bodyTop);
+      context.lineTo(toX, bodyTop);
+      context.lineTo(fromX, bodyBottom);
+    } else {
+      context.moveTo(toX, bodyTop);
+      context.lineTo(fromX, bodyTop);
+      context.lineTo(fromX, bodyBottom);
+    }
+    context.closePath();
+    context.fill();
+
+    // The slope itself, so the length of the fade is readable at a glance.
+    context.strokeStyle = 'rgba(248, 250, 252, 0.8)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(risingRight ? fromX : toX, bodyBottom);
+    context.lineTo(risingRight ? toX : fromX, bodyTop);
+    context.stroke();
+    context.restore();
+  };
+
+  if (fadeIn > 0) wedge(x, x + fadeIn * pixelsPerFrame, true);
+  if (fadeOut > 0) wedge(x + clipWidth, x + clipWidth - fadeOut * pixelsPerFrame, false);
+
+  if (!hovered || clipWidth < 24) return;
+
+  // The grips: where the fade currently ends, or the corner when there is none.
+  const grip = (atX: number): void => {
+    context.save();
+    context.fillStyle = '#f8fafc';
+    context.strokeStyle = 'rgba(13, 15, 20, 0.7)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.arc(atX, bodyTop + 1, FADE_GRIP_PX / 2, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+    context.restore();
+  };
+
+  grip(x + fadeIn * pixelsPerFrame);
+  grip(x + clipWidth - fadeOut * pixelsPerFrame);
+}
 function drawClip(
   context: CanvasRenderingContext2D,
   clip: Clip,
@@ -294,6 +366,8 @@ function drawClip(
   peaks: WaveformPeaks | undefined,
   fps: number,
   canvasWidth: number,
+  /** The pointer is on this clip: the fade grips are offered. */
+  hovered: boolean,
 ): void {
   const x = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
   const clipWidth = Math.max(2, clip.durationFrames * ui.pixelsPerFrame);
@@ -322,6 +396,8 @@ function drawClip(
   context.stroke();
 
   if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps, canvasWidth);
+
+  drawFades(context, clip, x, clipWidth, top, ui.pixelsPerFrame, hovered);
 
   // Alpha-bearing sources get a marker, since that is what decides whether a
   // clip can be exported as a transparent sprite.
@@ -606,6 +682,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           waveforms[clip.sourceUri],
           project.fps,
           width,
+          hover?.clipId === clip.id || activeTrim?.clipId === clip.id,
         );
 
         const held = activeTrim?.clipId === clip.id;

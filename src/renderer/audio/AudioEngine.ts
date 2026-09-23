@@ -1,7 +1,8 @@
-import type { AudioBus, Clip, EqSettings, ProjectState, Track } from '@shared/types';
+﻿import type { AudioBus, Clip, EqSettings, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { clipGain, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
 import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
+import { applyFadeEnvelope } from './fadeEnvelope';
 import type { ScrubGrain } from './scrubAudio';
 import type { AudioStream } from './AudioStream';
 import {
@@ -85,6 +86,8 @@ export class AudioEngine {
   private readonly streams = new Map<string, AudioStream>();
   private scheduler: ReturnType<typeof setInterval> | null = null;
   private scheduledUntil = new Map<string, number>();
+  /** Clips whose fade envelope has already been written onto their strip. */
+  private fadedClips = new Set<string>();
   private playingProject: ProjectState | null = null;
   private ticking = false;
 
@@ -287,6 +290,27 @@ export class AudioEngine {
     }
 
     const strip = this.stripFor(clip, track, hasSoloedTrack(project));
+
+    /*
+      A streamed clip is fed to the graph a few seconds at a time, but its fade
+      belongs to the whole clip, so the envelope is written onto the strip once
+      - anchored to where the clip itself starts, however late the first span
+      arrives.
+    */
+    if (!this.fadedClips.has(clip.id)) {
+      this.fadedClips.add(clip.id);
+      const clipStartsAt =
+        this.startedAtContextTime + (clip.startFrame / project.fps - this.startedAtSeconds);
+      applyFadeEnvelope(
+        strip.gain.gain,
+        clip,
+        clipGain(clip),
+        Math.max(this.context.currentTime, clipStartsAt),
+        Math.max(0, this.context.currentTime - clipStartsAt),
+        project.fps / span.rate,
+      );
+    }
+
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = span.rate;
@@ -397,6 +421,15 @@ export class AudioEngine {
       const durationSeconds = (clipEnd - Math.max(clipStart, startSeconds)) * rate;
 
       source.playbackRate.value = rate;
+      // The fade rides on the clip's own gain, from wherever playback joins it.
+      applyFadeEnvelope(
+        strip.gain.gain,
+        clip,
+        clipGain(clip),
+        this.context.currentTime + whenSeconds,
+        Math.max(0, startSeconds - clipStart),
+        fps / rate,
+      );
       source.start(this.context.currentTime + whenSeconds, offsetSeconds, durationSeconds);
       this.strips.set(clip.id, strip);
     }
@@ -408,6 +441,7 @@ export class AudioEngine {
     // Streamed clips are decoded and handed over as the playhead nears them.
     this.playingProject = project;
     this.scheduledUntil = new Map();
+    this.fadedClips = new Set();
     void this.tick();
     this.scheduler = setInterval(() => void this.tick(), SCHEDULE_INTERVAL_MS);
   }
@@ -419,6 +453,7 @@ export class AudioEngine {
     }
     this.playingProject = null;
     this.scheduledUntil = new Map();
+    this.fadedClips = new Set();
 
     for (const strip of this.strips.values()) {
       for (const source of strip.sources) {

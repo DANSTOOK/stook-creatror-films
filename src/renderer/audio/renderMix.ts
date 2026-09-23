@@ -1,8 +1,9 @@
-import type { Clip, MediaAsset, ProjectState, Track } from '@shared/types';
+﻿import type { Clip, MediaAsset, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { encodeWavFloat32 } from '@shared/utils/wav';
 import { clipGain, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
 import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
+import { applyFadeEnvelope } from './fadeEnvelope';
 import { duckOffline } from './DynamicDucking';
 import { AudioStream } from './AudioStream';
 
@@ -208,7 +209,8 @@ async function renderClips(
     source.playbackRate.value = rate;
 
     const gain = context.createGain();
-    gain.gain.value = clipGain(clip);
+    // The same fade the picture gets, so what is exported is what was heard.
+    applyFadeEnvelope(gain.gain, clip, clipGain(clip), when, skippedSeconds, fps / rate);
 
     // Same node order as the live engine: gain, three EQ bands, pan.
     const low = context.createBiquadFilter();

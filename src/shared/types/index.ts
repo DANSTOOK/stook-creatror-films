@@ -193,6 +193,14 @@ export interface Clip {
   /** Play the footage backwards. The picture only; see audioFollowsSpeed. */
   reversed?: boolean;
   /**
+   * Frames of fade at each end, taking the picture and the sound together.
+   *
+   * Absent means none, which is what every clip made before fades existed
+   * meant. See renderer/timing/clipFades.
+   */
+  fadeInFrames?: number;
+  fadeOutFrames?: number;
+  /**
    * Clips sharing this id are linked: selecting one selects them all, so
    * they move, trim and are deleted as one. Absent on a clip that stands
    * alone, which is nearly all of them.

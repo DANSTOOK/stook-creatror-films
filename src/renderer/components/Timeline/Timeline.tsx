@@ -55,6 +55,10 @@ import TimelineCanvas, {
 
 /** Width of the grab zone at each end of a clip, in pixels. */
 const TRIM_HANDLE_PX = 6;
+/** How near a fade grip a press counts as grabbing it. */
+const FADE_GRIP_PX = 7;
+/** The strip along the top of a clip where the fade grips live. */
+const FADE_GRIP_ZONE_PX = 12;
 const HEADER_WIDTH = 168;
 
 type DragMode =
@@ -70,6 +74,8 @@ type DragMode =
       base: Record<string, Clip>;
     }
   | { kind: 'trim'; clipId: string; edge: 'start' | 'end' }
+  /** A fade grip in one of the clip's top corners. */
+  | { kind: 'fade'; clipId: string; edge: 'in' | 'out' }
   /**
    * The trim tool: which trim was picked up, where the drag began, and the
    * clips as they were then - slip and slide are worked out from that start,
@@ -645,6 +651,26 @@ export function Timeline(): JSX.Element {
         state.selectClips([hit.clip.id], event.shiftKey, event.altKey);
       }
 
+      // The fade grips live in the top corners, inside the clip. They are
+      // checked before the trim edges, which occupy the same few pixels
+      // lower down: the top strip fades, the rest trims.
+      const withinRowY = (y - RULER_HEIGHT) % (TRACK_HEIGHT + TRACK_GAP);
+      if (state.ui.tool === 'select' && withinRowY <= FADE_GRIP_ZONE_PX) {
+        const clipStartX = hit.clip.startFrame * ui.pixelsPerFrame - ui.scrollLeftPx;
+        const clipEndX = clipEndFrame(hit.clip) * ui.pixelsPerFrame - ui.scrollLeftPx;
+        const fadeInX = clipStartX + (hit.clip.fadeInFrames ?? 0) * ui.pixelsPerFrame;
+        const fadeOutX = clipEndX - (hit.clip.fadeOutFrames ?? 0) * ui.pixelsPerFrame;
+
+        if (Math.abs(x - fadeInX) <= FADE_GRIP_PX) {
+          dragRef.current = { kind: 'fade', clipId: hit.clip.id, edge: 'in' };
+          return;
+        }
+        if (Math.abs(x - fadeOutX) <= FADE_GRIP_PX) {
+          dragRef.current = { kind: 'fade', clipId: hit.clip.id, edge: 'out' };
+          return;
+        }
+      }
+
       if (state.ui.tool === 'trim') {
         // Which trim depends on where on the clip the pointer is: a shared
         // join rolls, a free edge ripples, the top half slips and the
@@ -748,6 +774,17 @@ export function Timeline(): JSX.Element {
         // Only a real move sounds: pointermove also fires for sub-frame jitter.
         const after = store.getState().project.currentFrame;
         if (after !== before) emitScrub(after);
+        return;
+      }
+
+      if (drag.kind === 'fade') {
+        const clip = state.project.clips[drag.clipId];
+        if (!clip) return;
+        // The grip says where the fade ends, so its length is the distance
+        // from the clip's own end of it.
+        const frames =
+          drag.edge === 'in' ? frame - clip.startFrame : clipEndFrame(clip) - frame;
+        state.setClipFade(drag.clipId, drag.edge, frames);
         return;
       }
 

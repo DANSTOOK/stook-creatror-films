@@ -1,5 +1,6 @@
-import type { Clip, ProjectState, Track } from '@shared/types';
+﻿import type { Clip, ProjectState, Track } from '@shared/types';
 import { sourceFrameFor } from '@renderer/timing/clipSpeed';
+import { fadeGainAt } from '@renderer/timing/clipFades';
 import { degToRad } from '@shared/utils/math';
 import { evaluateTransform } from './KeyframeEvaluator';
 import { FULLSCREEN_MATRIX, GLProgram, RenderTarget, makeQuadMatrix } from './GLProgram';
@@ -381,7 +382,9 @@ export class Compositor {
     this.transferProgram.setTexture('u_inputTexture', source.texture, 0);
     this.drawQuad(this.transferProgram);
 
-    return transform.opacity;
+    // A fade at either end of the clip rides on top of whatever opacity the
+    // keyframes asked for, so the two multiply rather than fight.
+    return transform.opacity * fadeGainAt(clip, frame - clip.startFrame);
   }
 
   /** Run one full-screen effect pass from `ping` into `pong`, then swap. */

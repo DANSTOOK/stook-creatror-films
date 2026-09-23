@@ -30,6 +30,7 @@ import { fitScale } from '@renderer/media/fitToFrame';
 import { clearRange, editLength } from '@renderer/components/Timeline/threePoint';
 import { rippleTrim, rollEdit, slideClip, slipClip } from '@renderer/components/Timeline/trimModes';
 import { retimed, speedOf } from '@renderer/timing/clipSpeed';
+import { fadeFromDrag } from '@renderer/timing/clipFades';
 import {
   clipTrimRoom,
   expandSelection,
@@ -271,6 +272,15 @@ interface ProjectStore {
    */
   nudgeSelection(frames: number, tracks: number, repeat?: boolean): void;
   trimClip(clipId: string, edge: 'start' | 'end', frame: number): void;
+
+  /* Fades ---------------------------------------------------------------- */
+  /**
+   * Set the fade at one end of a clip, in frames.
+   *
+   * A whole drag is one undo step: the merge key is the clip and the end
+   * being dragged, so pushing the handle back and forth lands as one.
+   */
+  setClipFade(clipId: string, edge: 'in' | 'out', frames: number): void;
 
   /* Speed ---------------------------------------------------------------- */
   /**
@@ -1375,6 +1385,27 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         return { ...project, clips: { ...project.clips, [clipId]: { ...clip, transform } } };
       },
       `kf:${clipId}:transform:${frame}`,
+    );
+  },
+
+  setClipFade(clipId, edge, frames) {
+    get().transact(
+      edge === 'in' ? 'Fade in' : 'Fade out',
+      (project) => {
+        const clip = project.clips[clipId];
+        if (!clip) return project;
+        const length = fadeFromDrag(clip, edge, frames);
+        return {
+          ...project,
+          clips: {
+            ...project.clips,
+            [clipId]: edge === 'in'
+              ? { ...clip, fadeInFrames: length }
+              : { ...clip, fadeOutFrames: length },
+          },
+        };
+      },
+      `fade:${clipId}:${edge}`,
     );
   },
 
