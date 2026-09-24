@@ -118,6 +118,8 @@ const api: FilmoraApi = {
   exportFrame: (jobId, rgba) => ipcRenderer.invoke(IPC.exportFrame, jobId, rgba),
   exportFinish: (jobId) => ipcRenderer.invoke(IPC.exportFinish, jobId),
   exportCancel: (jobId) => ipcRenderer.invoke(IPC.exportCancel, jobId),
+  showExportInFolder: (path) => ipcRenderer.invoke(IPC.exportShowInFolder, path) as Promise<void>,
+  playExport: (path) => ipcRenderer.invoke(IPC.exportPlay, path) as Promise<void>,
 
   onExportProgress(listener) {
     const handler = (_event: unknown, progress: ExportProgress): void => listener(progress);

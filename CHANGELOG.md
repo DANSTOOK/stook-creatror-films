@@ -16,6 +16,70 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Una exportación terminada se ve terminada
+
+### Arreglado
+- **La ventana de exportación ya no parece un formulario pendiente al
+  terminar.** Antes, con la barra en «Finished 100%», el botón principal seguía
+  diciendo «Start export» y todos los ajustes seguían activos, como si faltara
+  pulsarlo. Ahora, al terminar:
+  - Arriba aparece el resultado: «Export finished», el nombre del archivo y su
+    carpeta, la barra completa, y cuatro datos medidos de verdad (duración del
+    vídeo, tiempo que tardó el render, fotogramas por segundo y el
+    codificador usado).
+  - Debajo, los siguientes pasos: **Show in folder** (señala el archivo en el
+    Explorador) y **Play** (lo abre en el reproductor de Windows; no aparece
+    en una secuencia PNG, que es una carpeta).
+  - «Share to YouTube» pasa a una columna a la derecha del resultado, con sus
+    dos botones uno bajo otro; su formulario se apila en esa columna.
+  - Los ajustes se pliegan en una sola línea, «Settings used», que resume
+    formato, tamaño, fps y tramo. Si se despliega, se ven bloqueados: son el
+    registro de lo que hizo el archivo, como un trabajo terminado en la cola
+    de render de Resolve o un elemento compartido en el inspector de Final Cut.
+  - En la cabecera, «Start export» se cambia por **New export**, que devuelve
+    los ajustes tal como estaban, pone el cursor en el nombre del archivo y
+    avisa en ámbar de que se reemplazaría el archivo recién hecho. Es otro
+    botón, no el mismo con otro texto, para que un doble clic no lance un
+    segundo render encima del primero.
+- **Los ajustes se bloquean mientras se renderiza.** Antes se podían cambiar a
+  mitad de un render sin efecto (el render ya había tomado los suyos), y la
+  ventana mostraba algo que no estaba haciendo.
+- Un fallo de exportación se muestra en rojo y como alerta para lectores de
+  pantalla.
+
+### Detalles
+- Show in folder y Play solo aceptan archivos que esta sesión exportó hasta
+  el final, igual que la subida a YouTube: la página no puede abrir ni
+  ejecutar una ruta cualquiera.
+- Color nuevo `success` (menta `#1DE9B6`), solo para «terminado»; el azul
+  sigue siendo «actúa aquí». Contraste medido con `contrast.ts`: 12,2:1 sobre
+  el fondo más oscuro y 11,3:1 sobre el panel; el texto oscuro del botón
+  sobre la menta, 12,2:1; el anillo de foco sobre la tarjeta, 6,9:1.
+- Los textos de la interfaz siguen en inglés, como el resto de la aplicación.
+  No se usan tipografías web: la aplicación tiene que funcionar sin red.
+- Antes de exportar no cambia nada: ahí los ajustes son el trabajo y siguen
+  todos a la vista.
+
+### Cómo se comprobó
+- En la aplicación en marcha con Playwright, exportando un clip de 20 s:
+  capturas de antes y después de los tres estados (listo, renderizando,
+  terminado) y con «Upload from here» abierto. Durante el render, «File
+  name» está deshabilitado; al terminar no queda ningún «Start export», los
+  ajustes están plegados y «Format» no se ve; Show in folder y Play llaman a
+  `showItemInFolder` y `openPath` con el archivo exportado (sustituidos para
+  que no se abriera nada); con la ruta del vídeo de origen, ambos se niegan;
+  New export devuelve los ajustes editables, avisa de que reemplazaría el
+  archivo y quita el panel de YouTube.
+- Las comprobaciones de la ventana de exportación de `tests/ui/run.mjs`,
+  copiadas tal cual y ejecutadas solas. La que medía la barra por encima de
+  «Format» ya no tiene sentido con los ajustes plegados; la sustituyen dos:
+  que el estado terminado se lea como terminado, y que el resultado quede por
+  encima de los ajustes. Resultado: **14/14**, incluida la miniatura incrustada y el tramo «In to out»
+  al volver a abrir. No se ejecutó la batería completa.
+- La prueba de YouTube de la entrega anterior, repetida: configurar, iniciar
+  sesión y subir contra un Google falso en 127.0.0.1, bytes idénticos.
+- `tsc` con los dos tsconfig, sin errores.
+
 ## v1.26.0-beta.1 — Subir a YouTube, y un visor sin interruptores de más
 Instalador de prueba. Antes de publicarla pasó la batería completa: 733
 unitarias, 21/21 de extremo a extremo, 13/13 de movimiento, 41/41 de

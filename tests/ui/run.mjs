@@ -1012,9 +1012,9 @@ async function main() {
     // Scope every field lookup to the dialog. The inspector is open behind it
     // with number inputs of its own, and an unscoped nth() lands in there -
     // silently editing the clip instead of the export range.
-    const dialog = window.locator('div[role="dialog"], .panel').filter({
-      hasText: 'Target bitrate',
-    }).first();
+    // By its role and name, not by text inside it: once finished, the settings
+    // (and "Target bitrate" with them) fold out of view.
+    const dialog = window.getByRole('dialog', { name: 'Export' });
 
     // Laid out like Resolve's Deliver page: the actions sit at the top.
     const startBox = await dialog.getByRole('button', { name: 'Start export' }).boundingBox();
@@ -1069,11 +1069,27 @@ async function main() {
     await window.getByText('Export finished', { exact: false })
       .waitFor({ state: 'visible', timeout: 180_000 });
     check('export completes through the dialog', true);
+    // Finished, the dialog reads as done: the result and its next steps on
+    // top, no "Start export" inviting the same render again, and the settings
+    // folded into a record below.
     const barBox = await dialog.getByRole('progressbar').boundingBox();
-    const formatAfterBox = await dialog.getByText('Format', { exact: true }).first().boundingBox();
-    check('the render progress shows at the top, above the settings',
-      Boolean(barBox && formatAfterBox) && barBox.y < formatAfterBox.y,
-      `progress at y ${Math.round(barBox?.y ?? -1)}, Format at y ${Math.round(formatAfterBox?.y ?? -1)}`);
+    const settingsUsed = dialog.getByRole('button', { name: /Settings used/ });
+    const settingsUsedBox = await settingsUsed.boundingBox();
+    const finishedState = {
+      startExport: await dialog.getByRole('button', { name: 'Start export' }).count(),
+      newExport: await dialog.getByRole('button', { name: 'New export' }).isVisible(),
+      showInFolder: await dialog.getByRole('button', { name: 'Show in folder' }).isVisible(),
+      play: await dialog.getByRole('button', { name: 'Play', exact: true }).isVisible(),
+      folded: (await settingsUsed.getAttribute('aria-expanded')) === 'false'
+        && !(await dialog.getByText('Format', { exact: true }).first().isVisible()),
+    };
+    check('a finished export reads as done: New export, Show in folder and Play, settings folded',
+      finishedState.startExport === 0 && finishedState.newExport && finishedState.showInFolder
+        && finishedState.play && finishedState.folded,
+      JSON.stringify(finishedState));
+    check('the finished render shows at the top, above the settings',
+      Boolean(barBox && settingsUsedBox) && barBox.y < settingsUsedBox.y,
+      `progress at y ${Math.round(barBox?.y ?? -1)}, settings at y ${Math.round(settingsUsedBox?.y ?? -1)}`);
 
     /* The file itself ------------------------------------------------------- */
     const info = await stat(exportPath).catch(() => null);

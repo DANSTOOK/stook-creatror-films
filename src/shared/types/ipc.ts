@@ -63,6 +63,8 @@ export const IPC = {
   exportFinish: 'export:finish',
   exportCancel: 'export:cancel',
   exportProgress: 'export:progress',
+  exportShowInFolder: 'export:show-in-folder',
+  exportPlay: 'export:play',
   youtubeStatus: 'youtube:status',
   youtubeConfigure: 'youtube:configure',
   youtubeForgetClient: 'youtube:forget-client',
@@ -334,6 +336,10 @@ export interface FilmoraApi {
   /** Close stdin and wait for the encoder to flush. */
   exportFinish(jobId: string): Promise<void>;
   exportCancel(jobId: string): Promise<void>;
+  /** Select a file this session exported in Explorer. Refuses any other path. */
+  showExportInFolder(path: string): Promise<void>;
+  /** Open a file this session exported in the system's player. Refuses any other path. */
+  playExport(path: string): Promise<void>;
 
   onExportProgress(listener: (progress: ExportProgress) => void): () => void;
 

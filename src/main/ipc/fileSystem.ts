@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+﻿import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { execFile } from 'node:child_process';
 import { mkdir, open, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import { basename, extname, isAbsolute, join } from 'node:path';
@@ -928,6 +928,25 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.exportCancel, (_event, jobId: string) => {
     jobTargets.delete(jobId);
     return pipeline.cancel(jobId);
+  });
+
+  // The finished dialog's next steps. Both take only what this session
+  // rendered to the end, so the page cannot open or run any path it names.
+  const assertFinishedExport = (path: unknown): string => {
+    if (typeof path !== 'string' || !isFinishedExport(path)) {
+      throw new Error('Only a file exported in this session can be opened from here.');
+    }
+    return path;
+  };
+
+  ipcMain.handle(IPC.exportShowInFolder, (_event, path: unknown) => {
+    shell.showItemInFolder(assertFinishedExport(path));
+  });
+
+  ipcMain.handle(IPC.exportPlay, async (_event, path: unknown) => {
+    // openPath reports failure as text (no player for .mov, say), not by throwing.
+    const failure = await shell.openPath(assertFinishedExport(path));
+    if (failure) throw new Error(failure);
   });
 
   return pipeline;

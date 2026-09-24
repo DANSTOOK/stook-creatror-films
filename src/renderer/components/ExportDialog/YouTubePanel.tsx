@@ -119,34 +119,39 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
   const percent = progress && progress.total > 0 ? (progress.sent / progress.total) * 100 : 0;
 
   return (
-    <section data-testid="youtube-panel" className="mb-3 space-y-3 rounded border border-panel-700 bg-panel-950 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    // A column beside the export's result card, so everything here stacks:
+    // the two ways in, then the form of the one that was opened.
+    <section data-testid="youtube-panel" className="space-y-3 rounded-lg border border-panel-700 bg-panel-950 p-4">
+      <div className="space-y-1">
         <h3 className="field-label flex items-center gap-1.5">
           <Youtube size={14} />
           Share to YouTube
         </h3>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            data-testid="youtube-open-studio"
-            className="tool-button h-7"
-            title="Show the file in Explorer and open YouTube's upload page in your browser - drag the file in there"
-            onClick={() => void run(() => window.filmora.youtubeOpenStudio(path))}
-          >
-            <ExternalLink size={13} />
-            Open YouTube Studio
-          </button>
-          <button
-            type="button"
-            data-testid="youtube-direct"
-            aria-expanded={expanded}
-            className={`tool-button h-7 ${expanded ? 'tool-button-active' : ''}`}
-            onClick={() => setExpanded((open) => !open)}
-          >
-            <Upload size={13} />
-            Upload from here
-          </button>
-        </div>
+        <p className="text-2xs leading-relaxed text-slate-400">
+          Open YouTube Studio and drag the file in, or upload it from here.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        <button
+          type="button"
+          data-testid="youtube-open-studio"
+          className="tool-button border border-panel-600"
+          title="Show the file in Explorer and open YouTube's upload page in your browser - drag the file in there"
+          onClick={() => void run(() => window.filmora.youtubeOpenStudio(path))}
+        >
+          <ExternalLink size={13} />
+          Open YouTube Studio
+        </button>
+        <button
+          type="button"
+          data-testid="youtube-direct"
+          aria-expanded={expanded}
+          className={`tool-button border ${expanded ? 'tool-button-active border-transparent' : 'border-panel-600'}`}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          <Upload size={13} />
+          Upload from here
+        </button>
       </div>
 
       {expanded && status === null && (
@@ -172,7 +177,7 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
             <ExternalLink size={13} />
             Open Google Cloud credentials
           </button>
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2">
             <label className="flex flex-col gap-1">
               <span className="text-2xs text-slate-400">Client ID</span>
               <input
@@ -247,7 +252,7 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
       {/* Step three: what the video is, then send it. */}
       {expanded && status?.signedIn && (
         <div className="space-y-2">
-          <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <label className="flex flex-col gap-1">
               <span className="text-2xs text-slate-400">Title</span>
               <input

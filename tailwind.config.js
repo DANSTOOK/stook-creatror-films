@@ -16,6 +16,13 @@ module.exports = {
           DEFAULT: '#3b82f6',
           hover: '#60a5fa',
         },
+        // A finished job, and only that: the blue accent stays "act here",
+        // mint says "done". 12.2:1 on panel-950 and 11.3:1 on panel-900;
+        // panel-950 text on it reads at 12.2:1 (15.4:1 on the hover).
+        success: {
+          DEFAULT: '#1de9b6',
+          hover: '#64ffda',
+        },
         track: {
           video: '#456698',
           audio: '#33785f',
