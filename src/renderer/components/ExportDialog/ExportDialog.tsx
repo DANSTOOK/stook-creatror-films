@@ -18,6 +18,7 @@ import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecs
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
+import { YouTubePanel } from './YouTubePanel';
 
 /**
  * Export dialog, including the game-asset mode.
@@ -102,6 +103,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  /** The file the last export finished writing, for sharing it. */
+  const [exportedPath, setExportedPath] = useState<string | null>(null);
   const cancelRef = useRef(false);
 
   const selectedFormat = FORMATS.find((format) => format.value === settings.format);
@@ -305,6 +308,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     cancelRef.current = false;
     setRunning(true);
     setMessage(null);
+    setExportedPath(null);
 
     let jobId: string | null = null;
     let encoder: WebCodecsEncoder | null = null;
@@ -425,6 +429,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       encoder = null;
 
       await window.filmora.exportFinish(activeJobId);
+      setExportedPath(settings.outputPath);
       setMessage(
         `Export finished with ${jobPlan.label}: ${settings.outputPath}`,
       );
@@ -563,6 +568,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {/* A finished video YouTube takes: offer to send it there. */}
+          {!running && exportedPath && /.(mp4|mov|webm)$/i.test(exportedPath) && (
+            <YouTubePanel path={exportedPath} defaultTitle={fileName} />
+          )}
+
           {/* Quick presets: format, size and transparency set together. */}
           <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Quick presets">
             {QUICK_PRESETS.map((preset) => {

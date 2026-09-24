@@ -909,19 +909,36 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     }
     if (settings.audioPath) assertAllowed(settings.audioPath);
     if (settings.thumbnailPath) assertAllowed(settings.thumbnailPath);
-    return { jobId: await pipeline.start(settings) };
+    const jobId = await pipeline.start(settings);
+    jobTargets.set(jobId, settings.outputPath);
+    return { jobId };
   });
 
   ipcMain.handle(IPC.exportFrame, (_event, jobId: string, rgba: ArrayBuffer) =>
     pipeline.writeFrame(jobId, new Uint8Array(rgba)),
   );
 
-  ipcMain.handle(IPC.exportFinish, (_event, jobId: string) => pipeline.finish(jobId));
+  ipcMain.handle(IPC.exportFinish, async (_event, jobId: string) => {
+    await pipeline.finish(jobId);
+    const target = jobTargets.get(jobId);
+    jobTargets.delete(jobId);
+    if (target) finishedExports.add(target);
+  });
 
-  ipcMain.handle(IPC.exportCancel, (_event, jobId: string) => pipeline.cancel(jobId));
+  ipcMain.handle(IPC.exportCancel, (_event, jobId: string) => {
+    jobTargets.delete(jobId);
+    return pipeline.cancel(jobId);
+  });
 
   return pipeline;
 }
+
+/** Where each running export writes, until it finishes. */
+const jobTargets = new Map<string, string>();
+/** Files this session rendered to the end - the only ones offered to YouTube. */
+const finishedExports = new Set<string>();
+
+export const isFinishedExport = (path: string): boolean => finishedExports.has(path);
 
 /** Exposed for tests and for re-opening recent files. */
 export const allowPath = (path: string): void => {

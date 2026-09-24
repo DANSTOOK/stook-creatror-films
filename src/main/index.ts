@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
+import { registerYouTubeHandlers } from './youtube/youtubeIpc';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
 import { registerMediaProtocolHandler, registerMediaSchemeAsPrivileged } from './ipc/mediaProtocol';
 import type { EncoderPipeline } from './exporter/EncoderPipeline';
@@ -145,6 +146,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   registerMediaProtocolHandler();
   pipeline = registerFileSystemHandlers(() => mainWindow);
+  registerYouTubeHandlers(() => mainWindow);
 
   ipcMain.on(IPC.documentState, (_event, state: unknown) => {
     if (!state || typeof state !== 'object') return;

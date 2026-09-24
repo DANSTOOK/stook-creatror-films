@@ -15,6 +15,9 @@ import {
   type ProxyProgressEvent,
   type ProxyUsage,
   type RecentProject,
+  type YouTubeProgressEvent,
+  type YouTubeStatus,
+  type YouTubeUploadResult,
 } from '@shared/types/ipc';
 
 /**
@@ -123,6 +126,24 @@ const api: FilmoraApi = {
       ipcRenderer.off(IPC.exportProgress, handler);
     };
   },
+
+  youtubeStatus: () => ipcRenderer.invoke(IPC.youtubeStatus) as Promise<YouTubeStatus>,
+  youtubeConfigure: (clientId, clientSecret) =>
+    ipcRenderer.invoke(IPC.youtubeConfigure, clientId, clientSecret) as Promise<YouTubeStatus>,
+  youtubeForgetClient: () => ipcRenderer.invoke(IPC.youtubeForgetClient) as Promise<YouTubeStatus>,
+  youtubeSignIn: () => ipcRenderer.invoke(IPC.youtubeSignIn) as Promise<YouTubeStatus>,
+  youtubeCancelSignIn: () => ipcRenderer.invoke(IPC.youtubeCancelSignIn) as Promise<void>,
+  youtubeSignOut: () => ipcRenderer.invoke(IPC.youtubeSignOut) as Promise<YouTubeStatus>,
+  youtubeUpload: (path, meta) => ipcRenderer.invoke(IPC.youtubeUpload, path, meta) as Promise<YouTubeUploadResult>,
+  youtubeCancelUpload: () => ipcRenderer.invoke(IPC.youtubeCancelUpload) as Promise<void>,
+  onYouTubeProgress(listener) {
+    const handler = (_event: unknown, progress: YouTubeProgressEvent): void => listener(progress);
+    ipcRenderer.on(IPC.youtubeProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.youtubeProgress, handler);
+    };
+  },
+  youtubeOpenStudio: (path) => ipcRenderer.invoke(IPC.youtubeOpenStudio, path) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('filmora', api);

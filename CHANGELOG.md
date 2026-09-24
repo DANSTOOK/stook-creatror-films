@@ -7,7 +7,7 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **730 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **733 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **125/125 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **13/13 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
@@ -16,8 +16,36 @@ fotogramas exportados correctos).
 
 ---
 
-## Sin publicar — Un visor sin interruptores de más
+## Sin publicar — Subir a YouTube, y un visor sin interruptores de más
 En `main`, sin instalador todavía.
+
+### Añadido
+- **Compartir en YouTube al terminar una exportación.** Cuando acaba un MP4,
+  MOV o WebM, aparece «Share to YouTube» con dos caminos:
+  - **Open YouTube Studio**: señala el archivo en el Explorador y abre la
+    página de subida de YouTube en tu navegador, para arrastrarlo. No hace
+    falta configurar nada.
+  - **Upload from here**: sube el vídeo desde el editor, con título,
+    descripción, visibilidad y la pregunta «¿hecho para niños?» que YouTube
+    exige. Se inicia sesión **en la página de Google, en tu navegador**: el
+    editor nunca ve tu contraseña. Solo pide permiso para *subir* vídeos, no
+    para ver, cambiar ni borrar nada del canal. La sesión vive en memoria y se
+    olvida al cerrar la app; «Sign out» además la revoca en Google. La subida
+    es reanudable: si se corta la conexión, sigue desde lo que Google ya tiene.
+- Lo único que se guarda en disco es el cliente de Google que creas una vez
+  (ID y «secreto» de aplicación de escritorio, que identifican tu proyecto, no
+  tu cuenta), **cifrado con el llavero de Windows**. Ninguna contraseña ni
+  token.
+
+### Problemas conocidos
+- **La subida directa necesita tu propio proyecto de Google Cloud** (con la
+  API de YouTube activada y un cliente OAuth de tipo *Desktop app*); el panel
+  explica los tres pasos. Y mientras Google no audite ese proyecto, **YouTube
+  deja privado todo lo que sube**, pidas lo que pidas: es una regla de YouTube
+  para proyectos creados después del 28 de julio de 2020. El panel lo avisa
+  antes y lo dice después; la visibilidad se cambia luego en YouTube Studio.
+- Sin probar contra los servidores reales de Google: no hay una cuenta de
+  prueba en esta máquina. Lo que se comprobó está abajo.
 
 ### Quitado
 - **Los botones «Pixel art» y «Alpha» de la cabecera del visor.** Ninguno era
@@ -36,6 +64,20 @@ En `main`, sin instalador todavía.
   de un píxel sobre el entorno gris, como en Premiere y Resolve.
 
 ### Cómo se comprobó
+- **Subida a YouTube, contra un Google simulado en 127.0.0.1** que se porta
+  como dicen sus documentos: redirige el navegador de vuelta con un código,
+  comprueba el PKCE, y en la subida se queda solo con 256 KiB del primer
+  trozo, falla una vez con 503 y otra con 401. El cliente reanudó desde el
+  byte 262.144, reintentó, renovó el token y entregó **el archivo idéntico
+  byte a byte**; «Sign out» revocó el token. Un rechazo en la página de
+  Google se dice como tal y no deja sesión.
+- En la aplicación: exportado un clip, el panel aparece (y no antes);
+  «Open YouTube Studio» abrió `youtube.com/upload` y señaló el archivo; un ID
+  mal escrito se rechaza con su motivo; sin responder «¿hecho para niños?» no
+  sube; la subida llegó completa (339.785 bytes iguales) y el panel avisó de
+  que YouTube la dejó privada. Pedir la subida de un archivo que no se
+  exportó en la sesión se rechaza. En disco solo quedó el cliente, cifrado, y
+  el secreto no aparece en claro. Consola limpia.
 - En la aplicación, con un clip reducido al 60 %: la cabecera dice «PREVIEW
   Transform» y nada más, el cuadro se ve negro con su borde en un proyecto
   normal y con cuadriculado en uno transparente, y la consola queda limpia.

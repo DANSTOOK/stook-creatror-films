@@ -63,6 +63,16 @@ export const IPC = {
   exportFinish: 'export:finish',
   exportCancel: 'export:cancel',
   exportProgress: 'export:progress',
+  youtubeStatus: 'youtube:status',
+  youtubeConfigure: 'youtube:configure',
+  youtubeForgetClient: 'youtube:forget-client',
+  youtubeSignIn: 'youtube:sign-in',
+  youtubeCancelSignIn: 'youtube:cancel-sign-in',
+  youtubeSignOut: 'youtube:sign-out',
+  youtubeUpload: 'youtube:upload',
+  youtubeCancelUpload: 'youtube:cancel-upload',
+  youtubeProgress: 'youtube:progress',
+  youtubeOpenStudio: 'youtube:open-studio',
 } as const;
 
 export interface PickedFile {
@@ -144,6 +154,40 @@ export interface ProjectRecovery {
   path: string | null;
   savedAt: string;
   contents: string;
+}
+
+export type YouTubePrivacy = 'private' | 'unlisted' | 'public';
+
+/** Where the YouTube connection stands. Never carries a token or the secret. */
+export interface YouTubeStatus {
+  /** A Google OAuth client has been entered. */
+  configured: boolean;
+  /** The client ID, to show which one; it is not a secret. */
+  clientId: string;
+  /** Signed in during this session. Nothing about it outlives the app. */
+  signedIn: boolean;
+}
+
+export interface YouTubeUploadMeta {
+  title: string;
+  description: string;
+  privacy: YouTubePrivacy;
+  /** YouTube requires the answer for every upload. */
+  madeForKids: boolean;
+}
+
+export interface YouTubeUploadResult {
+  videoId: string;
+  url: string;
+  /** What YouTube set. */
+  privacy: YouTubePrivacy;
+  /** What was asked for; differs when an unaudited project forces private. */
+  requestedPrivacy: YouTubePrivacy;
+}
+
+export interface YouTubeProgressEvent {
+  sent: number;
+  total: number;
 }
 
 export interface RecentProjectInput {
@@ -292,6 +336,22 @@ export interface FilmoraApi {
   exportCancel(jobId: string): Promise<void>;
 
   onExportProgress(listener: (progress: ExportProgress) => void): () => void;
+
+  /* YouTube: sign-in in the browser, tokens in memory only. */
+  youtubeStatus(): Promise<YouTubeStatus>;
+  /** Save the Google OAuth client (desktop type) to use. */
+  youtubeConfigure(clientId: string, clientSecret: string): Promise<YouTubeStatus>;
+  youtubeForgetClient(): Promise<YouTubeStatus>;
+  /** Opens Google's sign-in in the browser; resolves when it comes back. */
+  youtubeSignIn(): Promise<YouTubeStatus>;
+  youtubeCancelSignIn(): Promise<void>;
+  youtubeSignOut(): Promise<YouTubeStatus>;
+  /** Upload a file this session exported. */
+  youtubeUpload(path: string, meta: YouTubeUploadMeta): Promise<YouTubeUploadResult>;
+  youtubeCancelUpload(): Promise<void>;
+  onYouTubeProgress(listener: (progress: YouTubeProgressEvent) => void): () => void;
+  /** Show the file in Explorer and open YouTube's upload page in the browser. */
+  youtubeOpenStudio(path: string): Promise<void>;
 }
 
 declare global {
