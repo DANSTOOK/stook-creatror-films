@@ -83,6 +83,16 @@ function reducedMotionArguments(): string[] {
   }
 }
 
+/** True for http: and https: links - the only ones handed to the OS browser. */
+function isWebUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function createWindow(): void {
   // The editor is dark whatever Windows is set to: native menus, dialogs and
   // scrollbars follow this. A white bar over a dark editor was the brightest
@@ -130,8 +140,10 @@ function createWindow(): void {
   mainWindow.once('ready-to-show', () => (BACKGROUND ? mainWindow?.showInactive() : mainWindow?.show()));
 
   // External links open in the user's browser, never inside the editor shell.
+  // Only web links reach the OS: file:, ms-settings: or any other registered
+  // protocol handler would let a compromised renderer launch local programs.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (isWebUrl(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
 

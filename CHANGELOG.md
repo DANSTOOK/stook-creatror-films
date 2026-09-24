@@ -16,6 +16,27 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Seguridad de los enlaces
+En `main`, sin instalador todavía.
+
+### Arreglado
+- **Los enlaces externos solo abren páginas web.** Cualquier `window.open`
+  se pasaba tal cual al sistema, así que un `file:` o un `ms-settings:` podía
+  lanzar un programa local. Ahora solo salen hacia el navegador los enlaces
+  `http:` y `https:`; el resto se descarta. Comprobado en la aplicación con
+  Playwright, cambiando `shell.openExternal` por una función que solo anota:
+  de diez `window.open`, llegaron los cinco web (entre ellos los de Google
+  Cloud, `youtu.be` y YouTube Studio del panel de YouTube) y ninguno de
+  `file:///C:/Windows/notepad.exe`, `ms-settings:`, `calculator:`,
+  `javascript:` o un texto que no es URL, sin abrirse ventana nueva. La misma
+  prueba contra la versión anterior dejó pasar los tres primeros.
+- Se hizo en su propia rama y no había entrado en ninguna beta; ahora está en
+  `main`. Vuelto a comprobar sobre la aplicación actual, en segundo plano, con
+  la misma prueba: los cinco enlaces web llegaron al navegador, ninguno de los
+  otros cinco, y no se abrió ninguna ventana.
+
+---
+
 ## v1.28.0-beta.1 — Rediseño, fase 3: contenido, audio y todo en español
 
 Instalador de prueba que cierra el rediseño. Antes de publicarla pasó la
