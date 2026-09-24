@@ -1,9 +1,7 @@
-import { useRef } from 'react';
+﻿import { useRef } from 'react';
 import {
   ChevronFirst,
   ChevronLast,
-  Grid2x2,
-  Grip,
   Maximize2,
   Minimize2,
   Move,
@@ -65,26 +63,14 @@ export function PreviewViewport(): JSX.Element {
           >
             {ui.fullscreenViewer ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
-          <button
-            type="button"
-            title="Nearest-neighbour scaling (pixel art)"
-            aria-pressed={ui.pixelArtViewport}
-            className={`tool-button ${ui.pixelArtViewport ? 'tool-button-active' : ''}`}
-            onClick={() => setUi({ pixelArtViewport: !ui.pixelArtViewport })}
-          >
-            <Grip size={14} />
-            Pixel art
-          </button>
-          <button
-            type="button"
-            title="Show transparency checkerboard"
-            aria-pressed={ui.showTransparencyGrid}
-            className={`tool-button ${ui.showTransparencyGrid ? 'tool-button-active' : ''}`}
-            onClick={() => setUi({ showTransparencyGrid: !ui.showTransparencyGrid })}
-          >
-            <Grid2x2 size={14} />
-            Alpha
-          </button>
+          {/*
+            The "Pixel art" and "Alpha" toggles used to sit here. Neither was
+            about the edit: one changed how the preview scaled, the other
+            painted a checkerboard that was on for every project - even ones
+            that export solid black there. The checkerboard now follows the
+            project's own "Transparent background" setting, so the viewer shows
+            what the export will contain.
+          */}
         </div>
       </header>
 
@@ -95,8 +81,13 @@ export function PreviewViewport(): JSX.Element {
           </p>
         ) : (
           <div
+            // The frame has to show where it ends, or a shrunk picture cannot be
+            // placed: black on a near-black panel is no edge at all. A
+            // transparent project gets the checkerboard, which marks it; any
+            // other gets the black it will export and a hairline round it -
+            // the black frame on a grey surround that Premiere and Resolve show.
             className={`relative max-h-full max-w-full ${
-              ui.showTransparencyGrid ? 'alpha-checkerboard' : ''
+              project.hasAlphaBackground ? 'alpha-checkerboard' : 'bg-black outline outline-1 outline-white/10'
             }`}
             style={{ aspectRatio: `${project.width} / ${project.height}` }}
           >

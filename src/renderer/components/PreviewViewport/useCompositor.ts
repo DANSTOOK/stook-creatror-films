@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+﻿import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   FrameRenderer,
   setActiveFrameRenderer,
@@ -26,7 +26,9 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
   const height = useProjectStore((state) => state.project.height);
   const assets = useProjectStore((state) => state.assets);
   const pixelArtViewport = useProjectStore((state) => state.ui.pixelArtViewport);
-  const showTransparencyGrid = useProjectStore((state) => state.ui.showTransparencyGrid);
+  // The checkerboard shows what a transparent project exports: empty frame.
+  // For every other project the empty frame is black, and so is the viewer.
+  const showTransparencyGrid = useProjectStore((state) => state.project.hasAlphaBackground);
 
   // Create the GL objects once, bound to the canvas element.
   useEffect(() => {

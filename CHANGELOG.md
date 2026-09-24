@@ -16,6 +16,32 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Un visor sin interruptores de más
+En `main`, sin instalador todavía.
+
+### Quitado
+- **Los botones «Pixel art» y «Alpha» de la cabecera del visor.** Ninguno era
+  sobre el montaje: uno cambiaba cómo escalaba la vista previa, y el otro
+  pintaba un cuadriculado que estaba **encendido para todos los proyectos**,
+  incluso los que exportan negro en esa zona. La cabecera queda en
+  **Preview · Transform · pantalla completa**.
+
+### Arreglado
+- **El visor enseña lo que va a salir.** El cuadriculado ahora lo decide el
+  ajuste real del proyecto, «Transparent background» en Ajustes: con él, se ve
+  el cuadriculado; sin él, se ve el negro que se va a exportar.
+- **El cuadro marca dónde acaba.** Al quitar el cuadriculado, una imagen
+  reducida flotaba en un negro sin bordes sobre un panel casi negro, y no se
+  podía saber dónde terminaba el encuadre. Ahora es un cuadro negro con un filo
+  de un píxel sobre el entorno gris, como en Premiere y Resolve.
+
+### Cómo se comprobó
+- En la aplicación, con un clip reducido al 60 %: la cabecera dice «PREVIEW
+  Transform» y nada más, el cuadro se ve negro con su borde en un proyecto
+  normal y con cuadriculado en uno transparente, y la consola queda limpia.
+
+---
+
 ## v1.25.0-beta.1 — Fundidos, y un visor que se deja mirar
 2026-09-23 · pre-release para probar
 
