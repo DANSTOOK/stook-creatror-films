@@ -27,7 +27,7 @@ import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecs
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
-import { useT } from '@renderer/i18n';
+import { useT, type MessageKey } from '@renderer/i18n';
 import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
 import { defaultFileName } from './exportName';
@@ -79,8 +79,8 @@ const COVER_ART_FORMATS = new Set<ExportFormat>(['mp4-h264', 'mp4-h265', 'prores
  */
 interface QuickPreset {
   id: string;
-  label: string;
-  hint: string;
+  label: MessageKey;
+  hint: MessageKey;
   icon: typeof Film;
   format: ExportFormat;
   alpha: boolean;
@@ -89,10 +89,10 @@ interface QuickPreset {
 }
 
 const QUICK_PRESETS: QuickPreset[] = [
-  { id: 'project', label: 'Project', hint: 'MP4 at the project size', icon: Film, format: 'mp4-h264', alpha: false, height: null },
-  { id: 'youtube', label: 'YouTube 1080p', hint: 'MP4 / H.264, 1080 lines', icon: Youtube, format: 'mp4-h264', alpha: false, height: 1080 },
-  { id: 'sprites', label: 'Sprite frames', hint: 'PNG sequence with alpha, for game engines', icon: Sparkles, format: 'png-sequence', alpha: true, height: null },
-  { id: 'master', label: 'Transparent master', hint: 'ProRes 4444 with alpha', icon: Clapperboard, format: 'prores4444', alpha: true, height: null },
+  { id: 'project', label: 'export.presetProject', hint: 'export.presetProjectHint', icon: Film, format: 'mp4-h264', alpha: false, height: null },
+  { id: 'youtube', label: 'export.presetYouTube', hint: 'export.presetYouTubeHint', icon: Youtube, format: 'mp4-h264', alpha: false, height: 1080 },
+  { id: 'sprites', label: 'export.presetSprites', hint: 'export.presetSpritesHint', icon: Sparkles, format: 'png-sequence', alpha: true, height: null },
+  { id: 'master', label: 'export.presetMaster', hint: 'export.presetMasterHint', icon: Clapperboard, format: 'prores4444', alpha: true, height: null },
 ];
 
 /** What a finished export made, kept as it was when it finished. */
@@ -583,11 +583,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   cancelRef.current = true;
                 }}
               >
-                Cancel render
+                {t('export.cancelRender')}
               </button>
             ) : (
-              <button type="button" className="tool-button" onClick={onClose} title="Close">
-                Close
+              <button type="button" className="tool-button" onClick={onClose} title={t('dialog.close')}>
+                {t('dialog.close')}
               </button>
             )}
             {done ? (
@@ -599,9 +599,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 type="button"
                 className="tool-button border border-panel-600 px-4"
                 onClick={newExport}
-                title="Back to the settings, to export again"
+                title={t('export.newExportHint')}
               >
-                New export
+                {t('export.newExport')}
               </button>
             ) : (
               <button
@@ -612,7 +612,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 onClick={() => void startExport()}
               >
                 {running && <Loader2 size={14} className="animate-spin" />}
-                {running ? 'Rendering...' : 'Start export'}
+                {running ? t('export.rendering') : t('export.start')}
               </button>
             )}
           </div>
@@ -752,7 +752,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
             )}
 
             {/* Quick presets: format, size and transparency set together. */}
-            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Quick presets">
+            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={t('export.presets')}>
               {QUICK_PRESETS.map((preset) => {
                 const Icon = preset.icon;
                 // At most one is pressed. "Project" and "YouTube 1080p" are the
@@ -764,7 +764,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     key={preset.id}
                     type="button"
                     aria-pressed={active}
-                    title={preset.hint}
+                    title={t(preset.hint)}
                     disabled={running}
                     className={`tool-button h-auto flex-col items-start gap-0.5 border px-3 py-2 text-left ${
                       active ? 'tool-button-active border-transparent' : 'border-panel-700 bg-panel-950'
@@ -773,9 +773,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   >
                     <span className="flex items-center gap-1.5 text-xs font-medium">
                       <Icon size={13} />
-                      {preset.label}
+                      {t(preset.label)}
                     </span>
-                    <span className="text-2xs text-slate-400">{preset.hint}</span>
+                    <span className="text-2xs text-slate-400">{t(preset.hint)}</span>
                   </button>
                 );
               })}

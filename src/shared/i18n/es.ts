@@ -380,4 +380,20 @@ export const es: Messages = {
   'quick.projectSettings': 'Ajustes del proyecto…',
   'quick.preferences': 'Preferencias…',
   'quick.shortcuts': 'Atajos de teclado',
+
+  /* Export: actions and quick presets ------------------------------------- */
+  'export.cancelRender': 'Cancelar render',
+  'export.newExport': 'Nueva exportación',
+  'export.newExportHint': 'Volver a los ajustes para exportar otra vez',
+  'export.rendering': 'Renderizando…',
+  'export.start': 'Empezar a exportar',
+  'export.presets': 'Preajustes rápidos',
+  'export.presetProject': 'Proyecto',
+  'export.presetProjectHint': 'MP4 al tamaño del proyecto',
+  'export.presetYouTube': 'YouTube 1080p',
+  'export.presetYouTubeHint': 'MP4 / H.264, 1080 líneas',
+  'export.presetSprites': 'Fotogramas para sprites',
+  'export.presetSpritesHint': 'Secuencia PNG con alfa, para motores de juego',
+  'export.presetMaster': 'Máster transparente',
+  'export.presetMasterHint': 'ProRes 4444 con alfa',
 };

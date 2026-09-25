@@ -380,6 +380,22 @@ export const en = {
   'quick.projectSettings': 'Project settings...',
   'quick.preferences': 'Preferences...',
   'quick.shortcuts': 'Keyboard shortcuts',
+
+  /* Export: actions and quick presets ------------------------------------- */
+  'export.cancelRender': 'Cancel render',
+  'export.newExport': 'New export',
+  'export.newExportHint': 'Back to the settings, to export again',
+  'export.rendering': 'Rendering...',
+  'export.start': 'Start export',
+  'export.presets': 'Quick presets',
+  'export.presetProject': 'Project',
+  'export.presetProjectHint': 'MP4 at the project size',
+  'export.presetYouTube': 'YouTube 1080p',
+  'export.presetYouTubeHint': 'MP4 / H.264, 1080 lines',
+  'export.presetSprites': 'Sprite frames',
+  'export.presetSpritesHint': 'PNG sequence with alpha, for game engines',
+  'export.presetMaster': 'Transparent master',
+  'export.presetMasterHint': 'ProRes 4444 with alpha',
 };
 
 export type Messages = typeof en;
