@@ -1,6 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
-  AlertTriangle,
   ArrowRightToLine,
   ChevronDown,
   ChevronRight,
@@ -37,6 +36,8 @@ import { assetLengthSeconds } from '@renderer/media/assetLength';
 import { ProxyBar } from './ProxyBar';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { notify } from '@renderer/notifications/notifications';
+import { t } from '@renderer/i18n';
 
 /**
  * The media library: asset import, bins, and the transparent-asset toggle.
@@ -75,14 +76,12 @@ export function MediaLibrary(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const addAssets = useProjectStore((state) => state.addAssets);
   const removeAsset = useProjectStore((state) => state.removeAsset);
-  const adoptedFrom = useProjectStore((state) => state.adoptedSettingsFrom);
   const setCurrentBin = useProjectStore((state) => state.setCurrentBin);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const [busy, setBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [renamingBinId, setRenamingBinId] = useState<string | null>(null);
   /** Bin a clip is being dragged over: `undefined` for none, `null` for Master. */
@@ -131,18 +130,15 @@ export function MediaLibrary(): JSX.Element {
         const detail = outcome.rejected
           .map((entry) => `${entry.name} (${entry.reason})`)
           .join(', ');
-        setNotice(`Could not import ${detail}`);
+        notify(t('notify.importFailed', { detail }), 'error');
       } else if (duplicates.length > 0 && duplicates.length === outcome.assets.length) {
         const names = duplicates.map((asset) => asset.name).join(', ');
-        setNotice(
+        notify(
           duplicates.length === 1
-            ? `${names} is already in the library - drag it onto the timeline to use it again`
-            : `Already in the library: ${names}`,
+            ? t('notify.alreadyInLibrary', { name: names })
+            : t('notify.alreadyInLibraryMany', { names }),
+          'info',
         );
-      } else if (outcome.assets.length > 0) {
-        setNotice(null);
-      } else if (folders !== undefined || outcome.assets.length === 0) {
-        setNotice(null);
       }
     },
     [addAssets, setCurrentBin],
@@ -154,7 +150,7 @@ export function MediaLibrary(): JSX.Element {
       try {
         applyOutcome(await task());
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : String(error));
+        notify(error instanceof Error ? error.message : String(error), 'error');
       } finally {
         setBusy(false);
       }
@@ -459,20 +455,6 @@ export function MediaLibrary(): JSX.Element {
           event.target.value = '';
         }}
       />
-
-      {notice && (
-        <p className="flex items-start gap-1.5 border-b border-panel-700 bg-amber-950/40 px-3 py-2 text-2xs text-amber-300">
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          {notice}
-        </p>
-      )}
-
-      {adoptedFrom && (
-        <p className="border-b border-panel-700 bg-panel-800 px-3 py-2 text-2xs text-slate-400">
-          Project set to {project.width}x{project.height} @ {project.fps} fps from{' '}
-          <span className="text-slate-300">{adoptedFrom}</span>.
-        </p>
-      )}
 
       {!libraryEmpty && (
         <nav

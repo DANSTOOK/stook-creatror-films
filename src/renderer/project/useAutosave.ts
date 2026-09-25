@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { hasNativeBridge } from '@renderer/media/importMedia';
+import { t } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { documentIsDirty, useSessionStore } from '@renderer/store/useSessionStore';
 import {
@@ -68,7 +69,7 @@ export interface AutosaveHooks {
   save(): Promise<boolean>;
   /** Something else is using the renderer or the file. */
   isBusy(): boolean;
-  /** Say what happened, in the status line. */
+  /** Say what went wrong. */
   report(message: string): void;
 }
 
@@ -125,7 +126,7 @@ export function useAutosave({ save, isBusy, report }: AutosaveHooks): void {
           await window.filmora.projectsRecoveryClear().catch(() => undefined);
           snapshotRef.current = false;
         }
-        if (!saved) report('Autosave could not write the project');
+        if (!saved) report(t('notify.autosaveFailed'));
       } finally {
         runningRef.current = false;
       }

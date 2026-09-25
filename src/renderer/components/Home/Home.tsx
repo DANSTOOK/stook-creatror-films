@@ -30,7 +30,6 @@ const RATES = [24, 25, 30, 50, 60];
 const stagger = (index: number): CSSProperties => ({ ['--delay' as string]: `${Math.min(index, 11) * 35}ms` });
 
 export interface HomeProps {
-  status: string | null;
   onBlank(): void;
   onCreate(options: NewProjectOptions): Promise<boolean>;
   onOpenDialog(): void;
@@ -39,7 +38,7 @@ export interface HomeProps {
   onRecover(): void;
 }
 
-export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover }: HomeProps): JSX.Element {
+export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover }: HomeProps): JSX.Element {
   const native = hasNativeBridge();
   const [recent, setRecent] = useState<RecentProject[] | null>(null);
   const [query, setQuery] = useState('');
@@ -207,18 +206,6 @@ export function Home({ status, onBlank, onCreate, onOpenDialog, onOpenRecent, on
             </button>
           </div>
 
-          {status && (
-            <p
-              role="status"
-              className={`scf-rise break-all rounded-lg border px-3 py-2 text-2xs ${
-                /could not|not found|error/i.test(status)
-                  ? 'border-amber-500/30 bg-amber-950/30 text-amber-200'
-                  : 'border-panel-700/80 bg-panel-900/70 text-slate-400'
-              }`}
-            >
-              {status}
-            </p>
-          )}
         </section>
 
         {/* Carry on */}

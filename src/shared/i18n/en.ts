@@ -113,6 +113,29 @@ export const en = {
   'inspector.kindVideo': 'Video',
   'inspector.kindImage': 'Image',
   'inspector.kindAudio': 'Audio',
+
+  /* Notifications --------------------------------------------------------- */
+  'notify.saved': 'Saved to {file}',
+  'notify.autosaved': 'Autosaved to {file} at {time}',
+  'notify.saveFailed': 'Could not save: {error}',
+  'notify.autosaveFailed': 'Autosave could not write the project',
+  'notify.opened': 'Opened {file}',
+  'notify.openedMissing': 'Opened {file} - {count} media file(s) could not be found',
+  'notify.openFailed': 'Could not open {name}: {error}',
+  'notify.restored': 'Restored the version from {date} - not saved yet',
+  'notify.recovered': 'Recovered the work from {date} - not saved yet',
+  'notify.nothingToRecover': 'There is nothing left to recover',
+  'notify.created': 'Created {file}',
+  'notify.createFailed': 'Could not create the project: {error}',
+  'notify.importFailed': 'Could not import {detail}',
+  'notify.alreadyInLibrary': '{name} is already in the library - drag it onto the timeline to use it again',
+  'notify.alreadyInLibraryMany': 'Already in the library: {names}',
+  'notify.adopted': 'Project set to {width}×{height}, {fps} fps, to match {name}',
+  'notify.importing': 'Importing…',
+  'notify.dismiss': 'Dismiss',
+  'notify.history': 'Notifications',
+  'notify.historyEmpty': 'Nothing yet. Messages about saving, opening and importing appear here.',
+  'notify.clear': 'Clear',
 };
 
 export type Messages = typeof en;

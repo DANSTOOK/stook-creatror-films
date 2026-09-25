@@ -7,6 +7,8 @@ import { currentMarker, documentIsDirty, useSessionStore } from '@renderer/store
 import { withViewTransition } from '@renderer/motion/viewTransition';
 import { projectNameFromPath } from './projectSession';
 import { savedAtLabel } from './autosave';
+import { notify } from '@renderer/notifications/notifications';
+import { currentLocale, t } from '@renderer/i18n';
 
 /**
  * Everything that starts, opens or keeps a project.
@@ -30,7 +32,7 @@ export interface NewProjectOptions {
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
- * The file's own name, for a status line.
+ * The file's own name, for a message.
  *
  * A full path is most of a toolbar wide and tells the user nothing they did
  * not just choose; where the project lives is on its card on the start screen
@@ -111,7 +113,7 @@ async function recordRecent(path: string, withThumbnail: boolean): Promise<void>
 /** What a save is for: the user asked, or the clock did. */
 export interface SaveOptions {
   /**
-   * An automatic save: no thumbnail, and a quieter line in the status bar.
+   * An automatic save: no thumbnail, and a quieter message.
    *
    * The thumbnail is rendered by taking the renderer exclusively, which is
    * fine when somebody pressed Ctrl+S and is waiting, and not fine at all
@@ -139,7 +141,10 @@ export interface ProjectActions {
   goHome(): Promise<boolean>;
 }
 
-export function useProjectActions(setStatus: (message: string | null) => void): ProjectActions {
+/** A date and time in the interface language, for "restored the version from ...". */
+const whenLabel = (iso: string): string => new Date(iso).toLocaleString(currentLocale());
+
+export function useProjectActions(): ProjectActions {
   const save = useCallback(
     async (saveAs = false, { automatic = false }: SaveOptions = {}): Promise<boolean> => {
       if (!hasNativeBridge()) return false;
@@ -156,21 +161,22 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
             ? await window.filmora.projectsSave(session.projectPath, json)
             : await window.filmora.saveProjectAs(json, `${session.projectName}.scf`);
       } catch (error) {
-        setStatus(`Could not save: ${describe(error)}`);
+        notify(t('notify.saveFailed', { error: describe(error) }), 'error');
         return false;
       }
       if (!path) return false;
 
       useSessionStore.getState().markSaved(marker, path, projectNameFromPath(path));
-      setStatus(
+      notify(
         automatic
-          ? `Autosaved to ${fileName(path)} at ${savedAtLabel(new Date())}`
-          : `Saved to ${fileName(path)}`,
+          ? t('notify.autosaved', { file: fileName(path), time: savedAtLabel(new Date(), currentLocale()) })
+          : t('notify.saved', { file: fileName(path) }),
+        automatic ? 'info' : 'success',
       );
       pendingRecord = recordRecent(path, !automatic).catch(() => undefined);
       return true;
     },
-    [setStatus],
+    [],
   );
 
   /** True when it is fine to replace the project on screen. */
@@ -199,19 +205,19 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         });
 
         const missing = assets.filter((asset) => asset.missing);
-        setStatus(
-          missing.length > 0
-            ? `Opened ${fileName(opened.path)} - ${missing.length} media file(s) could not be found`
-            : `Opened ${fileName(opened.path)}`,
-        );
+        if (missing.length > 0) {
+          notify(t('notify.openedMissing', { file: fileName(opened.path), count: missing.length }), 'warning');
+        } else {
+          notify(t('notify.opened', { file: fileName(opened.path) }), 'success');
+        }
         void recordRecent(opened.path, false);
         return true;
       } catch (error) {
-        setStatus(describe(error));
+        notify(describe(error), 'error');
         return false;
       }
     },
-    [setStatus],
+    [],
   );
 
   /**
@@ -232,14 +238,14 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
           useProjectStore.getState().loadDocument({ ...document, assets, project });
           useSessionStore.getState().startProject(path, name, { undoTopId: 'restored', library: 'restored' });
         });
-        setStatus(message);
+        notify(message, 'info');
         return true;
       } catch (error) {
-        setStatus(describe(error));
+        notify(describe(error), 'error');
         return false;
       }
     },
-    [setStatus],
+    [],
   );
 
   const restoreContents = useCallback(
@@ -250,7 +256,7 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         contents,
         session.projectPath,
         session.projectName,
-        `Restored the version from ${new Date(savedAt).toLocaleString()} - not saved yet`,
+        t('notify.restored', { date: whenLabel(savedAt) }),
       );
     },
     [confirmLeave, loadDetached],
@@ -260,16 +266,16 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
     if (!hasNativeBridge() || !(await confirmLeave())) return false;
     const snapshot = await window.filmora.projectsRecoveryRead().catch(() => null);
     if (!snapshot) {
-      setStatus('There is nothing left to recover');
+      notify(t('notify.nothingToRecover'), 'info');
       return false;
     }
     return loadDetached(
       snapshot.contents,
       snapshot.path,
       snapshot.name,
-      `Recovered the work from ${new Date(snapshot.savedAt).toLocaleString()} - not saved yet`,
+      t('notify.recovered', { date: whenLabel(snapshot.savedAt) }),
     );
-  }, [confirmLeave, loadDetached, setStatus]);
+  }, [confirmLeave, loadDetached]);
 
   const openFromDialog = useCallback(async (): Promise<boolean> => {
     if (!hasNativeBridge() || !(await confirmLeave())) return false;
@@ -284,11 +290,11 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         const opened = await window.filmora.projectsOpenRecent(path);
         return opened ? load(opened) : false;
       } catch (error) {
-        setStatus(`Could not open ${projectNameFromPath(path)}: ${describe(error)}`);
+        notify(t('notify.openFailed', { name: projectNameFromPath(path), error: describe(error) }), 'error');
         return false;
       }
     },
-    [confirmLeave, load, setStatus],
+    [confirmLeave, load],
   );
 
   const newBlank = useCallback(async (): Promise<boolean> => {
@@ -298,9 +304,8 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
       useProjectStore.getState().newProject();
       useSessionStore.getState().startProject(null, 'Untitled project', currentMarker());
     });
-    setStatus(null);
     return true;
-  }, [confirmLeave, setStatus]);
+  }, [confirmLeave]);
 
   const createProject = useCallback(
     async (options: NewProjectOptions): Promise<boolean> => {
@@ -314,15 +319,15 @@ export function useProjectActions(setStatus: (message: string | null) => void): 
         await withViewTransition(() => {
           useSessionStore.getState().startProject(path, projectNameFromPath(path), currentMarker());
         });
-        setStatus(`Created ${fileName(path)}`);
+        notify(t('notify.created', { file: fileName(path) }), 'success');
         void recordRecent(path, false);
         return true;
       } catch (error) {
-        setStatus(`Could not create the project: ${describe(error)}`);
+        notify(t('notify.createFailed', { error: describe(error) }), 'error');
         return false;
       }
     },
-    [confirmLeave, setStatus],
+    [confirmLeave],
   );
 
   const goHome = useCallback(async (): Promise<boolean> => {

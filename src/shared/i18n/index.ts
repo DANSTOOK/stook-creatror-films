@@ -29,7 +29,7 @@ const dictionaries: Record<Language, Partial<Messages>> = { en, es };
 export const isLanguage = (value: unknown): value is Language => value === 'en' || value === 'es';
 
 /** The BCP 47 tag for dates and numbers in this language. */
-export const localeOf = (language: Language): string => (language === 'es' ? 'es-ES' : 'en-GB');
+export const localeOf = (language: Language): string => (language === 'es' ? 'es-MX' : 'en-US');
 
 /**
  * A message in `language`, with `{name}` placeholders filled from `params`.

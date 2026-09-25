@@ -32,6 +32,8 @@ import type { Clip, Marker, MediaAsset, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { dismissNotification, notify } from '@renderer/notifications/notifications';
+import { t } from '@renderer/i18n';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
 import { isLinked } from './linkGroups';
@@ -148,7 +150,6 @@ export function Timeline(): JSX.Element {
   const [viewportWidth, setViewportWidth] = useState(1200);
   const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
   const [renamingMarkerId, setRenamingMarkerId] = useState<string | null>(null);
-  const [dropNotice, setDropNotice] = useState<string | null>(null);
   const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
   const [hover, setHover] = useState<ClipHover | null>(null);
   const [overScissors, setOverScissors] = useState(false);
@@ -955,7 +956,7 @@ export function Timeline(): JSX.Element {
         const asset = state.assets.find((candidate) => candidate.id === assetId);
         if (asset && !asset.missing) assets = [asset];
       } else if (files.length > 0) {
-        setDropNotice('Importing...');
+        const importing = notify(t('notify.importing'), 'info', { persistent: true });
         const outcome = await importDroppedFiles(files, state.project.fps).catch((error: unknown) => ({
           assets: [],
           rejected: [{ name: 'drop', reason: error instanceof Error ? error.message : String(error) }],
@@ -966,11 +967,13 @@ export function Timeline(): JSX.Element {
         const ids = new Set(outcome.assets.map((asset) => asset.id));
         assets = store.getState().assets.filter((asset) => ids.has(asset.id));
 
-        setDropNotice(
-          outcome.rejected.length > 0
-            ? `Could not import ${outcome.rejected.map((entry) => `${entry.name} (${entry.reason})`).join(', ')}`
-            : null,
-        );
+        dismissNotification(importing);
+        if (outcome.rejected.length > 0) {
+          notify(
+            t('notify.importFailed', { detail: outcome.rejected.map((entry) => `${entry.name} (${entry.reason})`).join(', ') }),
+            'error',
+          );
+        }
       }
 
       if (assets.length === 0) return;
@@ -1221,12 +1224,6 @@ export function Timeline(): JSX.Element {
           </div>
         </div>
       </header>
-
-      {dropNotice && (
-        <p className="border-b border-panel-700 bg-amber-950/40 px-3 py-1.5 text-2xs text-amber-300">
-          {dropNotice}
-        </p>
-      )}
 
       {/* Scrolls vertically as one, headers and tracks together, so a timeline
           dragged shorter than its tracks still reaches every row. */}

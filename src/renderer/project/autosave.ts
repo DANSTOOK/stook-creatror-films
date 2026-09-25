@@ -83,6 +83,6 @@ export function autosaveLabel(minutes: number): string {
 }
 
 /** A clock time for the status line, in the viewer's own format. */
-export function savedAtLabel(when: Date): string {
-  return when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+export function savedAtLabel(when: Date, locale?: string): string {
+  return when.toLocaleTimeString(locale ? [locale] : [], { hour: '2-digit', minute: '2-digit' });
 }

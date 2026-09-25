@@ -47,7 +47,9 @@ import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import { useIsDirty, useSessionStore } from './store/useSessionStore';
-import { useLanguageStore } from './i18n';
+import { t, useLanguageStore } from './i18n';
+import { notify } from './notifications/notifications';
+import { NotificationsButton, Toaster } from './notifications/Toaster';
 import { MENU_IMPORT_EVENT } from './components/MediaLibrary/MediaLibrary';
 import type { MenuCommand } from '@shared/types/ipc';
 
@@ -108,7 +110,6 @@ export default function App(): JSX.Element {
   const exportPresence = usePresence(exportOpen);
   const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
-  const [status, setStatus] = useState<string | null>(null);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -116,15 +117,28 @@ export default function App(): JSX.Element {
   const projectName = useSessionStore((state) => state.projectName);
   const projectPath = useSessionStore((state) => state.projectPath);
   const dirty = useIsDirty();
-  const actions = useProjectActions(setStatus);
+  const actions = useProjectActions();
 
   // Saving on a timer, so a crash or a closed laptop costs minutes rather
   // than an afternoon. Never while the renderer is taken: an export owns it.
   useAutosave({
     save: useCallback(() => actions.save(false, { automatic: true }), [actions]),
     isBusy: useCallback(() => getActiveFrameRenderer()?.isExclusive === true, []),
-    report: setStatus,
+    report: useCallback((message: string) => void notify(message, 'error'), []),
   });
+
+  // Picking the project's format from the first clip imported is worth
+  // saying once, when it happens - it used to sit in the media panel for good.
+  useEffect(
+    () =>
+      useProjectStore.subscribe((state, previous) => {
+        const from = state.adoptedSettingsFrom;
+        if (!from || from === previous.adoptedSettingsFrom) return;
+        const { width, height, fps } = state.project;
+        notify(t('notify.adopted', { width, height, fps, name: from }), 'info');
+      }),
+    [],
+  );
 
   // The window title names the project, as editors do; the start screen keeps
   // the plain app name.
@@ -508,11 +522,7 @@ export default function App(): JSX.Element {
             )}
           </div>
 
-          {status && (
-            <span key={status} className="scf-view max-w-[34%] truncate px-2 text-2xs text-slate-400" title={status}>
-              {status}
-            </span>
-          )}
+          <NotificationsButton />
 
           <button
             type="button"
@@ -580,7 +590,6 @@ export default function App(): JSX.Element {
       {view === 'home' && (
         <div className="absolute inset-0 z-40">
           <Home
-            status={status}
             onBlank={() => void actions.newBlank()}
             onCreate={actions.createProject}
             onOpenDialog={() => void actions.openFromDialog()}
@@ -591,6 +600,7 @@ export default function App(): JSX.Element {
       )}
 
       <UnsavedChangesDialog />
+      <Toaster />
     </div>
   );
 }

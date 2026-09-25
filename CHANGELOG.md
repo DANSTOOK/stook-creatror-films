@@ -67,6 +67,18 @@ forma del editor. Cada punto dice cómo se comprobó.
   había a su lado pasa a una sección **Información** al final, plegada, con
   tipo, canales, tamaño, fotogramas por segundo, duración, inicio y ruta del
   archivo, como el inspector de información de Final Cut.
+- **Un solo sistema de avisos.** Había cuatro: una línea de texto en la barra
+  superior, una franja fija arriba del panel de medios (errores de
+  importación, «ya está en la biblioteca» y el formato que había elegido el
+  proyecto), otra encima de la línea de tiempo para lo que se soltaba ahí, y
+  una copia de la línea superior en la pantalla de inicio, donde «Saved to…»
+  de un proyecto ya cerrado se quedaba para siempre. Las franjas no se iban
+  nunca y empujaban hacia abajo el contenido de su panel. Ahora todo aviso es
+  una notificación abajo a la derecha que se va sola (5 s; 9 s un aviso, 12 s
+  un error), no roba clics a la línea de tiempo que tiene debajo (solo su
+  botón de cerrar es pulsable), y queda en un **historial** con la hora, en el
+  botón de la campana de la barra superior. Un aviso del editor no aparece
+  sobre la pantalla de inicio ni al revés. Se leen en el idioma elegido.
 
 ### Añadido
 
@@ -110,6 +122,11 @@ forma del editor. Cada punto dice cómo se comprobó.
   (`tests/unit/UiText.test.ts`) para las lecturas en dB y L/C/R: la ganancia
   unidad es «0.0 dB» sin signo ni «-0.0», la mitad «-6.0 dB», el silencio
   «-inf dB».
+- **Avisos (punto 4):** capturas tras guardar (`i04-after-save.png`), tras
+  importar un archivo roto (`i04-import-error.png`, antes en
+  `redesign-audit/25`) y con los dos avisos apilados. Los textos que buscan
+  las pruebas de interfaz («Saved to», «Opened», «Autosaved to … at») siguen
+  siendo los mismos en inglés.
 
 ### También sin publicar: una exportación terminada se ve terminada
 
