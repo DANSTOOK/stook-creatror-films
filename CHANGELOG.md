@@ -137,6 +137,14 @@ forma del editor. Cada punto dice cómo se comprobó.
     una frase que explica para qué sirve; se abre solo si la opción está
     activada, para que un ajuste en uso nunca quede escondido.
   - El estado de exportación terminada de 4610db4 no cambia.
+- **Pantalla de inicio:** los proyectos recientes ocupan todo el ancho junto a
+  la columna de proyecto nuevo (antes la página se cortaba a 1360 px y quedaba
+  una tarjeta sola a la izquierda y una franja vacía), en una cuadrícula de
+  tantas columnas como quepan; la búsqueda está junto al título «Proyectos
+  recientes», no en el otro extremo; y ya no aparece ahí el aviso de guardado
+  de un proyecto que se cerró. Crear proyecto usa el botón principal de 32 px
+  y los campos la altura normal de 28. Toda la pantalla está en los dos
+  idiomas.
 
 ### Añadido
 
@@ -219,6 +227,10 @@ forma del editor. Cada punto dice cómo se comprobó.
   muestra. **5/5.** Pruebas unitarias del nombre por defecto (caracteres no
   válidos, puntos finales, nombre vacío). Capturas `i12-export-*.png` (antes
   en `redesign-audit/20`).
+- **Pantalla de inicio (punto 14):** capturas vacía y con un proyecto reciente
+  tras guardar y volver al inicio (`i14-home-*.png`, antes en
+  `redesign-audit/01` y `26`): sin aviso de «Saved to» y con la búsqueda al
+  lado del título.
 
 ### También sin publicar: una exportación terminada se ve terminada
 

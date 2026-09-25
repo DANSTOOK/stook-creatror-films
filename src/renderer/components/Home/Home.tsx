@@ -5,6 +5,7 @@ import { hasNativeBridge } from '@renderer/media/importMedia';
 import { useFlip } from '@renderer/motion/useFlip';
 import { formatLength, nextUntitledName, relativeTime } from '@renderer/project/projectSession';
 import type { NewProjectOptions } from '@renderer/project/useProjectActions';
+import { useLanguageStore, useT } from '@renderer/i18n';
 
 /**
  * The start screen: a new project, or one to carry on with.
@@ -13,6 +14,11 @@ import type { NewProjectOptions } from '@renderer/project/useProjectActions';
  * projects as thumbnails, newest first, one click away; a new project named and
  * placed up front rather than an "Untitled" that has to be renamed later; and
  * a blank project for trying something without keeping it.
+ *
+ * The recent projects take the whole width beside the new-project column, and
+ * their search sits beside their title, where the eye already is - it used to
+ * be at the far edge of a page capped at 1360px, with a lone card on the left
+ * and an empty band on the right.
  */
 
 const LOGO_URL = new URL('../../assets/logo.png', import.meta.url).href;
@@ -39,6 +45,8 @@ export interface HomeProps {
 }
 
 export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover }: HomeProps): JSX.Element {
+  const t = useT();
+  const language = useLanguageStore((state) => state.language);
   const native = hasNativeBridge();
   const [recent, setRecent] = useState<RecentProject[] | null>(null);
   const [query, setQuery] = useState('');
@@ -92,7 +100,7 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
   const create = async (): Promise<void> => {
     setCreating(true);
     try {
-      await onCreate({ name: name.trim() || 'Untitled project', folder, width: chosenPreset.width, height: chosenPreset.height, fps });
+      await onCreate({ name: name.trim() || t('home.untitled'), folder, width: chosenPreset.width, height: chosenPreset.height, fps });
     } finally {
       setCreating(false);
     }
@@ -109,27 +117,27 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
       <div aria-hidden className="scf-glow scf-glow-a pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full" />
       <div aria-hidden className="scf-glow scf-glow-b pointer-events-none absolute -bottom-48 right-[-120px] h-[600px] w-[600px] rounded-full" />
 
-      <div className="relative mx-auto flex h-full w-full max-w-[1360px] gap-8 px-10 py-9">
+      <div className="relative flex h-full w-full gap-8 px-10 py-9">
         {/* Start something */}
-        <section className="flex w-[360px] shrink-0 flex-col gap-5">
+        <section className="flex w-[340px] shrink-0 flex-col gap-5">
           <header className="scf-rise flex items-center gap-3" style={stagger(0)}>
-            <img src={LOGO_URL} alt="" className="h-11 w-11 rounded-xl shadow-lg shadow-black/40" draggable={false} />
+            <img src={LOGO_URL} alt="" className="h-11 w-11 rounded-panel shadow-lg shadow-black/40" draggable={false} />
             <div>
-              <h1 className="text-lg font-semibold tracking-wide text-slate-100">STOOK CREATOR FILMS</h1>
-              <p className="text-xs text-slate-400">Start a new edit, or pick up where you left off.</p>
+              <h1 className="font-display text-lg font-semibold tracking-wide text-slate-100">STOOK CREATOR FILMS</h1>
+              <p className="text-xs text-slate-400">{t('home.tagline')}</p>
             </div>
           </header>
 
-          <div className="scf-rise scf-surface space-y-3 rounded-xl p-4" style={stagger(1)}>
-            <h2 className="flex items-center gap-2 text-sm font-medium text-slate-100">
+          <div className="scf-rise scf-surface space-y-3 rounded-panel p-4" style={stagger(1)}>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
               <Sparkles size={15} className="text-accent-hover" />
-              New project
+              {t('home.newProject')}
             </h2>
 
             <label className="flex flex-col gap-1">
-              <span className="field-label">Project name</span>
+              <span className="field-label">{t('home.projectName')}</span>
               <input
-                className="numeric-input h-9 text-sm"
+                className="numeric-input text-sm"
                 value={name}
                 spellCheck={false}
                 onChange={(event) => setName(event.target.value)}
@@ -141,8 +149,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
 
             <div className="grid grid-cols-[1fr_96px] gap-2">
               <label className="flex flex-col gap-1">
-                <span className="field-label">Resolution</span>
-                <select className="numeric-input h-9" value={preset} onChange={(event) => setPreset(event.target.value)}>
+                <span className="field-label">{t('home.resolution')}</span>
+                <select className="numeric-input" value={preset} onChange={(event) => setPreset(event.target.value)}>
                   {PRESETS.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.label}
@@ -151,8 +159,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
                 </select>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="field-label">Frame rate</span>
-                <select className="numeric-input h-9" value={fps} onChange={(event) => setFps(Number(event.target.value))}>
+                <span className="field-label">{t('home.frameRate')}</span>
+                <select className="numeric-input" value={fps} onChange={(event) => setFps(Number(event.target.value))}>
                   {RATES.map((rate) => (
                     <option key={rate} value={rate}>
                       {rate} fps
@@ -164,45 +172,45 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
 
             <div className="flex items-end gap-2">
               <label className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="field-label">Location</span>
-                <input readOnly className="numeric-input h-9 truncate" value={folder ?? ''} placeholder="Documents" title={folder ?? ''} />
+                <span className="field-label">{t('home.location')}</span>
+                <input readOnly className="numeric-input truncate" value={folder ?? ''} placeholder="Documents" title={folder ?? ''} />
               </label>
               <button
                 type="button"
-                className="tool-button h-9"
+                className="tool-button"
                 disabled={!native}
-                title="Choose the folder for the project file"
+                title={t('home.changeHint')}
                 onClick={() => void window.filmora.projectsChooseFolder().then((picked) => picked && setFolder(picked))}
               >
                 <FolderPlus size={14} />
-                Change
+                {t('home.change')}
               </button>
             </div>
 
             <button
               type="button"
-              className="scf-primary flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium"
+              className="button-primary w-full"
               disabled={!native || creating}
               onClick={() => void create()}
             >
-              <Plus size={16} />
-              {creating ? 'Creating...' : 'Create project'}
+              <Plus size={15} />
+              {creating ? t('home.creating') : t('home.create')}
             </button>
           </div>
 
           <div className="scf-rise grid grid-cols-2 gap-2" style={stagger(2)}>
-            <button type="button" className="scf-surface scf-lift flex h-11 items-center justify-center gap-2 rounded-lg text-xs text-slate-200" onClick={onBlank}>
+            <button type="button" className="scf-surface scf-lift flex h-control items-center justify-center gap-2 rounded-control text-xs text-slate-200" onClick={onBlank}>
               <Film size={14} />
-              Blank project
+              {t('home.blank')}
             </button>
             <button
               type="button"
-              className="scf-surface scf-lift flex h-11 items-center justify-center gap-2 rounded-lg text-xs text-slate-200"
+              className="scf-surface scf-lift flex h-control items-center justify-center gap-2 rounded-control text-xs text-slate-200"
               disabled={!native}
               onClick={onOpenDialog}
             >
               <FolderOpen size={14} />
-              Open project...
+              {t('home.open')}
             </button>
           </div>
 
@@ -213,47 +221,46 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
           {recovery && (
             <div
               data-testid="recovery-card"
-              className="scf-rise scf-surface mb-4 flex items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3"
+              className="scf-rise scf-surface mb-4 flex items-center gap-3 rounded-panel border border-amber-500/30 bg-amber-500/5 px-4 py-3"
             >
               <LifeBuoy size={18} className="shrink-0 text-amber-400" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-slate-100">
-                  Unsaved work from {recovery.name}
-                </p>
+                <p className="truncate text-sm text-slate-100">{t('home.recoveryTitle', { name: recovery.name })}</p>
                 <p className="text-2xs text-slate-400">
-                  Kept automatically {relativeTime(recovery.savedAt)}, when the app closed before it was saved.
+                  {t('home.recoveryBody', { when: relativeTime(recovery.savedAt, Date.now(), language) })}
                 </p>
               </div>
-              <button type="button" className="tool-button tool-button-active shrink-0" onClick={onRecover}>
-                Recover
-              </button>
               <button
                 type="button"
                 className="tool-button shrink-0"
-                title="Throw this away"
+                title={t('home.discardHint')}
                 onClick={() => {
                   setRecovery(null);
                   void window.filmora.projectsRecoveryClear().catch(() => undefined);
                 }}
               >
-                Discard
+                {t('home.discard')}
+              </button>
+              <button type="button" className="button-primary shrink-0" onClick={onRecover}>
+                {t('home.recover')}
               </button>
             </div>
           )}
-          <div className="scf-rise mb-4 flex items-center gap-3" style={stagger(1)}>
-            <h2 className="flex items-center gap-2 text-sm font-medium text-slate-100">
+          <div className="scf-rise mb-4 flex h-11 items-center gap-4" style={stagger(1)}>
+            <h2 className="flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-100">
               <Clock size={15} className="text-slate-400" />
-              Recent projects
+              {t('home.recent')}
               {recent && recent.length > 0 && <span className="rounded-full bg-panel-800 px-2 py-0.5 text-2xs text-slate-400">{recent.length}</span>}
             </h2>
-            <div className="flex-1" />
+            {/* Beside the title it filters, not at the far edge of the page. */}
             {recent && recent.length > 0 && (
-              <label className="relative w-64">
+              <label className="relative w-72">
                 <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
-                  className="numeric-input h-8 pl-8"
-                  placeholder="Search projects"
-                  aria-label="Search projects"
+                  type="search"
+                  className="numeric-input pl-8"
+                  placeholder={t('home.search')}
+                  aria-label={t('home.search')}
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                 />
@@ -263,26 +270,25 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
 
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             {recent === null ? null : recent.length === 0 ? (
-              <div className="scf-rise scf-surface flex h-64 flex-col items-center justify-center gap-2 rounded-xl text-center" style={stagger(2)}>
+              <div className="scf-rise scf-surface flex h-64 flex-col items-center justify-center gap-2 rounded-panel text-center" style={stagger(2)}>
                 <Film size={28} className="text-slate-400" />
-                <p className="text-sm text-slate-300">No recent projects yet</p>
-                <p className="max-w-sm text-2xs leading-relaxed text-slate-400">
-                  Projects you create, open or save show up here, with a picture of where you left them.
-                </p>
+                <p className="text-sm text-slate-300">{t('home.noRecent')}</p>
+                <p className="max-w-sm text-2xs leading-relaxed text-slate-400">{t('home.noRecentHint')}</p>
               </div>
             ) : shown.length === 0 ? (
-              <p className="px-1 py-8 text-center text-xs text-slate-400">No project matches &ldquo;{query}&rdquo;.</p>
+              <p className="px-1 py-8 text-center text-xs text-slate-400">{t('home.noMatch', { query })}</p>
             ) : (
-              <ul ref={cardsRef} className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4 pb-4">
+              // Columns of at least 220px across the whole width, as many as fit.
+              <ul ref={cardsRef} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4 pb-4">
                 {shown.map((project, index) => (
                   <li key={project.path} data-flip-key={project.path} className="scf-rise group relative" style={stagger(index + 2)}>
                     <button
                       type="button"
-                      aria-label={`Open ${project.name}`}
-                      title={project.exists ? project.path : `Not found: ${project.path}`}
+                      aria-label={t('home.openCard', { name: project.name })}
+                      title={project.exists ? project.path : t('home.notFoundPath', { path: project.path })}
                       disabled={!project.exists}
                       onClick={() => onOpenRecent(project.path)}
-                      className="scf-card flex w-full flex-col overflow-hidden rounded-xl text-left disabled:cursor-not-allowed"
+                      className="scf-card flex w-full flex-col overflow-hidden rounded-menu text-left disabled:cursor-not-allowed"
                     >
                       <div className="relative aspect-video w-full overflow-hidden bg-panel-950">
                         {project.thumbnailUrl ? (
@@ -306,23 +312,25 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
                           </div>
                         )}
                         {!project.exists && (
-                          <span className="absolute inset-x-0 bottom-0 bg-red-950/85 px-2 py-1 text-center text-2xs text-red-200">File not found</span>
+                          <span className="absolute inset-x-0 bottom-0 bg-red-950/85 px-2 py-1 text-center text-2xs text-red-200">{t('home.fileNotFound')}</span>
                         )}
                       </div>
                       <div className="space-y-0.5 px-3 py-2.5">
                         <p className="truncate text-sm font-medium text-slate-100">{project.name}</p>
                         <p className="truncate text-2xs text-slate-400">
-                          {project.width > 0 ? `${project.width}x${project.height}` : 'Empty'}
+                          {project.width > 0 ? `${project.width}×${project.height}` : t('home.empty')}
                           {project.fps > 0 ? ` · ${project.fps} fps` : ''} · {formatLength(project.durationFrames, project.fps)}
-                          {project.clipCount > 0 ? ` · ${project.clipCount} clip${project.clipCount === 1 ? '' : 's'}` : ''}
+                          {project.clipCount > 0
+                            ? ` · ${t(project.clipCount === 1 ? 'home.oneClip' : 'home.clips', { count: project.clipCount })}`
+                            : ''}
                         </p>
-                        <p className="text-2xs text-slate-400">{relativeTime(project.lastOpened)}</p>
+                        <p className="text-2xs text-slate-400">{relativeTime(project.lastOpened, Date.now(), language)}</p>
                       </div>
                     </button>
                     <button
                       type="button"
-                      aria-label={`Remove ${project.name} from recent projects`}
-                      title="Remove from the list (the file stays where it is)"
+                      aria-label={t('home.removeCard', { name: project.name })}
+                      title={t('home.removeHint')}
                       className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-slate-300 opacity-0 backdrop-blur transition-opacity duration-150 hover:text-white focus-visible:opacity-100 group-hover:opacity-100"
                       onClick={() => void forget(project.path)}
                     >
