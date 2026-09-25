@@ -2,6 +2,7 @@ import { Headphones, Volume2, VolumeX, X } from 'lucide-react';
 import type { AudioBus, Clip, Track } from '@shared/types';
 import { NEUTRAL_EQ } from '@shared/types';
 import { hasSoloedTrack, isTrackAudible } from '@renderer/audio/mixRouting';
+import { dbLabel, panLabel, signedDb } from '@renderer/audio/levels';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { timelineRows } from '@renderer/components/Timeline/trackRows';
 
@@ -18,16 +19,6 @@ import { timelineRows } from '@renderer/components/Timeline/trackRows';
  * fader at all.
  */
 
-const dbLabel = (linear: number): string => {
-  if (linear <= 0.0001) return '-inf dB';
-  const db = 20 * Math.log10(linear);
-  return `${db >= 0 ? '+' : ''}${db.toFixed(1)} dB`;
-};
-
-const panLabel = (pan: number): string => {
-  if (Math.abs(pan) < 0.005) return 'C';
-  return `${pan < 0 ? 'L' : 'R'}${Math.round(Math.abs(pan) * 100)}`;
-};
 
 interface FaderProps {
   label: string;
@@ -44,7 +35,7 @@ function Fader({ label, readout, value, min = 0, max = 2, step = 0.01, onChange 
     <label className="flex flex-col gap-1">
       <span className="field-label flex items-center justify-between">
         <span>{label}</span>
-        <span className="normal-case tracking-normal text-slate-400">{readout}</span>
+        <span className="timecode text-slate-400">{readout}</span>
       </span>
       <input
         type="range"
@@ -61,9 +52,9 @@ function Fader({ label, readout, value, min = 0, max = 2, step = 0.01, onChange 
 
 function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }): JSX.Element {
   return (
-    <section className="rounded border border-panel-700 bg-panel-950 p-3">
+    <section className="rounded-menu border border-panel-700 bg-panel-950 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-2xs font-semibold uppercase tracking-wide text-slate-400">{title}</h3>
+        <h3 className="text-xs font-semibold text-slate-200">{title}</h3>
         {right}
       </div>
       <div className="flex flex-col gap-2">{children}</div>
@@ -117,7 +108,7 @@ function TrackStrip({ track, anySolo }: { track: Track; anySolo: boolean }): JSX
       </div>
 
       <label className="mt-2 flex items-center gap-2 text-2xs text-slate-400">
-        <span className="uppercase tracking-wide">Bus</span>
+        <span>Bus</span>
         <select
           className="numeric-input h-6 flex-1"
           value={track.bus}
@@ -174,7 +165,7 @@ function ClipStrip({ clip }: { clip: Clip }): JSX.Element {
       <div className="grid grid-cols-3 gap-2">
         <Fader
           label="Low"
-          readout={`${eq.low >= 0 ? '+' : ''}${eq.low.toFixed(1)}`}
+          readout={signedDb(eq.low)}
           value={eq.low}
           min={-24}
           max={24}
@@ -183,7 +174,7 @@ function ClipStrip({ clip }: { clip: Clip }): JSX.Element {
         />
         <Fader
           label="Mid"
-          readout={`${eq.mid >= 0 ? '+' : ''}${eq.mid.toFixed(1)}`}
+          readout={signedDb(eq.mid)}
           value={eq.mid}
           min={-24}
           max={24}
@@ -192,7 +183,7 @@ function ClipStrip({ clip }: { clip: Clip }): JSX.Element {
         />
         <Fader
           label="High"
-          readout={`${eq.high >= 0 ? '+' : ''}${eq.high.toFixed(1)}`}
+          readout={signedDb(eq.high)}
           value={eq.high}
           min={-24}
           max={24}

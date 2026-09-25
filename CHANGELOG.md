@@ -54,6 +54,19 @@ forma del editor. Cada punto dice cómo se comprobó.
   diálogos)**, definidos como tokens en `tailwind.config.js` e `index.css`.
   Se mantienen las cabeceras de panel de 36 px y la geometría de la línea de
   tiempo (regla de 24 px, filas de 58 px).
+- **Unidades de editor en el inspector.** Escala y opacidad en %, rotación en
+  grados, posición en px (la unidad dentro del campo, no en la etiqueta),
+  volumen en dB y panorama como L/C/R, igual que en el mezclador: antes el
+  mismo clip decía «-6.0 dB» en el mezclador y «0.50» en el inspector. El
+  ecualizador lee «+3.0 dB», el difuminado y el tamaño de píxel «px», la
+  rotación de la máscara grados en vez de radianes y la intensidad de la LUT
+  %. Solo cambia lo que se muestra y se escribe; el proyecto guarda los mismos
+  valores de siempre.
+- **La cabecera del inspector es el nombre del archivo, tal cual** (antes en
+  MAYÚSCULAS, «INTERVIEW A-CAM.MP4»). La etiqueta «RGB»/«RGBA»/«Audio» que
+  había a su lado pasa a una sección **Información** al final, plegada, con
+  tipo, canales, tamaño, fotogramas por segundo, duración, inicio y ruta del
+  archivo, como el inspector de información de Final Cut.
 
 ### Añadido
 
@@ -91,6 +104,12 @@ forma del editor. Cada punto dice cómo se comprobó.
   «Segoe UI Variable» a secas no lo encuentra en este equipo, por eso va
   primero el nombre de la instancia) y que sus cifras son proporcionales por
   defecto (un «1» mide 4,9 px y un «0» 7 px a 13 px), de ahí `tabular-nums`.
+- **Unidades e inspector (puntos 5 y 6):** capturas del inspector de vídeo, de
+  audio y con Información desplegada (`i06-*.png`, antes en
+  `redesign-audit/06` y `08`). Pruebas unitarias nuevas
+  (`tests/unit/UiText.test.ts`) para las lecturas en dB y L/C/R: la ganancia
+  unidad es «0.0 dB» sin signo ni «-0.0», la mitad «-6.0 dB», el silencio
+  «-inf dB».
 
 ### También sin publicar: una exportación terminada se ve terminada
 
