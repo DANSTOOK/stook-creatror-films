@@ -13,6 +13,8 @@
   body {
     -webkit-font-smoothing: antialiased;
     user-select: none;
+    /* Body text is 13px; controls set their own 12px. */
+    @apply font-sans text-sm;
   }
 
   /*
@@ -53,18 +55,25 @@
     --dur-spring: 420ms;
 
     /*
-      The grid. Everything in a panel sits on multiples of 4, and the two
-      control heights are the only two there are: 28px for the dense rows a
-      toolbar is made of, 32px for the things a hand reaches for. A panel
-      breathes by 12px at its edges. Before this, padding ranged from 8px to
-      16px panel by panel and nothing lined up across a border.
+      The grid. Everything in a panel sits on multiples of 4. Controls come in
+      two heights - 24px for dense rows (track headers, panel headers, icon
+      buttons in a list), 28px for everything else - and 32px is kept for the
+      one primary action on a surface (Export, a dialog's confirm). A panel
+      breathes by 12px at its edges.
+
+      Three radii: 4px controls, 6px menus and cards, 8px panels and dialogs.
+      The same values are in tailwind.config.js as rounded-control/-menu/-panel
+      and h-control-dense/-control/-control-primary.
     */
     --pad-panel: 12px;
     --gap-tight: 4px;
     --gap: 8px;
+    --control-h-dense: 24px;
     --control-h: 28px;
-    --control-h-lg: 32px;
-    --radius: 6px;
+    --control-h-primary: 32px;
+    --radius-control: 4px;
+    --radius-menu: 6px;
+    --radius-panel: 8px;
     /* A rule is light over the surface, never a darker line drawn on it. */
     --hairline: rgb(255 255 255 / 0.08);
   }
@@ -160,8 +169,14 @@
     box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 10px 15px -3px rgb(0 0 0 / 0.2);
   }
 
+  /*
+    Panel titles in sentence case at 13px. They used to be 12px capitals with
+    wide tracking - which also shouted file names ("INTERVIEW A-CAM.MP4") and
+    is the hardest way to read a word. Resolve, Premiere and Final Cut all set
+    panel names in plain case now.
+  */
   .panel-header {
-    @apply flex items-center gap-2 shrink-0 text-xs font-medium uppercase tracking-wider text-slate-400;
+    @apply flex items-center gap-2 shrink-0 text-sm font-semibold text-slate-200;
     height: 36px;
     padding-inline: var(--pad-panel);
     gap: var(--gap);
@@ -195,9 +210,9 @@
     transform: translateY(0);
   }
 
-  /* A heading inside a panel, with the accent ticking it off. */
+  /* A heading inside a panel, with the accent ticking it off. 12px, sentence case. */
   .section-title {
-    @apply flex items-center gap-2 text-2xs font-semibold uppercase tracking-wider text-slate-400;
+    @apply flex items-center gap-2 text-xs font-semibold text-slate-200;
   }
 
   .section-title::before {
@@ -206,12 +221,19 @@
   }
 
   .tool-button {
-    @apply inline-flex items-center justify-center gap-1.5 px-2.5 rounded-md text-xs
+    @apply inline-flex items-center justify-center gap-1.5 px-2.5 rounded-control text-xs font-normal
            text-slate-300 hover:bg-panel-700 hover:text-slate-100
            disabled:opacity-40 disabled:pointer-events-none;
     transition: background-color 120ms var(--ease-standard), color 120ms var(--ease-standard),
       box-shadow 120ms var(--ease-standard), transform 90ms var(--ease-standard);
-    height: var(--control-h-lg);
+    height: var(--control-h);
+  }
+
+  /* The dense size, for icon buttons in rows that repeat (track headers, lists). */
+  .tool-button-dense {
+    height: var(--control-h-dense);
+    min-width: var(--control-h-dense);
+    @apply px-1.5;
   }
 
   /* A press you can feel, kept tiny: buttons are hit constantly. */
@@ -229,14 +251,25 @@
   }
 
   .field-label {
-    /* Every label above a control: at 10px it has to clear 4.5:1, and
-       slate-500 was 3.0:1 on the lighter panels. */
-    @apply text-2xs uppercase tracking-wide text-slate-400;
+    /* Every label above a control: 11px in sentence case. At this size it has
+       to clear 4.5:1, and slate-500 was 3.0:1 on the lighter panels. */
+    @apply text-2xs text-slate-400;
+  }
+
+  /*
+    A timecode or any column of changing numbers: the UI face with tabular
+    figures, so digits do not shuffle sideways as they tick. Segoe UI's
+    figures are proportional by default (a "1" is 5px, a "0" 7px at 13px).
+  */
+  .timecode {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
   }
 
   .numeric-input {
-    @apply w-full h-7 px-2 rounded-md bg-panel-950 border border-panel-700 text-xs text-slate-200
+    @apply w-full px-2 rounded-control bg-panel-950 border border-panel-700 text-xs text-slate-200
            focus:outline-none focus:ring-1 focus:ring-accent;
+    height: var(--control-h);
     transition: border-color 120ms var(--ease-standard), box-shadow 120ms var(--ease-standard);
   }
 

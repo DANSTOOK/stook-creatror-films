@@ -116,7 +116,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element 
             <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               autoFocus
-              className="numeric-input h-8 w-full pl-8"
+              className="numeric-input w-full pl-8"
               placeholder="Search the keys"
               aria-label="Search shortcuts"
               data-testid="shortcuts-search"
@@ -136,7 +136,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element 
               <ul className="space-y-0.5">
                 {group.items.map((item) => (
                   <li key={item.keys} className="flex items-baseline gap-3 rounded px-1.5 py-1 hover:bg-panel-800">
-                    <kbd className="shrink-0 rounded border border-panel-600 bg-panel-950 px-1.5 py-0.5 font-mono text-2xs text-slate-200">
+                    <kbd className="shrink-0 rounded border border-panel-600 bg-panel-950 px-1.5 py-0.5 font-sans text-2xs text-slate-200">
                       {item.keys}
                     </kbd>
                     <span className="text-xs leading-relaxed text-slate-300">{item.what}</span>

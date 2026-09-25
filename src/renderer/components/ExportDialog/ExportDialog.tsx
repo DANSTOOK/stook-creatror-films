@@ -556,7 +556,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         */}
         <header className="panel-header h-11 justify-between">
           <span>Export</span>
-          <div className="flex items-center gap-2 normal-case tracking-normal">
+          <div className="flex items-center gap-2 font-normal">
             {running ? (
               <button
                 type="button"

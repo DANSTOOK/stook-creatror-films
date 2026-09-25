@@ -129,7 +129,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
     <div
       ref={menuRef}
       role="menu"
-      className="scf-menu fixed z-[100] min-w-[208px] overflow-hidden rounded-lg border border-panel-600/80 bg-panel-800/95 p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40 backdrop-blur-md"
+      className="scf-menu fixed z-[100] min-w-[208px] overflow-hidden rounded-menu border border-panel-600/80 bg-panel-800/95 p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40 backdrop-blur-md"
       style={{ left: position.left, top: position.top, transformOrigin: position.origin }}
       onContextMenu={(event) => event.preventDefault()}
     >
@@ -146,7 +146,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
             disabled={item.disabled}
             onMouseEnter={() => setActiveIndex(index)}
             onClick={() => run(item)}
-            className={`group flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-xs transition-colors duration-100
+            className={`group flex h-control w-full items-center gap-2.5 rounded-control px-2.5 text-left text-xs transition-colors duration-100
               disabled:pointer-events-none disabled:opacity-40
               ${item.danger ? 'text-red-300' : 'text-slate-200'}
               ${activeIndex === index ? (item.danger ? 'bg-red-500/15 text-red-200' : 'bg-accent/15 text-white') : ''}`}

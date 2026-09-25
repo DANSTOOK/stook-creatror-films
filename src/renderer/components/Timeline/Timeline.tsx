@@ -1078,7 +1078,7 @@ export function Timeline(): JSX.Element {
         {/* Named like the other three panels: it was the only one without a
             title, which made the row read as a floating toolbar. */}
         <span className="hidden shrink-0 pr-1 xl:inline">Timeline</span>
-        <div className="flex items-center gap-1.5 normal-case tracking-normal">
+        <div className="flex items-center gap-1.5 font-normal">
           <div className="toolbar-group">
             {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
             {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to cut it at the playhead', Scissors)}
@@ -1170,7 +1170,7 @@ export function Timeline(): JSX.Element {
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 normal-case tracking-normal">
+        <div className="flex items-center gap-1.5 font-normal">
           <div className="toolbar-group">
             <button
               type="button"

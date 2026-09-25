@@ -30,8 +30,60 @@ module.exports = {
           adjustment: '#8a6a2f',
         },
       },
+      /*
+        Segoe UI Variable, the Windows 11 system face, with no web font: the
+        app runs offline. Chromium resolves its named instance "Segoe UI
+        Variable Text" (the bare family name does not match here); Windows 10
+        falls back to Segoe UI, anything else to the system face.
+      */
+      fontFamily: {
+        sans: ['"Segoe UI Variable Text"', '"Segoe UI Variable"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+        display: ['"Segoe UI Variable Display"', '"Segoe UI Variable"', '"Segoe UI"', 'system-ui', 'sans-serif'],
+      },
+      /*
+        The type scale. Five sizes and no others:
+          11 labels, 12 controls, 13 panel titles and body, 15 dialog titles,
+          20 the start screen.
+        The Tailwind names the code already used are pointed at the same five,
+        so every existing class lands on the scale (text-2xs was 10.4px, which
+        was on no scale at all), and the semantic names say what a size is for.
+      */
       fontSize: {
-        '2xs': ['0.65rem', '0.85rem'],
+        '2xs': ['11px', '15px'],
+        xs: ['12px', '16px'],
+        sm: ['13px', '18px'],
+        base: ['15px', '20px'],
+        lg: ['20px', '26px'],
+        label: ['11px', '15px'],
+        control: ['12px', '16px'],
+        body: ['13px', '18px'],
+        title: ['15px', '20px'],
+        display: ['20px', '26px'],
+      },
+      /*
+        Three radii: 4 for controls, 6 for menus and cards, 8 for panels and
+        dialogs. rounded-xl (12px) is folded into 8 so nothing is rounder than
+        a panel.
+      */
+      borderRadius: {
+        DEFAULT: '4px',
+        md: '6px',
+        lg: '8px',
+        xl: '8px',
+        control: '4px',
+        menu: '6px',
+        panel: '8px',
+      },
+      /* Two control heights - 24 dense, 28 default - and 32 for the one primary action. */
+      height: {
+        'control-dense': '24px',
+        control: '28px',
+        'control-primary': '32px',
+      },
+      minHeight: {
+        'control-dense': '24px',
+        control: '28px',
+        'control-primary': '32px',
       },
     },
   },

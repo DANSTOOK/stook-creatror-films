@@ -41,7 +41,7 @@ export function PreviewViewport(): JSX.Element {
     >
       <header className="panel-header justify-between">
         <span>Preview</span>
-        <div className="flex items-center gap-1 normal-case tracking-normal">
+        <div className="flex items-center gap-1 font-normal">
           <button
             type="button"
             data-testid="transform-mode"
@@ -116,7 +116,7 @@ export function PreviewViewport(): JSX.Element {
         />
 
         <div className="mt-2 flex items-center justify-between">
-          <span className="font-mono text-xs text-slate-400">
+          <span className="timecode text-xs text-slate-300">
             {timecode} <span className="text-slate-400">/ {duration}</span>
           </span>
 

@@ -20,6 +20,14 @@ export const TRACK_HEIGHT = 56;
 export const TRACK_GAP = 2;
 export const RULER_HEIGHT = 24;
 
+/**
+ * The interface face, for everything the canvas writes. The ruler used to be
+ * in a monospace face and the clip names in whatever system-ui resolved to -
+ * two more faces beside the one the panels use. 11px is the scale's label size.
+ */
+const UI_FONT = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+const LABEL_FONT = `11px ${UI_FONT}`;
+
 const TRACK_COLORS: Record<Track['type'], string> = {
   video: '#456698',
   audio: '#33785f',
@@ -187,7 +195,7 @@ function drawRuler(
   const firstFrame = Math.floor(ui.scrollLeftPx / ui.pixelsPerFrame / step) * step;
   const lastFrame = firstFrame + Math.ceil(width / ui.pixelsPerFrame) + step;
 
-  context.font = '10px ui-monospace, monospace';
+  context.font = LABEL_FONT;
   context.textBaseline = 'middle';
 
   for (let frame = firstFrame; frame <= lastFrame; frame += step) {
@@ -426,7 +434,7 @@ function drawClip(
     if (clip.linkGroup) drawLinkMark(context, labelX, top + 8);
 
     context.fillStyle = '#e2e8f0';
-    context.font = '11px system-ui, sans-serif';
+    context.font = LABEL_FONT;
     context.textBaseline = 'top';
     context.fillText(clip.name, nameX, top + 7);
 
@@ -440,13 +448,13 @@ function drawClip(
     const speed = speedLabel(clip);
     if (speed) {
       context.fillStyle = '#fcd34d';
-      context.font = '9px system-ui, sans-serif';
+      context.font = LABEL_FONT;
       context.fillText(speed, labelX, top + 24);
     }
 
     if (keyframeCount > 0) {
       context.fillStyle = '#cbd5f5';
-      context.font = '9px system-ui, sans-serif';
+      context.font = LABEL_FONT;
       context.fillText(`${keyframeCount} keyframes`, speed ? labelX + 42 : labelX, top + 24);
     }
     context.restore();
@@ -490,7 +498,7 @@ function drawMarkerFlags(
   ui: EditorUiState,
   width: number,
 ): void {
-  context.font = '9px system-ui, sans-serif';
+  context.font = LABEL_FONT;
   context.textBaseline = 'middle';
 
   for (const marker of project.markers) {

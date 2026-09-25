@@ -411,7 +411,7 @@ export function MediaLibrary(): JSX.Element {
     >
       <header className="panel-header justify-between">
         <span>Media</span>
-        <div className="flex items-center gap-0.5 normal-case tracking-normal">
+        <div className="flex items-center gap-0.5 font-normal">
           <button
             type="button"
             className="tool-button h-7 px-1.5"

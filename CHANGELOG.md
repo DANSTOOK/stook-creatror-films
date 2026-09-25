@@ -37,6 +37,23 @@ forma del editor. Cada punto dice cómo se comprobó.
   Windows, así que con Windows en modo claro era una franja blanca encima de
   un editor oscuro, lo más brillante de la pantalla. La barra propia de la
   aplicación llega en la fase 2; esta sigue siendo la nativa.
+- **Una sola escala de letra, en Segoe UI Variable.** Cinco tamaños y ninguno
+  más: 11 px para etiquetas, 12 para controles, 13 para títulos de panel y
+  texto, 15 para títulos de diálogo y 20 para la pantalla de inicio (antes
+  había un 10,4 px que no estaba en ninguna escala). Sin fuentes web: es la
+  letra de Windows 11, y en Windows 10 cae a Segoe UI.
+- **Títulos y etiquetas en minúscula normal, no en MAYÚSCULAS diminutas.**
+  «MEDIA», «TRANSFORM» o «POSITION X (PX)» pasan a «Media», «Transform»,
+  «Position X». Es lo que hacen hoy Resolve, Premiere y Final Cut, y se lee
+  mejor.
+- **Los códigos de tiempo usan la letra de la interfaz con cifras tabulares**
+  en vez de Consolas: no bailan al avanzar. La regla de la línea de tiempo y
+  los nombres de los clips también pasan a la letra de la interfaz.
+- **Dos alturas de control (24 y 28 px; 32 solo para la acción principal) y
+  tres radios de esquina (4 controles, 6 menús y tarjetas, 8 paneles y
+  diálogos)**, definidos como tokens en `tailwind.config.js` e `index.css`.
+  Se mantienen las cabeceras de panel de 36 px y la geometría de la línea de
+  tiempo (regla de 24 px, filas de 58 px).
 
 ### Añadido
 
@@ -68,6 +85,12 @@ forma del editor. Cada punto dice cómo se comprobó.
 - **Barra de título (punto 2):** captura de pantalla de la ventana con su
   marco nativo, simulando Windows en modo claro (barra blanca, antes) y con el
   cambio (barra oscura, después), en `item02-titlebar-*.png`.
+- **Escala y tokens (punto 3):** capturas del editor completo a 1600×950
+  (`i03-editor-1600.png`), del inspector y del mezclador. Se comprobó en la
+  propia aplicación que Chromium resuelve «Segoe UI Variable Text» (el nombre
+  «Segoe UI Variable» a secas no lo encuentra en este equipo, por eso va
+  primero el nombre de la instancia) y que sus cifras son proporcionales por
+  defecto (un «1» mide 4,9 px y un «0» 7 px a 13 px), de ahí `tabular-nums`.
 
 ### También sin publicar: una exportación terminada se ve terminada
 
