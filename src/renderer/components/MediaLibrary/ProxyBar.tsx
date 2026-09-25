@@ -50,7 +50,7 @@ export function ProxyBar(): JSX.Element | null {
       <label className="mt-1.5 flex items-center gap-2 text-2xs text-slate-400">
         <input
           type="checkbox"
-          className="accent-blue-500"
+          className="accent-accent"
           data-testid="use-proxies"
           checked={enabled}
           onChange={(event) => setEnabled(event.target.checked)}

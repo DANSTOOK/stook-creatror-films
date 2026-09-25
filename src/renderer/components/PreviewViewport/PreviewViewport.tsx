@@ -111,7 +111,7 @@ export function PreviewViewport(): JSX.Element {
           max={Math.max(1, project.durationFrames)}
           value={project.currentFrame}
           onChange={(event) => transport.scrub(Number(event.target.value))}
-          className="w-full accent-blue-500"
+          className="w-full accent-accent"
           aria-label="Playhead"
         />
 

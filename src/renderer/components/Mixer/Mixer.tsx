@@ -40,7 +40,7 @@ function Fader({ label, readout, value, min = 0, max = 2, step = 0.01, onChange 
       </span>
       <input
         type="range"
-        className="w-full accent-blue-500"
+        className="w-full accent-accent"
         value={value}
         min={min}
         max={max}
@@ -278,7 +278,7 @@ export function Mixer({ onClose, closing = false }: MixerProps): JSX.Element {
         <label className="flex items-center gap-2 text-xs text-slate-200">
           <input
             type="checkbox"
-            className="accent-blue-500"
+            className="accent-accent"
             checked={ducking.enabled}
             onChange={(event) => setDucking({ enabled: event.target.checked })}
           />

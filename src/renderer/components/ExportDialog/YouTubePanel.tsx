@@ -298,7 +298,7 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
                 type="radio"
                 name="youtube-kids"
                 data-testid="youtube-kids-no"
-                className="accent-blue-500"
+                className="accent-accent"
                 checked={madeForKids === false}
                 onChange={() => setMadeForKids(false)}
               />
@@ -308,7 +308,7 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
               <input
                 type="radio"
                 name="youtube-kids"
-                className="accent-blue-500"
+                className="accent-accent"
                 checked={madeForKids === true}
                 onChange={() => setMadeForKids(true)}
               />

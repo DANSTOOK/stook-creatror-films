@@ -522,7 +522,7 @@ export default function App(): JSX.Element {
 
           <button
             type="button"
-            className="tool-button tool-button-active px-3.5"
+            className="button-primary"
             disabled={!nativeAvailable}
             onClick={() => setExportOpen(true)}
             title={nativeAvailable ? 'Export video or sprite frames' : 'Exporting needs the desktop app, which bundles FFmpeg'}

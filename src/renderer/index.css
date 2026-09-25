@@ -236,7 +236,7 @@
   */
   .button-primary {
     @apply inline-flex items-center justify-center gap-1.5 rounded-control bg-accent px-4 text-xs font-semibold text-white
-           hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-50;
+           hover:bg-accent-strong disabled:pointer-events-none disabled:opacity-50;
     height: var(--control-h-primary);
     transition: background-color 120ms var(--ease-standard), transform 90ms var(--ease-standard);
   }
@@ -448,23 +448,6 @@
     transform: scale(1.04);
   }
 
-  .scf-primary {
-    @apply bg-accent text-white shadow-lg shadow-accent/25;
-    transition: background-color 150ms var(--ease-standard), transform 90ms var(--ease-standard),
-      box-shadow 180ms var(--ease-out);
-  }
-
-  .scf-primary:hover:not(:disabled) {
-    @apply bg-accent-hover shadow-xl shadow-accent/30;
-  }
-
-  .scf-primary:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  .scf-primary:disabled {
-    @apply opacity-50;
-  }
 }
 
 /*

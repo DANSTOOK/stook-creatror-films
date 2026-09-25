@@ -12,8 +12,18 @@ module.exports = {
           700: '#272a31',
           600: '#343840',
         },
+        /*
+          The accent. DEFAULT fills the things that act - the primary button,
+          a progress bar, a checked box - and white on it reads at 5.17:1;
+          the old #3b82f6 gave white text only 3.68:1. `strong` is the same
+          blue pressed darker, for a filled button under the pointer (white on
+          it 6.70:1): lighter would lose the text. `hover` is the light blue
+          used AS text and icons on the dark panels (5.8:1 on panel-900); the
+          name is historical.
+        */
         accent: {
-          DEFAULT: '#3b82f6',
+          DEFAULT: '#2563eb',
+          strong: '#1d4ed8',
           hover: '#60a5fa',
         },
         // A finished job, and only that: the blue accent stays "act here",

@@ -154,7 +154,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
       <label className="flex items-center gap-2 text-xs text-slate-300">
         <input
           type="checkbox"
-          className="accent-blue-500"
+          className="accent-accent"
           data-testid="speed-reverse"
           checked={reversed}
           onChange={(event) => setReversed(event.target.checked)}
@@ -166,7 +166,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
       <label className="flex items-center gap-2 text-xs text-slate-300">
         <input
           type="checkbox"
-          className="accent-blue-500"
+          className="accent-accent"
           data-testid="speed-ripple"
           checked={ripple}
           onChange={(event) => setRipple(event.target.checked)}

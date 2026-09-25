@@ -145,6 +145,13 @@ forma del editor. Cada punto dice cómo se comprobó.
   de un proyecto que se cerró. Crear proyecto usa el botón principal de 32 px
   y los campos la altura normal de 28. Toda la pantalla está en los dos
   idiomas.
+- **El azul de acento pasa a #2563eb** y el texto blanco sobre él se lee a
+  5,17:1 (con el #3b82f6 de antes era 3,68:1, por debajo del 4,5:1 que pide
+  WCAG). Al pasar el ratón el botón se oscurece a #1d4ed8 (6,70:1) en vez de
+  aclararse, que habría dejado el texto a 2,5:1. «Export» en la barra superior,
+  Crear proyecto y la acción principal de cada diálogo son ahora el mismo botón
+  relleno de 32 px, el único control de ese tamaño. Casillas y deslizadores
+  usan el mismo azul.
 
 ### Añadido
 
@@ -231,6 +238,11 @@ forma del editor. Cada punto dice cómo se comprobó.
   tras guardar y volver al inicio (`i14-home-*.png`, antes en
   `redesign-audit/01` y `26`): sin aviso de «Saved to» y con la búsqueda al
   lado del título.
+- **Contraste del acento (punto 15):** una prueba (`probe-contrast.mjs`) mide
+  en la aplicación en marcha cada sitio donde el acento lleva texto: el botón
+  Export en reposo (5,17:1) y bajo el puntero (6,70:1), los botones activos de
+  la línea de tiempo (6,2:1 texto azul claro sobre el acento al 20 %) y el
+  botón principal de un diálogo (5,17:1). **7/7.**
 
 ### También sin publicar: una exportación terminada se ve terminada
 

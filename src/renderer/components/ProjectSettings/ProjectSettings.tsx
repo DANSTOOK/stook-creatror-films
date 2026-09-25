@@ -137,7 +137,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <input
             type="checkbox"
-            className="accent-blue-500"
+            className="accent-accent"
             checked={project.hasAlphaBackground}
             onChange={(event) => setProjectSettings({ hasAlphaBackground: event.target.checked })}
           />
@@ -196,7 +196,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
         <label className="flex items-center gap-2 text-xs text-slate-300">
           <input
             type="checkbox"
-            className="accent-blue-500"
+            className="accent-accent"
             checked={retime}
             onChange={(event) => setRetime(event.target.checked)}
           />

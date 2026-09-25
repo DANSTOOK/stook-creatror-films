@@ -75,7 +75,7 @@ function SliderField({ label, value, min = 0, max = 1, step = 0.01, format, onCh
       </span>
       <input
         type="range"
-        className="w-full accent-blue-500"
+        className="w-full accent-accent"
         value={value}
         min={min}
         max={max}
@@ -111,7 +111,7 @@ function Toggle({
     <label className="flex items-center gap-2 text-xs text-slate-300">
       <input
         type="checkbox"
-        className="accent-blue-500"
+        className="accent-accent"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
       />

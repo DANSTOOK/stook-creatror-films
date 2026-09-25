@@ -807,7 +807,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     <label className="flex items-center gap-2 text-xs text-slate-200">
                       <input
                         type="checkbox"
-                        className="accent-blue-500"
+                        className="accent-accent"
                         checked={settings.exportAlpha}
                         onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
                       />
@@ -825,7 +825,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         <label className="flex items-center gap-2 text-xs text-slate-300">
                           <input
                             type="checkbox"
-                            className="accent-blue-500"
+                            className="accent-accent"
                             checked={settings.premultiplyAlpha}
                             onChange={(event) => setExportSettings({ premultiplyAlpha: event.target.checked })}
                           />
@@ -899,7 +899,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       <label className="flex items-center gap-2 text-xs text-slate-300">
                         <input
                           type="checkbox"
-                          className="accent-blue-500"
+                          className="accent-accent"
                           checked={settings.pixelArtScaling}
                           onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
                         />
