@@ -38,6 +38,9 @@ export const IPC = {
   documentState: 'app:document-state',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
+  menuCommand: 'app:menu-command',
+  menuState: 'app:menu-state',
+  editText: 'app:edit-text',
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
   chooseExportPath: 'dialog:choose-export-path',
@@ -102,6 +105,44 @@ export interface MediaProbe {
 
 export interface ExportStartResult {
   jobId: string;
+}
+
+/**
+ * What an application-menu item asks the page to do. The menu lives in the
+ * main process, but every one of these is the page's own action, so the menu
+ * only names it and the page runs it - the same code a toolbar button runs.
+ */
+export type MenuCommand =
+  | 'new'
+  | 'open'
+  | 'save'
+  | 'saveAs'
+  | 'import'
+  | 'export'
+  | 'projectSettings'
+  | 'home'
+  | 'undo'
+  | 'redo'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'toggleMedia'
+  | 'toggleInspector'
+  | 'fullscreenViewer'
+  | 'resetLayout'
+  | 'mixer'
+  | 'shortcuts';
+
+/** What the page tells the menu, so it can label, tick and grey its items. */
+export interface MenuState {
+  language: 'en' | 'es';
+  /** The editor is showing, rather than the start screen. */
+  editor: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  mediaShown: boolean;
+  inspectorShown: boolean;
+  fullscreenViewer: boolean;
 }
 
 /**
@@ -277,6 +318,12 @@ export interface FilmoraApi {
   /** The window asked to save before closing; save, then call closeAfterSave. */
   onSaveBeforeClose(listener: () => void): () => void;
   closeAfterSave(): Promise<void>;
+  /** Keep the application menu's labels, ticks and greyed items current. */
+  menuState(state: MenuState): void;
+  /** An application-menu item was chosen. */
+  onMenuCommand(listener: (command: MenuCommand) => void): () => void;
+  /** Cut, copy or paste inside the focused text field, as the menu does it. */
+  editText(operation: 'cut' | 'copy' | 'paste'): void;
   /**
    * Pick a `.cube` LUT. Returns the path as well as the contents, because the
    * path is what lets the look survive saving and reopening the project.

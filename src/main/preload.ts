@@ -9,6 +9,7 @@ import {
   IPC,
   type FilmoraApi,
   type MediaProbe,
+  type MenuCommand,
   type PickedFile,
   type ProjectBackup,
   type ProjectRecovery,
@@ -65,6 +66,15 @@ const api: FilmoraApi = {
     };
   },
   closeAfterSave: () => ipcRenderer.invoke(IPC.closeAfterSave) as Promise<void>,
+  menuState: (state) => ipcRenderer.send(IPC.menuState, state),
+  onMenuCommand(listener) {
+    const handler = (_event: unknown, command: MenuCommand): void => listener(command);
+    ipcRenderer.on(IPC.menuCommand, handler);
+    return () => {
+      ipcRenderer.off(IPC.menuCommand, handler);
+    };
+  },
+  editText: (operation) => ipcRenderer.send(IPC.editText, operation),
   openProject: () =>
     ipcRenderer.invoke(IPC.openProject) as Promise<{ path: string; contents: string } | null>,
   openLut: () =>

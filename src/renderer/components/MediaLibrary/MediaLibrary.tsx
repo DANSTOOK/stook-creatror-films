@@ -1,4 +1,4 @@
-﻿import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
   AlertTriangle,
   ArrowRightToLine,
@@ -61,6 +61,9 @@ const KIND_ICONS: Record<MediaKind, typeof FileVideo> = {
 const BIN_INDENT_PX = 12;
 
 const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
+
+/** File > Import media: the application menu asks the panel to run its Import. */
+export const MENU_IMPORT_EVENT = 'scf:menu-import';
 
 export function MediaLibrary(): JSX.Element {
   const assets = useProjectStore((state) => state.assets);
@@ -167,6 +170,11 @@ export function MediaLibrary(): JSX.Element {
     }
     fileInputRef.current?.click();
   }, [project.fps, runImport]);
+
+  useEffect(() => {
+    window.addEventListener(MENU_IMPORT_EVENT, handleImportClick);
+    return () => window.removeEventListener(MENU_IMPORT_EVENT, handleImportClick);
+  }, [handleImportClick]);
 
   const handleFolderClick = useCallback(() => {
     void runImport(() => importFolderFromDialog(project.fps));

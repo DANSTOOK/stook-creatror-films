@@ -47,6 +47,9 @@ import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import { useIsDirty, useSessionStore } from './store/useSessionStore';
+import { useLanguageStore } from './i18n';
+import { MENU_IMPORT_EVENT } from './components/MediaLibrary/MediaLibrary';
+import type { MenuCommand } from '@shared/types/ipc';
 
 /** The project logo, bundled by Vite with the rest of the page. */
 const LOGO_URL = new URL('./assets/logo.png', import.meta.url).href;
@@ -267,6 +270,105 @@ export default function App(): JSX.Element {
   const redo = useProjectStore((state) => state.redo);
 
   const desktopOnly = (title: string): string => (nativeAvailable ? title : 'Only available in the desktop app');
+
+  /* The application menu ---------------------------------------------------- */
+
+  // The menu lives in the main process; it is told what to label, tick and
+  // grey out, and it names the action back when an item is chosen.
+  const language = useLanguageStore((state) => state.language);
+  const fullscreenViewer = useProjectStore((state) => state.ui.fullscreenViewer);
+  useEffect(() => {
+    if (!hasNativeBridge()) return;
+    window.filmora.menuState({
+      language,
+      editor: view === 'editor',
+      canUndo,
+      canRedo,
+      mediaShown: !hidden.media,
+      inspectorShown: !hidden.inspector,
+      fullscreenViewer,
+    });
+  }, [language, view, canUndo, canRedo, hidden, fullscreenViewer]);
+
+  // Kept in a ref so the listener is registered once and always runs the
+  // current actions.
+  const runMenuCommand = useRef<(command: MenuCommand) => void>(() => undefined);
+  runMenuCommand.current = (command) => {
+    const session = useSessionStore.getState();
+    if (session.unsavedPrompt) return;
+    // The start screen offers a new project and opening one; everything else
+    // is about the project in the editor.
+    if (session.view !== 'editor' && command !== 'new' && command !== 'open') return;
+    const store = useProjectStore.getState();
+    const target = document.activeElement as HTMLElement | null;
+    const typing = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
+    switch (command) {
+      case 'new':
+        void actions.newBlank();
+        return;
+      case 'open':
+        if (nativeAvailable) void actions.openFromDialog();
+        return;
+      case 'save':
+      case 'saveAs':
+        if (nativeAvailable) void actions.save(command === 'saveAs');
+        return;
+      case 'import':
+        // The media panel owns importing; bring it back first if it was put away.
+        setHidden((current) => ({ ...current, media: false }));
+        window.setTimeout(() => window.dispatchEvent(new Event(MENU_IMPORT_EVENT)), 0);
+        return;
+      case 'export':
+        if (nativeAvailable) setExportOpen(true);
+        return;
+      case 'projectSettings':
+        setSettingsOpen(true);
+        return;
+      case 'home':
+        void actions.goHome();
+        return;
+      case 'undo':
+        store.undo();
+        return;
+      case 'redo':
+        store.redo();
+        return;
+      case 'cut':
+      case 'copy':
+      case 'paste':
+        // Text in a field when one has focus, as in any app; clips otherwise.
+        if (typing) window.filmora.editText(command);
+        else if (command === 'cut') store.cutSelection();
+        else if (command === 'copy') store.copySelection();
+        else store.paste();
+        return;
+      case 'toggleMedia':
+        setHidden((current) => ({ ...current, media: !current.media }));
+        return;
+      case 'toggleInspector':
+        setHidden((current) => ({ ...current, inspector: !current.inspector }));
+        return;
+      case 'fullscreenViewer':
+        store.setUi({ fullscreenViewer: !store.ui.fullscreenViewer });
+        return;
+      case 'resetLayout':
+        setHidden({ media: false, inspector: false });
+        commitLayout({ ...DEFAULT_LAYOUT });
+        return;
+      case 'mixer':
+        setMixerOpen(true);
+        return;
+      case 'shortcuts':
+        setShortcutsOpen(true);
+        return;
+      default:
+        return;
+    }
+  };
+  useEffect(() => {
+    if (!hasNativeBridge()) return undefined;
+    return window.filmora.onMenuCommand((command) => runMenuCommand.current(command));
+  }, []);
 
   return (
     <div className="relative h-full">

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
+import { installAppMenu } from './appMenu';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
@@ -158,6 +159,9 @@ app.whenReady().then(() => {
     closeApproved = true;
     mainWindow?.close();
   });
+  // Before the window: the default menu - with Reload on Ctrl+R - must never
+  // be the one it starts with.
+  installAppMenu(() => mainWindow);
   createWindow();
 
   app.on('activate', () => {

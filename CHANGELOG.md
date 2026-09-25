@@ -16,9 +16,52 @@ fotogramas exportados correctos).
 
 ---
 
-## Sin publicar — Una exportación terminada se ve terminada
+## Sin publicar — Rediseño, fase 1: orden y coherencia
+
+El primero de tres pasos del rediseño: poner orden, sin cambiar todavía la
+forma del editor. Cada punto dice cómo se comprobó.
 
 ### Arreglado
+
+- **Ctrl+R ya no recarga la aplicación.** El menú que Electron trae de serie
+  seguía activo (oculto, pero activo): su «Ver > Recargar» estaba en Ctrl+R,
+  que en este editor es el atajo de Velocidad, y recargaba la ventana entera
+  perdiendo todo lo no guardado, estuviera el foco donde estuviera, incluso
+  dentro de un campo de texto. Con ese menú se van también «Forzar recarga»,
+  las herramientas de desarrollo (Ctrl+Mayús+I) y el zoom de página
+  (Ctrl+= / Ctrl+-).
+
+### Añadido
+
+- **Un menú de aplicación de verdad: Archivo, Edición, Ver, Ventana, Ayuda**
+  (se muestra con Alt, como antes). Cada opción ejecuta la misma acción que su
+  botón en el editor: nuevo, abrir, guardar, guardar como, importar,
+  exportar, ajustes del proyecto, pantalla de inicio, deshacer y rehacer,
+  cortar/copiar/pegar (clips, o el texto si hay un campo con el foco), mostrar
+  u ocultar Medios e Inspector (con su marca, en *Ver*, como pide la guía de
+  Apple), visor a pantalla completa, restablecer diseño, mezclador y atajos de
+  teclado. Los atajos se muestran en el menú pero los sigue atendiendo el
+  editor, así que ninguno se ejecuta dos veces ni en un sitio donde el editor
+  decidió no hacerlo. Las herramientas de desarrollo solo existen en la
+  compilación de desarrollo (F12), nunca en la instalada.
+
+### Cómo se comprobó
+
+- **Menú (punto 1):** una prueba (`probe-menu.mjs`) que envía las teclas con
+  `webContents.sendInputEvent`, el mismo camino que una tecla real a través
+  de la ventana nativa: Ctrl+R sin selección y dentro de un campo de texto no
+  recargan; Ctrl+R con un clip seleccionado abre Velocidad sin recargar;
+  Ctrl+Mayús+R, F5, Ctrl+Mayús+I, Ctrl+=, Ctrl+-, Ctrl+W y Ctrl+M no recargan,
+  no abren DevTools, no cambian el zoom ni minimizan o cierran; Ctrl+C/Ctrl+V
+  pegan un solo clip, Ctrl+Z deshace una sola vez, Ctrl+Y y Ctrl+Mayús+Z
+  rehacen; *Ver > Medios* oculta el panel y su marca lo sigue, *Archivo >
+  Importar medios* lo vuelve a mostrar e importa, *Ayuda > Atajos de teclado*
+  abre la lista, *Edición > Deshacer* deshace. El único atajo registrado en el
+  menú es F12 (solo desarrollo). **23/23.**
+
+### También sin publicar: una exportación terminada se ve terminada
+
+#### Arreglado
 - **La ventana de exportación ya no parece un formulario pendiente al
   terminar.** Antes, con la barra en «Finished 100%», el botón principal seguía
   diciendo «Start export» y todos los ajustes seguían activos, como si faltara
@@ -47,7 +90,7 @@ fotogramas exportados correctos).
 - Un fallo de exportación se muestra en rojo y como alerta para lectores de
   pantalla.
 
-### Detalles
+#### Detalles
 - Show in folder y Play solo aceptan archivos que esta sesión exportó hasta
   el final, igual que la subida a YouTube: la página no puede abrir ni
   ejecutar una ruta cualquiera.
@@ -60,7 +103,7 @@ fotogramas exportados correctos).
 - Antes de exportar no cambia nada: ahí los ajustes son el trabajo y siguen
   todos a la vista.
 
-### Cómo se comprobó
+#### Cómo se comprobó
 - En la aplicación en marcha con Playwright, exportando un clip de 20 s:
   capturas de antes y después de los tres estados (listo, renderizando,
   terminado) y con «Upload from here» abierto. Durante el render, «File
