@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { installAppMenu } from './appMenu';
@@ -66,6 +66,11 @@ app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 if (process.env.SCF_DISABLE_VSYNC) app.commandLine.appendSwitch('disable-gpu-vsync');
 
 function createWindow(): void {
+  // The editor is dark whatever Windows is set to, and so is its frame:
+  // Windows draws the native title bar dark for a window whose theme is dark.
+  // A white bar over a dark editor was the brightest thing on screen. (A
+  // title bar of the app's own comes with the next phase of the redesign.)
+  nativeTheme.themeSource = 'dark';
   mainWindow = new BrowserWindow({
     width: 1680,
     height: 960,

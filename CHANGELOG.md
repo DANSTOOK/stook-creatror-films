@@ -31,6 +31,13 @@ forma del editor. Cada punto dice cómo se comprobó.
   las herramientas de desarrollo (Ctrl+Mayús+I) y el zoom de página
   (Ctrl+= / Ctrl+-).
 
+### Cambiado
+
+- **La barra de título de Windows es oscura siempre.** Seguía el tema de
+  Windows, así que con Windows en modo claro era una franja blanca encima de
+  un editor oscuro, lo más brillante de la pantalla. La barra propia de la
+  aplicación llega en la fase 2; esta sigue siendo la nativa.
+
 ### Añadido
 
 - **Un menú de aplicación de verdad: Archivo, Edición, Ver, Ventana, Ayuda**
@@ -58,6 +65,9 @@ forma del editor. Cada punto dice cómo se comprobó.
   Importar medios* lo vuelve a mostrar e importa, *Ayuda > Atajos de teclado*
   abre la lista, *Edición > Deshacer* deshace. El único atajo registrado en el
   menú es F12 (solo desarrollo). **23/23.**
+- **Barra de título (punto 2):** captura de pantalla de la ventana con su
+  marco nativo, simulando Windows en modo claro (barra blanca, antes) y con el
+  cambio (barra oscura, después), en `item02-titlebar-*.png`.
 
 ### También sin publicar: una exportación terminada se ve terminada
 
