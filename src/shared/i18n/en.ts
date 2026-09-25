@@ -257,6 +257,18 @@ export const en = {
   'keys.thisList': 'This list',
   'keys.esc': 'Esc',
   'keys.closeOpen': 'Close what is open',
+
+  /* Speed and duration ---------------------------------------------------- */
+  'speed.speed': 'Speed',
+  'speed.duration': 'Duration',
+  'speed.linked': 'Speed and duration move together',
+  'speed.unlinked': 'Speed and duration are separate',
+  'speed.hint': '{used} of footage, playing in {duration} ({frames} frames). Frames are sampled, not blended: at half speed each one is held twice.',
+  'speed.invalidDuration': 'Type a duration as a timecode, such as 00:00:05:12 or 5:12, or as a number of frames.',
+  'speed.reverse': 'Play backwards',
+  'speed.reverseNote': 'The picture only - a clip played backwards has no sound yet.',
+  'speed.ripple': 'Move what follows on this track',
+  'speed.rippleNote': 'Off, a clip that grew stops where its neighbour begins.',
 };
 
 export type Messages = typeof en;

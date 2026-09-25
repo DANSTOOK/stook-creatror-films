@@ -257,4 +257,16 @@ export const es: Messages = {
   'keys.thisList': 'Esta lista',
   'keys.esc': 'Esc',
   'keys.closeOpen': 'Cerrar lo que esté abierto',
+
+  /* Speed and duration ---------------------------------------------------- */
+  'speed.speed': 'Velocidad',
+  'speed.duration': 'Duración',
+  'speed.linked': 'La velocidad y la duración van juntas',
+  'speed.unlinked': 'La velocidad y la duración van por separado',
+  'speed.hint': '{used} de metraje, que se reproduce en {duration} ({frames} fotogramas). Los fotogramas se muestrean, no se mezclan: a media velocidad cada uno se repite dos veces.',
+  'speed.invalidDuration': 'Escribe la duración como código de tiempo, por ejemplo 00:00:05:12 o 5:12, o como un número de fotogramas.',
+  'speed.reverse': 'Reproducir al revés',
+  'speed.reverseNote': 'Solo la imagen: un clip al revés todavía no tiene sonido.',
+  'speed.ripple': 'Mover lo que sigue en esta pista',
+  'speed.rippleNote': 'Si está desactivado, un clip que crece se detiene donde empieza el siguiente.',
 };

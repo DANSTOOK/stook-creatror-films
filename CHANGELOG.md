@@ -110,6 +110,13 @@ forma del editor. Cada punto dice cómo se comprobó.
   exportación no se puede cerrar con Escape mientras renderiza (tampoco tiene
   botón de cerrar entonces: se para con «Cancel render»), y conserva sus
   acciones arriba, como la página Deliver de Resolve.
+- **Velocidad: la duración es un código de tiempo**, no un número de
+  fotogramas («150» no le decía nada a nadie sin dividir antes por la
+  frecuencia). Se escribe como en Premiere, leyendo desde la derecha: «2:15» son
+  dos segundos y quince fotogramas, «00:00:05:12» cinco segundos y doce; un
+  número suelto sigue contando fotogramas. Lo que no es una duración se marca
+  en rojo, con el motivo, y Aplicar espera. El diálogo está en los dos
+  idiomas.
 
 ### Añadido
 
@@ -172,6 +179,13 @@ forma del editor. Cada punto dice cómo se comprobó.
   Escape lo cierra y el foco vuelve al botón que lo abrió (también cuando se
   abrió desde el menú Ventana); Escape en Velocidad no deselecciona el clip.
   **30/30.** Capturas en `i09-*.png`.
+- **Velocidad (punto 10):** una prueba (`probe-speed.mjs`) abre el diálogo con
+  Ctrl+R: la duración sale como `00:00:03:00`; al poner 200 % pasa a
+  `00:00:01:15`; escribir `0:00:02:00` o `2:00` da 150 %; «abc» se marca
+  inválido y desactiva Aplicar; aplicar deja el clip en 60 fotogramas. **6/6.**
+  Pruebas unitarias para la lectura de duraciones (12 en `UiText.test.ts`). La
+  comprobación de interfaz que leía la duración en fotogramas ahora la espera
+  en código de tiempo.
 
 ### También sin publicar: una exportación terminada se ve terminada
 

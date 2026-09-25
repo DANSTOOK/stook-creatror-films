@@ -1930,9 +1930,16 @@ async function main() {
     await window.getByTestId('speed-percent').fill('200');
     await window.waitForTimeout(200);
     const durationShown = await window.getByTestId('speed-duration').inputValue();
+    // The duration reads as a timecode, HH:MM:SS:FF, as Premiere's does.
+    const halfLength = await window.evaluate((frames) => {
+      const rate = Math.round(window.__scfStore.getState().project.fps);
+      const pad = (n) => String(n).padStart(2, '0');
+      const seconds = Math.floor(frames / rate);
+      return `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}:${pad(frames % rate)}`;
+    }, speedSetup.length / 2);
     check('Ctrl+R opens Speed/Duration, and the two numbers move together',
-      dialogOpen === 1 && durationShown === String(speedSetup.length / 2),
-      `dialog ${dialogOpen}, duration ${durationShown}`);
+      dialogOpen === 1 && durationShown === halfLength,
+      `dialog ${dialogOpen}, duration ${durationShown} (expected ${halfLength})`);
 
     await window.getByTestId('speed-apply').click();
     await window.waitForTimeout(400);

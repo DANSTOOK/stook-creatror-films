@@ -40,3 +40,23 @@ export function framesToShortLabel(frames: number, fps: number): string {
   const totalSeconds = Math.floor(Math.max(0, frames) / fps);
   return `${Math.floor(totalSeconds / 60)}:${pad2(totalSeconds % 60)}`;
 }
+
+/**
+ * A duration as someone types it into a timecode field, in frames.
+ *
+ * Fields are read from the right, as Premiere reads them: "2:15" is two
+ * seconds and fifteen frames, "1:00:00" a minute, "0:00:04:10" four seconds
+ * and ten frames. A bare number is a count of frames. Anything else - letters,
+ * a frame field past the rate, a negative - is null, so the field can say it
+ * is wrong instead of guessing.
+ */
+export function parseDuration(text: string, fps: number): number | null {
+  const trimmed = text.trim();
+  if (!/^\d+([:;]\d+){0,3}$/.test(trimmed)) return null;
+  const parts = trimmed.split(/[:;]/).map(Number);
+  if (parts.length === 1) return parts[0];
+  const rate = Math.round(fps);
+  const [ff, ss = 0, mm = 0, hh = 0] = parts.reverse();
+  if (ff >= rate || (parts.length > 2 && ss >= 60) || (parts.length > 3 && mm >= 60)) return null;
+  return ((hh * 60 + mm) * 60 + ss) * rate + ff;
+}

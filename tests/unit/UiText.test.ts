@@ -3,6 +3,7 @@ import { dbLabel, panLabel, signedDb } from '@renderer/audio/levels';
 import { en } from '@shared/i18n/en';
 import { es } from '@shared/i18n/es';
 import { translate } from '@shared/i18n';
+import { framesToTimecode, parseDuration } from '@shared/utils/timecode';
 
 describe('level and pan readings', () => {
   it('writes unity gain as 0.0 dB, with no sign and no -0.0', () => {
@@ -30,6 +31,31 @@ describe('level and pan readings', () => {
     expect(signedDb(3)).toBe('+3.0 dB');
     expect(signedDb(-12.5)).toBe('-12.5 dB');
     expect(signedDb(-0.01)).toBe('0.0 dB');
+  });
+});
+
+describe('a typed duration', () => {
+  it('reads timecode fields from the right, as Premiere does', () => {
+    expect(parseDuration('00:00:05:12', 30)).toBe(5 * 30 + 12);
+    expect(parseDuration('5:12', 30)).toBe(5 * 30 + 12);
+    expect(parseDuration('1:00:00', 25)).toBe(60 * 25);
+    expect(parseDuration('01:02:03:04', 24)).toBe(((1 * 60 + 2) * 60 + 3) * 24 + 4);
+  });
+
+  it('takes a bare number as frames', () => {
+    expect(parseDuration('150', 30)).toBe(150);
+  });
+
+  it('refuses what is not a duration instead of guessing', () => {
+    expect(parseDuration('', 30)).toBeNull();
+    expect(parseDuration('abc', 30)).toBeNull();
+    expect(parseDuration('-5', 30)).toBeNull();
+    expect(parseDuration('0:30', 30)).toBeNull(); // frame 30 does not exist at 30 fps
+    expect(parseDuration('1:75:00', 30)).toBeNull();
+  });
+
+  it('round-trips what the field shows', () => {
+    expect(parseDuration(framesToTimecode(4321, 30), 30)).toBe(4321);
   });
 });
 
