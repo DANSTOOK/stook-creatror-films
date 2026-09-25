@@ -26,6 +26,8 @@ import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { Dialog } from '@renderer/components/Dialog/Dialog';
+import { useT } from '@renderer/i18n';
 import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
 import { YouTubePanel } from './YouTubePanel';
@@ -126,6 +128,7 @@ export interface ExportDialogProps {
 }
 
 export function ExportDialog({ onClose, closing = false }: ExportDialogProps): JSX.Element {
+  const t = useT();
   const project = useProjectStore((state) => state.project);
   const assets = useProjectStore((state) => state.assets);
   const settings = useProjectStore((state) => state.exportSettings);
@@ -548,14 +551,25 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
   return (
     // The editor behind is blurred, so the dialog is the only thing in focus.
-    <div data-closing={closing} className="scf-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div role="dialog" aria-modal="true" aria-label="Export" data-closing={closing} className="scf-dialog panel w-[min(980px,95vw)] max-h-[92vh] shadow-2xl shadow-black/60">
-        {/*
-          The actions live at the top, beside the title: what everything below
-          is for, always in reach without scrolling.
-        */}
-        <header className="panel-header h-11 justify-between">
-          <span>Export</span>
+    // Escape closes it like any dialog - except mid-render, when there is no
+    // Close button either: a render is stopped with Cancel render, on purpose.
+    <Dialog
+      title={t('export.title')}
+      onClose={onClose}
+      closing={closing}
+      dismissible={!running}
+      showCloseButton={false}
+      initialFocus="dialog"
+      widthClass="w-[min(980px,95vw)]"
+      className="max-h-[92vh]"
+      bodyClassName="flex flex-col !overflow-hidden"
+      /*
+        The actions live at the top, beside the title, as on Resolve's Deliver
+        page: what everything below is for, always in reach without scrolling.
+        Same order as every other dialog's footer: the way out, then the
+        primary action on the right.
+      */
+      headerActions={
           <div className="flex items-center gap-2 font-normal">
             {running ? (
               <button
@@ -589,7 +603,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               <button
                 key="start-export"
                 type="button"
-                className="tool-button tool-button-active px-4"
+                className="button-primary"
                 disabled={!canStart}
                 onClick={() => void startExport()}
               >
@@ -598,7 +612,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               </button>
             )}
           </div>
-        </header>
+      }
+    >
 
         {/*
           What will be rendered, then - once started - how far it has got. It
@@ -1114,8 +1129,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
             </div>
           </fieldset>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 

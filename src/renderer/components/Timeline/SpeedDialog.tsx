@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Link2, Link2Off, X } from 'lucide-react';
+import { Link2, Link2Off } from 'lucide-react';
+import { Dialog } from '@renderer/components/Dialog/Dialog';
+import { useT } from '@renderer/i18n';
 
 import { framesToTimecode } from '@shared/utils/timecode';
 import {
@@ -40,6 +42,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
   const [ripple, setRipple] = useState(true);
   const [linked, setLinked] = useState(true);
 
+  const t = useT();
   const speed = clampSpeed(percent / 100);
   const duration = durationForSpeed(used, speed);
 
@@ -49,16 +52,28 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
   };
 
   return (
-    <div className="scf-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div data-testid="speed-dialog" className="scf-dialog panel w-[380px] shadow-2xl shadow-black/60">
-        <header className="panel-header justify-between">
-          <span>Speed / Duration</span>
-          <button type="button" className="tool-button" onClick={onClose} title="Close">
-            <X size={14} />
+    <Dialog
+      title={t('speed.title')}
+      onClose={onClose}
+      testId="speed-dialog"
+      widthClass="w-[400px]"
+      bodyClassName="space-y-3 p-4"
+      footer={
+        <>
+          <button type="button" className="tool-button" onClick={onClose}>
+            {t('dialog.cancel')}
           </button>
-        </header>
-
-        <div className="space-y-3 p-4">
+          <button
+            type="button"
+            className="button-primary"
+            data-testid="speed-apply"
+            onClick={() => onApply({ speed, reversed, ripple })}
+          >
+            {t('speed.apply')}
+          </button>
+        </>
+      }
+    >
           <div className="flex items-end gap-2">
             <label className="flex flex-1 flex-col gap-1">
               <span className="field-label">Speed</span>
@@ -136,22 +151,6 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
           <p className="pl-6 text-2xs text-slate-400">
             Off, a clip that grew stops where its neighbour begins.
           </p>
-        </div>
-
-        <footer className="flex justify-end gap-2 border-t border-panel-700 px-4 py-3">
-          <button type="button" className="tool-button" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="tool-button tool-button-active"
-            data-testid="speed-apply"
-            onClick={() => onApply({ speed, reversed, ripple })}
-          >
-            Apply
-          </button>
-        </footer>
-      </div>
-    </div>
+    </Dialog>
   );
 }

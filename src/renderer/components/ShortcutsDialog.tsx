@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Keyboard, Search, X } from 'lucide-react';
+import { Keyboard, Search } from 'lucide-react';
+import { Dialog } from '@renderer/components/Dialog/Dialog';
+import { useT, type MessageKey } from '@renderer/i18n';
 
 /**
  * Every key the editor answers to, in one place.
@@ -13,67 +15,71 @@ import { Keyboard, Search, X } from 'lucide-react';
  * It is written by hand rather than gathered from the code, so it can lie if
  * nobody keeps it honest. The interface test presses a sample of these and
  * checks they still do what this says.
+ *
+ * Both columns are messages, not only the descriptions: a Spanish keyboard
+ * says Mayús, Supr and Inicio where an English one says Shift, Delete and
+ * Home.
  */
 
 interface Shortcut {
-  keys: string;
-  what: string;
+  keys: MessageKey;
+  what: MessageKey;
 }
 
 interface Group {
-  title: string;
+  title: MessageKey;
   items: Shortcut[];
 }
 
 export const SHORTCUT_GROUPS: Group[] = [
   {
-    title: 'Playing and moving',
+    title: 'keys.groupPlaying',
     items: [
-      { keys: 'Space', what: 'Play or pause' },
-      { keys: 'J / K / L', what: 'Backwards, stop, forwards - press again to go faster' },
-      { keys: '← / →', what: 'One frame; with Shift, ten' },
-      { keys: 'Home / End', what: 'To the start, to the end' },
-      { keys: 'I / O', what: 'Mark in, mark out' },
-      { keys: 'Ctrl+Shift+I / O / X', what: 'Clear the in point, the out point, both' },
+      { keys: 'keys.space', what: 'keys.playPause' },
+      { keys: 'keys.jkl', what: 'keys.shuttle' },
+      { keys: 'keys.arrows', what: 'keys.step' },
+      { keys: 'keys.homeEnd', what: 'keys.startEnd' },
+      { keys: 'keys.io', what: 'keys.marks' },
+      { keys: 'keys.clearMarksKeys', what: 'keys.clearMarks' },
     ],
   },
   {
-    title: 'Editing',
+    title: 'keys.groupEditing',
     items: [
-      { keys: ', (comma)', what: 'Insert the marked length at the playhead, pushing what follows' },
-      { keys: '. (full stop)', what: 'Overwrite in place, leaving the length alone' },
-      { keys: 'B', what: 'Split at the playhead' },
-      { keys: 'Ctrl+C / X / V', what: 'Copy, cut, paste at the playhead' },
-      { keys: 'Delete', what: 'Remove the selected clips' },
-      { keys: 'Ctrl+Z', what: 'Undo' },
+      { keys: 'keys.comma', what: 'keys.insert' },
+      { keys: 'keys.fullStop', what: 'keys.overwrite' },
+      { keys: 'keys.b', what: 'keys.split' },
+      { keys: 'keys.clipboardKeys', what: 'keys.clipboard' },
+      { keys: 'keys.delete', what: 'keys.remove' },
+      { keys: 'keys.undoKeys', what: 'keys.undo' },
       // Both redo keys work: Ctrl+Y is the Windows habit, Ctrl+Shift+Z the one
       // Premiere, Resolve and every Mac app use.
-      { keys: 'Ctrl+Y or Ctrl+Shift+Z', what: 'Redo' },
-      { keys: 'Ctrl+L / Ctrl+Shift+L', what: 'Link the selected clips, unlink them' },
-      { keys: 'Alt+click', what: 'One clip of a linked group, without breaking the link' },
-      { keys: 'Ctrl+R', what: 'Speed / Duration for the selected clip' },
+      { keys: 'keys.redoKeys', what: 'keys.redo' },
+      { keys: 'keys.linkKeys', what: 'keys.link' },
+      { keys: 'keys.altClick', what: 'keys.oneOfGroup' },
+      { keys: 'keys.speedKeys', what: 'keys.speed' },
     ],
   },
   {
-    title: 'Tools',
+    title: 'keys.groupTools',
     items: [
-      { keys: 'V', what: 'Select' },
-      { keys: 'C', what: 'Razor' },
-      { keys: 'H', what: 'Pan' },
-      { keys: 'T', what: 'Trim - a join rolls, a free edge ripples, the top slips, the bottom slides' },
-      { keys: 'S', what: 'Snapping on or off' },
-      { keys: '+ / -', what: 'Zoom in, zoom out' },
-      { keys: 'Ctrl+wheel', what: 'Zoom around the pointer' },
+      { keys: 'keys.v', what: 'keys.select' },
+      { keys: 'keys.c', what: 'keys.razor' },
+      { keys: 'keys.h', what: 'keys.pan' },
+      { keys: 'keys.t', what: 'keys.trim' },
+      { keys: 'keys.s', what: 'keys.snapping' },
+      { keys: 'keys.plusMinus', what: 'keys.zoom' },
+      { keys: 'keys.ctrlWheel', what: 'keys.zoomPointer' },
     ],
   },
   {
-    title: 'The project',
+    title: 'keys.groupProject',
     items: [
-      { keys: 'Ctrl+S', what: 'Save' },
-      { keys: 'Ctrl+Shift+S', what: 'Save as' },
-      { keys: 'Ctrl+O', what: 'Open' },
-      { keys: '?', what: 'This list' },
-      { keys: 'Esc', what: 'Close what is open' },
+      { keys: 'keys.saveKeys', what: 'keys.save' },
+      { keys: 'keys.saveAsKeys', what: 'keys.saveAs' },
+      { keys: 'keys.openKeys', what: 'keys.open' },
+      { keys: 'keys.question', what: 'keys.thisList' },
+      { keys: 'keys.esc', what: 'keys.closeOpen' },
     ],
   },
 ];
@@ -83,73 +89,73 @@ export interface ShortcutsDialogProps {
 }
 
 export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element {
+  const t = useT();
   const [query, setQuery] = useState('');
 
   const groups = useMemo(() => {
+    const translated = SHORTCUT_GROUPS.map((group) => ({
+      title: t(group.title),
+      items: group.items.map((item) => ({ id: item.keys, keys: t(item.keys), what: t(item.what) })),
+    }));
     const needle = query.trim().toLowerCase();
-    if (!needle) return SHORTCUT_GROUPS;
-    return SHORTCUT_GROUPS.map((group) => ({
-      ...group,
-      items: group.items.filter(
-        (item) => item.keys.toLowerCase().includes(needle) || item.what.toLowerCase().includes(needle),
-      ),
-    })).filter((group) => group.items.length > 0);
-  }, [query]);
+    if (!needle) return translated;
+    return translated
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) => item.keys.toLowerCase().includes(needle) || item.what.toLowerCase().includes(needle),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [query, t]);
 
   return (
-    <div className="scf-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div
-        data-testid="shortcuts-dialog"
-        role="dialog"
-        aria-label="Keyboard shortcuts"
-        className="scf-dialog panel flex max-h-[86vh] w-[640px] flex-col shadow-2xl shadow-black/60"
-      >
-        <header className="panel-header justify-between">
-          <span className="flex items-center gap-2">
-            <Keyboard size={13} />
-            Keyboard shortcuts
-          </span>
-          <button type="button" className="tool-button" onClick={onClose} title="Close (Esc)">
-            <X size={14} />
-          </button>
-        </header>
-
-        <div className="border-b border-panel-700 px-4 py-2">
-          <label className="relative block">
-            <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              autoFocus
-              className="numeric-input w-full pl-8"
-              placeholder="Search the keys"
-              aria-label="Search shortcuts"
-              data-testid="shortcuts-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-          {groups.length === 0 && (
-            <p className="text-xs text-slate-400">Nothing here answers to that.</p>
-          )}
-          {groups.map((group) => (
-            <section key={group.title} className="space-y-1">
-              <span className="section-title">{group.title}</span>
-              <ul className="space-y-0.5">
-                {group.items.map((item) => (
-                  <li key={item.keys} className="flex items-baseline gap-3 rounded px-1.5 py-1 hover:bg-panel-800">
-                    <kbd className="shrink-0 rounded border border-panel-600 bg-panel-950 px-1.5 py-0.5 font-sans text-2xs text-slate-200">
-                      {item.keys}
-                    </kbd>
-                    <span className="text-xs leading-relaxed text-slate-300">{item.what}</span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+    <Dialog
+      title={t('keys.title')}
+      icon={Keyboard}
+      onClose={onClose}
+      testId="shortcuts-dialog"
+      widthClass="w-[640px]"
+      bodyClassName=""
+      footer={
+        <button type="button" className="button-primary" onClick={onClose}>
+          {t('dialog.close')}
+        </button>
+      }
+    >
+      <div className="sticky top-0 z-10 border-b border-panel-700 bg-panel-900 px-4 py-2">
+        <label className="relative block">
+          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            data-autofocus
+            className="numeric-input w-full pl-8"
+            placeholder={t('keys.search')}
+            aria-label={t('keys.searchLabel')}
+            data-testid="shortcuts-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
       </div>
-    </div>
+
+      <div className="space-y-4 p-4">
+        {groups.length === 0 && <p className="text-xs text-slate-400">{t('keys.nothing')}</p>}
+        {groups.map((group) => (
+          <section key={group.title} className="space-y-1">
+            <span className="section-title">{group.title}</span>
+            <ul className="space-y-0.5">
+              {group.items.map((item) => (
+                <li key={item.id} className="flex items-baseline gap-3 rounded-control px-1.5 py-1 hover:bg-panel-800">
+                  <kbd className="shrink-0 rounded-control border border-panel-600 bg-panel-950 px-1.5 py-0.5 font-sans text-2xs text-slate-200">
+                    {item.keys}
+                  </kbd>
+                  <span className="text-xs leading-relaxed text-slate-300">{item.what}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </Dialog>
   );
 }

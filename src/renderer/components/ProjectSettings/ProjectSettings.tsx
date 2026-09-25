@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
 import { COMMON_FPS } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { BackupSettings } from './BackupSettings';
+import { Dialog } from '@renderer/components/Dialog/Dialog';
+import { useT } from '@renderer/i18n';
 
 /**
  * Project settings.
@@ -40,6 +41,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
   const setProjectSettings = useProjectStore((state) => state.setProjectSettings);
   const adoptedFrom = useProjectStore((state) => state.adoptedSettingsFrom);
 
+  const t = useT();
   const [retime, setRetime] = useState(true);
 
   const durationSeconds = project.durationFrames / project.fps;
@@ -49,16 +51,19 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
   );
 
   return (
-    <div data-closing={closing} className="scf-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div data-closing={closing} className="scf-dialog panel w-[460px] max-h-[86vh] shadow-2xl shadow-black/60">
-        <header className="panel-header justify-between">
-          <span>Project settings</span>
-          <button type="button" className="tool-button" onClick={onClose} title="Close">
-            <X size={14} />
-          </button>
-        </header>
-
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+    <Dialog
+      title={t('settings.title')}
+      onClose={onClose}
+      closing={closing}
+      widthClass="w-[480px]"
+      bodyClassName="space-y-3 p-4"
+      footer={
+        // Every change applies as it is made, and is undoable: nothing to cancel.
+        <button type="button" className="button-primary" onClick={onClose}>
+          {t('settings.done')}
+        </button>
+      }
+    >
           <label className="flex flex-col gap-1">
             <span className="field-label">Frame rate</span>
             <select
@@ -203,15 +208,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
               them here is an undoable edit like any other.
             </p>
           )}
-        </div>
-
-        <footer className="flex justify-end gap-2 border-t border-panel-700 px-4 py-3">
-          <button type="button" className="tool-button tool-button-active" onClick={onClose}>
-            Done
-          </button>
-        </footer>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 

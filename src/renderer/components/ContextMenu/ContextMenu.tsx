@@ -57,6 +57,16 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: x, top: y, origin: 'top left' });
   const [activeIndex, setActiveIndex] = useState(-1);
+  // Where the keyboard was when the menu opened - usually the button that
+  // opened it. Choosing an item, or Escape, puts focus back there before the
+  // item runs, so a dialog it opens knows where to return focus when it closes.
+  const returnFocus = useRef<Element | null>(typeof document === 'undefined' ? null : document.activeElement);
+  const restoreFocus = useCallback(() => {
+    const element = returnFocus.current;
+    if (element instanceof HTMLElement && element.isConnected && element !== document.body) {
+      element.focus({ preventScroll: true });
+    }
+  }, []);
 
   const selectable = items
     .map((item, index) => ({ item, index }))
@@ -75,10 +85,11 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
   const run = useCallback(
     (item: ContextMenuItem) => {
       if (item.disabled || item.separator) return;
+      restoreFocus();
       onClose();
       item.onSelect?.();
     },
-    [onClose],
+    [onClose, restoreFocus],
   );
 
   useEffect(() => {
@@ -89,6 +100,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        restoreFocus();
         onClose();
         return;
       }
@@ -123,7 +135,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps): JSX.Ele
       window.removeEventListener('resize', onClose);
       window.removeEventListener('wheel', onClose);
     };
-  }, [activeIndex, items, onClose, run, selectable]);
+  }, [activeIndex, items, onClose, restoreFocus, run, selectable]);
 
   return (
     <div

@@ -179,24 +179,20 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [actions, view]);
 
-  // Escape closes the mixer and project settings, like any dialog. Export is
-  // left to its own buttons: Escape must not be a way to lose a render.
+  // Escape leaves the full-screen viewer. A dialog open on top takes the key
+  // first (components/Dialog), so Escape closes the nearest thing, which is
+  // how it behaves everywhere else.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape' || useSessionStore.getState().unsavedPrompt) return;
-      // A dialog first, then the full-screen viewer: Escape closes the nearest
-      // thing, which is how it behaves everywhere else.
       const { ui, setUi } = useProjectStore.getState();
-      if (!mixerOpen && !settingsOpen && !shortcutsOpen && !ui.fullscreenViewer) return;
+      if (!ui.fullscreenViewer) return;
       event.preventDefault();
-      if (shortcutsOpen) setShortcutsOpen(false);
-      else if (settingsOpen) setSettingsOpen(false);
-      else if (mixerOpen) setMixerOpen(false);
-      else setUi({ fullscreenViewer: false });
+      setUi({ fullscreenViewer: false });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [mixerOpen, settingsOpen, shortcutsOpen]);
+  }, []);
 
   /**
    * "?" opens the list of keys, as it does in Resolve and in most things built

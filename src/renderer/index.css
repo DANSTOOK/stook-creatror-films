@@ -229,6 +229,22 @@
     height: var(--control-h);
   }
 
+  /*
+    The one primary action on a surface: Export, a dialog's confirm. Filled
+    with the accent and 32px tall, the only control that size, so there is
+    never a question which button finishes the job.
+  */
+  .button-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-control bg-accent px-4 text-xs font-semibold text-white
+           hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-50;
+    height: var(--control-h-primary);
+    transition: background-color 120ms var(--ease-standard), transform 90ms var(--ease-standard);
+  }
+
+  .button-primary:active {
+    transform: scale(0.97);
+  }
+
   /* The dense size, for icon buttons in rows that repeat (track headers, lists). */
   .tool-button-dense {
     height: var(--control-h-dense);

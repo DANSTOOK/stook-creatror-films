@@ -98,6 +98,18 @@ forma del editor. Cada punto dice cómo se comprobó.
   pálido de antes era un tono más claro del mismo azul de los clips de vídeo;
   ningún clip se dibuja en amarillo, y contra los cuatro colores de clip mide
   entre 3,3:1 y 3,8:1 (el mínimo para un borde es 3:1).
+- **Todos los diálogos son el mismo diálogo.** Velocidad, Ajustes del
+  proyecto, Mezclador, Atajos de teclado, Exportar y «¿Guardar los cambios?»
+  comparten ahora un solo marco: se anuncian como diálogo modal con su título,
+  **Escape siempre los cierra** (antes Velocidad no se cerraba con Escape) y
+  solo cierra el de encima, sin que el editor de detrás reciba la tecla (Escape
+  en Velocidad ya no deselecciona también el clip), el tabulador no se sale del
+  diálogo y, al cerrarlo, el foco vuelve al botón que lo abrió. Título en
+  minúscula normal a 15 px, y abajo a la derecha Cancelar (o Cerrar) y la
+  acción principal la última, como en Windows y en la guía de Apple. La
+  exportación no se puede cerrar con Escape mientras renderiza (tampoco tiene
+  botón de cerrar entonces: se para con «Cancel render»), y conserva sus
+  acciones arriba, como la página Deliver de Resolve.
 
 ### Añadido
 
@@ -154,6 +166,12 @@ forma del editor. Cada punto dice cómo se comprobó.
 - **Rehacer (punto 13):** `useTransport.ts` ya atendía Ctrl+Y y Ctrl+Mayús+Z;
   la prueba del menú (punto 1) pulsa los dos con `sendInputEvent` y los dos
   rehacen una sola vez.
+- **Diálogos (punto 9):** una prueba (`probe-dialogs.mjs`) abre los seis
+  diálogos y comprueba en cada uno: rol y `aria-modal` con nombre, título a
+  15 px, el foco empieza dentro, 40 pulsaciones de Tab y Mayús+Tab no lo sacan,
+  Escape lo cierra y el foco vuelve al botón que lo abrió (también cuando se
+  abrió desde el menú Ventana); Escape en Velocidad no deselecciona el clip.
+  **30/30.** Capturas en `i09-*.png`.
 
 ### También sin publicar: una exportación terminada se ve terminada
 
