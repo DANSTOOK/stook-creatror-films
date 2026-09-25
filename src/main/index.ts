@@ -1,7 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
-import { installAppMenu } from './appMenu';
+import { installAppMenu, menuLanguage } from './appMenu';
+import { translate } from '@shared/i18n';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
@@ -123,15 +124,21 @@ function createWindow(): void {
     event.preventDefault();
     const window = mainWindow;
     if (!window) return;
+    // In the language the page is in, like the page's own prompt.
+    const language = menuLanguage();
     void dialog
       .showMessageBox(window, {
         type: 'warning',
-        buttons: ['Save', "Don't save", 'Cancel'],
+        buttons: [
+          translate(language, 'unsaved.save'),
+          translate(language, 'unsaved.discard'),
+          translate(language, 'dialog.cancel'),
+        ],
         defaultId: 0,
         cancelId: 2,
-        title: 'Unsaved changes',
-        message: `Save changes to "${documentState.name}"?`,
-        detail: "Your changes will be lost if you don't save them.",
+        title: translate(language, 'unsaved.windowTitle'),
+        message: translate(language, 'unsaved.title', { name: documentState.name }),
+        detail: translate(language, 'unsaved.body'),
       })
       .then(({ response }) => {
         if (response === 2 || window.isDestroyed()) return;

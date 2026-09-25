@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Clock, Film, FolderOpen, FolderPlus, LifeBuoy, Plus, Search, Sparkles, X } from 'lucide-react';
+import { Clock, Film, FolderOpen, FolderPlus, Languages, LifeBuoy, Plus, Search, Sparkles, X } from 'lucide-react';
 import type { ProjectRecovery, RecentProject } from '@shared/types/ipc';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { useFlip } from '@renderer/motion/useFlip';
 import { formatLength, nextUntitledName, relativeTime } from '@renderer/project/projectSession';
 import type { NewProjectOptions } from '@renderer/project/useProjectActions';
 import { useLanguageStore, useT } from '@renderer/i18n';
+import { LanguageSelect } from '@renderer/components/Preferences/PreferencesDialog';
 
 /**
  * The start screen: a new project, or one to carry on with.
@@ -80,7 +81,7 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
 
   // A sensible name ready to accept, not one the user must invent first.
   useEffect(() => {
-    if (recent && !name) setName(nextUntitledName(recent.map((project) => project.name)));
+    if (recent && !name) setName(nextUntitledName(recent.map((project) => project.name), t('home.untitled')));
     // Only when the list first arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recent]);
@@ -213,6 +214,12 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
               {t('home.open')}
             </button>
           </div>
+
+          <label className="scf-rise mt-auto flex items-center gap-2 text-2xs text-slate-400" style={stagger(3)}>
+            <Languages size={13} aria-hidden />
+            <span>{t('prefs.language')}</span>
+            <LanguageSelect className="w-40" />
+          </label>
 
         </section>
 

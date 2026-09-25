@@ -83,10 +83,11 @@ export function formatLength(frames: number, fps: number): string {
 }
 
 /** "Untitled project", then "Untitled project 2", 3... skipping names already used. */
-export function nextUntitledName(existing: readonly string[]): string {
+export function nextUntitledName(existing: readonly string[], base = 'Untitled project'): string {
   const taken = new Set(existing.map((name) => name.toLowerCase()));
-  if (!taken.has('untitled project')) return 'Untitled project';
+  const lower = base.toLowerCase();
+  if (!taken.has(lower)) return base;
   let index = 2;
-  while (taken.has(`untitled project ${index}`)) index += 1;
-  return `Untitled project ${index}`;
+  while (taken.has(`${lower} ${index}`)) index += 1;
+  return `${base} ${index}`;
 }

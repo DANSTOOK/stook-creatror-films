@@ -34,6 +34,8 @@ interface LanguageState {
   setLanguage(language: Language): void;
 }
 
+if (typeof document !== 'undefined') document.documentElement.lang = loadLanguage();
+
 export const useLanguageStore = create<LanguageState>((set) => ({
   language: typeof window === 'undefined' ? DEFAULT_LANGUAGE : loadLanguage(),
   setLanguage(language) {

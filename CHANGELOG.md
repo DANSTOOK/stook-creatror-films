@@ -166,6 +166,17 @@ forma del editor. Cada punto dice cómo se comprobó.
   editor, así que ninguno se ejecuta dos veces ni en un sitio donde el editor
   decidió no hacerlo. Las herramientas de desarrollo solo existen en la
   compilación de desarrollo (F12), nunca en la instalada.
+- **Idioma de la interfaz: English o Español.** Se elige en *Preferencias*
+  (menú *Edición*, o *Preferencias…* en el menú Ventana del editor) y también
+  en la pantalla de inicio, abajo a la izquierda, el primer sitio donde se
+  mira. Se aplica al momento, sin reiniciar: la página, el menú de la
+  aplicación y la pregunta de «¿Guardar los cambios?» al cerrar la ventana. Se
+  recuerda en este equipo, como el tamaño de los paneles. **El inglés sigue
+  siendo el idioma por defecto.** En esta fase están en español el menú, los
+  avisos, los diálogos, la pantalla de inicio, el inspector, la barra superior
+  y las cabeceras de pista; el resto se traduce en las fases 2 y 3 (la lista
+  está abajo, en *Sigue en inglés*). Las fechas y horas siguen el formato del
+  idioma elegido.
 
 ### Cómo se comprobó
 
@@ -243,6 +254,14 @@ forma del editor. Cada punto dice cómo se comprobó.
   Export en reposo (5,17:1) y bajo el puntero (6,70:1), los botones activos de
   la línea de tiempo (6,2:1 texto azul claro sobre el acento al 20 %) y el
   botón principal de un diálogo (5,17:1). **7/7.**
+- **Idioma (punto 16):** una prueba (`probe-language.mjs`) con un perfil nuevo:
+  arranca en inglés (página y menú nativo); elegir «Español» en la pantalla de
+  inicio cambia al momento la página, el menú (`&Archivo,&Edición,&Ver,
+  V&entana,Ay&uda`) y `<html lang>`; el editor sale en español; *Preferencias*
+  vuelve a inglés al momento; y al arrancar de nuevo recuerda el español.
+  **8/8.** Una prueba unitaria comprueba que el diccionario español tiene
+  exactamente las mismas claves que el inglés y los mismos marcadores
+  (`{name}`, `{count}`…) en cada mensaje.
 
 ### También sin publicar: una exportación terminada se ve terminada
 

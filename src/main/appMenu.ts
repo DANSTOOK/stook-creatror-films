@@ -89,6 +89,9 @@ export function buildMenuTemplate(
       command('menu.cut', 'cut', { accelerator: 'CmdOrCtrl+X' }),
       command('menu.copy', 'copy', { accelerator: 'CmdOrCtrl+C' }),
       command('menu.paste', 'paste', { accelerator: 'CmdOrCtrl+V' }),
+      { type: 'separator' },
+      // Where Windows editors keep them (Premiere: Edit > Preferences).
+      command('menu.preferences', 'preferences'),
     ],
   };
 
@@ -146,6 +149,10 @@ export function buildMenuTemplate(
  * is ready and before the first window exists, so the default menu is never
  * the one a window starts with.
  */
+/** The language the page last reported, for anything else the main process says. */
+let reportedLanguage: MenuState['language'] = 'en';
+export const menuLanguage = (): MenuState['language'] => reportedLanguage;
+
 export function installAppMenu(getWindow: () => BrowserWindow | null): void {
   let state: MenuState = INITIAL;
   let applied = '';
@@ -185,6 +192,7 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
       inspectorShown: raw.inspectorShown !== false,
       fullscreenViewer: raw.fullscreenViewer === true,
     };
+    reportedLanguage = state.language;
     apply();
   });
 

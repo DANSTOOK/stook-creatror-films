@@ -5,6 +5,7 @@ import {
   Headphones,
   Home as HomeIcon,
   Keyboard,
+  Languages,
   LayoutDashboard,
   PanelLeft,
   PanelRight,
@@ -23,6 +24,7 @@ import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { ContextMenu, useContextMenu } from './components/ContextMenu';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
@@ -47,7 +49,7 @@ import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import { useIsDirty, useSessionStore } from './store/useSessionStore';
-import { t, useLanguageStore } from './i18n';
+import { t, useLanguageStore, useT } from './i18n';
 import { notify } from './notifications/notifications';
 import { NotificationsButton, Toaster } from './notifications/Toaster';
 import { MENU_IMPORT_EVENT } from './components/MediaLibrary/MediaLibrary';
@@ -97,6 +99,8 @@ export default function App(): JSX.Element {
   const [mixerOpen, setMixerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const tr = useT();
   /**
    * Areas that are put away.
    *
@@ -110,6 +114,7 @@ export default function App(): JSX.Element {
   const exportPresence = usePresence(exportOpen);
   const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
+  const preferencesPresence = usePresence(preferencesOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -279,7 +284,7 @@ export default function App(): JSX.Element {
   const undo = useProjectStore((state) => state.undo);
   const redo = useProjectStore((state) => state.redo);
 
-  const desktopOnly = (title: string): string => (nativeAvailable ? title : 'Only available in the desktop app');
+  const desktopOnly = (title: string): string => (nativeAvailable ? title : tr('toolbar.desktopOnly'));
 
   /* The application menu ---------------------------------------------------- */
 
@@ -308,7 +313,7 @@ export default function App(): JSX.Element {
     if (session.unsavedPrompt) return;
     // The start screen offers a new project and opening one; everything else
     // is about the project in the editor.
-    if (session.view !== 'editor' && command !== 'new' && command !== 'open') return;
+    if (session.view !== 'editor' && command !== 'new' && command !== 'open' && command !== 'preferences') return;
     const store = useProjectStore.getState();
     const target = document.activeElement as HTMLElement | null;
     const typing = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
@@ -371,6 +376,9 @@ export default function App(): JSX.Element {
       case 'shortcuts':
         setShortcutsOpen(true);
         return;
+      case 'preferences':
+        setPreferencesOpen(true);
+        return;
       default:
         return;
     }
@@ -388,8 +396,8 @@ export default function App(): JSX.Element {
             type="button"
             className="group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-panel-800"
             onClick={() => void actions.goHome()}
-            title="Back to the start screen"
-            aria-label="Home"
+            title={tr('toolbar.homeHint')}
+            aria-label={tr('toolbar.home')}
           >
             {/* The project logo. It has its own light ground, so it sits in a
                 rounded tile rather than being cut out against the dark header. */}
@@ -403,40 +411,40 @@ export default function App(): JSX.Element {
           </button>
 
           <div className="toolbar-group">
-            <button type="button" className="tool-button" onClick={() => void actions.newBlank()} title="New blank project">
+            <button type="button" className="tool-button" onClick={() => void actions.newBlank()} title={tr('toolbar.newHint')}>
               <FilePlus2 size={14} />
-              New
+              {tr('toolbar.new')}
             </button>
             <button
               type="button"
               className="tool-button"
               disabled={!nativeAvailable}
               onClick={() => void actions.openFromDialog()}
-              title={desktopOnly('Open project (Ctrl+O)')}
+              title={desktopOnly(tr('toolbar.openHint'))}
             >
               <FolderOpen size={14} />
-              Open
+              {tr('toolbar.open')}
             </button>
             <button
               type="button"
               className="tool-button"
               disabled={!nativeAvailable}
               onClick={() => void actions.save(false)}
-              title={desktopOnly('Save project (Ctrl+S) - Save as: Ctrl+Shift+S')}
+              title={desktopOnly(tr('toolbar.saveHint'))}
             >
               <Save size={14} />
-              Save
+              {tr('toolbar.save')}
             </button>
           </div>
 
           <div className="toolbar-group">
-            <button type="button" className="tool-button" disabled={!canUndo} onClick={undo} title="Undo (Ctrl+Z)">
+            <button type="button" className="tool-button" disabled={!canUndo} onClick={undo} title={tr('toolbar.undoHint')}>
               <Undo2 size={14} />
-              Undo
+              {tr('toolbar.undo')}
             </button>
-            <button type="button" className="tool-button" disabled={!canRedo} onClick={redo} title="Redo (Ctrl+Y or Ctrl+Shift+Z)">
+            <button type="button" className="tool-button" disabled={!canRedo} onClick={redo} title={tr('toolbar.redoHint')}>
               <Redo2 size={14} />
-              Redo
+              {tr('toolbar.redo')}
             </button>
           </div>
 
@@ -445,10 +453,10 @@ export default function App(): JSX.Element {
               type="button"
               className={`tool-button ${mixerOpen ? 'tool-button-active' : ''}`}
               onClick={() => setMixerOpen(true)}
-              title="Mixer - levels, pan, EQ and auto ducking"
+              title={tr('toolbar.mixerHint')}
             >
               <Headphones size={14} />
-              Mixer
+              {tr('toolbar.mixer')}
             </button>
             {/*
               One menu for the window itself, the way a Mac editor keeps it:
@@ -465,18 +473,18 @@ export default function App(): JSX.Element {
                 const box = event.currentTarget.getBoundingClientRect();
                 openWindowMenu({ preventDefault: () => undefined, clientX: box.left, clientY: box.bottom + 4 }, [
                   {
-                    label: hidden.media ? 'Show media' : 'Hide media',
+                    label: hidden.media ? tr('quick.showMedia') : tr('quick.hideMedia'),
                     icon: PanelLeft,
                     onSelect: () => setHidden((current) => ({ ...current, media: !current.media })),
                   },
                   {
-                    label: hidden.inspector ? 'Show inspector' : 'Hide inspector',
+                    label: hidden.inspector ? tr('quick.showInspector') : tr('quick.hideInspector'),
                     icon: PanelRight,
                     onSelect: () => setHidden((current) => ({ ...current, inspector: !current.inspector })),
                   },
                   { separator: true },
                   {
-                    label: 'Reset layout',
+                    label: tr('quick.resetLayout'),
                     icon: LayoutDashboard,
                     onSelect: () => {
                       setHidden({ media: false, inspector: false });
@@ -485,27 +493,32 @@ export default function App(): JSX.Element {
                   },
                   { separator: true },
                   {
-                    label: 'Project settings...',
+                    label: tr('quick.projectSettings'),
                     icon: Settings2,
                     onSelect: () => setSettingsOpen(true),
                   },
                   {
-                    label: 'Keyboard shortcuts',
+                    label: tr('quick.preferences'),
+                    icon: Languages,
+                    onSelect: () => setPreferencesOpen(true),
+                  },
+                  {
+                    label: tr('quick.shortcuts'),
                     icon: Keyboard,
                     shortcut: '?',
                     onSelect: () => setShortcutsOpen(true),
                   },
                 ]);
               }}
-              title="Window - panels, layout, project settings and the keys"
+              title={tr('toolbar.windowHint')}
             >
               <PanelsTopLeft size={14} />
-              Window
+              {tr('toolbar.window')}
             </button>
           </div>
 
           {/* The open project, and whether it has unsaved changes. */}
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-3" title={projectPath ?? 'Not saved yet'}>
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-3" title={projectPath ?? tr('toolbar.notSaved')}>
             <span data-testid="project-name" className="truncate text-xs font-medium text-slate-200">
               {projectName}
             </span>
@@ -513,7 +526,7 @@ export default function App(): JSX.Element {
               <span
                 data-testid="unsaved-indicator"
                 className="scf-dirty-dot h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
-                title="Unsaved changes"
+                title={tr('toolbar.unsaved')}
               />
             )}
           </div>
@@ -525,10 +538,10 @@ export default function App(): JSX.Element {
             className="button-primary"
             disabled={!nativeAvailable}
             onClick={() => setExportOpen(true)}
-            title={nativeAvailable ? 'Export video or sprite frames' : 'Exporting needs the desktop app, which bundles FFmpeg'}
+            title={nativeAvailable ? tr('toolbar.exportHint') : tr('toolbar.exportDesktopOnly')}
           >
             <Share2 size={14} />
-            Export
+            {tr('toolbar.export')}
           </button>
         </header>
 
@@ -567,6 +580,9 @@ export default function App(): JSX.Element {
         {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
         {windowMenu && <ContextMenu {...windowMenu} onClose={closeWindowMenu} />}
         {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+        {preferencesPresence.mounted && (
+          <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
+        )}
         {settingsPresence.mounted && (
           <ProjectSettings
             closing={settingsPresence.closing}

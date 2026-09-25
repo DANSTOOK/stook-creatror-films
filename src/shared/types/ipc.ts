@@ -131,7 +131,8 @@ export type MenuCommand =
   | 'fullscreenViewer'
   | 'resetLayout'
   | 'mixer'
-  | 'shortcuts';
+  | 'shortcuts'
+  | 'preferences';
 
 /** What the page tells the menu, so it can label, tick and grey its items. */
 export interface MenuState {
