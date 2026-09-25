@@ -17,8 +17,21 @@ import { fadeLengths } from '@renderer/timing/clipFades';
  */
 
 export const TRACK_HEIGHT = 56;
+
+/**
+ * The outline of a selected clip: yellow, as Final Cut draws it. The pale blue
+ * it replaced was nearly the colour of a video clip; yellow is 4.4:1 against
+ * the video blue and 3.9:1 against the audio green (3:1 is the bar for a
+ * boundary), and nothing else on the timeline is yellow and outlined.
+ */
+export const SELECTED_OUTLINE = '#facc15';
 export const TRACK_GAP = 2;
 export const RULER_HEIGHT = 24;
+/**
+ * The top of the ruler is the markers' lane; the time numbers sit below it.
+ * Both inside the same 24px, so the rows below do not move.
+ */
+export const MARKER_LANE_HEIGHT = 11;
 
 /**
  * The interface face, for everything the canvas writes. The ruler used to be
@@ -28,7 +41,7 @@ export const RULER_HEIGHT = 24;
 const UI_FONT = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
 const LABEL_FONT = `11px ${UI_FONT}`;
 
-const TRACK_COLORS: Record<Track['type'], string> = {
+export const TRACK_TYPE_COLORS: Record<Track['type'], string> = {
   video: '#456698',
   audio: '#33785f',
   text: '#82548e',
@@ -156,6 +169,9 @@ function drawRuler(
 ): void {
   context.fillStyle = '#1d2025';
   context.fillRect(0, 0, width, RULER_HEIGHT);
+  // The marker lane, a shade darker so it reads as its own strip.
+  context.fillStyle = '#191b20';
+  context.fillRect(0, 0, width, MARKER_LANE_HEIGHT);
 
   context.strokeStyle = '#343840';
   context.beginPath();
@@ -204,12 +220,12 @@ function drawRuler(
 
     context.strokeStyle = '#41454e';
     context.beginPath();
-    context.moveTo(x, RULER_HEIGHT - 8);
+    context.moveTo(x, RULER_HEIGHT - 7);
     context.lineTo(x, RULER_HEIGHT);
     context.stroke();
 
     context.fillStyle = '#94a3b8';
-    context.fillText(framesToShortLabel(frame, project.fps), x + 4, RULER_HEIGHT / 2 - 2);
+    context.fillText(framesToShortLabel(frame, project.fps), x + 4, MARKER_LANE_HEIGHT + (RULER_HEIGHT - MARKER_LANE_HEIGHT) / 2);
   }
 }
 
@@ -394,13 +410,13 @@ function drawClip(
   context.beginPath();
   context.roundRect(bodyLeft, top + 2, bodyWidth, TRACK_HEIGHT - 4, radius);
 
-  context.fillStyle = TRACK_COLORS[track.type];
+  context.fillStyle = TRACK_TYPE_COLORS[track.type];
   context.globalAlpha = track.visible ? 1 : 0.4;
   context.fill();
 
   context.globalAlpha = 1;
   context.lineWidth = selected ? 2 : 1;
-  context.strokeStyle = selected ? '#dbeafe' : '#0e0f11';
+  context.strokeStyle = selected ? SELECTED_OUTLINE : '#0e0f11';
   context.stroke();
 
   if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps, canvasWidth);
@@ -487,10 +503,11 @@ export function markerAtPixel(
 }
 
 /**
- * Marker flags, drawn over the ruler.
+ * Marker flags, in their lane at the top of the ruler.
  *
- * They go on top of the ruler rather than under it because the ruler paints its
- * own background - a flag drawn before it is simply erased.
+ * They are drawn after the ruler because the ruler paints its own background -
+ * a flag drawn before it is simply erased. They used to sit on the numbers,
+ * and a label such as "Chapter 1" covered the time under it.
  */
 function drawMarkerFlags(
   context: CanvasRenderingContext2D,
@@ -499,7 +516,7 @@ function drawMarkerFlags(
   width: number,
 ): void {
   context.font = LABEL_FONT;
-  context.textBaseline = 'middle';
+  context.textBaseline = 'alphabetic';
 
   for (const marker of project.markers) {
     const x = Math.round(frameToPixel(marker.frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
@@ -509,11 +526,11 @@ function drawMarkerFlags(
 
     context.fillStyle = marker.color;
     context.beginPath();
-    context.moveTo(x - 4, 2);
-    context.lineTo(x + 4, 2);
-    context.lineTo(x + 4, 9);
-    context.lineTo(x, 13);
-    context.lineTo(x - 4, 9);
+    context.moveTo(x - 4, 1);
+    context.lineTo(x + 4, 1);
+    context.lineTo(x + 4, 6);
+    context.lineTo(x, 10);
+    context.lineTo(x - 4, 6);
     context.closePath();
     context.fill();
 
@@ -525,7 +542,7 @@ function drawMarkerFlags(
 
     if (marker.label) {
       context.fillStyle = selected ? '#f8fafc' : '#cbd5f5';
-      context.fillText(marker.label, x + 7, 7);
+      context.fillText(marker.label, x + 7, MARKER_LANE_HEIGHT - 2);
     }
   }
 }

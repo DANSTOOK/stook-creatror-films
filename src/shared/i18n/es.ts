@@ -136,4 +136,17 @@ export const es: Messages = {
   'notify.history': 'Notificaciones',
   'notify.historyEmpty': 'Nada todavía. Aquí aparecen los avisos al guardar, abrir e importar.',
   'notify.clear': 'Borrar',
+
+  /* Timeline track headers ------------------------------------------------ */
+  'timeline.videoTrack': 'Pista de vídeo',
+  'timeline.audioTrack': 'Pista de audio',
+  'timeline.renameHint': 'Doble clic para cambiar el nombre; clic derecho para más opciones',
+  'timeline.deleteTrack': 'Eliminar pista',
+  'timeline.hideTrack': 'Ocultar pista',
+  'timeline.showTrack': 'Mostrar pista',
+  'timeline.muteTrack': 'Silenciar pista',
+  'timeline.unmuteTrack': 'Activar el sonido de la pista',
+  'timeline.soloTrack': 'Solo de la pista',
+  'timeline.lockTrack': 'Bloquear pista',
+  'timeline.unlockTrack': 'Desbloquear pista',
 };

@@ -79,6 +79,20 @@ forma del editor. Cada punto dice cómo se comprobó.
   botón de cerrar es pulsable), y queda en un **historial** con la hora, en el
   botón de la campana de la barra superior. Un aviso del editor no aparece
   sobre la pantalla de inicio ni al revés. Se leen en el idioma elegido.
+- **Cabeceras de pista más limpias.** El tipo de pista es una franja de color
+  a la izquierda (el mismo color que sus clips) en vez de la palabra «VIDEO» o
+  «AUDIO» repetida en cada fila. Las pistas de audio tienen **silenciar y
+  solo** en lugar del ojo, que en una pista de sonido no hacía nada; las de
+  vídeo conservan ocultar, silenciar (sus clips llevan sonido) y bloquear. Cada
+  botón dice su estado (pulsado, y en color cuando cambia lo que se oye o se
+  ve) y tiene nombre accesible. Eliminar pista sigue apareciendo al pasar el
+  ratón, ahora junto al nombre.
+- **Los marcadores tienen su propio carril** en la parte de arriba de la regla,
+  y los números del tiempo bajan al resto: «Chapter 1» ya no tapa el «0:05».
+  Todo dentro de los mismos 24 px, así que las filas no se mueven.
+- **El clip seleccionado se marca en amarillo**, como en Final Cut. El azul
+  pálido de antes casi no se distinguía de un clip de vídeo; el amarillo
+  contrasta 4,4:1 con el azul de vídeo y 3,9:1 con el verde de audio.
 
 ### Añadido
 
@@ -127,6 +141,11 @@ forma del editor. Cada punto dice cómo se comprobó.
   `redesign-audit/25`) y con los dos avisos apilados. Los textos que buscan
   las pruebas de interfaz («Saved to», «Opened», «Autosaved to … at») siguen
   siendo los mismos en inglés.
+- **Línea de tiempo (puntos 7 y 8 y el contorno amarillo):** captura de la
+  línea de tiempo con dos marcadores, un clip seleccionado y las tres pistas
+  (`i07-timeline.png`, antes en `redesign-audit/36-crop-track-headers-ruler`).
+  Las pruebas de interfaz que hacen clic en la regla (y = 8) y en las filas
+  (24 px + 58 px por fila) siguen pasando, porque la geometría no cambió.
 
 ### También sin publicar: una exportación terminada se ve terminada
 

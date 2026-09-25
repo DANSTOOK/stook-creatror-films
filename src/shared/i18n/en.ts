@@ -136,6 +136,19 @@ export const en = {
   'notify.history': 'Notifications',
   'notify.historyEmpty': 'Nothing yet. Messages about saving, opening and importing appear here.',
   'notify.clear': 'Clear',
+
+  /* Timeline track headers ------------------------------------------------ */
+  'timeline.videoTrack': 'Video track',
+  'timeline.audioTrack': 'Audio track',
+  'timeline.renameHint': 'Double-click to rename, right-click for more',
+  'timeline.deleteTrack': 'Delete track',
+  'timeline.hideTrack': 'Hide track',
+  'timeline.showTrack': 'Show track',
+  'timeline.muteTrack': 'Mute track',
+  'timeline.unmuteTrack': 'Unmute track',
+  'timeline.soloTrack': 'Solo track',
+  'timeline.lockTrack': 'Lock track',
+  'timeline.unlockTrack': 'Unlock track',
 };
 
 export type Messages = typeof en;

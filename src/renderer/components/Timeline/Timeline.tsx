@@ -47,6 +47,7 @@ import { canMoveTrack, timelineRows } from './trackRows';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
+  TRACK_TYPE_COLORS,
   TRACK_GAP,
   TRACK_HEIGHT,
   hitsPlayheadScissors,
@@ -1236,10 +1237,18 @@ export function Timeline(): JSX.Element {
           {tracks.map((track, index) => (
             <div
               key={track.id}
-              className="group flex flex-col justify-center gap-1 border-b border-panel-800 px-2 hover:bg-panel-800"
+              className="group relative flex flex-col justify-center gap-1 border-b border-panel-800 pl-3 pr-2 hover:bg-panel-800"
               style={{ height: TRACK_HEIGHT, marginTop: index === 0 ? 0 : TRACK_GAP }}
               onContextMenu={(event) => openMenu(event, trackMenuItems(track))}
             >
+              {/* The kind of track as a colour, the one its clips are drawn in,
+                  instead of the word VIDEO or AUDIO on every row. */}
+              <span
+                aria-hidden
+                className="absolute inset-y-1 left-0 w-1 rounded-r-sm"
+                style={{ background: TRACK_TYPE_COLORS[track.type] }}
+              />
+              <span className="sr-only">{t(track.type === 'audio' ? 'timeline.audioTrack' : 'timeline.videoTrack')}</span>
               <div className="flex items-center justify-between gap-1">
                 {renamingTrackId === track.id ? (
                   <input
@@ -1262,57 +1271,77 @@ export function Timeline(): JSX.Element {
                   <>
                     <button
                       type="button"
-                      title="Double-click to rename, right-click for more"
-                      className="min-w-0 flex-1 truncate text-left text-xs text-slate-300"
+                      title={t('timeline.renameHint')}
+                      className="min-w-0 flex-1 truncate text-left text-xs font-medium text-slate-200"
                       onDoubleClick={() => setRenamingTrackId(track.id)}
                     >
                       {track.name}
                     </button>
-                    <span className="shrink-0 text-2xs uppercase text-slate-400">
-                      {track.type}
-                    </span>
+                    <button
+                      type="button"
+                      className="tool-button tool-button-dense shrink-0 opacity-0 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
+                      title={t('timeline.deleteTrack')}
+                      aria-label={t('timeline.deleteTrack')}
+                      disabled={tracks.length <= 1}
+                      onClick={() => store.getState().removeTrack(track.id)}
+                    >
+                      <Trash2 size={13} />
+                    </button>
                   </>
                 )}
               </div>
 
-              <div className="flex items-center gap-1">
+              {/* A picture track can be hidden; a sound track has nothing to
+                  hide, so it gets solo instead, as in every NLE's audio
+                  headers. Both can be muted (a video clip carries its sound)
+                  and locked. The state reads from the button itself: pressed,
+                  and in colour when it changes what is heard or seen. */}
+              <div className="flex items-center gap-0.5">
+                {track.type !== 'audio' && (
+                  <button
+                    type="button"
+                    className={`tool-button tool-button-dense ${track.visible ? '' : 'text-amber-300'}`}
+                    title={track.visible ? t('timeline.hideTrack') : t('timeline.showTrack')}
+                    aria-label={track.visible ? t('timeline.hideTrack') : t('timeline.showTrack')}
+                    aria-pressed={!track.visible}
+                    onClick={() =>
+                      store.getState().updateTrack(track.id, { visible: !track.visible })
+                    }
+                  >
+                    {track.visible ? <Eye size={13} /> : <EyeOff size={13} />}
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="tool-button h-6 px-1.5"
-                  title={track.visible ? 'Hide track' : 'Show track'}
-                  onClick={() =>
-                    store.getState().updateTrack(track.id, { visible: !track.visible })
-                  }
-                >
-                  {track.visible ? <Eye size={13} /> : <EyeOff size={13} />}
-                </button>
-                <button
-                  type="button"
-                  className="tool-button h-6 px-1.5"
-                  title={track.muted ? 'Unmute track' : 'Mute track'}
+                  className={`tool-button tool-button-dense ${track.muted ? 'bg-amber-400/15 text-amber-300' : ''}`}
+                  title={track.muted ? t('timeline.unmuteTrack') : t('timeline.muteTrack')}
+                  aria-label={track.muted ? t('timeline.unmuteTrack') : t('timeline.muteTrack')}
+                  aria-pressed={track.muted}
                   onClick={() => store.getState().updateTrack(track.id, { muted: !track.muted })}
                 >
                   {track.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                 </button>
+                {track.type === 'audio' && (
+                  <button
+                    type="button"
+                    className={`tool-button tool-button-dense w-6 px-0 text-2xs font-semibold ${track.solo ? 'bg-yellow-300/20 text-yellow-200' : ''}`}
+                    title={t('timeline.soloTrack')}
+                    aria-label={t('timeline.soloTrack')}
+                    aria-pressed={track.solo}
+                    onClick={() => store.getState().updateTrack(track.id, { solo: !track.solo })}
+                  >
+                    S
+                  </button>
+                )}
                 <button
                   type="button"
-                  className="tool-button h-6 px-1.5"
-                  title={track.locked ? 'Unlock track' : 'Lock track'}
+                  className={`tool-button tool-button-dense ${track.locked ? 'text-amber-300' : ''}`}
+                  title={track.locked ? t('timeline.unlockTrack') : t('timeline.lockTrack')}
+                  aria-label={track.locked ? t('timeline.unlockTrack') : t('timeline.lockTrack')}
+                  aria-pressed={track.locked}
                   onClick={() => store.getState().updateTrack(track.id, { locked: !track.locked })}
                 >
                   {track.locked ? <Lock size={13} /> : <LockOpen size={13} />}
-                </button>
-
-                <span className="flex-1" />
-
-                <button
-                  type="button"
-                  className="tool-button h-6 px-1.5 opacity-0 hover:text-red-400 group-hover:opacity-100"
-                  title="Delete track"
-                  disabled={tracks.length <= 1}
-                  onClick={() => store.getState().removeTrack(track.id)}
-                >
-                  <Trash2 size={13} />
                 </button>
               </div>
             </div>
