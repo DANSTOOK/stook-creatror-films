@@ -45,7 +45,10 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: 'B', what: 'Split at the playhead' },
       { keys: 'Ctrl+C / X / V', what: 'Copy, cut, paste at the playhead' },
       { keys: 'Delete', what: 'Remove the selected clips' },
-      { keys: 'Ctrl+Z / Ctrl+Y', what: 'Undo, redo' },
+      { keys: 'Ctrl+Z', what: 'Undo' },
+      // Both redo keys work: Ctrl+Y is the Windows habit, Ctrl+Shift+Z the one
+      // Premiere, Resolve and every Mac app use.
+      { keys: 'Ctrl+Y or Ctrl+Shift+Z', what: 'Redo' },
       { keys: 'Ctrl+L / Ctrl+Shift+L', what: 'Link the selected clips, unlink them' },
       { keys: 'Alt+click', what: 'One clip of a linked group, without breaking the link' },
       { keys: 'Ctrl+R', what: 'Speed / Duration for the selected clip' },

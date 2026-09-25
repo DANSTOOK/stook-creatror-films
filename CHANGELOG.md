@@ -30,6 +30,10 @@ forma del editor. Cada punto dice cómo se comprobó.
   dentro de un campo de texto. Con ese menú se van también «Forzar recarga»,
   las herramientas de desarrollo (Ctrl+Mayús+I) y el zoom de página
   (Ctrl+= / Ctrl+-).
+- **Rehacer dice lo mismo en todas partes.** La lista de atajos decía Ctrl+Y,
+  el botón Rehacer decía Ctrl+Mayús+Z, y el editor acepta los dos. Ahora la
+  lista, el botón y el menú *Edición* dicen «Ctrl+Y o Ctrl+Mayús+Z» (el menú
+  solo puede mostrar uno y muestra Ctrl+Y).
 
 ### Cambiado
 
@@ -91,8 +95,9 @@ forma del editor. Cada punto dice cómo se comprobó.
   y los números del tiempo bajan al resto: «Chapter 1» ya no tapa el «0:05».
   Todo dentro de los mismos 24 px, así que las filas no se mueven.
 - **El clip seleccionado se marca en amarillo**, como en Final Cut. El azul
-  pálido de antes casi no se distinguía de un clip de vídeo; el amarillo
-  contrasta 4,4:1 con el azul de vídeo y 3,9:1 con el verde de audio.
+  pálido de antes era un tono más claro del mismo azul de los clips de vídeo;
+  ningún clip se dibuja en amarillo, y contra los cuatro colores de clip mide
+  entre 3,3:1 y 3,8:1 (el mínimo para un borde es 3:1).
 
 ### Añadido
 
@@ -146,6 +151,9 @@ forma del editor. Cada punto dice cómo se comprobó.
   (`i07-timeline.png`, antes en `redesign-audit/36-crop-track-headers-ruler`).
   Las pruebas de interfaz que hacen clic en la regla (y = 8) y en las filas
   (24 px + 58 px por fila) siguen pasando, porque la geometría no cambió.
+- **Rehacer (punto 13):** `useTransport.ts` ya atendía Ctrl+Y y Ctrl+Mayús+Z;
+  la prueba del menú (punto 1) pulsa los dos con `sendInputEvent` y los dos
+  rehacen una sola vez.
 
 ### También sin publicar: una exportación terminada se ve terminada
 

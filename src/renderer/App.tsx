@@ -438,7 +438,7 @@ export default function App(): JSX.Element {
               <Undo2 size={14} />
               Undo
             </button>
-            <button type="button" className="tool-button" disabled={!canRedo} onClick={redo} title="Redo (Ctrl+Shift+Z)">
+            <button type="button" className="tool-button" disabled={!canRedo} onClick={redo} title="Redo (Ctrl+Y or Ctrl+Shift+Z)">
               <Redo2 size={14} />
               Redo
             </button>

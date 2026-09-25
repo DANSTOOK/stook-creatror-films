@@ -20,9 +20,10 @@ export const TRACK_HEIGHT = 56;
 
 /**
  * The outline of a selected clip: yellow, as Final Cut draws it. The pale blue
- * it replaced was nearly the colour of a video clip; yellow is 4.4:1 against
- * the video blue and 3.9:1 against the audio green (3:1 is the bar for a
- * boundary), and nothing else on the timeline is yellow and outlined.
+ * it replaced was a lighter shade of the video clips' own blue, so a selected
+ * video clip read as the same thing, only brighter. No clip is drawn in
+ * yellow; measured against the four clip colours it is 3.3:1 to 3.8:1 (3:1 is
+ * the bar for a boundary) and 11:1 against an empty track.
  */
 export const SELECTED_OUTLINE = '#facc15';
 export const TRACK_GAP = 2;
