@@ -702,6 +702,7 @@ async function main() {
     // start at 1 s after the rate doubles, in twice as many frames.
     const movedClip = beforeSettings.clips.find((c) => c.start > 0) ?? beforeSettings.clips[0];
     const doubled = beforeSettings.fps * 2;
+    await settings.locator('label', { hasText: /^Frame rate/ }).locator('select').selectOption('custom');
     const customRate = settings.locator('label', { hasText: 'Custom frame rate' }).locator('input');
     await customRate.fill(String(doubled));
     const afterRate = await projectNow();

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { History, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
+import { currentLocale, useLanguageStore, useT } from '@renderer/i18n';
 
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { AUTOSAVE_INTERVALS, autosaveLabel } from '@renderer/project/autosave';
@@ -32,6 +33,8 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
   const projectPath = useSessionStore((state) => state.projectPath);
   const [backups, setBackups] = useState<ProjectBackup[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const t = useT();
+  const language = useLanguageStore((state) => state.language);
 
   useEffect(() => {
     if (!hasNativeBridge() || !projectPath) {
@@ -65,14 +68,9 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
   const now = Date.now();
 
   return (
-    <section className="space-y-2 border-t border-panel-700 pt-3">
-      <span className="section-title flex items-center gap-1.5">
-        <History size={12} />
-        Autosave and backups
-      </span>
-
+    <div className="space-y-2">
       <label className="flex flex-col gap-1">
-        <span className="field-label">Autosave</span>
+        <span className="field-label">{t('backups.autosave')}</span>
         <select
           className="numeric-input"
           data-testid="autosave-interval"
@@ -81,48 +79,42 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
         >
           {AUTOSAVE_INTERVALS.map((value) => (
             <option key={value} value={value}>
-              {autosaveLabel(value)}
+              {autosaveLabel(value, language)}
             </option>
           ))}
         </select>
       </label>
-      <p className="text-2xs leading-relaxed text-slate-400">
-        A saved project is written back to its own file. Work that has never
-        been saved is kept in the app instead, and offered back on the next
-        start - nothing is written anywhere you did not choose.
-      </p>
+      <p className="text-2xs leading-relaxed text-slate-400">{t('backups.autosaveHint')}</p>
 
       <div className="space-y-1">
-        <span className="field-label">Earlier versions of this project</span>
-        {!projectPath && (
-          <p className="text-2xs text-slate-400">Save the project once, and its earlier versions are kept here.</p>
-        )}
-        {projectPath && backups?.length === 0 && (
-          <p className="text-2xs text-slate-400">No earlier versions yet - the first save is the first copy.</p>
-        )}
+        <span className="field-label">{t('backups.earlier')}</span>
+        {!projectPath && <p className="text-2xs text-slate-400">{t('backups.neverSaved')}</p>}
+        {projectPath && backups?.length === 0 && <p className="text-2xs text-slate-400">{t('backups.none')}</p>}
         {backups && backups.length > 0 && (
           <ul className="max-h-40 space-y-1 overflow-y-auto" data-testid="backup-list">
             {backups.map((backup) => (
               <li key={backup.file} className="list-item flex items-center justify-between gap-2 px-2 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
-                  {new Date(backup.savedAt).toLocaleString()}
-                  <span className="pl-2 text-2xs text-slate-400">{relativeTime(backup.savedAt, now)}</span>
+                  <span className="timecode">
+                    {new Date(backup.savedAt).toLocaleString(currentLocale(), { dateStyle: 'medium', timeStyle: 'short' })}
+                  </span>
+                  <span className="pl-2 text-2xs text-slate-400">{relativeTime(backup.savedAt, now, language)}</span>
                 </span>
                 <button
                   type="button"
                   className="tool-button shrink-0"
                   disabled={busy}
-                  title="Open this version in the editor, leaving the project file alone"
+                  title={t('backups.restoreHint')}
                   onClick={() => void restore(backup)}
                 >
                   <RotateCcw size={12} />
-                  Restore
+                  {t('backups.restore')}
                 </button>
               </li>
             ))}
           </ul>
         )}
       </div>
-    </section>
+    </div>
   );
 }

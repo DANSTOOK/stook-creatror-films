@@ -1,3 +1,5 @@
+import { translate, type Language } from '@shared/i18n';
+
 /**
  * When to save without being asked.
  *
@@ -78,8 +80,8 @@ export function readAutosaveMinutes(raw: string | null): number {
 }
 
 /** "Off", or "Every 5 min" - what the setting says on screen. */
-export function autosaveLabel(minutes: number): string {
-  return minutes <= 0 ? 'Off' : `Every ${minutes} min`;
+export function autosaveLabel(minutes: number, language: Language = 'en'): string {
+  return minutes <= 0 ? translate(language, 'backups.off') : translate(language, 'backups.every', { minutes });
 }
 
 /** A clock time for the status line, in the viewer's own format. */

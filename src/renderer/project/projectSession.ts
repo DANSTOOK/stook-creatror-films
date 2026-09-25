@@ -1,3 +1,5 @@
+import { localeOf, translate, type Language } from '@shared/i18n';
+
 /**
  * The open project as a session: its name, and whether it has changed since
  * it was last saved.
@@ -47,21 +49,26 @@ export function isDirty(saved: SavedMarker | null, current: SavedMarker): boolea
 }
 
 /** "just now", "5 min ago", "yesterday", "3 days ago", then a date. */
-export function relativeTime(iso: string, now = Date.now()): string {
+export function relativeTime(iso: string, now = Date.now(), language: Language = 'en'): string {
   const then = Date.parse(iso);
-  if (Number.isNaN(then) || then <= 0) return 'a while ago';
+  if (Number.isNaN(then) || then <= 0) return translate(language, 'time.whileAgo');
   const seconds = Math.max(0, Math.round((now - then) / 1000));
-  if (seconds < 45) return 'just now';
+  if (seconds < 45) return translate(language, 'time.justNow');
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return translate(language, 'time.minutesAgo', { count: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
+  if (hours < 24) return translate(language, 'time.hoursAgo', { count: hours });
   const days = Math.floor(hours / 24);
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days} days ago`;
+  if (days === 1) return translate(language, 'time.yesterday');
+  if (days < 7) return translate(language, 'time.daysAgo', { count: days });
   const date = new Date(then);
   const sameYear = date.getUTCFullYear() === new Date(now).getUTCFullYear();
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) });
+  // English keeps day-month order ("12 Aug"), which reads the same everywhere.
+  return date.toLocaleDateString(language === 'en' ? 'en-GB' : localeOf(language), {
+    day: 'numeric',
+    month: 'short',
+    ...(sameYear ? {} : { year: 'numeric' }),
+  });
 }
 
 /** "4:05" or "1:02:03" for a length in frames. */

@@ -117,6 +117,14 @@ forma del editor. Cada punto dice cómo se comprobó.
   número suelto sigue contando fotogramas. Lo que no es una duración se marca
   en rojo, con el motivo, y Aplicar espera. El diálogo está en los dos
   idiomas.
+- **Ajustes del proyecto, en tres grupos: Imagen, Tiempo, y Guardado
+  automático y copias**, como en los ajustes de proyecto de Resolve y
+  Premiere. El campo de fotogramas por segundo personalizados solo aparece al
+  elegir «Personalizado…» en la lista (antes estaba siempre debajo, repitiendo
+  el número que ya decía la lista). La duración lleva su unidad y su código de
+  tiempo. Las fechas de las copias se escriben en el formato del idioma
+  elegido (en español, «24 sep 2026, 10:54 p.m.» y «justo ahora»), no en el del
+  sistema. Todo el diálogo está en los dos idiomas.
 
 ### Añadido
 
@@ -157,7 +165,7 @@ forma del editor. Cada punto dice cómo se comprobó.
 - **Unidades e inspector (puntos 5 y 6):** capturas del inspector de vídeo, de
   audio y con Información desplegada (`i06-*.png`, antes en
   `redesign-audit/06` y `08`). Pruebas unitarias nuevas
-  (`tests/unit/UiText.test.ts`) para las lecturas en dB y L/C/R: la ganancia
+  (`tests/UiText.test.ts`) para las lecturas en dB y L/C/R: la ganancia
   unidad es «0.0 dB» sin signo ni «-0.0», la mitad «-6.0 dB», el silencio
   «-inf dB».
 - **Avisos (punto 4):** capturas tras guardar (`i04-after-save.png`), tras
@@ -186,6 +194,12 @@ forma del editor. Cada punto dice cómo se comprobó.
   Pruebas unitarias para la lectura de duraciones (12 en `UiText.test.ts`). La
   comprobación de interfaz que leía la duración en fotogramas ahora la espera
   en código de tiempo.
+- **Ajustes del proyecto (punto 11):** capturas en inglés y en español, también
+  con la lista de copias a la vista (`i11-settings.png`,
+  `i11es-settings*.png`; antes en `redesign-audit/16`). La comprobación de
+  interfaz que cambia la frecuencia ahora elige «Custom…» antes de escribirla,
+  porque el campo ya no existe hasta entonces. Las pruebas unitarias de
+  `relativeTime` y `autosaveLabel` siguen pasando en inglés (24/24).
 
 ### También sin publicar: una exportación terminada se ve terminada
 
