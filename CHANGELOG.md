@@ -178,6 +178,58 @@ forma del editor. Cada punto dice cómo se comprobó.
   está abajo, en *Sigue en inglés*). Las fechas y horas siguen el formato del
   idioma elegido.
 
+### Decisiones tomadas
+
+- **La barra de menús sigue oculta hasta pulsar Alt**, como antes; el botón
+  *Ventana* del editor se queda como menú rápido con lo mismo que *Ver* y
+  *Ventana* (y *Preferencias…*). La barra de título propia llega en la fase 2.
+- **Los atajos se muestran en el menú pero no se registran allí**
+  (`registerAccelerator: false`): el editor los sigue atendiendo, y así ninguno
+  se ejecuta dos veces. No se añadieron atajos nuevos (Ctrl+N, Ctrl+I, Ctrl+E):
+  eso va con la barra de herramientas de la fase 2.
+- **Exportar conserva sus acciones arriba**, como la página Deliver de Resolve
+  (hay una comprobación de interfaz que lo exige), en vez de moverlas al pie
+  como en los demás diálogos; el orden sí es el mismo: salir, y la acción
+  principal a la derecha. Escape no la cierra mientras renderiza.
+- **Mezclador, Ajustes del proyecto y Atajos tienen un solo botón** («Close»,
+  «Done») en vez de Cancelar + principal: sus cambios se aplican al momento y
+  se deshacen con Ctrl+Z, así que no hay nada que cancelar.
+- **Las pistas de vídeo conservan silenciar** (sus clips llevan sonido) y no
+  llevan solo; las de audio cambian el ojo por solo.
+- **El carril de marcadores va dentro de la regla de 24 px** (los 11 px de
+  arriba), no en una fila aparte, para no mover las filas de la línea de
+  tiempo.
+- **La sección Información del inspector empieza plegada**, al final.
+- **Formato de fechas:** inglés como en EE. UU. (en-US) y español como en
+  México (es-MX).
+- **El idioma vive en un diálogo de Preferencias nuevo** (menú *Edición*, como
+  en Premiere para Windows) y en la pantalla de inicio; no había un sitio de
+  ajustes de la aplicación donde ponerlo.
+- **La rotación de la máscara pasa a grados** en el inspector, por coherencia
+  con la rotación del clip (no estaba en la lista, pero es el mismo arreglo de
+  unidades).
+
+### Sigue en inglés
+
+Lo que todavía no está traducido (fases 2 y 3):
+- **Panel de medios:** título, Importar, Añadir carpeta, contenedores, barra
+  de proxies, estado vacío y sus menús contextuales.
+- **Visor:** cabecera (Preview, Transform, pantalla completa), botones de
+  transporte y sus descripciones, controles de transformación.
+- **Línea de tiempo:** título y barra de herramientas (Select, Razor, Pan,
+  Trim, Split at playhead, Delete, Snap, Magnet, Marker, + Video, + Audio,
+  zoom, Fit), menús contextuales de clip, pista y regla, y el nombre de los
+  marcadores.
+- **Cuerpo del diálogo Exportar** (formato, alfa, resolución, tramo, archivo,
+  miniatura, hardware, progreso y tarjeta del resultado) y el **panel de
+  YouTube**. El título, las acciones, los preajustes rápidos y «Avanzado» ya
+  están traducidos.
+- **Nombres por defecto:** pistas «Video 1»/«Audio 1», el contenedor
+  «Master» y «Untitled project» al pulsar *Proyecto en blanco*.
+- **Mensajes técnicos** que vienen tal cual del proceso principal o de
+  FFmpeg (motivos de un error de importación o de exportación) y los títulos
+  y filtros de los diálogos nativos de abrir y guardar.
+
 ### Cómo se comprobó
 
 - **Menú (punto 1):** una prueba (`probe-menu.mjs`) que envía las teclas con
@@ -262,6 +314,17 @@ forma del editor. Cada punto dice cómo se comprobó.
   **8/8.** Una prueba unitaria comprueba que el diccionario español tiene
   exactamente las mismas claves que el inglés y los mismos marcadores
   (`{name}`, `{count}`…) en cada mensaje.
+- **Batería completa, al final de la fase**, contra la compilación de
+  desarrollo: **126/126 comprobaciones de interfaz** (`tests/ui/run.mjs`,
+  incluida la segunda sesión que reabre el proyecto y la medición de
+  contraste de todo el texto en pantalla), **748/748 pruebas unitarias** (62
+  archivos) y las dos comprobaciones de tipos sin errores. Tres comprobaciones
+  de interfaz se actualizaron en el mismo cambio que las afectaba: la duración
+  de Velocidad ahora se espera en código de tiempo y el cambio de frecuencia
+  en Ajustes elige antes «Custom…».
+- **Capturas del editor completo** a 1600×950 y a 1280×760, en inglés y en
+  español, y de cada diálogo en español (`final-*.png`, en la carpeta de la
+  fase 1 del bloc de notas de la sesión).
 
 ### También sin publicar: una exportación terminada se ve terminada
 
