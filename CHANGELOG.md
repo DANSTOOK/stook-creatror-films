@@ -125,6 +125,18 @@ forma del editor. Cada punto dice cómo se comprobó.
   tiempo. Las fechas de las copias se escriben en el formato del idioma
   elegido (en español, «24 sep 2026, 10:54 p.m.» y «justo ahora»), no en el del
   sistema. Todo el diálogo está en los dos idiomas.
+- **Exportar:**
+  - **Nunca hay dos preajustes rápidos marcados a la vez.** En un proyecto
+    1080p, «Project» y «YouTube 1080p» son los mismos ajustes y se encendían
+    los dos; ahora se marca el que se pulsó, o el primero que coincide.
+  - **El archivo se llama como el proyecto**, no como el primer clip (una
+    exportación de «Boda» ya no sale como «DSC_0042»), igual que Premiere usa
+    el nombre de la secuencia y Resolve el de la línea de tiempo. Se quitan los
+    caracteres que Windows no admite en un nombre.
+  - **«Nearest-neighbour scaling» pasa a un apartado «Avanzado»** plegado, con
+    una frase que explica para qué sirve; se abre solo si la opción está
+    activada, para que un ajuste en uso nunca quede escondido.
+  - El estado de exportación terminada de 4610db4 no cambia.
 
 ### Añadido
 
@@ -200,6 +212,13 @@ forma del editor. Cada punto dice cómo se comprobó.
   interfaz que cambia la frecuencia ahora elige «Custom…» antes de escribirla,
   porque el campo ya no existe hasta entonces. Las pruebas unitarias de
   `relativeTime` y `autosaveLabel` siguen pasando en inglés (24/24).
+- **Exportar (punto 12):** una prueba (`probe-export.mjs`) con un proyecto
+  1080p guardado como «Wedding film»: se abre con un solo preajuste marcado; el
+  nombre del archivo es «Wedding film»; el escalado por vecino más próximo
+  está plegado; pulsar «YouTube 1080p» deja marcado solo ese; «Advanced» lo
+  muestra. **5/5.** Pruebas unitarias del nombre por defecto (caracteres no
+  válidos, puntos finales, nombre vacío). Capturas `i12-export-*.png` (antes
+  en `redesign-audit/20`).
 
 ### También sin publicar: una exportación terminada se ve terminada
 

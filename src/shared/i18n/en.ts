@@ -305,6 +305,11 @@ export const en = {
   'time.hoursAgo': '{count} h ago',
   'time.yesterday': 'yesterday',
   'time.daysAgo': '{count} days ago',
+
+  /* Export: advanced ------------------------------------------------------ */
+  'export.advanced': 'Advanced',
+  'export.nearest': 'Nearest-neighbour scaling (pixel art)',
+  'export.nearestHint': 'Keeps hard pixel edges when the export is scaled up or down. Leave it off for filmed footage, where it looks jagged.',
 };
 
 export type Messages = typeof en;

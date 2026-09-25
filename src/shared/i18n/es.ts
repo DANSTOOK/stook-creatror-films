@@ -305,4 +305,9 @@ export const es: Messages = {
   'time.hoursAgo': 'hace {count} h',
   'time.yesterday': 'ayer',
   'time.daysAgo': 'hace {count} días',
+
+  /* Export: advanced ------------------------------------------------------ */
+  'export.advanced': 'Avanzado',
+  'export.nearest': 'Escalado por vecino más próximo (pixel art)',
+  'export.nearestHint': 'Mantiene los bordes de píxel nítidos al escalar la exportación. Déjalo desactivado para imagen filmada, donde se ve dentada.',
 };

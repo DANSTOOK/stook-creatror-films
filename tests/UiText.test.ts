@@ -4,6 +4,7 @@ import { en } from '@shared/i18n/en';
 import { es } from '@shared/i18n/es';
 import { translate } from '@shared/i18n';
 import { framesToTimecode, parseDuration } from '@shared/utils/timecode';
+import { defaultFileName } from '@renderer/components/ExportDialog/exportName';
 
 describe('level and pan readings', () => {
   it('writes unity gain as 0.0 dB, with no sign and no -0.0', () => {
@@ -56,6 +57,22 @@ describe('a typed duration', () => {
 
   it('round-trips what the field shows', () => {
     expect(parseDuration(framesToTimecode(4321, 30), 30)).toBe(4321);
+  });
+});
+
+describe('the export file name', () => {
+  it('is the project name, not the first clip', () => {
+    expect(defaultFileName('Wedding')).toBe('Wedding');
+  });
+
+  it('drops what Windows will not take in a file name', () => {
+    expect(defaultFileName('Cut: final/v2?')).toBe('Cut finalv2');
+    expect(defaultFileName('Trailing dots...')).toBe('Trailing dots');
+  });
+
+  it('falls back to "export" when nothing is left', () => {
+    expect(defaultFileName('???')).toBe('export');
+    expect(defaultFileName('   ')).toBe('export');
   });
 });
 

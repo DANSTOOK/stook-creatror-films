@@ -16,7 +16,6 @@ import type {
   GpuPreference,
   GpuReport,
   HardwareEncoder,
-  MediaAsset,
 } from '@shared/types';
 import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPlan';
 import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
@@ -26,10 +25,12 @@ import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
 import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { useSessionStore } from '@renderer/store/useSessionStore';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { useT } from '@renderer/i18n';
 import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
+import { defaultFileName } from './exportName';
 import { YouTubePanel } from './YouTubePanel';
 
 /**
@@ -115,11 +116,6 @@ function splitPath(path: string): { folder: string; name: string } {
   return at < 0 ? { folder: '', name: path } : { folder: path.slice(0, at), name: path.slice(at + 1) };
 }
 
-/** The first video's name without its extension, else "export". */
-function defaultFileName(assets: readonly MediaAsset[]): string {
-  const first = assets.find((asset) => asset.kind === 'video') ?? assets[0];
-  return first ? first.name.replace(/\.[^.]+$/, '') : 'export';
-}
 
 export interface ExportDialogProps {
   onClose(): void;
@@ -227,7 +223,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   // Folder and name are separate, the way other editors do it: the name is
   // typed here instead of being buried in a save dialog.
   const [folder, setFolder] = useState<string | null>(null);
-  const [fileName, setFileName] = useState(() => defaultFileName(assets));
+  const [fileName, setFileName] = useState(() => defaultFileName(useSessionStore.getState().projectName));
   const [targetExists, setTargetExists] = useState(false);
   /** The destination is footage this project reads from. Exporting would destroy it. */
   const [targetInUse, setTargetInUse] = useState(false);
@@ -325,6 +321,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   };
 
   const applyQuickPreset = (preset: QuickPreset): void => {
+    setChosenPreset(preset.id);
     const size = presetSize(preset);
     setExportSettings({
       format: preset.format,
@@ -336,6 +333,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     });
   };
 
+  /** The preset last clicked, so two that happen to match cannot both look chosen. */
+  const [chosenPreset, setChosenPreset] = useState<string | null>(null);
+
   const isQuickPresetActive = (preset: QuickPreset): boolean => {
     const size = presetSize(preset);
     return (
@@ -345,6 +345,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       settings.height === size.height
     );
   };
+
+  const matchingPresets = QUICK_PRESETS.filter(isQuickPresetActive);
+  const pressedPreset =
+    matchingPresets.find((preset) => preset.id === chosenPreset)?.id ?? matchingPresets[0]?.id ?? null;
 
   const startExport = useCallback(async () => {
     const renderer = getActiveFrameRenderer();
@@ -751,7 +755,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
             <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Quick presets">
               {QUICK_PRESETS.map((preset) => {
                 const Icon = preset.icon;
-                const active = isQuickPresetActive(preset);
+                // At most one is pressed. "Project" and "YouTube 1080p" are the
+                // same settings for a 1080p project, and both used to light up;
+                // the one that was clicked wins, else the first that matches.
+                const active = preset.id === pressedPreset;
                 return (
                   <button
                     key={preset.id}
@@ -830,15 +837,6 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         </p>
                       </>
                     )}
-                    <label className="flex items-center gap-2 text-xs text-slate-300">
-                      <input
-                        type="checkbox"
-                        className="accent-blue-500"
-                        checked={settings.pixelArtScaling}
-                        onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
-                      />
-                      Nearest-neighbour scaling (pixel art)
-                    </label>
                   </div>
 
                   <label className="flex flex-col gap-1">
@@ -891,6 +889,25 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
                     {settings.width}x{settings.height} @ {settings.fps} fps.
                   </p>
+
+                  {/* Rarely wanted, and wrong for filmed footage, so it is folded away -
+                      but opens by itself when it is on, so a setting in force is
+                      never hidden. */}
+                  <details className="rounded border border-panel-700 bg-panel-900 p-2" open={settings.pixelArtScaling || undefined}>
+                    <summary className="cursor-pointer select-none text-xs text-slate-300">{t('export.advanced')}</summary>
+                    <div className="mt-2 space-y-1">
+                      <label className="flex items-center gap-2 text-xs text-slate-300">
+                        <input
+                          type="checkbox"
+                          className="accent-blue-500"
+                          checked={settings.pixelArtScaling}
+                          onChange={(event) => setExportSettings({ pixelArtScaling: event.target.checked })}
+                        />
+                        {t('export.nearest')}
+                      </label>
+                      <p className="pl-6 text-2xs leading-relaxed text-slate-400">{t('export.nearestHint')}</p>
+                    </div>
+                  </details>
                 </Section>
 
                 <Section title="Range">
