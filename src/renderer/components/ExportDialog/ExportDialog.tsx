@@ -1194,7 +1194,7 @@ function ExportResult({
       className="space-y-3 rounded-lg border border-success/35 bg-success/[0.06] p-4"
     >
       <div className="flex items-start gap-3">
-        <CircleCheck size={28} className="mt-0.5 shrink-0 text-success" aria-hidden />
+        <CircleCheck size={28} className="scf-check mt-0.5 shrink-0 text-success" aria-hidden />
         <div className="min-w-0">
           <h2 id="export-result-title" className="text-base font-semibold text-slate-100">
             Export finished

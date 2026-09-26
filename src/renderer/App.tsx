@@ -3,6 +3,7 @@ import { ExportDialog } from './components/ExportDialog';
 import { Home } from './components/Home/Home';
 import { Inspector } from './components/Inspector';
 import { Splitter } from './components/Layout/Splitter';
+import { PanelSlot, markEditorShown } from './components/Layout/PanelSlot';
 import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
@@ -131,6 +132,12 @@ export default function App(): JSX.Element {
     }
     setHidden((current) => ({ ...current, [panel]: !current[panel] }));
   };
+  // Panels shown from here on slide in; the first layout is simply there.
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => markEditorShown());
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   const exportPresence = usePresence(exportOpen);
   const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
@@ -456,9 +463,11 @@ export default function App(): JSX.Element {
               <div data-panel="media" data-state={hidden.media ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
                 {!hidden.media && (
                   <>
-                    <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
-                      <MediaLibrary />
-                    </div>
+                    <PanelSlot edge="left" className="flex min-h-0 shrink-0">
+                      <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
+                        <MediaLibrary />
+                      </div>
+                    </PanelSlot>
                     {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
                   </>
                 )}
@@ -468,9 +477,11 @@ export default function App(): JSX.Element {
                 {!hidden.inspector && (
                   <>
                     {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
-                    <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
-                      <Inspector />
-                    </div>
+                    <PanelSlot edge="right" className="flex min-h-0 shrink-0">
+                      <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
+                        <Inspector />
+                      </div>
+                    </PanelSlot>
                   </>
                 )}
               </div>
@@ -480,9 +491,11 @@ export default function App(): JSX.Element {
               {!hidden.timeline && (
                 <>
                   {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
-                  <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
-                    <Timeline />
-                  </div>
+                  <PanelSlot edge="bottom" className="shrink-0">
+                    <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
+                      <Timeline />
+                    </div>
+                  </PanelSlot>
                 </>
               )}
             </div>

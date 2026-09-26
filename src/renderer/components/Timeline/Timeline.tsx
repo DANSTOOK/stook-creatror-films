@@ -46,6 +46,7 @@ import { clipsInMarquee } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { canMoveTrack, timelineRows } from './trackRows';
+import { useIndicator } from '@renderer/motion/useIndicator';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
@@ -138,6 +139,8 @@ export function Timeline(): JSX.Element {
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
   /** The clip whose Speed/Duration dialog is open, if any. */
   const [speedFor, setSpeedFor] = useState<string | null>(null);
+  /** The chosen tool's highlight, which slides from tool to tool. */
+  const toolIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(ui.tool);
 
   // Ctrl+R opens it for the selected clip, the key Resolve uses for its
   // Retime controls. Premiere puts this on the right-click menu only.
@@ -1076,7 +1079,7 @@ export function Timeline(): JSX.Element {
       type="button"
       role="radio"
       aria-checked={ui.tool === tool}
-      className={`tool-button tool-button-dense w-7 px-0 ${ui.tool === tool ? 'bg-panel-600 text-slate-50' : ''}`}
+      className={`tool-button tool-button-dense relative w-7 px-0 ${ui.tool === tool ? 'text-slate-50 hover:bg-transparent' : ''}`}
       onClick={() => store.getState().setTool(tool)}
       {...tip(label, { shortcut: key, hint })}
     >
@@ -1122,7 +1125,8 @@ export function Timeline(): JSX.Element {
           {tr('timeline.title')}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2 font-normal">
-          <div role="radiogroup" aria-label={tr('timeline.tools')} className="toolbar-group">
+          <div ref={toolIndicator.containerRef} role="radiogroup" aria-label={tr('timeline.tools')} className="toolbar-group relative">
+            <span ref={toolIndicator.indicatorRef} aria-hidden className="scf-indicator rounded-control bg-panel-600" />
             {toolButton('select', tr('timeline.toolSelect'), 'V', tr('timeline.toolSelectHint'), MousePointer2)}
             {toolButton('razor', tr('timeline.toolRazor'), 'C', tr('timeline.toolRazorHint'), Scissors)}
             {toolButton('hand', tr('timeline.toolPan'), 'H', tr('timeline.toolPanHint'), Hand)}

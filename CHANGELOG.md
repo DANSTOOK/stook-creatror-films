@@ -353,6 +353,25 @@ adónde va; nada de lo que se usa a menudo hace esperar.
   aparece al instante.
 - **La sala principal:** sus partes suben una tras otra, 30 ms de separación y
   como mucho seis pasos.
+- **Paneles** (medios, inspector, línea de tiempo): al mostrarse, su contenido
+  entra deslizándose desde su borde con el rebote; al ocultarse sale por el
+  mismo lado (un fantasma: el panel real se quita al momento). El reparto del
+  espacio cambia de golpe a propósito: el visor es una superficie WebGL y
+  redimensionarlo fotograma a fotograma lo volvería a dibujar a cada tamaño.
+  Mientras se reproduce o se exporta, todo es instantáneo.
+- **Controles segmentados:** el resaltado de la herramienta elegida en la
+  línea de tiempo y el de la pestaña del inspector viajan de una opción a
+  otra con el muelle rápido y rebote, en vez de apagarse en un sitio y
+  encenderse en otro.
+- **Inspector:** un grupo que se despliega aparece con un fundido y 4 px de
+  caída, y los grupos de debajo se deslizan a su sitio; el contenido de una
+  pestaña entra con un fundido.
+- **Botones:** se hunden al instante al pulsarlos y vuelven con el muelle
+  rápido; los interruptores deslizan su botón con el mismo muelle.
+- **Medios:** un clip nuevo aparece con un fundido donde cae y los demás le
+  hacen sitio deslizándose; al arrastrar archivos encima, la zona de soltar
+  aparece con un fundido y su rótulo crece.
+- **Exportación terminada:** la marca de verificación aparece con el rebote.
 - **Mientras se reproduce o se exporta** (`data-playing` / `data-exporting`
   en `<html>`): se quita el desenfoque detrás de diálogos y menús y no corre
   nada decorativo. En pausa, el desenfoque sigue como estaba.
@@ -381,7 +400,24 @@ real ni capturas de pantalla):
   congelaciones en todos los escenarios, antes y después.
 - `npm run test:stress:projects` **41/41** (60 diálogos abiertos y cerrados,
   algunos a medio animar; 100 menús) con las duraciones leídas de los tokens.
-- `npm run test:ui` **126/126**.
+- `npm run test:ui` **126/126**, también con los paneles, los controles y el
+  inspector animados (ocultar un panel sigue dejando `media-panel` en 0 al
+  instante: el fantasma vive en una raíz sombra cerrada que nada de fuera ve).
+- Sonda en segundo plano: al ocultar medios, 0 paneles en la página y 1
+  fantasma; al mostrarlo, el contenido empieza en `translateX(-16px)` y
+  opacidad 0 y termina en su sitio; el resaltado de herramientas pasa de
+  x = 2 a x = 32 px pasando por 24 px a los 50 ms; el de pestañas, de 6 a 79
+  px. Tras M2, `npm run test:motion` **22/22** con diálogos p95 5,7 ms y 0
+  fotogramas perdidos, reproduciendo 0,08 % perdidos.
+
+### Arreglado (encontrado al animar)
+
+- **Un grupo del inspector plegado no se plegaba.** El cuerpo llevaba el
+  atributo `hidden` y a la vez la clase `flex`, y la clase ganaba: el grupo
+  seguía abierto (medido: 155 px de alto, `display: flex`). Ahora, plegado,
+  no lleva clase de visualización y mide 0 px. **Cómo se comprobó:** con la
+  sonda de movimiento, plegando «Transformar» en un clip: `display: none`,
+  0 px; desplegado, vuelve con su fundido.
 
 ### Notas para la animación
 

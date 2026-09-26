@@ -11,6 +11,8 @@ import { dbLabel, panLabel, signedDb } from '@renderer/audio/levels';
 import { ContextMenu, useContextMenu } from '@renderer/components/ContextMenu';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { useT, type MessageKey } from '@renderer/i18n';
+import { useIndicator } from '@renderer/motion/useIndicator';
+import { useFlip } from '@renderer/motion/useFlip';
 import { createClip } from '@renderer/store/types';
 import { useProjectStore, type NumberProperty, type VectorProperty } from '@renderer/store/useProjectStore';
 
@@ -307,7 +309,7 @@ function Section({ id, title, open, onOpenChange, enabled, onEnabledChange, onRe
   const t = useT();
   const bodyId = `inspector-section-${id}`;
   return (
-    <section data-section={id} data-state={open ? 'open' : 'closed'} className="border-b border-panel-800">
+    <section data-section={id} data-state={open ? 'open' : 'closed'} data-flip-key={id} className="border-b border-panel-800">
       <div className="flex h-9 items-center gap-1 pl-1.5 pr-2">
         <button
           type="button"
@@ -341,7 +343,10 @@ function Section({ id, title, open, onOpenChange, enabled, onEnabledChange, onRe
           />
         )}
       </div>
-      <div id={bodyId} hidden={!open} className="flex flex-col gap-2 px-3 pb-3">
+      {/* No display class while folded: `flex` would beat the `hidden`
+          attribute (both are one class-level selector, and utilities come
+          last), and a folded group stayed open. */}
+      <div id={bodyId} hidden={!open} className={`${open ? 'flex' : ''} flex-col gap-2 px-3 pb-3`}>
         {children}
       </div>
     </section>
@@ -420,6 +425,11 @@ export function Inspector(): JSX.Element {
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
   /** Effects added from the menu, shown even while off and at their defaults. */
   const [added, setAdded] = useState<ReadonlySet<string>>(() => new Set());
+  // The tab highlight slides to the chosen tab; a group that folds or unfolds
+  // moves the groups under it to their new places instead of jumping.
+  const tabIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(`${tab}|${selectedIds.join(',')}`);
+  const tabPanelRef = useRef<HTMLDivElement>(null);
+  useFlip(tabPanelRef, `${tab}|${selectedIds.join(',')}|${[...folded].join(',')}`);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const addButton = useRef<HTMLButtonElement>(null);
 
@@ -835,7 +845,13 @@ export function Inspector(): JSX.Element {
       </header>
 
       {/* Only the tabs that apply; a segmented control, as Resolve's are. */}
-      <div role="tablist" aria-label={t('inspector.title')} className="flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5">
+      <div
+        ref={tabIndicator.containerRef}
+        role="tablist"
+        aria-label={t('inspector.title')}
+        className="relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
+      >
+        <span ref={tabIndicator.indicatorRef} aria-hidden className="scf-indicator rounded-control bg-panel-700" />
         {tabs.map((id) => (
           <button
             key={id}
@@ -845,8 +861,8 @@ export function Inspector(): JSX.Element {
             aria-selected={current === id}
             aria-controls="inspector-tabpanel"
             tabIndex={current === id ? 0 : -1}
-            className={`h-control-dense flex-1 rounded-control text-xs transition-colors ${
-              current === id ? 'bg-panel-700 font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
+            className={`relative h-control-dense flex-1 rounded-control text-xs transition-colors ${
+              current === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
             onKeyDown={(event) => {
@@ -864,7 +880,7 @@ export function Inspector(): JSX.Element {
         ))}
       </div>
 
-      <div id="inspector-tabpanel" role="tabpanel" aria-labelledby={tabId(current)} data-tab={current} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={tabPanelRef} id="inspector-tabpanel" role="tabpanel" aria-labelledby={tabId(current)} data-tab={current} className="min-h-0 flex-1 overflow-y-auto">
         {current === 'video' && videoTab}
         {current === 'audio' && audioTab}
         {current === 'color' && colorTab}

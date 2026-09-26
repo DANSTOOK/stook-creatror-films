@@ -126,6 +126,7 @@
     state, so it is what has to stand out: slate-200 on the off track is
     9.6:1, white on the accent 5.2:1.
   */
+  /* The thumb travels on the quick spring with the bounce; the colour never bounces. */
   input[type='checkbox'][role='switch'] {
     width: 26px;
     height: 16px;
@@ -135,7 +136,8 @@
     background-image: radial-gradient(circle, theme('colors.slate.200') 4.5px, transparent 5px);
     background-size: 16px 14px;
     background-position: 0 center;
-    transition: background-color 140ms var(--ease-standard), background-position 160ms var(--ease-out);
+    transition: background-color var(--dur-micro) var(--ease-standard),
+      background-position var(--settle-quick-bounce) var(--spring-quick-bounce);
   }
 
   input[type='checkbox'][role='switch']:checked {
@@ -295,7 +297,8 @@
     @apply flex items-center gap-2 rounded-md border border-transparent px-2 py-2
            hover:border-accent/40 hover:bg-panel-800;
     transition: background-color var(--dur-micro) var(--ease-standard),
-      border-color var(--dur-micro) var(--ease-standard), transform var(--dur-micro) var(--ease-out);
+      border-color var(--dur-micro) var(--ease-standard), transform var(--dur-micro) var(--ease-out),
+      opacity var(--settle-standard) var(--spring-standard);
   }
 
   .list-item:hover {
@@ -320,8 +323,6 @@
     @apply inline-flex items-center justify-center gap-1.5 px-2.5 rounded-control text-xs font-normal
            text-slate-300 hover:bg-panel-700 hover:text-slate-100
            disabled:opacity-40 disabled:pointer-events-none;
-    transition: background-color 120ms var(--ease-standard), color 120ms var(--ease-standard),
-      box-shadow 120ms var(--ease-standard), transform 90ms var(--ease-standard);
     height: var(--control-h);
   }
 
@@ -334,11 +335,6 @@
     @apply inline-flex items-center justify-center gap-1.5 rounded-control bg-accent px-4 text-xs font-semibold text-white
            hover:bg-accent-strong disabled:pointer-events-none disabled:opacity-50;
     height: var(--control-h-primary);
-    transition: background-color 120ms var(--ease-standard), transform 90ms var(--ease-standard);
-  }
-
-  .button-primary:active {
-    transform: scale(0.97);
   }
 
   /* The dense size, for icon buttons in rows that repeat (track headers, lists). */
@@ -348,9 +344,22 @@
     @apply px-1.5;
   }
 
-  /* A press you can feel, kept tiny: buttons are hit constantly. */
-  .tool-button:active {
+  /*
+    A press you can feel, kept tiny: buttons are hit constantly. It goes down
+    at once and comes back up on the quick spring with the bounce.
+  */
+  .tool-button,
+  .button-primary {
+    transition-property: background-color, color, box-shadow, transform;
+    transition-duration: var(--dur-micro), var(--dur-micro), var(--dur-micro), var(--settle-quick-bounce);
+    transition-timing-function: var(--ease-standard), var(--ease-standard), var(--ease-standard), var(--spring-quick-bounce);
+  }
+
+  .tool-button:active,
+  .button-primary:active {
     transform: scale(0.97);
+    transition-duration: var(--dur-micro), var(--dur-micro), var(--dur-micro), 60ms;
+    transition-timing-function: var(--ease-standard), var(--ease-standard), var(--ease-standard), var(--ease-out);
   }
 
   .tool-button-active {
@@ -676,6 +685,117 @@
     scf-rise-move var(--settle-emphasis-bounce) var(--spring-emphasis-bounce) both,
     scf-fade-in var(--settle-standard) var(--spring-standard) both;
   animation-delay: var(--delay, 0ms);
+}
+
+/*
+  A panel brought back slides in from the edge it lives on, with the bounce;
+  put away, it slides back out that way (a ghost: components/Layout/PanelSlot).
+  The layout itself changes at once - the viewer is a WebGL surface, and
+  resizing it frame by frame would re-render it at every size.
+*/
+.scf-panel-enter {
+  transition:
+    opacity var(--settle-standard) var(--spring-standard),
+    transform var(--settle-emphasis-bounce) var(--spring-emphasis-bounce);
+}
+
+@starting-style {
+  .scf-panel-enter[data-edge='left'] {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--shift-md)));
+  }
+
+  .scf-panel-enter[data-edge='right'] {
+    opacity: 0;
+    transform: translateX(var(--shift-md));
+  }
+
+  .scf-panel-enter[data-edge='bottom'] {
+    opacity: 0;
+    transform: translateY(var(--shift-md));
+  }
+}
+
+:root:is([data-playing], [data-exporting]) .scf-panel-enter {
+  transition: none;
+}
+
+/*
+  The highlight of a segmented control or a tab list (motion/useIndicator.ts):
+  it travels to the chosen segment on the quick spring with the bounce.
+*/
+.scf-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  transition:
+    transform var(--settle-quick-bounce) var(--spring-quick-bounce),
+    opacity var(--dur-micro) var(--ease-standard);
+}
+
+/* An inspector group unfolding: its contents fade in and drop 4px into place. */
+section[data-section] > [id^='inspector-section-'],
+#inspector-tabpanel > * {
+  transition:
+    opacity var(--settle-standard) var(--spring-standard),
+    transform var(--settle-standard) var(--spring-standard);
+}
+
+@starting-style {
+  section[data-section] > [id^='inspector-section-'] {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--shift-xs)));
+  }
+
+  /* A tab's contents cross in: a fade only, nothing moves. */
+  #inspector-tabpanel > * {
+    opacity: 0;
+  }
+}
+
+/*
+  A clip arriving in the media list fades in where it lands; the ones around
+  it slide to make room (FLIP, motion/useFlip.ts). One that goes leaves a gap
+  the others close the same way.
+*/
+@starting-style {
+  .list-item[data-flip-key] {
+    opacity: 0;
+  }
+}
+
+/* Files dragged over the media panel: the drop target fades up, its label grows in. */
+.scf-drop-overlay {
+  transition: opacity var(--settle-quick) var(--spring-quick);
+}
+
+.scf-drop-label {
+  transition: transform var(--settle-standard-bounce) var(--spring-standard-bounce);
+}
+
+@starting-style {
+  .scf-drop-overlay {
+    opacity: 0;
+  }
+
+  .scf-drop-label {
+    transform: scale(var(--scale-enter));
+  }
+}
+
+/* An export done: the check mark pops in with the bounce, once. */
+.scf-check {
+  transition:
+    opacity var(--settle-quick) var(--spring-quick),
+    transform var(--settle-emphasis-bounce) var(--spring-emphasis-bounce);
+}
+
+@starting-style {
+  .scf-check {
+    opacity: 0;
+    transform: scale(0.5);
+  }
 }
 
 /* The unsaved-changes dot pulses a few times when the project changes, then rests. */

@@ -633,8 +633,8 @@ export function MediaLibrary(): JSX.Element {
       </div>
 
       {dragActive && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-panel-950/80">
-          <span className="rounded border border-accent px-3 py-2 text-xs text-accent-hover">
+        <div className="scf-drop-overlay pointer-events-none absolute inset-0 flex items-center justify-center bg-panel-950/80">
+          <span className="scf-drop-label rounded border border-accent px-3 py-2 text-xs text-accent-hover">
             {path.length > 0 ? tr('media.dropInto', { name: currentBinName }) : tr('media.dropToImport')}
           </span>
         </div>
