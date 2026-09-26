@@ -6,6 +6,7 @@ import { renderTimelineAudio, streamTimelineAudio } from './audio/renderMix';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import { useMediaStore } from './store/useMediaStore';
+import { getAudioEngine } from './audio/AudioEngine';
 import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import './index.css';
 import { installMotionEnvironment } from './motion/environment';
@@ -28,6 +29,8 @@ prepareGhosts();
 (window as { __scfHistory?: typeof useHistoryStore }).__scfHistory = useHistoryStore;
 // Waveforms and filmstrips arrive from the main process; the probes wait for them.
 (window as { __scfMediaStore?: typeof useMediaStore }).__scfMediaStore = useMediaStore;
+// The mixer's meters read the engine; the probes count how often, and when.
+(window as { __scfAudioEngine?: typeof getAudioEngine }).__scfAudioEngine = getAudioEngine;
 
 // Which file the preview is drawing from: with proxies on it is the small
 // stand-in, and the interface tests check exactly that - and that an export

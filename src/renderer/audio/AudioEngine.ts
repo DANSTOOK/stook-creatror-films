@@ -66,7 +66,51 @@ interface TrackStrip {
   gain: GainNode;
   panner: StereoPannerNode;
   bus: AudioBus;
+  /** Left and right, after the fader and the pan: what the mixer's meter shows. */
+  meter: StereoMeter;
 }
+
+/**
+ * A stereo tap for a meter: a splitter into two analysers, hanging off a
+ * node without being in its path. An analyser nobody reads costs next to
+ * nothing; the mixer reads them only while playing.
+ */
+interface StereoMeter {
+  splitter: ChannelSplitterNode;
+  left: AnalyserNode;
+  right: AnalyserNode;
+}
+
+/** Peak and RMS, left and right, as linear levels (1 is full scale). */
+export interface MeterReading {
+  peak: [number, number];
+  rms: [number, number];
+}
+
+const METER_WINDOW = 1024;
+
+function createMeter(context: BaseAudioContext, source: AudioNode): StereoMeter {
+  const splitter = context.createChannelSplitter(2);
+  const left = context.createAnalyser();
+  const right = context.createAnalyser();
+  left.fftSize = METER_WINDOW;
+  right.fftSize = METER_WINDOW;
+  source.connect(splitter);
+  splitter.connect(left, 0);
+  splitter.connect(right, 1);
+  return { splitter, left, right };
+}
+
+function disconnectMeter(meter: StereoMeter): void {
+  meter.splitter.disconnect();
+}
+
+/** The engine playback runs on, for the mixer's meters. */
+let activeEngine: AudioEngine | null = null;
+export const getAudioEngine = (): AudioEngine | null => activeEngine;
+export const setActiveAudioEngine = (engine: AudioEngine | null): void => {
+  activeEngine = engine;
+};
 
 export class AudioEngine {
   readonly context: AudioContext;
@@ -78,6 +122,9 @@ export class AudioEngine {
   private readonly strips = new Map<string, ClipStrip>();
   private readonly trackStrips = new Map<string, TrackStrip>();
   private readonly buffers = new Map<string, AudioBuffer>();
+  /** After the master fader: the meter on the mixer's master strip. */
+  private readonly masterMeter: StereoMeter;
+  private readonly meterBuffer = new Float32Array(METER_WINDOW);
   private startedAtContextTime = 0;
   private startedAtSeconds = 0;
   private playing = false;
@@ -103,6 +150,37 @@ export class AudioEngine {
 
     this.dialogueBus = context.createGain();
     this.dialogueBus.connect(this.master);
+
+    this.masterMeter = createMeter(context, this.master);
+  }
+
+  private read(meter: StereoMeter): MeterReading {
+    const measure = (analyser: AnalyserNode): [number, number] => {
+      analyser.getFloatTimeDomainData(this.meterBuffer);
+      let peak = 0;
+      let sum = 0;
+      for (let index = 0; index < this.meterBuffer.length; index += 1) {
+        const sample = this.meterBuffer[index];
+        const size = sample < 0 ? -sample : sample;
+        if (size > peak) peak = size;
+        sum += sample * sample;
+      }
+      return [peak, Math.sqrt(sum / this.meterBuffer.length)];
+    };
+    const [leftPeak, leftRms] = measure(meter.left);
+    const [rightPeak, rightRms] = measure(meter.right);
+    return { peak: [leftPeak, rightPeak], rms: [leftRms, rightRms] };
+  }
+
+  /**
+   * What the meters read now: the master and every track that is sounding.
+   * A track with nothing scheduled has no strip and is not in the map - its
+   * meter is empty. Read about 20 ms of sound per channel.
+   */
+  meterLevels(): { master: MeterReading; tracks: Map<string, MeterReading> } {
+    const tracks = new Map<string, MeterReading>();
+    for (const [id, strip] of this.trackStrips) tracks.set(id, this.read(strip.meter));
+    return { master: this.read(this.masterMeter), tracks };
   }
 
   get isPlaying(): boolean {
@@ -156,6 +234,7 @@ export class AudioEngine {
     if (existing) {
       existing.gain.disconnect();
       existing.panner.disconnect();
+      disconnectMeter(existing.meter);
     }
 
     const gain = this.context.createGain();
@@ -167,7 +246,7 @@ export class AudioEngine {
     gain.connect(panner);
     panner.connect(this.busNode(track.bus));
 
-    const strip: TrackStrip = { gain, panner, bus: track.bus };
+    const strip: TrackStrip = { gain, panner, bus: track.bus, meter: createMeter(this.context, panner) };
     this.trackStrips.set(track.id, strip);
     return strip;
   }
@@ -476,6 +555,7 @@ export class AudioEngine {
     for (const strip of this.trackStrips.values()) {
       strip.gain.disconnect();
       strip.panner.disconnect();
+      disconnectMeter(strip.meter);
     }
     this.trackStrips.clear();
 

@@ -187,6 +187,83 @@ que falta al reabrir. Batería de interfaz **126/126** y pruebas unitarias
 (al abrir, la carpeta de medios, la pregunta y el resultado); antes, el
 proyecto abría sin forma de arreglarlo.
 
+### Un mezclador acoplado, con medidores (punto 27)
+
+- **Cambiado: el mezclador ya no es una ventana encima de la imagen.** Se
+  acopla **a la derecha de la línea de tiempo**, como el mezclador de la página
+  Edit de Resolve (y los medidores de Final Cut), y comparte su alto. El botón
+  del mezclador de la barra de título (y *Ventana > Mezclador*) lo saca y lo
+  guarda; si la línea de tiempo estaba oculta, vuelve con él. Se recuerda en
+  este equipo. Entra y sale deslizándose por su borde, como los demás paneles.
+- **Una tira por pista**, en el orden de la línea de tiempo, y el **máster** a
+  la derecha: **fader vertical en dB** con su escala (+6, 0, −12, −30, −60) y
+  la ley de una consola (0 dB a tres cuartos del recorrido, los últimos 6 dB
+  arriba, casi todo el recorrido donde se mezcla); doble clic vuelve a 0 dB;
+  las flechas lo mueven de un cuarto de dB cerca de 0. Panorama, silenciar y
+  solo en cada pista. El nivel se lee debajo.
+- **Medidores en directo**, estéreo, en la misma escala que el fader (verde
+  hasta −12 dB, ámbar hasta 0, rojo encima), con el **pico**, la **RMS** (el
+  cuerpo sólido; la parte atenuada entre la RMS y el pico son los
+  transitorios) y una línea de pico que se queda 1,2 s. Los leen los
+  analizadores del motor de audio, después del fader y el panorama. **Solo
+  mientras se reproduce**: parado, el bucle no corre y los medidores están
+  vacíos. Se escriben directamente en las barras, sin repintar React.
+- **Ducking**, un botón en la cabecera del mezclador (azul cuando está
+  activado), abre el ducking automático y **qué es cada pista: Diálogo o
+  Música**. Una pista de música que se atenúa lo marca con una flecha bajo su
+  nivel.
+- **Arreglado: todas las pistas eran «Música (se atenúa)»**, dijera lo que
+  dijera: el bus por defecto era música para todas, así que la lista mentía
+  con el ducking apagado (los dos buses son el mismo camino limpio al máster)
+  y encenderlo no hacía nada. Ahora una pista de imagen empieza como
+  **Diálogo** (el sonido de una cámara es sobre todo gente hablando; Final Cut
+  da el rol Diálogo al audio de los clips de vídeo por lo mismo) y una de
+  sonido como **Música**; un nombre que lo dice («Voz», «Música», «Score»)
+  manda. Los proyectos guardados conservan el bus que tenían, y los de antes
+  de que se guardara el bus se enrutan como entonces, por el nombre.
+- El nivel, panorama y ecualizador **del clip** salen del mezclador: están en
+  la pestaña Audio del inspector, donde ya estaban.
+
+**Cómo se comprobó:**
+- `probe-mixer.mjs`, **10/10**: las pistas de vídeo empiezan como diálogo y
+  la de audio como música; el mezclador es un panel, no un diálogo modal; hay
+  un fader por pista y el del máster; **parado, 0 lecturas de los medidores
+  en 1 s**; reproduciendo, 273 lecturas en 1,5 s (una por fotograma, a 180 Hz)
+  y 6 de 8 barras encendidas; al parar, 0 lecturas más y todas las barras
+  vacías; 12 pulsaciones de flecha bajan el fader (y lo dice en dB) y el doble
+  clic lo devuelve a 0 dB; el ducking y los roles están en su recuadro, que
+  Escape cierra; y en una sesión nueva el mezclador sigue acoplado.
+- Pruebas unitarias nuevas: la ley del fader (`tests/FaderLaw.test.ts`, 5:
+  0 dB a tres cuartos, +6 dB arriba, silencio abajo, ida y vuelta, siempre
+  sube, y que una pulsación de flecha salga de 0 dB) y el bus por defecto
+  (`tests/Mixer.test.ts`). **783/783.**
+- **Coste de los medidores**, con la misma sonda de rendimiento y el
+  mezclador abierto: reproduciendo la escena, GPU dedicada 0–0,22 % de
+  fotogramas perdidos y p95 5,8–5,9 ms (sin mezclador 0–0,11 %, 5,8–5,9 ms);
+  Intel 0–0,13 % y 7,2–7,3 ms (sin mezclador 0 %, 7,2–7,4 ms). Ningún
+  fotograma largo. Exportar con el mezclador abierto o cerrado, alternando,
+  tres veces cada uno: dedicada 3,40–3,43 s y 3,40–4,43 s; Intel 13,6–14,2 s
+  en los dos casos. (La Intel exporta ahora en unos 14 s también con la
+  versión de antes de esta fase, medida justo después en otra copia del
+  repositorio: 13,7–14,3 s; los 10,6–11,1 s de la mañana eran el equipo con
+  menos carga.)
+- La batería de interfaz se actualizó en el mismo cambio: el mezclador es un
+  panel acoplado junto a la línea de tiempo y no un diálogo (comprobación
+  nueva); el fader del máster se lleva arriba del todo y da ganancia 2 (+6 dB),
+  y el doble clic lo devuelve a 1; el ducking se enciende desde su recuadro,
+  **no avisa con las pistas de vídeo como diálogo** y avisa en cuanto todas
+  son música; y se cierra con «Hide the mixer». **127/127.** Las pruebas de
+  movimiento y de proyectos alternaban con el mezclador como segundo diálogo;
+  ahora usan Preferencias: movimiento **26/26**, proyectos **41/41**.
+- Capturas `after-en-1600-mixer-*.png` (reproduciendo, el panel, el
+  recuadro de ducking) y `after-es-*-mixer-*.png`; antes, el diálogo en
+  `before-en-1600-mixer.png` y `before-es-1600-mixer.png`.
+- Con el mezclador acoplado en una ventana de 1280 px la barra de la línea de
+  tiempo se cortaba por la derecha (el «Ajustar» quedaba a medias). Por debajo
+  de 1.000 px de línea de tiempo, «Ajustar» se queda en su icono (el nombre
+  sigue ahí para el lector de pantalla); comprobado en la captura
+  `after-es-1280-mixer-playing.png`.
+
 ---
 
 ## v1.27.0-beta.1 — El rediseño: orden, aspecto Mac y animaciones

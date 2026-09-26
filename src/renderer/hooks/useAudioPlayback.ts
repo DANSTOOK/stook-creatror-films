@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { MediaAsset } from '@shared/types';
-import { AudioEngine } from '@renderer/audio/AudioEngine';
+import { AudioEngine, setActiveAudioEngine } from '@renderer/audio/AudioEngine';
 import { DynamicDucking } from '@renderer/audio/DynamicDucking';
 import { mixSignature } from '@renderer/audio/mixRouting';
 import { GRAIN_INTERVAL_MS, onScrub, planScrubGrains } from '@renderer/audio/scrubAudio';
@@ -84,6 +84,7 @@ export function useAudioPlayback(): void {
   // it up front costs nothing and keeps the decode path simple.
   useEffect(() => {
     engineRef.current = new AudioEngine();
+    setActiveAudioEngine(engineRef.current);
     extractorRef.current = new WaveformExtractor();
 
     return () => {
@@ -93,6 +94,7 @@ export function useAudioPlayback(): void {
       duckingRef.current = null;
       void engineRef.current?.dispose();
       engineRef.current = null;
+      setActiveAudioEngine(null);
       extractorRef.current = null;
       registered.current.clear();
       useMediaStore.getState().clear();

@@ -111,9 +111,18 @@ describe('bus assignment', () => {
     expect(defaultBusForName('Narration')).toBe('dialogue');
   });
 
-  it('routes everything else to the music bus', () => {
-    expect(defaultBusForName('Audio 1')).toBe('music');
-    expect(defaultBusForName('Score')).toBe('music');
+  it('routes a sound track to the music bus, and a named one by its name', () => {
+    expect(defaultBusForName('Audio 1', 'audio')).toBe('music');
+    expect(defaultBusForName('Score', 'audio')).toBe('music');
+    expect(defaultBusForName('Música', 'video')).toBe('music');
+  });
+
+  it('routes a picture track to the dialogue bus: a camera records people talking', () => {
+    // Every track used to be music, so ducking a song under the camera's
+    // sound needed three changes in the mixer before it did anything.
+    expect(defaultBusForName('Video 1', 'video')).toBe('dialogue');
+    expect(createTrack('video', 0, 'Video 1').bus).toBe('dialogue');
+    expect(createTrack('audio', 0, 'Audio 1').bus).toBe('music');
   });
 
   it('is decided once, at creation, not re-sniffed on every rename', () => {

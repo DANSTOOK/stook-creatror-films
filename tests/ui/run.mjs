@@ -666,37 +666,59 @@ async function main() {
     });
 
     await window.getByRole('button', { name: 'Mixer', exact: true }).click();
-    const mixer = window.locator('div.panel', { hasText: 'Auto ducking' });
+    // Docked beside the timeline, not a dialog over the picture.
+    const mixer = window.getByTestId('mixer-panel');
     await mixer.waitFor({ state: 'visible', timeout: 10_000 });
+    const mixerBox = await mixer.boundingBox();
+    const timelineBox = await window.locator('section.panel').filter({ has: window.getByRole('button', { name: 'Split at playhead' }) }).first().boundingBox();
+    check('the mixer is docked beside the timeline, not a dialog',
+      (await window.locator('[aria-modal="true"]').count()) === 0
+        && Boolean(mixerBox && timelineBox) && mixerBox.x >= timelineBox.x + timelineBox.width - 1
+        && Math.abs(mixerBox.y - timelineBox.y) <= 2,
+      `mixer at ${Math.round(mixerBox?.x ?? -1)},${Math.round(mixerBox?.y ?? -1)}; timeline ends at ${Math.round((timelineBox?.x ?? 0) + (timelineBox?.width ?? 0))}`);
+    // The master fader is on the console law: its top is +6 dB, a gain of 2.
     const masterFader = mixer.locator('label', { hasText: 'Master level' }).locator('input[type=range]');
-    await masterFader.fill('1.5');
+    await masterFader.fill('200');
     const afterMaster = await projectNow();
-    check('the mixer master fader sets the project master level', afterMaster.master === 1.5,
+    check('the mixer master fader sets the project master level', afterMaster.master === 2,
       `master ${afterMaster.master}`);
-    await masterFader.fill('1');
+    await masterFader.dblclick();
+    const masterReset = (await projectNow()).master;
 
     await mixer.getByTitle('Mute', { exact: true }).first().click();
     const afterMute = await projectNow();
     await mixer.getByTitle('Unmute', { exact: true }).first().click();
     const afterUnmute = await projectNow();
     check('the mixer mute button mutes and unmutes a track',
-      afterMute.muted.length === 1 && afterUnmute.muted.length === 0,
-      `muted: [${afterMute.muted}] then [${afterUnmute.muted}]`);
+      afterMute.muted.length === 1 && afterUnmute.muted.length === 0 && masterReset === 1,
+      `muted: [${afterMute.muted}] then [${afterUnmute.muted}]; master back to ${masterReset} on double-click`);
 
-    // Nothing is on the dialogue bus in this project, so the switch must say
-    // it does nothing rather than look like it works.
-    const duckSwitch = mixer.getByLabel('Duck the music bus under dialogue');
+    // Picture tracks are dialogue by default, so switching ducking on has
+    // something to duck against; with every track made music it must say it
+    // does nothing rather than look like it works.
+    await mixer.getByTestId('ducking-button').click();
+    const ducking = window.getByTestId('ducking-popover');
+    const duckSwitch = ducking.getByLabel('Duck the music bus under dialogue');
     await duckSwitch.check();
-    const duckWarned = await mixer.getByText('nothing to duck against', { exact: false })
+    const warnedWithDialogue = await ducking.getByText('nothing to duck against', { exact: false }).count();
+    const roles = ducking.getByRole('combobox');
+    const roleCount = await roles.count();
+    const rolesBefore = [];
+    for (let index = 0; index < roleCount; index += 1) {
+      rolesBefore.push(await roles.nth(index).inputValue());
+      await roles.nth(index).selectOption('music');
+    }
+    const duckWarned = await ducking.getByText('nothing to duck against', { exact: false })
       .isVisible().catch(() => false);
     const duckOn = (await projectNow()).ducking;
+    for (let index = 0; index < roleCount; index += 1) await roles.nth(index).selectOption(rolesBefore[index]);
     await duckSwitch.uncheck();
-    check('auto ducking turns on and warns when no track is dialogue', duckOn && duckWarned,
-      `enabled ${duckOn}, warning ${duckWarned ? 'shown' : 'missing'}`);
+    check('auto ducking turns on, keys off the picture tracks, and warns when no track is dialogue',
+      duckOn && warnedWithDialogue === 0 && rolesBefore.includes('dialogue') && duckWarned,
+      `enabled ${duckOn}, roles [${rolesBefore}], warning ${duckWarned ? 'shown' : 'missing'} with none, ${warnedWithDialogue} with dialogue`);
+    await window.keyboard.press('Escape');
 
-    await mixer.getByRole('button', { name: 'Close', exact: true }).last().click();
-    // Dialogs play a short exit animation, so this waits for it to go rather
-    // than looking the instant the button is clicked.
+    await mixer.getByRole('button', { name: 'Hide the mixer', exact: true }).click();
     await mixer.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
     const mixerClosed = (await mixer.count()) === 0;
     const afterMixer = await projectNow();

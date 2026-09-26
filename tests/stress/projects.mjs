@@ -97,6 +97,17 @@ async function openSettingsIn(window) {
   await window.getByRole('menuitem', { name: /^Project settings/ }).click();
 }
 
+/**
+ * Preferences: Edit > Preferences, from the title bar's menu button. The
+ * second dialog these scenarios alternate with, since the mixer is docked
+ * and no longer a dialog.
+ */
+async function openPreferencesIn(window) {
+  await window.getByTestId('app-menu-button').click();
+  await window.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  await window.getByRole('menuitem', { name: /^Preferences/ }).click();
+}
+
 async function main() {
   const started = Date.now();
   await rm(workDir, { recursive: true, force: true });
@@ -350,7 +361,7 @@ async function main() {
       // Every other pass goes through the Window menu, which is now part of
       // what opening the settings costs.
       if (i % 2 === 0) await openSettingsIn(window);
-      else await window.getByRole('button', { name: 'Mixer', exact: true }).click();
+      else await openPreferencesIn(window);
       if (i % 3 !== 0) await sleep(i % 3 === 1 ? 40 : 280);
       await window.keyboard.press('Escape');
     }

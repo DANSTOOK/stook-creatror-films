@@ -156,9 +156,19 @@ export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
  * Name sniffing used to happen at playback time, on every scheduled clip. It
  * happens once, here, so the routing is visible in the mixer and editable -
  * and renaming a track no longer re-routes it behind the user's back.
+ *
+ * A name that says what it is wins. Otherwise a picture track is dialogue -
+ * a camera's sound is mostly people talking, and Final Cut gives the audio
+ * of video clips the Dialogue role for the same reason - and a sound track
+ * is music. Every track used to default to music, so switching auto ducking
+ * on in a project of camera footage and a song ducked nothing against
+ * nothing. The bus only matters to ducking: with it off, both buses are the
+ * same straight path to the master.
  */
-export function defaultBusForName(name: string): AudioBus {
-  return /dialog|dialogue|voice|voix|voz|vo\b|narrat/i.test(name) ? 'dialogue' : 'music';
+export function defaultBusForName(name: string, type: TrackType = 'audio'): AudioBus {
+  if (/dialog|dialogue|di[aá]logo|voice|voix|voz|vo\b|narrat/i.test(name)) return 'dialogue';
+  if (/music|m[uú]sica|score|song|canci[oó]n|bgm/i.test(name)) return 'music';
+  return type === 'audio' ? 'music' : 'dialogue';
 }
 
 export function createTrack(type: TrackType, order: number, name?: string): Track {
@@ -174,7 +184,7 @@ export function createTrack(type: TrackType, order: number, name?: string): Trac
     volume: 1,
     pan: 0,
     solo: false,
-    bus: defaultBusForName(resolved),
+    bus: defaultBusForName(resolved, type),
   };
 }
 
@@ -360,6 +370,8 @@ export function normalizeProject(project: ProjectState): ProjectState {
       volume: finite(track.volume, 1),
       pan: finite(track.pan, 0),
       solo: track.solo === true,
+      // A project from before buses were saved routes as version 1 did, by
+      // name alone, so an old mix sounds the same.
       bus: track.bus === 'dialogue' || track.bus === 'music' ? track.bus : defaultBusForName(track.name),
     })),
     // A link group whose other members are gone means nothing, and a clip that

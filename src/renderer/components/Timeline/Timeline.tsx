@@ -1163,7 +1163,7 @@ export function Timeline(): JSX.Element {
         Resolve. Icons with tooltips that say the key; the tools are one
         segmented control, since exactly one is always chosen.
       */}
-      <header className="panel-header gap-0 !px-0">
+      <header className="timeline-toolbar panel-header gap-0 !px-0">
         <span className="flex shrink-0 items-center px-3" style={{ width: HEADER_WIDTH }}>
           {tr('timeline.title')}
         </span>
@@ -1302,7 +1302,7 @@ export function Timeline(): JSX.Element {
               {...tip(tr('timeline.fitHint'), { shortcut: '\\', named: false })}
             >
               <Maximize2 size={13} />
-              {tr('timeline.fit')}
+              <span className="tl-label">{tr('timeline.fit')}</span>
             </button>
           </div>
         </div>

@@ -324,6 +324,77 @@
     @apply ring-1 ring-transparent;
   }
 
+  /*
+    The mixer's meters: the scale's colours under a dark cover that shrinks to
+    the level (a transform, written by the meter loop without a render), and
+    a dim band between the RMS level and the peak. Green to -12 dB, amber to
+    0 dB, red above - on the fader law, so they line up with the fader.
+  */
+  .scf-meter {
+    background: linear-gradient(to top, #22c55e 0 50%, #facc15 50% 75%, #ef4444 75% 100%);
+  }
+
+  .scf-meter-cover {
+    background: theme('colors.panel.950');
+    transform: scaleY(1);
+  }
+
+  .scf-meter-band {
+    background: rgb(10 11 14 / 0.45);
+    transform: scaleY(0);
+  }
+
+  /*
+    A channel fader: the native range turned upright (keyboard, screen reader
+    and tests keep working), minimum at the bottom, a long thumb like a
+    console cap.
+  */
+  .scf-fader {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 16px !important;
+    height: 100% !important;
+  }
+
+  .scf-fader::-webkit-slider-runnable-track {
+    width: 3px !important;
+    height: 100% !important;
+    margin: 0 auto;
+    background: linear-gradient(
+      to top,
+      theme('colors.accent.hover') 0 var(--fill, 0%),
+      theme('colors.slate.600') var(--fill, 0%) 100%
+    ) !important;
+  }
+
+  .scf-fader::-webkit-slider-thumb {
+    width: 16px !important;
+    height: 8px !important;
+    margin-top: 0 !important;
+    margin-left: -6.5px !important;
+    border-radius: 2px !important;
+  }
+
+  /*
+    The timeline's toolbar in a narrow timeline (a small window with the
+    mixer docked beside it): "Fit" keeps only its icon. Hidden from sight,
+    not from a screen reader: it stays the button's name.
+  */
+  .timeline-toolbar {
+    container-type: inline-size;
+  }
+
+  @container (max-width: 1000px) {
+    .tl-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+  }
+
   .media-tile-selected {
     @apply bg-panel-800;
   }

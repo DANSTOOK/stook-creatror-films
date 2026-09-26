@@ -47,6 +47,7 @@ import type { MenuCommand } from '@shared/types/ipc';
 /** The project logo, bundled by Vite with the rest of the page. */
 const LOGO_URL = new URL('./assets/logo.png', import.meta.url).href;
 const APP_TITLE = 'STOOK CREATOR FILMS';
+const MIXER_OPEN_KEY = 'scf.mixerOpen';
 
 /**
  * Main layout: the start screen, or a fixed toolbar over a three-column
@@ -86,7 +87,30 @@ export default function App(): JSX.Element {
   }, []);
 
   const [exportOpen, setExportOpen] = useState(false);
-  const [mixerOpen, setMixerOpen] = useState(false);
+  /*
+    The mixer is docked beside the timeline, as Resolve docks its mixer on
+    the Edit page, and whether it is out is remembered on this machine.
+    Showing it brings the timeline back if that was put away.
+  */
+  const [mixerOpen, setMixerOpenState] = useState(() => {
+    try {
+      return window.localStorage.getItem(MIXER_OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setMixerOpen = (next: boolean | ((open: boolean) => boolean)): void => {
+    setMixerOpenState((open) => {
+      const value = typeof next === 'function' ? next(open) : next;
+      try {
+        window.localStorage.setItem(MIXER_OPEN_KEY, value ? '1' : '0');
+      } catch {
+        // Kept for this session only.
+      }
+      if (value) setHidden((current) => (current.timeline ? { ...current, timeline: false } : current));
+      return value;
+    });
+  };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -142,7 +166,6 @@ export default function App(): JSX.Element {
   }, []);
 
   const exportPresence = usePresence(exportOpen);
-  const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
   const preferencesPresence = usePresence(preferencesOpen);
 
@@ -415,7 +438,7 @@ export default function App(): JSX.Element {
         commitLayout({ ...DEFAULT_LAYOUT });
         return;
       case 'mixer':
-        setMixerOpen(true);
+        setMixerOpen((open) => !open);
         return;
       case 'shortcuts':
         setShortcutsOpen(true);
@@ -495,8 +518,15 @@ export default function App(): JSX.Element {
                 <>
                   {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
                   <PanelSlot edge="bottom" className="shrink-0">
-                    <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
-                      <Timeline />
+                    <div className="flex shrink-0 gap-1.5" style={{ height: fitted.timelineHeight }}>
+                      <div className="min-w-0 flex-1">
+                        <Timeline />
+                      </div>
+                      {mixerOpen && (
+                        <PanelSlot edge="right" className="flex min-h-0 max-w-[55%] shrink-0">
+                          <Mixer onClose={() => setMixerOpen(false)} />
+                        </PanelSlot>
+                      )}
                     </div>
                   </PanelSlot>
                 </>
@@ -505,7 +535,6 @@ export default function App(): JSX.Element {
           </div>
 
           {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
-          {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {preferencesPresence.mounted && (
             <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
