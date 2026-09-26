@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { keyLabel } from '@renderer/i18n';
+import { leaveGhost } from '@renderer/motion/ghost';
 
 /**
  * Tooltips, drawn by the editor rather than by Windows.
@@ -14,9 +15,13 @@ import { keyLabel } from '@renderer/i18n';
  * `data-shortcut`), usually through `tip()` below, so nothing per button has
  * to hold state or re-render. Keyboard focus shows the tip too, as the HIG
  * asks of help tags.
+ *
+ * Motion: a tip fades in and drifts 4px into place after the rest; the next
+ * one along a row is there at once (data-instant), and one that goes fades
+ * in 90 ms (a ghost, so the tip itself is gone from the page at once).
  */
 
-const SHOW_DELAY_MS = 450;
+const SHOW_DELAY_MS = 500;
 /** After a tip has hidden, the next one within this long shows at once. */
 const WARM_MS = 600;
 const GAP_PX = 6;
@@ -52,6 +57,8 @@ interface Shown {
   text: string;
   shortcut: string | null;
   target: HTMLElement;
+  /** Another tip was just showing: this one appears without its entrance. */
+  instant: boolean;
 }
 
 export function TooltipLayer(): JSX.Element | null {
@@ -66,14 +73,16 @@ export function TooltipLayer(): JSX.Element | null {
     /** The control just pressed: no tip for it again until the pointer leaves it. */
     let pressed: HTMLElement | null = null;
 
-    const read = (element: HTMLElement): Shown | null => {
+    const read = (element: HTMLElement, instant: boolean): Shown | null => {
       const text = element.getAttribute('data-tooltip');
       if (!text) return null;
-      return { text, shortcut: element.getAttribute('data-shortcut'), target: element };
+      return { text, shortcut: element.getAttribute('data-shortcut'), target: element, instant };
     };
 
     const hide = (): void => {
       window.clearTimeout(timer);
+      // The tip on screen fades where it is; React removes the real one now.
+      if (bubbleRef.current?.getAttribute('data-state') === 'open') leaveGhost(bubbleRef.current, 'fade');
       if (current) hiddenAt = performance.now();
       current = null;
       setShown(null);
@@ -87,7 +96,7 @@ export function TooltipLayer(): JSX.Element | null {
       const reveal = (): void => {
         if (current !== element || !element.isConnected) return;
         // A disabled control says nothing it can act on; its tip still helps.
-        setShown(read(element));
+        setShown(read(element, warm || bubbleRef.current !== null));
       };
       if (immediate || warm) reveal();
       else timer = window.setTimeout(reveal, SHOW_DELAY_MS);
@@ -160,7 +169,8 @@ export function TooltipLayer(): JSX.Element | null {
       ref={bubbleRef}
       role="tooltip"
       data-state={position ? 'open' : 'measuring'}
-      className="pointer-events-none fixed z-[200] flex max-w-[280px] items-center gap-2 rounded-menu border border-panel-600 bg-panel-800 px-2 py-1 text-xs text-slate-100 shadow-lg shadow-black/50"
+      data-instant={shown.instant ? '' : undefined}
+      className="scf-tooltip pointer-events-none fixed z-[200] flex max-w-[280px] items-center gap-2 rounded-menu border border-panel-600 bg-panel-800 px-2 py-1 text-xs text-slate-100 shadow-lg shadow-black/50"
       style={{ left: position?.left ?? -9999, top: position?.top ?? -9999 }}
     >
       <span className="leading-snug">{shown.text}</span>

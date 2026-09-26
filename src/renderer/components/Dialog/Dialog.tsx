@@ -158,7 +158,7 @@ export function Dialog({
   return (
     <div
       data-closing={closing}
-      className={`scf-overlay fixed inset-0 ${zClass} flex items-center justify-center bg-black/50 backdrop-blur-sm`}
+      className={`scf-overlay fixed inset-0 ${zClass} flex items-center justify-center bg-black/50`}
     >
       <div
         ref={boxRef}

@@ -1,4 +1,5 @@
 import { flushSync } from 'react-dom';
+import { motionReduced } from './environment';
 
 /**
  * Swapping whole screens with the browser's own View Transition.
@@ -14,8 +15,9 @@ import { flushSync } from 'react-dom';
  * The animation itself lives in index.css (::view-transition-old/new).
  */
 
+/** Windows asks for less motion (see motion/environment.ts). */
 export function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return motionReduced();
 }
 
 /**

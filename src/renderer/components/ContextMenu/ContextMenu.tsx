@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react';
+import { leaveGhost } from '@renderer/motion/ghost';
 
 /**
  * Menus: right-click menus, and the menus that drop from a button (the
@@ -15,9 +16,10 @@ import { Check, ChevronRight, type LucideIcon } from 'lucide-react';
  * checkbox item.
  *
  * It grows out of the point that was clicked - from its top corner, or its
- * bottom corner when it had to open upwards near the edge of the window - in
- * a little over a tenth of a second. Menus open dozens of times an hour, so
- * the motion only says where the menu came from and gets out of the way.
+ * bottom corner when it had to open upwards near the edge of the window - on
+ * the standard spring, and fades out in 90 ms when it goes (a ghost: the menu
+ * itself is removed at once). Menus open dozens of times an hour, so the
+ * motion only says where the menu came from and gets out of the way.
  */
 
 export interface ContextMenuItem {
@@ -261,6 +263,18 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
 
   useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
 
+  // Leaving: each open level fades where it was. Run before React takes the
+  // elements out (a layout effect's cleanup), while they can still be copied.
+  useLayoutEffect(() => {
+    const openedAt = performance.now();
+    const panels = panelRefs.current;
+    return () => {
+      // StrictMode's rehearsal unmount in development, not a real close.
+      if (performance.now() - openedAt < 40) return;
+      for (const panel of panels) leaveGhost(panel, 'menu');
+    };
+  }, []);
+
   return (
     <>
       {levels.map((level, depth) => {
@@ -277,7 +291,7 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
             aria-label={depth === 0 ? label : levels[depth - 1]?.items[levels[depth - 1].active]?.label}
             aria-activedescendant={activeId}
             data-state="open"
-            className="scf-menu fixed z-[100] min-w-[208px] overflow-hidden rounded-menu border border-panel-600/80 bg-panel-800/95 p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40 outline-none backdrop-blur-md"
+            className="scf-menu fixed z-[100] min-w-[208px] overflow-hidden rounded-menu border border-panel-600/80 bg-panel-800/95 p-1 shadow-2xl shadow-black/60 ring-1 ring-black/40 outline-none scf-frosted"
             onContextMenu={(event) => event.preventDefault()}
           >
             {level.items.map((item, index) =>

@@ -32,6 +32,7 @@ import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
 import { defaultFileName } from './exportName';
 import { YouTubePanel } from './YouTubePanel';
+import { setExporting } from '@renderer/motion/environment';
 
 /**
  * Export dialog, including the game-asset mode.
@@ -140,6 +141,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const [savedPreference, setSavedPreference] = useState<GpuPreference | null>(null);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [running, setRunning] = useState(false);
+  // While it renders, nothing decorative moves and nothing is blurred
+  // (index.css, "Motion"): the render has the machine.
+  useEffect(() => {
+    setExporting(running);
+    return () => setExporting(false);
+  }, [running]);
   /** YouTube's upload form is open under the result. */
   const [uploadOpen, setUploadOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);

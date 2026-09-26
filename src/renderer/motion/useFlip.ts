@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
-import { prefersReducedMotion } from './viewTransition';
+import { motionQuiet, motionReduced } from './environment';
+import { SPRINGS } from './tokens.generated';
 
 /**
  * Slide list items to their new places instead of jumping there (FLIP).
@@ -13,10 +14,15 @@ import { prefersReducedMotion } from './viewTransition';
  *
  * Items are matched by a `data-flip-key`, so an item keeps its identity even
  * when React reuses the element for something else.
+ *
+ * Interruptible: the "before" is measured where each item is on screen, so a
+ * list that changes again mid-move carries on from there. On the standard
+ * spring with the bounce (the items travel in space); not at all with reduced
+ * motion or while the video plays.
  */
 
-/** How long an item takes to travel to its new place. */
-const TRAVEL_MS = 260;
+/** How an item travels to its new place. */
+const TRAVEL = SPRINGS.standardBounce;
 /** Anything further than this is a jump, not a move - fade the change instead. */
 const MAX_TRAVEL_PX = 1200;
 
@@ -48,7 +54,7 @@ export function useFlip(ref: { current: HTMLElement | null }, token: string): vo
     const after = measure(container);
     previous.current = after;
 
-    if (!container || before.size === 0 || prefersReducedMotion()) return;
+    if (!container || before.size === 0 || motionReduced() || motionQuiet()) return;
     if (typeof container.animate !== 'function') return;
 
     for (const item of container.querySelectorAll<HTMLElement>('[data-flip-key]')) {
@@ -63,7 +69,7 @@ export function useFlip(ref: { current: HTMLElement | null }, token: string): vo
 
       item.animate(
         [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
-        { duration: TRAVEL_MS, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', composite: 'replace' },
+        { duration: TRAVEL.settleMs, easing: TRAVEL.easing, composite: 'replace' },
       );
     }
     // `token` is the signal; the rects are read from the DOM, not from props.

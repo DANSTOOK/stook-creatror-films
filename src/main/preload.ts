@@ -79,6 +79,9 @@ const api: FilmoraApi = {
   appMenuModel: () => ipcRenderer.invoke(IPC.appMenuModel) as Promise<AppMenuEntry[]>,
   appMenuInvoke: (id) => ipcRenderer.send(IPC.appMenuInvoke, id),
   setWindowFullScreen: (on) => ipcRenderer.send(IPC.windowFullScreen, on),
+  // Passed on the command line by the main process (index.ts), so it is known
+  // before the first paint without a round trip.
+  systemReducedMotion: process.argv.includes('--scf-reduced-motion'),
   openProject: () =>
     ipcRenderer.invoke(IPC.openProject) as Promise<{ path: string; contents: string } | null>,
   openLut: () =>

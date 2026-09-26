@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, systemPreferences } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { installAppMenu, menuLanguage } from './appMenu';
@@ -73,6 +73,16 @@ app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
  */
 if (process.env.SCF_DISABLE_VSYNC) app.commandLine.appendSwitch('disable-gpu-vsync');
 
+/** The system asks for less motion: passed to the page as a switch. */
+function reducedMotionArguments(): string[] {
+  try {
+    const settings = systemPreferences.getAnimationSettings();
+    return settings.prefersReducedMotion || !settings.shouldRenderRichAnimation ? ['--scf-reduced-motion'] : [];
+  } catch {
+    return [];
+  }
+}
+
 function createWindow(): void {
   // The editor is dark whatever Windows is set to: native menus, dialogs and
   // scrollbars follow this. A white bar over a dark editor was the brightest
@@ -107,6 +117,9 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: false,
       webgl: true,
+      // Windows' own "Animation effects" switch, for the page's motion
+      // (renderer/motion/environment.ts): off means fades instead of movement.
+      additionalArguments: reducedMotionArguments(),
       // Off-screen and unfocused, a test window must still paint at full rate.
       ...(BACKGROUND ? { backgroundThrottling: false } : {}),
     },

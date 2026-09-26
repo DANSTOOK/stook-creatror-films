@@ -368,14 +368,23 @@ async function main() {
     check('the export dialog opens and closes ten times cleanly',
       await waitFor(async () => (await window.getByRole('dialog', { name: 'Export' }).count()) === 0, 3_000));
 
+    // The durations are the motion tokens (motion/tokens.css), read from the
+    // page so that turning the bounce down does not break this.
+    const settle = (name) => window.evaluate((property) => {
+      const value = getComputedStyle(document.documentElement).getPropertyValue(property).trim();
+      return `${Number((Number.parseFloat(value) / (value.endsWith('ms') ? 1000 : 1)).toFixed(3))}s`;
+    }, name);
     await openSettingsIn(window);
     const normalMotion = await window.evaluate(async () => {
       await new Promise((done) => setTimeout(done, 50));
       const dialog = document.querySelector('.scf-dialog');
-      return dialog ? getComputedStyle(dialog).animationDuration : 'none';
+      if (!dialog) return 'none';
+      const style = getComputedStyle(dialog);
+      return style.transitionTimingFunction.startsWith('linear(') ? style.transitionDuration : `not a spring: ${style.transitionTimingFunction}`;
     });
     await window.keyboard.press('Escape');
-    check('dialogs arrive on a spring', normalMotion === '0.42s', normalMotion);
+    const dialogSpring = `${await settle('--settle-standard')}, ${await settle('--settle-emphasis-bounce')}`;
+    check('dialogs arrive on a spring', normalMotion === dialogSpring, `${normalMotion}, expected ${dialogSpring}`);
     await waitFor(async () => (await window.locator('.scf-dialog').count()) === 0, 3_000);
 
     /* 9. Context menus ---------------------------------------------------------------------- */
@@ -413,7 +422,7 @@ async function main() {
           offscreen += 1;
           if (box) clippedBoxes.push(`${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`);
         }
-        if (menuMotion === null) menuMotion = await menu.evaluate((element) => getComputedStyle(element).animationDuration);
+        if (menuMotion === null) menuMotion = await menu.evaluate((element) => getComputedStyle(element).transitionDuration);
       }
       if (i % 3 === 0) await window.keyboard.press('Escape');
       else await window.getByTestId('project-name').click();
@@ -423,7 +432,8 @@ async function main() {
     check('right-click opens a menu every time', opened >= 95, `${opened}/100, median ${median(openTimes)} ms to show`);
     check('every menu stays fully inside the window', offscreen === 0, `${offscreen} clipped in ${size.width}x${size.height}${clippedBoxes.length ? `: ${clippedBoxes.slice(0, 4).join('; ')}` : ''}`);
     check('Escape or a click elsewhere always closes it', menusLeft === 0, `${menusLeft} left open`);
-    check('menus grow out of the click in about a seventh of a second', menuMotion === '0.14s', String(menuMotion));
+    const menuSpring = `${await settle('--settle-quick')}, ${await settle('--settle-standard-bounce')}`;
+    check('menus grow out of the click on the standard spring', menuMotion === menuSpring, `${menuMotion}, expected ${menuSpring}`);
     check('menus changed nothing they were not asked to', !(await dirtyShown()));
 
     /* 10. Home and back, with memory --------------------------------------------------------- */
@@ -484,13 +494,18 @@ async function main() {
     await window.emulateMedia({ reducedMotion: 'reduce' });
     await openCard('Stress 25');
     await openSettingsIn(window);
-    const reducedDuration = await window.locator('.scf-dialog').evaluate((element) => getComputedStyle(element).animationDuration);
+    const reducedDuration = await window.locator('.scf-dialog').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return style.transitionProperty.includes('transform') ? `moves: ${style.transitionProperty}` : style.transitionDuration;
+    });
     const closeStarted = Date.now();
     await window.keyboard.press('Escape');
     await waitFor(async () => (await window.locator('.scf-dialog').count()) === 0, 2_000, 5);
     const reducedClose = Date.now() - closeStarted;
-    check('with reduced motion asked for, nothing animates and dialogs close at once',
-      reducedDuration === '0.001s' && reducedClose < 150, `${reducedDuration}, closed in ${reducedClose} ms`);
+    // Reduced motion is a 100 ms fade: nothing moves, and the dialog is gone
+    // about a tenth of a second after Escape.
+    check('with reduced motion asked for, nothing moves and dialogs fade out at once',
+      reducedDuration.split(', ').every((value) => value === '0.1s') && reducedClose < 250, `${reducedDuration}, closed in ${reducedClose} ms`);
     await window.emulateMedia({ reducedMotion: 'no-preference' });
 
     /* 13. Closing the window ---------------------------------------------------------------- */

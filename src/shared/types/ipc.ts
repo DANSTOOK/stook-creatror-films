@@ -357,6 +357,14 @@ export interface FilmoraApi {
   /** The whole screen for the picture (the full-screen viewer), or back. */
   setWindowFullScreen(on: boolean): void;
   /**
+   * Windows' "Animation effects" is off (Settings > Accessibility > Visual
+   * effects), read once as the window opened. The page also follows the
+   * prefers-reduced-motion media query, which Chromium keeps up to date; this
+   * is the same setting straight from the system, in case the two disagree.
+   * Optional: a browser shim has no system to ask.
+   */
+  systemReducedMotion?: boolean;
+  /**
    * Pick a `.cube` LUT. Returns the path as well as the contents, because the
    * path is what lets the look survive saving and reopening the project.
    */

@@ -33,8 +33,8 @@ const PRESETS = [
 ];
 const RATES = [24, 25, 30, 50, 60];
 
-/** Entrance stagger, capped so a long list does not keep arriving. */
-const stagger = (index: number): CSSProperties => ({ ['--delay' as string]: `${Math.min(index, 11) * 35}ms` });
+/** Entrance stagger: 30 ms a step, six steps at most, so a long list does not keep arriving. */
+const stagger = (index: number): CSSProperties => ({ ['--delay' as string]: `${Math.min(index, 6) * 30}ms` });
 
 export interface HomeProps {
   onBlank(): void;

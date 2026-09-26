@@ -324,6 +324,65 @@ Lo que todavía no está traducido (fase 3):
   y los títulos y filtros de los diálogos nativos de abrir y guardar.
 - **Marcadores:** el nombre por defecto «Marker 90» y el de la regla.
 
+### Animaciones
+
+Un sistema de movimiento propio, pequeño y sin dependencias: muelles descritos
+como los describe Apple (duración y rebote), convertidos a `linear()` de CSS
+por un guion (`scripts/motion-tokens.cjs`), y reglas en un solo sitio
+(`index.css`, apartado «Motion»). El movimiento explica de dónde viene algo y
+adónde va; nada de lo que se usa a menudo hace esperar.
+
+- **Muelles con rebote juguetón (0,25)** en todo lo que se mueve en el
+  espacio: diálogos, menús, avisos. Es una sola constante (`BOUNCE` en el
+  guion): bajarla es cambiar una línea y ejecutarlo. La opacidad y el color
+  nunca rebotan. Tres tamaños: rápido 150 ms, estándar 250 ms, énfasis 350 ms.
+- **Salidas cortas** (120 ms; menús y descripciones 90 ms), que aceleran y no
+  rebotan.
+- **Diálogos:** crecen desde su centro con el rebote; el fondo se oscurece con
+  un fundido. Si se reabren mientras se cierran, dan la vuelta desde donde
+  estaban en vez de saltar o apilarse (transiciones CSS con
+  `@starting-style`, no animaciones de fotogramas clave).
+- **Menús y el menú de avisos:** crecen desde el clic o desde su botón. Al
+  cerrarse desaparecen de la página al instante y lo que se ve irse es una
+  copia sin vida (un «fantasma», `motion/ghost.ts`) que se desvanece en 90 ms:
+  nada espera a la animación, ni el siguiente clic ni las pruebas.
+- **Avisos:** suben a su esquina con rebote; uno que se va sale hacia la
+  derecha y los demás cierran el hueco deslizándose.
+- **Descripciones emergentes:** aparecen tras medio segundo de reposo con un
+  fundido y 4 px de desplazamiento; al pasar a la siguiente de una fila,
+  aparece al instante.
+- **La sala principal:** sus partes suben una tras otra, 30 ms de separación y
+  como mucho seis pasos.
+- **Mientras se reproduce o se exporta** (`data-playing` / `data-exporting`
+  en `<html>`): se quita el desenfoque detrás de diálogos y menús y no corre
+  nada decorativo. En pausa, el desenfoque sigue como estaba.
+- **El punto de «sin guardar»** late tres veces cuando hay cambios y se queda
+  quieto; ya no late sin fin.
+- **Menos movimiento:** sin ajuste en la aplicación; sigue a Windows
+  (Configuración > Accesibilidad > Efectos visuales > Efectos de animación),
+  por la consulta `prefers-reduced-motion` y por
+  `systemPreferences.getAnimationSettings()`. Todo pasa a ser un fundido de
+  100 ms: nada se desliza, crece ni rebota.
+
+**Cómo se comprobó** (todo en segundo plano, `SCF_BACKGROUND=1`, sin ratón
+real ni capturas de pantalla):
+- `tests/MotionTokens.test.ts` (6 pruebas): los archivos generados coinciden
+  con el guion, el rebote sobrepasa entre un 1 % y un 5 %, los muelles sin
+  rebote nunca sobrepasan, nada tarda más de medio segundo en asentarse y las
+  salidas son más cortas que las entradas.
+- `npm run test:motion`, ampliada: fotogramas perdidos contra la frecuencia
+  real de la pantalla (5,6 ms, 180 Hz), la API Long Animation Frames, 20
+  reaperturas de un diálogo a medio cerrar, descripciones emergentes, nada
+  decorativo ni desenfocado mientras se reproduce o exporta, y menos
+  movimiento emulado. **22/22.** Antes y después, con la misma prueba nueva:
+  diálogos p95 5,8 → 5,7 ms (perdidos 0 → 4 de 3.584, un 0,11 %), menús
+  5,8 → 5,7 ms (0 → 3 de 1.051), reproduciendo 5,7 → 5,7 ms (0,56 % → 0,46 %),
+  exportando 5,7 → 5,7 ms (5,2 % → 4,7 %); 0 fotogramas largos y 0
+  congelaciones en todos los escenarios, antes y después.
+- `npm run test:stress:projects` **41/41** (60 diálogos abiertos y cerrados,
+  algunos a medio animar; 100 menús) con las duraciones leídas de los tokens.
+- `npm run test:ui` **126/126**.
+
 ### Notas para la animación
 
 Para quien anime la interfaz después (el agente de movimiento):

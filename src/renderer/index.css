@@ -1,3 +1,5 @@
+@import "./motion/tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -18,42 +20,11 @@
   }
 
   /*
-    Motion tokens. Entrances decelerate into place (ease-out), exits accelerate
-    away and take about half as long - the pairing Material's motion guidance
-    and most UI motion systems land on. Durations stay in the 120-320 ms band:
-    slower feels sluggish in a tool used all day, faster reads as a flicker.
+    The motion tokens - springs, durations, distances - are generated into
+    motion/tokens.css by scripts/motion-tokens.cjs; the rules that use them
+    are at the end of this file, under "Motion".
   */
   :root {
-    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-    --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
-    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-
-    /*
-      Springs, as CSS.
-
-      A spring is what makes motion read as physical rather than timed; it
-      arrives fast, settles, and never stops dead. `linear()` approximates any
-      curve from a list of samples, so these run as ordinary CSS animations -
-      on the compositor, off the main thread - with no animation library and no
-      JavaScript per frame. Each was sampled from a damped spring of the
-      stiffness and damping noted below, then normalised to land exactly on 1:
-      an overdamped spring is still at 0.98 when it is called settled, and
-      forcing that last point to 1 is a visible jolt.
-    */
-
-    /* stiffness 220, damping 26 - snappy, the faintest overshoot. Settles ~410ms. */
-    --spring: linear(0, 0.0048, 0.018, 0.0382, 0.064, 0.0944, 0.1282, 0.1646, 0.2029, 0.2423, 0.2824, 0.3226, 0.3626, 0.4021, 0.4406, 0.4781, 0.5144, 0.5493, 0.5827, 0.6145, 0.6448, 0.6734, 0.7004, 0.7258, 0.7496, 0.7718, 0.7926, 0.8119, 0.8298, 0.8463, 0.8616, 0.8757, 0.8886, 0.9004, 0.9112, 0.9211, 0.9301, 0.9382, 0.9456, 0.9523, 0.9583, 0.9637, 0.9685, 0.9728, 0.9766, 0.9801, 0.9831, 0.9857, 0.9881, 0.9901, 0.9919, 0.9935, 0.9948, 0.9959, 0.9969, 0.9977, 0.9984, 0.9989, 0.9994, 0.9997, 1);
-    /* stiffness 170, damping 30 - no overshoot at all, for things that carry text. Settles ~460ms. */
-    --spring-soft: linear(0, 0.0048, 0.0178, 0.0376, 0.0626, 0.0918, 0.1241, 0.1586, 0.1946, 0.2315, 0.2689, 0.3063, 0.3433, 0.3798, 0.4154, 0.45, 0.4835, 0.5157, 0.5466, 0.5762, 0.6045, 0.6313, 0.6568, 0.681, 0.7038, 0.7253, 0.7456, 0.7646, 0.7825, 0.7993, 0.815, 0.8297, 0.8434, 0.8563, 0.8682, 0.8794, 0.8897, 0.8994, 0.9084, 0.9167, 0.9245, 0.9316, 0.9383, 0.9445, 0.9502, 0.9555, 0.9604, 0.9649, 0.9691, 0.9729, 0.9765, 0.9798, 0.9829, 0.9857, 0.9882, 0.9906, 0.9928, 0.9948, 0.9967, 0.9984, 1);
-    /* stiffness 260, damping 24 - a little life on the way in, for dialogs. Settles ~440ms. */
-    --spring-lively: linear(0, 0.0066, 0.0249, 0.0527, 0.0881, 0.1295, 0.1754, 0.2244, 0.2754, 0.3274, 0.3796, 0.4312, 0.4818, 0.5308, 0.5778, 0.6226, 0.665, 0.7047, 0.7418, 0.7761, 0.8076, 0.8365, 0.8627, 0.8864, 0.9077, 0.9266, 0.9433, 0.958, 0.9708, 0.9819, 0.9913, 0.9992, 1.0058, 1.0111, 1.0154, 1.0188, 1.0213, 1.023, 1.0241, 1.0246, 1.0247, 1.0243, 1.0237, 1.0228, 1.0216, 1.0203, 1.0189, 1.0174, 1.0158, 1.0143, 1.0127, 1.0111, 1.0096, 1.0082, 1.0068, 1.0054, 1.0042, 1.003, 1.0019, 1.0009, 1);
-
-    /* One set of durations, so nothing is timed by hand twice. */
-    --dur-instant: 90ms;
-    --dur-fast: 140ms;
-    --dur-base: 220ms;
-    --dur-spring: 420ms;
-
     /*
       The grid. Everything in a panel sits on multiples of 4. Controls come in
       two heights - 24px for dense rows (track headers, panel headers, icon
@@ -256,39 +227,13 @@
   }
 }
 
+/* Split so the movement can bounce while the fade does not. */
+@keyframes scf-rise-move {
+  from { transform: translateY(var(--shift-md)) scale(0.98); }
+}
+
 @keyframes scf-fade-in {
   from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes scf-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes scf-pop-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.975); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes scf-pop-out {
-  from { opacity: 1; transform: none; }
-  to { opacity: 0; transform: translateY(4px) scale(0.985); }
-}
-
-@keyframes scf-menu-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes scf-rise-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: none; }
-}
-
-@keyframes scf-view-in {
-  from { opacity: 0; transform: scale(0.992); }
-  to { opacity: 1; transform: none; }
 }
 
 @keyframes scf-drift {
@@ -349,8 +294,8 @@
   .list-item {
     @apply flex items-center gap-2 rounded-md border border-transparent px-2 py-2
            hover:border-accent/40 hover:bg-panel-800;
-    transition: background-color var(--dur-fast) var(--ease-standard),
-      border-color var(--dur-fast) var(--ease-standard), transform var(--dur-fast) var(--ease-out);
+    transition: background-color var(--dur-micro) var(--ease-standard),
+      border-color var(--dur-micro) var(--ease-standard), transform var(--dur-micro) var(--ease-out);
   }
 
   .list-item:hover {
@@ -477,54 +422,6 @@
     background-position: 0 0, 0 8px, 8px -8px, -8px 0;
   }
 
-  /* Motion ------------------------------------------------------------------ */
-
-  /*
-    Everything here animates transform and opacity only. Those two are the
-    properties the compositor can animate by itself; anything else (width, top,
-    margin) puts a layout and a paint in every single frame, which is what
-    turns a 60 fps animation into a 30 fps one while the timeline is busy.
-
-    `will-change` is set only on the handful of elements that really are about
-    to move, and only while they exist - it costs memory on every element that
-    carries it.
-  */
-
-  .scf-overlay {
-    animation: scf-fade-in var(--dur-base) var(--ease-out) both;
-    will-change: opacity;
-  }
-
-  .scf-overlay[data-closing='true'] {
-    animation: scf-fade-out var(--dur-fast) var(--ease-in) both;
-    pointer-events: none;
-  }
-
-  .scf-dialog {
-    animation: scf-pop-in var(--dur-spring) var(--spring-lively) both;
-    will-change: transform, opacity;
-  }
-
-  .scf-dialog[data-closing='true'] {
-    /* Leaving is quick and linear-ish: a spring on the way out feels reluctant. */
-    animation: scf-pop-out var(--dur-fast) var(--ease-in) both;
-  }
-
-  .scf-menu {
-    animation: scf-menu-in var(--dur-fast) var(--spring) both;
-    will-change: transform, opacity;
-  }
-
-  .scf-rise {
-    animation: scf-rise-in var(--dur-spring) var(--spring-soft) both;
-    animation-delay: var(--delay, 0ms);
-    will-change: transform, opacity;
-  }
-
-  .scf-view {
-    animation: scf-view-in var(--dur-base) var(--ease-out) both;
-  }
-
   /*
     A progress bar that scales instead of resizing: width animates layout,
     scaleX rides the compositor. The inner bar is drawn full width and
@@ -532,12 +429,8 @@
   */
   .scf-progress-bar {
     transform-origin: left center;
-    transition: transform var(--dur-base) var(--ease-standard);
+    transition: transform var(--settle-standard) var(--spring-standard);
     will-change: transform;
-  }
-
-  .scf-dirty-dot {
-    animation: scf-pulse-dot 2.4s ease-in-out infinite;
   }
 
   /* Start screen ------------------------------------------------------------ */
@@ -609,7 +502,7 @@
 
   .scf-thumb {
     opacity: 0;
-    transition: transform 400ms var(--ease-out), opacity var(--dur-base) var(--ease-out);
+    transition: transform 400ms var(--ease-out), opacity var(--settle-standard) var(--spring-standard);
   }
 
   .scf-thumb[data-loaded='true'] {
@@ -639,7 +532,7 @@
 }
 
 ::view-transition-old(root) {
-  animation: scf-vt-out 200ms var(--ease-in) both;
+  animation: scf-vt-out 200ms var(--ease-exit) both;
 }
 
 ::view-transition-new(root) {
@@ -647,24 +540,184 @@
 }
 
 /*
-  Reduced motion: every state change still happens and is still visible, it
-  just happens at once. Around a third of people report some sensitivity to
-  motion, and an operating-system setting is how they say so.
+  Motion
+  ======
+
+  What moves, and why, in one place. The numbers are tokens (motion/tokens.css,
+  generated by scripts/motion-tokens.cjs); nothing below is timed by hand.
+
+  - Springs, described as Apple does: a duration and a bounce. Things that
+    move in space - dialogs, panels, menus, toasts, switches - carry the one
+    playful bounce (--spring-*-bounce). Opacity and colour never bounce.
+  - Entrances are CSS transitions started from @starting-style, not keyframe
+    animations, because a transition can be interrupted: closed half-way
+    through opening, a dialog turns round from where it is instead of
+    jumping to its start (hooks/usePresence.ts).
+  - Exits are short (--dur-exit, 120 ms; menus 90 ms), accelerate away and
+    never bounce. Nobody waits for something to leave.
+  - Only transform and opacity animate: the compositor runs those without the
+    main thread, which is busy decoding video.
+  - Selection, the playhead, scrubbing and drags follow the pointer exactly,
+    with no animation at all.
+
+  <html> carries what the motion has to know (motion/environment.ts):
+  data-motion="reduced" when Windows asks for less motion, data-playing and
+  data-exporting while the picture comes first, data-hidden when the window
+  cannot be seen.
 */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
+
+/* Dialogs: the scrim fades, the box grows from its centre with the bounce. */
+.scf-overlay {
+  backdrop-filter: blur(4px);
+  transition: opacity var(--settle-standard) var(--spring-standard);
+}
+
+.scf-overlay[data-closing='true'] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-exit) var(--ease-exit);
+}
+
+.scf-dialog {
+  transition:
+    opacity var(--settle-standard) var(--spring-standard),
+    transform var(--settle-emphasis-bounce) var(--spring-emphasis-bounce);
+}
+
+.scf-dialog[data-closing='true'] {
+  opacity: 0;
+  transform: translateY(var(--shift-xs)) scale(0.98);
+  transition:
+    opacity var(--dur-exit) var(--ease-exit),
+    transform var(--dur-exit) var(--ease-exit);
+}
+
+@starting-style {
+  .scf-overlay {
+    opacity: 0;
   }
 
-  /* View transitions have their own pseudo-elements, which the rule above misses. */
-  ::view-transition-group(*),
-  ::view-transition-old(*),
-  ::view-transition-new(*) {
-    animation: none !important;
+  .scf-dialog {
+    opacity: 0;
+    transform: translateY(var(--shift-sm)) scale(var(--scale-enter));
   }
+}
+
+/*
+  Menus and popovers grow out of what opened them: the click, or the button
+  (the placement code sets transform-origin). The exit is a ghost
+  (motion/ghost.ts), so a closed menu is gone from the page at once.
+*/
+.scf-menu {
+  transition:
+    opacity var(--settle-quick) var(--spring-quick),
+    transform var(--settle-standard-bounce) var(--spring-standard-bounce);
+}
+
+@starting-style {
+  .scf-menu {
+    opacity: 0;
+    transform: scale(var(--scale-enter));
+  }
+}
+
+/* Frosted glass behind a menu: gone while the video plays (see below). */
+.scf-frosted {
+  backdrop-filter: blur(12px);
+}
+
+/*
+  Tooltips: after a rest of half a second they fade in, drifting 4px into
+  place. Moving along a row of icons, the next one is there at once
+  (data-instant): reading a toolbar is one gesture, not a queue of fades.
+*/
+.scf-tooltip {
+  transition:
+    opacity var(--settle-quick) var(--spring-quick),
+    transform var(--settle-quick) var(--spring-quick);
+}
+
+.scf-tooltip[data-instant] {
+  transition: none;
+}
+
+@starting-style {
+  .scf-tooltip {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--shift-xs)));
+  }
+}
+
+/*
+  Toasts rise from the corner they live in with the bounce; one that goes
+  slides out to the right (a ghost), and the rest close up (FLIP, Toaster.tsx).
+*/
+.scf-toast {
+  transition:
+    opacity var(--settle-standard) var(--spring-standard),
+    transform var(--settle-standard-bounce) var(--spring-standard-bounce);
+}
+
+@starting-style {
+  .scf-toast {
+    opacity: 0;
+    transform: translateY(var(--shift-md)) scale(var(--scale-enter));
+  }
+}
+
+/*
+  The start screen arriving: its parts rise into place one after another, 30 ms
+  apart and at most six steps, so a long list of projects does not keep
+  arriving. Keyframes rather than a transition: it plays once and is never
+  interrupted (a click on a card is not held up by it).
+*/
+.scf-rise {
+  animation:
+    scf-rise-move var(--settle-emphasis-bounce) var(--spring-emphasis-bounce) both,
+    scf-fade-in var(--settle-standard) var(--spring-standard) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+/* The unsaved-changes dot pulses a few times when the project changes, then rests. */
+.scf-dirty-dot {
+  animation: scf-pulse-dot 1.2s ease-in-out 3;
+}
+
+/*
+  While the video plays or a render runs, the picture and the audio come first.
+  A backdrop blur is recomputed for every frame of the video under it, so it
+  goes; nothing decorative runs. Whatever a click opens still opens - the
+  transitions above are compositor-only and cost the main thread nothing.
+*/
+:root:is([data-playing], [data-exporting]) :is(.scf-overlay, .scf-frosted) {
+  backdrop-filter: none;
+}
+
+:root:is([data-playing], [data-exporting], [data-hidden], [data-motion='reduced']) :is(.scf-dirty-dot, .scf-glow) {
+  animation: none;
+}
+
+/*
+  Reduced motion (Windows: Settings > Accessibility > Visual effects >
+  Animation effects off). Every change still happens and is still visible,
+  but as a 100 ms fade: nothing slides, grows, bounces or loops. Transform is
+  left out of every transition, so what would have moved is simply there.
+*/
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 1ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-property: opacity, color, background-color, border-color, box-shadow !important;
+  transition-duration: var(--dur-reduced) !important;
+  transition-timing-function: linear !important;
+  transition-delay: 0ms !important;
+}
+
+/* View transitions have their own pseudo-elements, which the rule above misses. */
+:root[data-motion='reduced']::view-transition-group(*),
+:root[data-motion='reduced']::view-transition-old(*),
+:root[data-motion='reduced']::view-transition-new(*) {
+  animation: none !important;
 }

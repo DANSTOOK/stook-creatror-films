@@ -7,6 +7,15 @@ import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
 import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import './index.css';
+import { installMotionEnvironment } from './motion/environment';
+import { ghostCount, prepareGhosts } from './motion/ghost';
+
+// Reduced motion, playing and exporting, as attributes on <html> for the CSS
+// to read - set before the first render so nothing animates it should not.
+installMotionEnvironment();
+prepareGhosts();
+// The motion test counts exits still on screen.
+(window as { __scfMotion?: object }).__scfMotion = { ghostCount };
 
 // For the interface tests, which check what an interaction did to the project
 // (how many clips, where a cut landed) rather than guessing from pixels. The
