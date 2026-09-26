@@ -48,6 +48,26 @@ se comprobó.
     de tiempo, el transporte y *Salir de pantalla completa*— aparecen al mover
     el ratón y se van, con el puntero, tras 2,5 s quieto. Escape sale.
   - Todo el visor está en español: cabecera, botones y descripciones.
+- **El inspector, por pestañas, como el de Resolve:**
+  - **Vídeo, Audio, Color e Info**, y solo las que tienen sentido: un sonido
+    tiene Audio e Info; una imagen fija, Vídeo, Color e Info.
+  - Cada grupo se **pliega** y lleva en la cabecera un **botón de
+    restablecer** y, los que se pueden apagar, un **interruptor**. Mover un
+    valor de la corrección de color la enciende (antes se podía mover todo
+    sin que la imagen cambiara, porque el interruptor estaba apagado).
+  - **Los efectos apagados ya no ocupan la pantalla.** Máscara, chroma y pixel
+    art salían siempre, abiertos y apagados, para cada clip; ahora se añaden
+    con *Añadir efecto* y se ven mientras están encendidos, cambiados o recién
+    añadidos. Una máscara añadida llega ya como rectángulo (antes, activarla
+    sin elegir forma no hacía nada). Cada efecto se puede quitar con su ×.
+  - Filas de **etiqueta a la izquierda y valor a la derecha**, con los números
+    alineados en una columna; posición, escala, centro y tamaño van en pareja
+    X / Y en una sola fila. **Los números se cambian arrastrando su
+    etiqueta** hacia los lados, como en Final Cut y Resolve (Mayús para
+    pasos finos, Alt para gruesos); un arrastre es un solo paso de deshacer.
+  - La LUT tiene su grupo en la pestaña Color; la información del archivo es
+    la pestaña Info.
+  - Todo el inspector está en español.
 - **Una barra de título propia, con la barra de herramientas dentro**, como
   en Final Cut. Antes había dos franjas: la barra de Windows y, debajo, una
   fila de trece botones con texto (Nuevo, Abrir, Guardar, Deshacer, Rehacer,
@@ -170,6 +190,19 @@ se comprobó.
   La comprobación de interfaz de Mayús+F y Escape sigue pasando. Pasar la
   ventana a pantalla completa de verdad no se probó con la ventana a la vista:
   en modo de segundo plano no se hace, para no ocupar la pantalla de nadie.
+- **Inspector** (`probe-inspector.mjs`): un clip de vídeo tiene Vídeo,
+  Audio, Color e Info; una imagen, Vídeo, Color e Info; un sonido, Audio e
+  Info; los efectos apagados no aparecen; *Añadir efecto > Máscara* la añade
+  encendida y rectangular; su interruptor la apaga y sigue en la lista;
+  rellenar un campo por su etiqueta escribe el valor; arrastrar la etiqueta
+  «Rotación» 40 px a la derecha la sube de 45 a 65, sin dejar el foco en el
+  campo, y un Ctrl+Z lo deshace de una vez; Restablecer devuelve la
+  transformación; un grupo se pliega y lo dice (`aria-expanded`); mover la
+  exposición enciende la corrección; las flechas cambian de pestaña.
+  **13/13.** En la batería de interfaz, la carga de la LUT entra antes en la
+  pestaña Color y busca el botón por su nombre entero («Load .cube LUT»),
+  porque ahora hay también un grupo llamado LUT: **126/126**. Capturas
+  `after-en-1600-inspector*.png` (antes en `before-en-1600-inspector*.png`).
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto
