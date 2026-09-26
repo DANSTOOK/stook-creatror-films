@@ -7,6 +7,7 @@ import type {
   HardwareEncoder,
 } from '@shared/types';
 import type { CodecSupport } from './WebCodecsEncoder';
+import { t } from '@renderer/i18n';
 
 /**
  * Decide, for one render, which silicon encodes it.
@@ -75,12 +76,12 @@ export function resolveEncoderPlan({
   encoders,
   activeGpu,
 }: EncoderPlanInput): EncoderPlan {
-  if (!isMp4(settings)) return cpu('CPU (this format has no hardware encoder)');
-  if (settings.exportAlpha) return cpu('CPU (hardware encoders cannot carry alpha)');
+  if (!isMp4(settings)) return cpu(t('plan.cpuFormat'));
+  if (settings.exportAlpha) return cpu(t('plan.cpuAlpha'));
 
   const requested = settings.hardwareEncoder;
 
-  if (requested === 'none') return cpu('CPU (software x264 / x265)');
+  if (requested === 'none') return cpu(t('plan.cpuSoftware'));
 
   if (requested !== 'auto') {
     const option = encoders.find((candidate) => candidate.encoder === requested);
@@ -102,7 +103,7 @@ export function resolveEncoderPlan({
     });
     return {
       ...fallback,
-      note: `${ENCODER_LABELS[requested]} is not available on this machine; using ${fallback.label} instead.`,
+      note: t('plan.unavailable', { encoder: ENCODER_LABELS[requested], fallback: fallback.label }),
     };
   }
 
@@ -110,7 +111,7 @@ export function resolveEncoderPlan({
     return {
       pipeMode: webCodecs.pipeMode,
       hardwareEncoder: 'none',
-      label: activeGpu ? `GPU via WebCodecs - ${activeGpu.name}` : 'GPU via WebCodecs',
+      label: activeGpu ? t('plan.webcodecs', { gpu: activeGpu.name }) : t('plan.webcodecsBare'),
       note: null,
     };
   }
@@ -133,5 +134,5 @@ export function resolveEncoderPlan({
     };
   }
 
-  return cpu('CPU (no hardware encoder works on this machine)');
+  return cpu(t('plan.cpuNone'));
 }

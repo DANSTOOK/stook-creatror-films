@@ -27,7 +27,8 @@ import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecs
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
-import { useT, type MessageKey } from '@renderer/i18n';
+import { currentLocale, useT, type MessageKey } from '@renderer/i18n';
+import { errorText } from '@renderer/errorText';
 import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
 import { defaultFileName } from './exportName';
@@ -56,6 +57,7 @@ import { setExporting } from '@renderer/motion/environment';
  * flagged here rather than producing a sprite sheet with a black background.
  */
 
+/** Codec names are the same in every language; the PNG sequence's is translated where shown (formatLabel). */
 const FORMATS: { value: ExportFormat; label: string; alpha: boolean }[] = [
   { value: 'png-sequence', label: 'PNG sequence (sprite frames)', alpha: true },
   { value: 'prores4444', label: 'ProRes 4444 (.mov)', alpha: true },
@@ -64,11 +66,17 @@ const FORMATS: { value: ExportFormat; label: string; alpha: boolean }[] = [
   { value: 'mp4-h265', label: 'MP4 / H.265', alpha: false },
 ];
 
-const PREFERENCE_LABELS: Record<GpuPreference, string> = {
-  auto: 'Automatic (let Windows decide)',
-  'high-performance': 'Dedicated GPU',
-  'low-power': 'Integrated GPU',
+const PREFERENCE_LABELS: Record<GpuPreference, MessageKey> = {
+  auto: 'export.gpuAuto',
+  'high-performance': 'export.gpuDedicated',
+  'low-power': 'export.gpuIntegrated',
 };
+
+/** A template with one piece of markup in it: the words either side of {name}. */
+function around(template: string, name: string): [string, string] {
+  const at = template.indexOf(`{${name}}`);
+  return at < 0 ? [template, ''] : [template.slice(0, at), template.slice(at + name.length + 2)];
+}
 
 /** Containers that can carry a cover image. */
 const COVER_ART_FORMATS = new Set<ExportFormat>(['mp4-h264', 'mp4-h265', 'prores4444']);
@@ -160,6 +168,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const fileNameRef = useRef<HTMLInputElement>(null);
 
   const selectedFormat = FORMATS.find((format) => format.value === settings.format);
+  const formatLabel = (format: ExportFormat | undefined): string =>
+    format === 'png-sequence' ? t('export.formatPng') : (FORMATS.find((entry) => entry.value === format)?.label ?? '');
+  /** A failure is said as an alert, so a screen reader hears it too. */
+  const [failed, setFailed] = useState(false);
   const alphaUnsupported = settings.exportAlpha && selectedFormat?.alpha === false;
 
   useEffect(() => {
@@ -362,17 +374,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const startExport = useCallback(async () => {
     const renderer = getActiveFrameRenderer();
     if (!renderer) {
-      setMessage('The compositor is not ready yet.');
+      setMessage(t('export.notReady'));
       return;
     }
     if (!folder || !settings.outputPath) {
-      setMessage('Choose the folder to save into first.');
+      setMessage(t('export.chooseFolderFirst'));
       return;
     }
 
     cancelRef.current = false;
     setRunning(true);
     setMessage(null);
+    setFailed(false);
     setResult(null);
     setActionError(null);
     const startedAt = performance.now();
@@ -398,7 +411,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       let audioRawFormat: { sampleRate: number; channels: number } | undefined;
 
       if (settings.format !== 'png-sequence') {
-        setMessage('Rendering audio...');
+        setMessage(t('export.renderingAudio'));
         // A minute at a time, straight to a file: the whole mix never exists
         // in memory at once. See streamTimelineAudio.
         const mixPath = await window.filmora.exportAudioOpen();
@@ -412,11 +425,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
             (samples) => window.filmora.exportAudioAppend(mixPath, samples.buffer as ArrayBuffer),
             {
               onProgress: (done, total) =>
-                setMessage(`Rendering audio... ${formatClock(done)} of ${formatClock(total)}`),
+                setMessage(t('export.renderingAudioProgress', { done: formatClock(done), total: formatClock(total) })),
             },
           );
         } catch (error) {
-          setMessage(`Audio mix failed, exporting without sound: ${String(error)}`);
+          setMessage(t('export.audioFailed', { detail: errorText(error) }));
           mix = null;
         } finally {
           await window.filmora.exportAudioClose(mixPath, mix === null);
@@ -441,7 +454,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       const support = jobPlan.pipeMode === 'rawvideo' ? null : probed;
       // The audio is done by now; leaving "Rendering audio..." up for the whole
       // picture render made a slow export look stuck on the sound.
-      setMessage(`Rendering with ${jobPlan.label}...`);
+      setMessage(t('export.renderingWith', { encoder: jobPlan.label }));
       const jobSettings = {
         ...settings,
         pipeMode: jobPlan.pipeMode,
@@ -458,7 +471,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         encoder = new WebCodecsEncoder(jobSettings, support, {
           onChunk: (bytes) =>
             window.filmora.exportFrame(activeJobId, bytes.buffer as ArrayBuffer),
-          onError: (error) => setMessage(`Encoder error: ${error.message}`),
+          onError: (error) => {
+            setFailed(true);
+            setMessage(t('export.encoderError', { detail: error.message }));
+          },
         });
       }
 
@@ -466,7 +482,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         if (cancelRef.current) {
           encoder?.close();
           await window.filmora.exportCancel(activeJobId);
-          setMessage('Export cancelled.');
+          setMessage(t('export.cancelled'));
           return;
         }
 
@@ -476,9 +492,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         if (done === 1 || (done > 0 && done % 600 === 0)) {
           const slow = renderer.slowSources();
           if (slow.length > 0) {
-            setMessage(
-              `Rendering with ${jobPlan.label} - slow path: ${slow.join(', ')} cannot be decoded forwards, so each frame is sought separately.`,
-            );
+            setMessage(t('export.slowPath', { encoder: jobPlan.label, files: slow.join(', ') }));
           }
         }
 
@@ -511,8 +525,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       setSettingsOpen(false);
       setTargetCheck((count) => count + 1);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setMessage(`Export failed: ${detail}`);
+      setFailed(true);
+      setMessage(t('export.failed', { detail: errorText(error) }));
       encoder?.close();
       if (jobId) await window.filmora.exportCancel(jobId).catch(() => undefined);
     } finally {
@@ -520,7 +534,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt]);
+  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, t]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const renderFps = settings.fps || project.fps;
@@ -532,11 +546,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   });
   /** The finished state: what was made replaces the form. */
   const done = !running && result !== null;
-  // A failure is said as an alert, so a screen reader hears it too.
-  const failed = message !== null && /^(Export failed|Encoder error)/.test(message);
   const extension =
     settings.format === 'png-sequence'
-      ? '/ (folder)'
+      ? t('export.folderSuffix')
       : `.${settings.format === 'prores4444' ? 'mov' : settings.format === 'webm-vp9' ? 'webm' : 'mp4'}`;
   const canStart = !running && totalFrames > 0 && !targetInUse;
 
@@ -545,6 +557,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     setResult(null);
     setProgress(null);
     setMessage(null);
+    setFailed(false);
     setActionError(null);
     // The name is what most often changes - and left alone, the next render
     // replaces this one, which the File section now says in amber.
@@ -557,8 +570,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const runAction = (action: () => Promise<void>): void => {
     setActionError(null);
     action().catch((error: unknown) => {
-      const text = error instanceof Error ? error.message : String(error);
-      setActionError(text.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+      setActionError(errorText(error));
     });
   };
 
@@ -641,11 +653,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               <>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-100">
-                    {running ? 'Rendering' : 'Stopped'}{' '}
+                    {running ? t('export.progressRendering') : t('export.progressStopped')}{' '}
                     <span className="tabular-nums">{view.percent.toFixed(1)}%</span>
                   </span>
                   <span className="text-xs tabular-nums text-slate-300">
-                    <span className="text-slate-100">{view.videoDone}</span> / {view.videoTotal} of video
+                    <span className="text-slate-100">{view.videoDone}</span> / {view.videoTotal} {t('export.ofVideo')}
                   </span>
                 </div>
                 <div
@@ -665,34 +677,34 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-2xs tabular-nums text-slate-400">
                   <span>
-                    Elapsed <span className="text-slate-200">{view.elapsed}</span>
+                    {t('export.elapsed')} <span className="text-slate-200">{view.elapsed}</span>
                   </span>
                   <span className="text-center">
-                    Remaining{' '}
+                    {t('export.remaining')}{' '}
                     <span className="text-slate-200">
-                      {running ? (view.remaining ?? 'estimating...') : '-'}
+                      {running ? (view.remaining ?? t('export.estimating')) : '-'}
                     </span>
                   </span>
                   <span className="text-right">
                     {view.speed !== null ? (
                       <>
-                        <span className="text-slate-200">{view.speed.toFixed(1)}x</span> realtime (
-                        {(progress?.fps ?? 0).toFixed(0)} fps)
+                        <span className="text-slate-200">{view.speed.toFixed(1)}x</span>{' '}
+                        {t('export.realtime', { fps: (progress?.fps ?? 0).toFixed(0) })}
                       </>
                     ) : (
-                      'starting...'
+                      t('export.starting')
                     )}
                   </span>
                 </div>
               </>
             ) : (
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
-                <span className="font-medium text-slate-100">{selectedFormat?.label}</span>
+                <span className="font-medium text-slate-100">{formatLabel(selectedFormat?.value)}</span>
                 <span>
                   {settings.width}x{settings.height} @ {renderFps} fps
                 </span>
-                <span>{formatClock(totalFrames / renderFps)} of video</span>
-                {settings.exportAlpha && !alphaUnsupported && <span className="text-emerald-300">with alpha</span>}
+                <span>{t('export.lengthOfVideo', { length: formatClock(totalFrames / renderFps) })}</span>
+                {settings.exportAlpha && !alphaUnsupported && <span className="text-emerald-300">{t('export.withAlpha')}</span>}
                 <span className="text-slate-400">{plan.label}</span>
               </p>
             )}
@@ -743,10 +755,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   size={14}
                   className={`text-slate-400 transition-transform ${settingsOpen ? 'rotate-90' : ''}`}
                 />
-                <span className="field-label">Settings used</span>
+                <span className="field-label">{t('export.settingsUsed')}</span>
               </span>
               <span className="truncate text-2xs text-slate-300">
-                {selectedFormat?.label} &middot; {settings.width}x{settings.height} @ {renderFps} fps &middot;{' '}
+                {formatLabel(selectedFormat?.value)} &middot; {settings.width}x{settings.height} @ {renderFps} fps &middot;{' '}
                 {formatClock(settings.startFrame / renderFps)}-{formatClock(settings.endFrame / renderFps)}
               </span>
             </button>
@@ -760,7 +772,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
           >
             {done && (
               <p className="mb-3 text-2xs text-slate-400">
-                These made the file above. Choose New export to change them for another.
+                {t('export.settingsRecord')}
               </p>
             )}
 
@@ -797,9 +809,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
             <div className="grid gap-3 md:grid-cols-2">
               {/* The picture: what it is, how big, and which stretch of the timeline. */}
               <div className="space-y-3">
-                <Section title="Video">
+                <Section title={t('export.sectionVideo')}>
                   <label className="flex flex-col gap-1">
-                    <span className="text-2xs text-slate-400">Format</span>
+                    <span className="text-2xs text-slate-400">{t('export.format')}</span>
                     <select
                       className="numeric-input"
                       value={settings.format}
@@ -809,7 +821,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     >
                       {FORMATS.map((format) => (
                         <option key={format.value} value={format.value}>
-                          {format.label}
+                          {formatLabel(format.value)}
                         </option>
                       ))}
                     </select>
@@ -824,13 +836,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         checked={settings.exportAlpha}
                         onChange={(event) => setExportSettings({ exportAlpha: event.target.checked })}
                       />
-                      Export alpha channel
-                      <span className="text-2xs text-slate-400">(PNG / ProRes 4444 / WebM)</span>
+                      {t('export.alpha')}
+                      <span className="text-2xs text-slate-400">{t('export.alphaFormats')}</span>
                     </label>
                     {alphaUnsupported && (
                       <p className="rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
-                        {selectedFormat?.label} has no alpha channel. Choose PNG sequence, ProRes 4444 or
-                        WebM/VP9 to keep transparency.
+                        {t('export.alphaUnsupported', { format: formatLabel(selectedFormat?.value) })}
                       </p>
                     )}
                     {(settings.exportAlpha || settings.premultiplyAlpha) && (
@@ -842,18 +853,15 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                             checked={settings.premultiplyAlpha}
                             onChange={(event) => setExportSettings({ premultiplyAlpha: event.target.checked })}
                           />
-                          Premultiply alpha
+                          {t('export.premultiply')}
                         </label>
-                        <p className="pl-6 text-2xs leading-relaxed text-slate-400">
-                          Leave this off for Godot. Godot imports straight alpha, and premultiplying here is what
-                          produces dark fringes around sprites.
-                        </p>
+                        <p className="pl-6 text-2xs leading-relaxed text-slate-400">{t('export.premultiplyHint')}</p>
                       </>
                     )}
                   </div>
 
                   <label className="flex flex-col gap-1">
-                    <span className="text-2xs text-slate-400">Resolution</span>
+                    <span className="text-2xs text-slate-400">{t('export.resolution')}</span>
                     <select
                       className="numeric-input"
                       value={activePreset?.id ?? 'custom'}
@@ -864,16 +872,16 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     >
                       {presets.map((preset) => (
                         <option key={preset.id} value={preset.id}>
-                          {preset.label}
+                          {preset.id === 'project' ? t('export.projectSize', { width: preset.width, height: preset.height }) : preset.label}
                         </option>
                       ))}
-                      {!activePreset && <option value="custom">Custom ({settings.width}x{settings.height})</option>}
+                      {!activePreset && <option value="custom">{t('export.customSize', { width: settings.width, height: settings.height })}</option>}
                     </select>
                   </label>
 
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-1">
-                      <span className="text-2xs text-slate-400">Width</span>
+                      <span className="text-2xs text-slate-400">{t('export.width')}</span>
                       <input
                         type="number"
                         className="numeric-input"
@@ -882,7 +890,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       />
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="text-2xs text-slate-400">Height</span>
+                      <span className="text-2xs text-slate-400">{t('export.height')}</span>
                       <input
                         type="number"
                         className="numeric-input"
@@ -894,13 +902,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
                   {settings.width * settings.height > project.width * project.height * 1.01 && (
                     <p className="text-2xs text-amber-300">
-                      Larger than the project ({project.width}x{project.height}): the picture is scaled
-                      up, which adds pixels but not detail.
+                      {t('export.upscaled', { width: project.width, height: project.height })}
                     </p>
                   )}
                   <p className="text-2xs text-slate-400">
-                    Target bitrate {(settings.bitrateKbps / 1000).toFixed(1)} Mbps, sized from{' '}
-                    {settings.width}x{settings.height} @ {settings.fps} fps.
+                    {t('export.bitrate', { mbps: (settings.bitrateKbps / 1000).toFixed(1), width: settings.width, height: settings.height, fps: settings.fps })}
                   </p>
 
                   {/* Rarely wanted, and wrong for filmed footage, so it is folded away -
@@ -923,11 +929,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   </details>
                 </Section>
 
-                <Section title="Range">
+                <Section title={t('export.sectionRange')}>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-1">
                       <span className="text-2xs text-slate-400">
-                        Start frame <span className="text-slate-400">({formatClock(settings.startFrame / renderFps)})</span>
+                        {t('export.startFrame')} <span className="text-slate-400">({formatClock(settings.startFrame / renderFps)})</span>
                       </span>
                       <input
                         type="number"
@@ -938,7 +944,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-2xs text-slate-400">
-                        End frame <span className="text-slate-400">({formatClock(settings.endFrame / renderFps)})</span>
+                        {t('export.endFrame')} <span className="text-slate-400">({formatClock(settings.endFrame / renderFps)})</span>
                       </span>
                       <input
                         type="number"
@@ -950,25 +956,29 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs text-slate-300">
-                      Renders <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span> of
-                      video <span className="text-slate-400">({totalFrames.toLocaleString()} frames at {renderFps} fps)</span>
+                      {around(t('export.renders'), 'length')[0]}
+                      <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span>
+                      {around(t('export.renders'), 'length')[1]}{' '}
+                      <span className="text-slate-400">
+                        {t('export.rendersFrames', { frames: totalFrames.toLocaleString(currentLocale()), fps: renderFps })}
+                      </span>
                     </p>
                     <button
                       type="button"
                       className="tool-button h-7 shrink-0"
-                      title="Export the whole timeline, from the start to the end of the last clip"
+                      title={t('export.wholeTimelineHint')}
                       onClick={() => setExportSettings({ startFrame: 0, endFrame: exportEndFrame(project) })}
                     >
-                      Whole timeline
+                      {t('export.wholeTimeline')}
                     </button>
                     {marked && (
                       <button
                         type="button"
                         className="tool-button h-7 shrink-0"
-                        title="Export only what is marked on the ruler, between the in and out points"
+                        title={t('export.inToOutHint')}
                         onClick={() => setExportSettings({ startFrame: marked.start, endFrame: marked.end })}
                       >
-                        In to out
+                        {t('export.inToOut')}
                       </button>
                     )}
                   </div>
@@ -977,9 +987,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
               {/* The file: where it goes, what it is called, and its cover. */}
               <div className="space-y-3">
-                <Section title="File">
+                <Section title={t('export.sectionFile')}>
                   <label className="flex flex-col gap-1">
-                    <span className="text-2xs text-slate-400">File name</span>
+                    <span className="text-2xs text-slate-400">{t('export.fileName')}</span>
                     <div className="flex items-center gap-1">
                       <input
                         ref={fileNameRef}
@@ -994,18 +1004,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
                   <div className="flex items-end gap-2">
                     <label className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="text-2xs text-slate-400">Save in</span>
-                      <input readOnly className="numeric-input" value={folder ?? ''} placeholder="Not chosen" />
+                      <span className="text-2xs text-slate-400">{t('export.saveIn')}</span>
+                      <input readOnly className="numeric-input" value={folder ?? ''} placeholder={t('export.notChosen')} />
                     </label>
                     <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
                       <FolderOpen size={14} />
-                      Browse
+                      {t('export.browse')}
                     </button>
                   </div>
 
                   {folder && settings.outputPath && (
                     <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-400'}`}>
-                      {targetExists ? 'Will replace the existing ' : 'Will save as '}
+                      {targetExists ? t('export.willReplace') : t('export.willSave')}{' '}
                       <span className="text-slate-300">{settings.outputPath}</span>
                     </p>
                   )}
@@ -1016,29 +1026,28 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   */}
                   {targetInUse && (
                     <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
-                      That file is source footage in this project. Exporting onto it would destroy the
-                      original - change the name or the folder.
+                      {t('export.sourceFootage')}
                     </p>
                   )}
                 </Section>
 
-                <Section title="Thumbnail">
+                <Section title={t('export.sectionThumbnail')}>
                   {coverArt ? (
                     <>
                       <div className="flex items-center gap-3">
                         <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded border border-panel-700 bg-panel-900">
                           {thumbnailPreview ? (
-                            <img src={thumbnailPreview} alt="Thumbnail" className="h-full w-full object-cover" />
+                            <img src={thumbnailPreview} alt={t('export.thumbnailAlt')} className="h-full w-full object-cover" />
                           ) : (
-                            <span className="text-2xs text-slate-400">None</span>
+                            <span className="text-2xs text-slate-400">{t('export.thumbnailNone')}</span>
                           )}
                         </div>
                         <div className="flex flex-col gap-1">
                           <button type="button" className="tool-button h-7 justify-start" onClick={() => void captureCurrentFrame()}>
-                            Use the frame at the playhead
+                            {t('export.thumbnailPlayhead')}
                           </button>
                           <button type="button" className="tool-button h-7 justify-start" onClick={() => void chooseThumbnail()}>
-                            Choose an image...
+                            {t('export.thumbnailChoose')}
                           </button>
                           {thumbnailPath && (
                             <button
@@ -1049,18 +1058,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                                 setThumbnailPreview(null);
                               }}
                             >
-                              Remove
+                              {t('export.thumbnailRemove')}
                             </button>
                           )}
                         </div>
                       </div>
                       <p className="text-2xs text-slate-400">
-                        Embedded as the file&apos;s cover - what Explorer and video players show.
+                        {t('export.thumbnailHint')}
                       </p>
                     </>
                   ) : (
                     <p className="text-2xs text-slate-400">
-                      {selectedFormat?.label} has no place for a cover image. MP4 and ProRes do.
+                      {t('export.thumbnailUnsupported', { format: formatLabel(selectedFormat?.value) })}
                     </p>
                   )}
                 </Section>
@@ -1069,9 +1078,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 <details className="rounded border border-panel-700 bg-panel-950 p-3" open={restartPending || undefined}>
                   {/* What will render stays readable with the section folded. */}
                   <summary className="flex cursor-pointer select-none items-center justify-between gap-2">
-                    <span className="field-label">Hardware</span>
+                    <span className="field-label">{t('export.sectionHardware')}</span>
                     <span className="truncate text-2xs text-slate-300">
-                      This render: <span className="text-slate-100">{gpu === null ? 'testing...' : plan.label}</span>
+                      {t('export.thisRender')} <span className="text-slate-100">{gpu === null ? t('export.testing') : plan.label}</span>
                     </span>
                   </summary>
 
@@ -1079,12 +1088,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     {gpu === null ? (
                       <p className="flex items-center gap-2 text-2xs text-slate-400">
                         <Loader2 size={12} className="animate-spin" />
-                        Testing which GPUs and encoders work on this machine...
+                        {t('export.testingGpus')}
                       </p>
                     ) : (
                       <>
                         <label className="flex flex-col gap-1">
-                          <span className="text-2xs text-slate-400">Render with (compositor GPU)</span>
+                          <span className="text-2xs text-slate-400">{t('export.renderWith')}</span>
                           <select
                             className="numeric-input"
                             value={savedPreference ?? gpu.preference}
@@ -1099,35 +1108,32 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                               const available = preference === 'auto' || device !== undefined;
                               return (
                                 <option key={preference} value={preference} disabled={!available}>
-                                  {PREFERENCE_LABELS[preference]}
-                                  {preference !== 'auto' ? ` - ${device?.name ?? 'not present'}` : ''}
+                                  {t(PREFERENCE_LABELS[preference])}
+                                  {preference !== 'auto' ? ` - ${device?.name ?? t('export.gpuMissing')}` : ''}
                                 </option>
                               );
                             })}
                           </select>
                           <span className="text-2xs text-slate-400">
-                            Running on: {activeGpu?.name ?? 'unknown GPU'}
+                            {t('export.runningOn', { gpu: activeGpu?.name ?? t('export.unknownGpu') })}
                           </span>
                         </label>
 
                         {restartPending && (
                           <div className="flex items-center justify-between gap-2 rounded bg-amber-950/50 px-2 py-1.5 text-2xs text-amber-300">
-                            <span>
-                              The GPU is chosen when the app starts. Restart to render on the new one; save
-                              your project first.
-                            </span>
+                            <span>{t('export.restartNeeded')}</span>
                             <button
                               type="button"
                               className="tool-button h-6 shrink-0"
                               onClick={() => void window.filmora.relaunch()}
                             >
-                              Restart now
+                              {t('export.restartNow')}
                             </button>
                           </div>
                         )}
 
                         <label className="flex flex-col gap-1">
-                          <span className="text-2xs text-slate-400">Encoder</span>
+                          <span className="text-2xs text-slate-400">{t('export.encoder')}</span>
                           <select
                             className="numeric-input"
                             value={settings.hardwareEncoder}
@@ -1135,20 +1141,20 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                               setExportSettings({ hardwareEncoder: event.target.value as HardwareEncoder })
                             }
                           >
-                            <option value="auto">Automatic</option>
+                            <option value="auto">{t('export.encoderAuto')}</option>
                             {gpu.encoders.map((option) => (
                               <option key={option.encoder} value={option.encoder}>
                                 {describeEncoder(option)}
                               </option>
                             ))}
-                            <option value="none">CPU (software)</option>
+                            <option value="none">{t('export.encoderCpu')}</option>
                           </select>
                         </label>
 
                         {plan.note && <p className="text-2xs text-amber-300">{plan.note}</p>}
                         {gpu.encoders.length === 0 && (
                           <p className="text-2xs text-slate-400">
-                            No hardware encoder produced frames on this machine, so only the CPU is offered.
+                            {t('export.noHardware')}
                           </p>
                         )}
                       </>
@@ -1181,11 +1187,12 @@ function ExportResult({
   onShowInFolder(): void;
   onPlay(): void;
 }): JSX.Element {
+  const t = useT();
   const stats: { label: string; value: string; wide?: boolean }[] = [
-    { label: 'Length', value: formatClock(result.videoSeconds) },
-    { label: 'Render time', value: formatClock(result.renderSeconds) },
-    { label: 'Frame rate', value: `${Number(result.fps.toFixed(3))} fps` },
-    { label: 'Encoder', value: result.encoder, wide: true },
+    { label: t('export.statLength'), value: formatClock(result.videoSeconds) },
+    { label: t('export.statRenderTime'), value: formatClock(result.renderSeconds) },
+    { label: t('export.statFrameRate'), value: `${Number(result.fps.toFixed(3))} fps` },
+    { label: t('export.statEncoder'), value: result.encoder, wide: true },
   ];
   return (
     <section
@@ -1197,12 +1204,12 @@ function ExportResult({
         <CircleCheck size={28} className="scf-check mt-0.5 shrink-0 text-success" aria-hidden />
         <div className="min-w-0">
           <h2 id="export-result-title" className="text-base font-semibold text-slate-100">
-            Export finished
+            {t('export.finished')}
           </h2>
           <p className="truncate text-sm text-slate-200" title={result.path}>
             {result.name}
           </p>
-          <p className="break-all text-2xs text-slate-400">in {result.folder}</p>
+          <p className="break-all text-2xs text-slate-400">{t('export.inFolder', { folder: result.folder })}</p>
         </div>
       </div>
 
@@ -1210,7 +1217,7 @@ function ExportResult({
       <div
         className="h-1.5 w-full rounded-full bg-success"
         role="progressbar"
-        aria-label="Export"
+        aria-label={t('export.title')}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={100}
@@ -1234,12 +1241,12 @@ function ExportResult({
           onClick={onShowInFolder}
         >
           <FolderOpen size={14} />
-          Show in folder
+          {t('export.showInFolder')}
         </button>
         {result.playable && (
           <button type="button" className="tool-button border border-panel-600 px-4" onClick={onPlay}>
             <Play size={14} />
-            Play
+            {t('export.play')}
           </button>
         )}
       </div>

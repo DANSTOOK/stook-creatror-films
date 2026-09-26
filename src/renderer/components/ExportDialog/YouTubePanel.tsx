@@ -6,6 +6,8 @@ import type {
   YouTubeStatus,
   YouTubeUploadResult,
 } from '@shared/types/ipc';
+import { useT, type MessageKey } from '@renderer/i18n';
+import { errorText } from '@renderer/errorText';
 
 /**
  * Sending a finished export to YouTube, two ways.
@@ -23,10 +25,10 @@ import type {
 const CONSOLE_URL = 'https://console.cloud.google.com/apis/credentials';
 const STUDIO_URL = 'https://studio.youtube.com/';
 
-const PRIVACY_LABELS: Record<YouTubePrivacy, string> = {
-  private: 'Private',
-  unlisted: 'Unlisted',
-  public: 'Public',
+const PRIVACY_LABELS: Record<YouTubePrivacy, MessageKey> = {
+  private: 'yt.private',
+  unlisted: 'yt.unlisted',
+  public: 'yt.public',
 };
 
 const openLink = (url: string): void => {
@@ -35,12 +37,6 @@ const openLink = (url: string): void => {
 };
 
 const formatMegabytes = (bytes: number): string => `${(bytes / 1_048_576).toFixed(1)} MB`;
-
-const errorText = (error: unknown): string => {
-  const text = error instanceof Error ? error.message : String(error);
-  // ipcRenderer.invoke wraps the main process's message in its own words.
-  return text.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-};
 
 export interface YouTubePanelProps {
   /** The file the export just finished writing. */
@@ -51,6 +47,7 @@ export interface YouTubePanelProps {
 }
 
 export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePanelProps): JSX.Element {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   useEffect(() => onExpandedChange?.(expanded), [expanded, onExpandedChange]);
   // Gone with its export (New export): the dialog goes back to two columns.
@@ -111,7 +108,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
 
   const upload = (): Promise<void> =>
     run(async () => {
-      if (madeForKids === null) throw new Error('Say whether the video is made for kids - YouTube asks for every upload.');
+      if (madeForKids === null) throw new Error(t('yt.kidsRequired'));
       setUploading(true);
       setResult(null);
       try {
@@ -130,11 +127,9 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
       <div className="space-y-1">
         <h3 className="field-label flex items-center gap-1.5">
           <Youtube size={14} />
-          Share to YouTube
+          {t('yt.title')}
         </h3>
-        <p className="text-2xs leading-relaxed text-slate-400">
-          Open YouTube Studio and drag the file in, or upload it from here.
-        </p>
+        <p className="text-2xs leading-relaxed text-slate-400">{t('yt.intro')}</p>
       </div>
       {/* Side by side once the panel is full width; stacked in the narrow column. */}
       <div className={`flex gap-2 ${expanded ? 'flex-row flex-wrap' : 'flex-col'}`}>
@@ -142,11 +137,11 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
           type="button"
           data-testid="youtube-open-studio"
           className="tool-button border border-panel-600"
-          title="Show the file in Explorer and open YouTube's upload page in your browser - drag the file in there"
+          title={t('yt.studioHint')}
           onClick={() => void run(() => window.filmora.youtubeOpenStudio(path))}
         >
           <ExternalLink size={13} />
-          Open YouTube Studio
+          {t('yt.studio')}
         </button>
         <button
           type="button"
@@ -156,36 +151,33 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
           onClick={() => setExpanded((open) => !open)}
         >
           <Upload size={13} />
-          Upload from here
+          {t('yt.direct')}
         </button>
       </div>
 
       {expanded && status === null && (
         <p className="flex items-center gap-2 text-2xs text-slate-400">
           <Loader2 size={12} className="animate-spin" />
-          Checking the connection...
+          {t('yt.checking')}
         </p>
       )}
 
       {/* Step one, once per machine: the user's own Google client. */}
       {expanded && status && !status.configured && (
         <div data-testid="youtube-setup" className="space-y-2">
-          <p className="text-2xs leading-relaxed text-slate-300">
-            Uploading from the editor goes through your own Google project. You sign in on Google&apos;s page in
-            your browser; the editor never sees your password, and it forgets the sign-in when it closes.
-          </p>
+          <p className="text-2xs leading-relaxed text-slate-300">{t('yt.setupIntro')}</p>
           <ol className="list-decimal space-y-0.5 pl-5 text-2xs leading-relaxed text-slate-400">
-            <li>In Google Cloud, create a project and enable the YouTube Data API v3.</li>
-            <li>Under the OAuth consent screen, choose External and add your own account as a test user.</li>
-            <li>Under Credentials, create an OAuth client ID of type Desktop app, then paste it here.</li>
+            <li>{t('yt.step1')}</li>
+            <li>{t('yt.step2')}</li>
+            <li>{t('yt.step3')}</li>
           </ol>
           <button type="button" className="tool-button h-7" onClick={() => openLink(CONSOLE_URL)}>
             <ExternalLink size={13} />
-            Open Google Cloud credentials
+            {t('yt.openConsole')}
           </button>
           <div className="grid gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">Client ID</span>
+              <span className="text-2xs text-slate-400">{t('yt.clientId')}</span>
               <input
                 className="numeric-input"
                 spellCheck={false}
@@ -195,7 +187,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">Client secret</span>
+              <span className="text-2xs text-slate-400">{t('yt.clientSecret')}</span>
               <input
                 type="password"
                 className="numeric-input"
@@ -205,16 +197,14 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
               />
             </label>
           </div>
-          <p className="text-2xs text-slate-400">
-            These name your Google project, not your account; they are kept encrypted on this computer.
-          </p>
+          <p className="text-2xs text-slate-400">{t('yt.clientNote')}</p>
           <button
             type="button"
             className="tool-button tool-button-active h-7"
             disabled={!clientId.trim() || !clientSecret.trim()}
             onClick={() => void saveClient()}
           >
-            Save
+            {t('yt.save')}
           </button>
         </div>
       )}
@@ -222,34 +212,31 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
       {/* Step two, once per session: permission to upload, in the browser. */}
       {expanded && status?.configured && !status.signedIn && (
         <div className="space-y-2">
-          <p className="text-2xs leading-relaxed text-slate-300">
-            Google&apos;s sign-in opens in your browser. The editor only asks to add videos - it cannot see, change
-            or delete anything on your channel.
-          </p>
+          <p className="text-2xs leading-relaxed text-slate-300">{t('yt.signInIntro')}</p>
           <div className="flex flex-wrap items-center gap-2">
             {signingIn ? (
               <>
                 <span className="flex items-center gap-2 text-2xs text-slate-300">
                   <Loader2 size={12} className="animate-spin" />
-                  Waiting for the browser...
+                  {t('yt.waiting')}
                 </span>
                 <button type="button" className="tool-button h-7" onClick={() => void window.filmora.youtubeCancelSignIn()}>
-                  Cancel
+                  {t('yt.cancel')}
                 </button>
               </>
             ) : (
               <button type="button" data-testid="youtube-sign-in" className="tool-button tool-button-active h-7" onClick={() => void signIn()}>
-                Sign in with Google
+                {t('yt.signIn')}
               </button>
             )}
             <button
               type="button"
               className="tool-button h-7 text-slate-400"
               disabled={signingIn}
-              title={`Remove the Google client ${status.clientId}`}
+              title={t('yt.forgetClientHint', { id: status.clientId })}
               onClick={() => void run(async () => setStatus(await window.filmora.youtubeForgetClient()))}
             >
-              Use another Google client
+              {t('yt.forgetClient')}
             </button>
           </div>
         </div>
@@ -260,7 +247,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
         <div className="space-y-2">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">Title</span>
+              <span className="text-2xs text-slate-400">{t('yt.videoTitle')}</span>
               <input
                 data-testid="youtube-title"
                 className="numeric-input"
@@ -271,7 +258,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-2xs text-slate-400">Visibility</span>
+              <span className="text-2xs text-slate-400">{t('yt.visibility')}</span>
               <select
                 data-testid="youtube-privacy"
                 className="numeric-input"
@@ -281,14 +268,14 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
               >
                 {(Object.keys(PRIVACY_LABELS) as YouTubePrivacy[]).map((value) => (
                   <option key={value} value={value}>
-                    {PRIVACY_LABELS[value]}
+                    {t(PRIVACY_LABELS[value])}
                   </option>
                 ))}
               </select>
             </label>
           </div>
           <label className="flex flex-col gap-1">
-            <span className="text-2xs text-slate-400">Description</span>
+            <span className="text-2xs text-slate-400">{t('yt.description')}</span>
             <textarea
               className="numeric-input h-16 resize-y py-1"
               value={description}
@@ -297,8 +284,8 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
             />
           </label>
           <fieldset className="flex flex-wrap items-center gap-3 text-xs text-slate-200" disabled={uploading}>
-            <legend className="sr-only">Made for kids</legend>
-            <span className="text-2xs text-slate-400">Made for kids?</span>
+            <legend className="sr-only">{t('yt.kids')}</legend>
+            <span className="text-2xs text-slate-400">{t('yt.kidsQuestion')}</span>
             <label className="flex items-center gap-1.5">
               <input
                 type="radio"
@@ -308,7 +295,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
                 checked={madeForKids === false}
                 onChange={() => setMadeForKids(false)}
               />
-              No
+              {t('yt.no')}
             </label>
             <label className="flex items-center gap-1.5">
               <input
@@ -318,14 +305,11 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
                 checked={madeForKids === true}
                 onChange={() => setMadeForKids(true)}
               />
-              Yes
+              {t('yt.yes')}
             </label>
           </fieldset>
           {privacy !== 'private' && (
-            <p className="text-2xs text-amber-300">
-              Until Google audits your project, YouTube keeps uploads from it private. You can change the visibility
-              in YouTube Studio afterwards.
-            </p>
+            <p className="text-2xs text-amber-300">{t('yt.auditNote')}</p>
           )}
 
           {(uploading || progress) && !result && (
@@ -333,7 +317,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
               <div
                 className="h-2 w-full overflow-hidden rounded-full bg-panel-700"
                 role="progressbar"
-                aria-label="Upload"
+                aria-label={t('yt.progressLabel')}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}
@@ -345,7 +329,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
               </div>
               {progress && (
                 <p className="text-2xs tabular-nums text-slate-400">
-                  {formatMegabytes(progress.sent)} of {formatMegabytes(progress.total)} ({percent.toFixed(0)}%)
+                  {t('yt.progress', { sent: formatMegabytes(progress.sent), total: formatMegabytes(progress.total), percent: percent.toFixed(0) })}
                 </p>
               )}
             </div>
@@ -353,16 +337,16 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
 
           {result && (
             <div data-testid="youtube-result" className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 text-2xs text-emerald-200">
-              Uploaded.{' '}
+              {t('yt.uploaded')}{' '}
               <button type="button" className="underline" onClick={() => openLink(result.url)}>
                 {result.url}
               </button>{' '}
-              - {PRIVACY_LABELS[result.privacy]}.
+              - {t(PRIVACY_LABELS[result.privacy])}.
               {result.privacy !== result.requestedPrivacy && (
                 <span className="block pt-1 text-amber-200">
-                  YouTube made it private because the Google project has not been audited yet. Change it in{' '}
+                  {t('yt.madePrivate')}{' '}
                   <button type="button" className="underline" onClick={() => openLink(STUDIO_URL)}>
-                    YouTube Studio
+                    {t('yt.studioName')}
                   </button>
                   .
                 </span>
@@ -373,7 +357,7 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
           <div className="flex flex-wrap items-center gap-2">
             {uploading ? (
               <button type="button" className="tool-button h-7" onClick={() => void window.filmora.youtubeCancelUpload()}>
-                Cancel upload
+                {t('yt.cancelUpload')}
               </button>
             ) : (
               <button
@@ -384,18 +368,18 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
                 onClick={() => void upload()}
               >
                 <Upload size={13} />
-                {result ? 'Upload again' : 'Upload'}
+                {result ? t('yt.uploadAgain') : t('yt.upload')}
               </button>
             )}
             <button
               type="button"
               className="tool-button h-7 text-slate-400"
               disabled={uploading}
-              title="Forget the sign-in and revoke it at Google"
+              title={t('yt.signOutHint')}
               onClick={() => void run(async () => setStatus(await window.filmora.youtubeSignOut()))}
             >
               <LogOut size={13} />
-              Sign out
+              {t('yt.signOut')}
             </button>
           </div>
         </div>
