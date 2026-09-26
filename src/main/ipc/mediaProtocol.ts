@@ -57,6 +57,28 @@ export function mediaUrlFor(path: string): string {
 }
 
 /**
+ * Point an existing `media://` URL at another file: a relinked clip.
+ *
+ * The project, its clips and every step of its undo history name a clip's
+ * file by this URL. Keeping the URL and moving what it resolves to means none
+ * of them has to be rewritten - an undo after a relink cannot bring back a
+ * dead link. A URL from an earlier session (a reopened project whose file had
+ * moved) is not known here yet, and is registered now; only the shape of a
+ * token this module makes is accepted, and only for a path already allowed.
+ * Returns the URL, or null for one that is not ours.
+ */
+export function retargetMediaUrl(url: string, path: string): string | null {
+  const match = /^media:\/\/file\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(url);
+  if (!match) return null;
+  const token = match[1];
+  const previous = tokens.get(token);
+  if (previous !== undefined && tokensByPath.get(previous) === token) tokensByPath.delete(previous);
+  tokens.set(token, path);
+  if (!tokensByPath.has(path)) tokensByPath.set(path, token);
+  return url;
+}
+
+/**
  * True when this path is already open in the page as source media.
  *
  * An export writes with `-y`, and the export name defaults to the first

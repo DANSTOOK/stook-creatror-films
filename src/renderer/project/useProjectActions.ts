@@ -9,6 +9,8 @@ import { projectNameFromPath } from './projectSession';
 import { savedAtLabel } from './autosave';
 import { notify } from '@renderer/notifications/notifications';
 import { currentLocale, t } from '@renderer/i18n';
+import { canRelink, relinkFirstMissing } from '@renderer/media/relink';
+import { errorText } from '@renderer/errorText';
 
 /**
  * Everything that starts, opens or keeps a project.
@@ -29,7 +31,7 @@ export interface NewProjectOptions {
   fps: number;
 }
 
-const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+const describe = errorText;
 
 /**
  * The file's own name, for a message.
@@ -206,7 +208,10 @@ export function useProjectActions(): ProjectActions {
 
         const missing = assets.filter((asset) => asset.missing);
         if (missing.length > 0) {
-          notify(t('notify.openedMissing', { file: fileName(opened.path), count: missing.length }), 'warning');
+          // With the way to fix it on the message, as Premiere asks at once.
+          notify(t('notify.openedMissing', { file: fileName(opened.path), count: missing.length }), 'warning', {
+            ...(canRelink() ? { action: { label: t('notify.relinkAction'), run: relinkFirstMissing } } : {}),
+          });
         } else {
           notify(t('notify.opened', { file: fileName(opened.path) }), 'success');
         }

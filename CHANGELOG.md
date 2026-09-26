@@ -144,6 +144,49 @@ clip (5 → 6 clips); la lista enseña filas; y en una sesión nueva sigue en
 lista. Capturas `after-en-1600-media*.png` (miniaturas, con el ratón encima,
 lista) y `after-es-1280-media.png`; antes, `before-en-1600-media*.png`.
 
+### Volver a vincular medios que faltan (punto 10)
+
+- **Añadido: «Volver a vincular…»** («Relink…») para un archivo que ya no
+  está donde dice el proyecto, como *Link Media* en Premiere y *Relink* en
+  Resolve. Está en tres sitios: en la miniatura del clip que falta (un botón
+  «Vincular» siempre a la vista), en su menú contextual y **en el aviso que
+  sale al abrir un proyecto con archivos que faltan**.
+  - El selector de archivos es el de Windows, lo abre el proceso principal
+    donde estaba el archivo y enseña solo archivos de su tipo; lo elegido
+    entra en la lista de archivos permitidos igual que al importar.
+  - **Si en esa carpeta están otros archivos que faltan** (por su nombre),
+    pregunta una vez: «¿Vincular también los demás?», con la lista, y
+    *Vincular los N* como respuesta por defecto (como la casilla *Relink others
+    automatically* de Premiere, marcada de serie) o *Solo este*.
+  - Un archivo de otro tipo (una imagen para un clip de vídeo) se rechaza y lo
+    dice.
+  - El clip conserva su dirección interna: el proceso principal la apunta al
+    archivo nuevo. Así la línea de tiempo, los demás clips del mismo archivo y
+    **el historial de deshacer** siguen valiendo sin reescribirse (deshacer
+    después de vincular no devuelve un enlace muerto). El proyecto queda con
+    cambios sin guardar hasta que se guarda, porque la ruta es parte de él.
+- **Arreglado: un archivo movido con el editor abierto no contaba como que
+  falta** al reabrir el proyecto en la misma sesión: se le daba una dirección
+  para la ruta vieja y el clip parecía sano pero no reproducía nada. Ahora
+  pedir la dirección de un archivo que no existe falla y el clip sale como que
+  falta.
+- Los errores que vienen del proceso principal se enseñan sin el envoltorio
+  técnico de Electron («Error invoking remote method…»).
+
+**Cómo se comprobó** (`probe-relink.mjs`, **11/11** en inglés y **11/11** en
+español): un proyecto con tres archivos de una carpeta y una imagen, guardado;
+la carpeta se mueve; en una sesión nueva el proyecto abre con los tres como
+que faltan y el aviso ofrece «Relink…»; cada miniatura que falta tiene su
+botón; elegir una imagen para un vídeo se rechaza con su motivo; elegir *Shot
+A* en la carpeta nueva ofrece a la vez los otros dos (*Shot B*, *Score*);
+*Vincular los 2* deja los tres en la carpeta nueva, con su tira de fotogramas
+y el visor con el archivo cargado, y el proyecto con cambios; guardado, abre en
+otra sesión sin nada que falte; y un archivo movido durante la sesión sale como
+que falta al reabrir. Batería de interfaz **126/126** y pruebas unitarias
+**777/777**. Capturas `after-en-1600-relink-*.png` y `after-es-1600-relink-*.png`
+(al abrir, la carpeta de medios, la pregunta y el resultado); antes, el
+proyecto abría sin forma de arreglarlo.
+
 ---
 
 ## v1.27.0-beta.1 — El rediseño: orden, aspecto Mac y animaciones

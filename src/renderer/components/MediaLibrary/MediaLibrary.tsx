@@ -9,6 +9,7 @@ import {
   FolderSymlink,
   Import,
   LayoutGrid,
+  Link2,
   Library,
   List,
   Pencil,
@@ -35,6 +36,8 @@ import { useFlip } from '@renderer/motion/useFlip';
 import { ProxyBar } from './ProxyBar';
 import { AssetItem, loadMediaView, saveMediaView, type MediaView } from './AssetItem';
 import { useMediaStore } from '@renderer/store/useMediaStore';
+import { canRelink, relinkMissing } from '@renderer/media/relink';
+import { errorText } from '@renderer/errorText';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { notify } from '@renderer/notifications/notifications';
@@ -163,7 +166,7 @@ export function MediaLibrary(): JSX.Element {
       try {
         applyOutcome(await task());
       } catch (error) {
-        notify(error instanceof Error ? error.message : String(error), 'error');
+        notify(errorText(error), 'error');
       } finally {
         setBusy(false);
       }
@@ -564,8 +567,12 @@ export function MediaLibrary(): JSX.Element {
                   onDragEnd={() => setDropBin(undefined)}
                   onAdd={() => addAtPlayhead(asset)}
                   onRemove={() => removeAsset(asset.id)}
+                  onRelink={canRelink() ? () => void relinkMissing(asset) : undefined}
                   onContextMenu={(event) =>
                     openMenu(event, [
+                      ...(asset.missing && canRelink()
+                        ? [{ label: tr('media.relink'), icon: Link2, onSelect: () => void relinkMissing(asset) }, { separator: true }]
+                        : []),
                       {
                         label: tr('media.addAtPlayhead'),
                         icon: Plus,

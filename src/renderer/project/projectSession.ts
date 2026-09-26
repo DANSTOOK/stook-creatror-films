@@ -29,10 +29,11 @@ export function projectNameFromPath(path: string): string {
 
 /** Which assets are in the library and where each is filed, plus the bins. */
 export function librarySignature(
-  assets: readonly { id: string; binId?: string }[],
+  assets: readonly { id: string; binId?: string; sourcePath?: string }[],
   bins: readonly { id: string; name: string; parentId: string | null }[],
 ): string {
-  const filing = assets.map((asset) => `${asset.id}:${asset.binId ?? ''}`).join('|');
+  // The path is part of it: a relinked file is a change a save has to keep.
+  const filing = assets.map((asset) => `${asset.id}:${asset.binId ?? ''}:${asset.sourcePath ?? ''}`).join('|');
   const tree = bins.map((bin) => `${bin.id}:${bin.parentId ?? ''}:${bin.name}`).join('|');
   return `${filing}#${tree}`;
 }

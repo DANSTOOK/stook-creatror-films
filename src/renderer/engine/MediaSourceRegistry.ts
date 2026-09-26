@@ -43,7 +43,24 @@ export class MediaSourceRegistry {
   private readonly ready = new Set<string>();
   private readonly lastCorrection = new Map<string, number>();
 
-  register(asset: MediaAsset): MediaElement {
+  register(asset: MediaAsset): MediaElement | undefined {
+    /*
+      A missing file has nothing to load, and an element made for it would
+      stay broken after the file is relinked under the same URL. So none is
+      made, one made before the file went missing is dropped, and the next
+      registration after a relink starts clean.
+    */
+    if (asset.missing) {
+      const stale = this.elements.get(asset.uri);
+      if (stale) {
+        if (stale instanceof HTMLVideoElement) stale.pause();
+        stale.removeAttribute('src');
+        this.elements.delete(asset.uri);
+        this.ready.delete(asset.uri);
+      }
+      return undefined;
+    }
+
     // The proxy is an element of its own, under its own URI, so the
     // original stays loaded for the export and for a toggle back.
     if (asset.proxyUri && asset.kind !== 'image') {

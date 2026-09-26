@@ -1,7 +1,7 @@
 ﻿import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { execFile } from 'node:child_process';
 import { mkdir, open, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
-import { basename, extname, isAbsolute, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -25,7 +25,8 @@ import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareA
 import { isGpuPreference } from '../gpu/classify';
 import { getGpuReport } from '../gpu/gpuInventory';
 import { writeGpuPreference } from '../gpu/gpuSettings';
-import { isOpenMediaPath, mediaUrlFor } from './mediaProtocol';
+import { isOpenMediaPath, mediaUrlFor, retargetMediaUrl } from './mediaProtocol';
+import { mt } from '../i18n';
 
 const execFileAsync = promisify(execFile);
 
@@ -320,10 +321,81 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return picked.filter((entry): entry is PickedFile => entry !== null);
   });
 
-  /** A streaming `media://` URL for an allowlisted file. */
-  ipcMain.handle(IPC.mediaUrl, (_event, path: string) => {
+  /**
+   * A streaming `media://` URL for an allowlisted file.
+   *
+   * Refused for a file that is not there any more: a project reopened in the
+   * same session after its footage moved used to get a URL for the old path
+   * and show the clip as healthy while it played nothing.
+   */
+  ipcMain.handle(IPC.mediaUrl, async (_event, path: string) => {
     assertAllowed(path);
+    const info = await stat(path).catch(() => null);
+    if (!info?.isFile()) throw new Error(mt('main.fileGone', { name: basename(path) }));
     return mediaUrlFor(path);
+  });
+
+  /* Relinking missing media --------------------------------------------- */
+
+  /** Folders a relinked file was found in, where the others may be too. */
+  const relinkFolders = new Set<string>();
+
+  /**
+   * Find a lost file: the Open dialog, starting where the file used to be and
+   * showing files of its kind. The choice joins the allowlist the same way an
+   * import does.
+   */
+  ipcMain.handle(IPC.relinkPick, async (_event, name: unknown, oldPath: unknown, kind: unknown) => {
+    const window = getWindow();
+    if (!window || typeof name !== 'string') return null;
+    const extensions =
+      kind === 'audio' ? AUDIO_EXTENSIONS : kind === 'image' ? IMAGE_EXTENSIONS : VIDEO_EXTENSIONS;
+    const result = await dialog.showOpenDialog(window, {
+      title: mt('main.relinkTitle', { name }),
+      ...(typeof oldPath === 'string' && isAbsolute(oldPath) ? { defaultPath: oldPath } : {}),
+      properties: ['openFile'],
+      filters: [
+        { name: mt(kind === 'audio' ? 'main.filterAudio' : kind === 'image' ? 'main.filterImages' : 'main.filterVideo'), extensions: [...extensions].map((e) => e.slice(1)) },
+        { name: mt('main.filterAll'), extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const path = result.filePaths[0];
+    allowedPaths.add(path);
+    relinkFolders.add(dirname(path));
+    return path;
+  });
+
+  /**
+   * The other lost files that are in the folder just chosen, by name - as
+   * Premiere's "Relink others automatically" and Resolve's relink find a
+   * whole folder that moved. Only for a folder a relinked file was picked
+   * from, and only plain media file names.
+   */
+  ipcMain.handle(IPC.relinkFind, async (_event, folder: unknown, names: unknown) => {
+    if (typeof folder !== 'string' || !relinkFolders.has(folder) || !Array.isArray(names)) return [];
+    const found: { name: string; path: string }[] = [];
+    for (const name of names) {
+      if (typeof name !== 'string' || basename(name) !== name) continue;
+      const extension = extname(name).toLowerCase();
+      if (!VIDEO_EXTENSIONS.has(extension) && !AUDIO_EXTENSIONS.has(extension) && !IMAGE_EXTENSIONS.has(extension)) continue;
+      const path = join(folder, name);
+      const info = await stat(path).catch(() => null);
+      if (!info?.isFile()) continue;
+      allowedPaths.add(path);
+      found.push({ name, path });
+    }
+    return found;
+  });
+
+  /** Point a missing clip's URL at the file that was found for it (mediaProtocol.ts). */
+  ipcMain.handle(IPC.relinkApply, async (_event, url: unknown, path: unknown) => {
+    if (typeof url !== 'string' || typeof path !== 'string') throw new Error(mt('main.relinkFailed'));
+    assertAllowed(path);
+    const info = await stat(path).catch(() => null);
+    if (!info?.isFile()) throw new Error(mt('main.fileGone', { name: basename(path) }));
+    const kept = retargetMediaUrl(url, path);
+    return kept ?? mediaUrlFor(path);
   });
 
   /**

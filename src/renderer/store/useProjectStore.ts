@@ -63,7 +63,7 @@ import {
   trimLimit,
   type GroupMoveOptions,
 } from '@renderer/components/Timeline/trackPacking';
-import { settingsFromAsset } from '@renderer/media/importMedia';
+import { remapClipSources, settingsFromAsset } from '@renderer/media/importMedia';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { createSnapshotCommand, useHistoryStore } from './useHistoryStore';
 import {
@@ -337,6 +337,11 @@ interface ProjectStore {
    * project is, and undoing a build would not delete the file anyway.
    */
   setAssetProxy(assetId: string, proxyUri: string): void;
+  /**
+   * Missing files found again: each asset gets its new path (and URL, when
+   * it had to change) and is no longer missing; clips follow the URL.
+   */
+  relinkAssets(changes: ReadonlyArray<{ assetId: string; sourcePath: string; uri: string; audioUri?: string }>): void;
 
   /* Media bins ----------------------------------------------------------- */
   setCurrentBin(binId: string | null): void;
@@ -1615,6 +1620,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   removeAsset(assetId) {
     set({ assets: get().assets.filter((asset) => asset.id !== assetId) });
+  },
+
+  relinkAssets(changes) {
+    const byId = new Map(changes.map((change) => [change.assetId, change]));
+    const remap = new Map<string, string>();
+    const assets = get().assets.map((asset) => {
+      const change = byId.get(asset.id);
+      if (!change) return asset;
+      if (change.uri !== asset.uri) remap.set(asset.uri, change.uri);
+      // The proxy and extracted audio of the old file are not this one's.
+      const { proxyUri: _proxy, audioUri: _audio, ...rest } = asset;
+      void _proxy;
+      void _audio;
+      return {
+        ...rest,
+        uri: change.uri,
+        sourcePath: change.sourcePath,
+        ...(change.audioUri ? { audioUri: change.audioUri } : {}),
+        missing: false,
+      };
+    });
+    // Usually the URL is kept (main/ipc/mediaProtocol.ts retargets it), so
+    // clips and the undo history need nothing; a clip dropped in from a
+    // browser session has no media:// URL to keep, and follows the new one.
+    const project = remap.size > 0 ? remapClipSources(get().project, remap) : get().project;
+    set({ assets, project });
   },
 
   setAssetProxy(assetId, proxyUri) {

@@ -110,6 +110,10 @@ const api: FilmoraApi = {
   contentPeaks: (path, seconds) => ipcRenderer.invoke(IPC.contentPeaks, path, seconds) as Promise<string | null>,
   contentThumbs: (path, kind, seconds) =>
     ipcRenderer.invoke(IPC.contentThumbs, path, kind, seconds) as Promise<string | null>,
+  relinkPick: (name, oldPath, kind) => ipcRenderer.invoke(IPC.relinkPick, name, oldPath, kind) as Promise<string | null>,
+  relinkFind: (folder, names) =>
+    ipcRenderer.invoke(IPC.relinkFind, folder, names) as Promise<{ name: string; path: string }[]>,
+  relinkApply: (url, path) => ipcRenderer.invoke(IPC.relinkApply, url, path) as Promise<string>,
   chooseExportFolder: () => ipcRenderer.invoke(IPC.chooseExportFolder) as Promise<string | null>,
   resolveExportTarget: (folder, name, format) =>
     ipcRenderer.invoke(IPC.resolveExportTarget, folder, name, format) as Promise<{ path: string; exists: boolean; inUse: boolean }>,

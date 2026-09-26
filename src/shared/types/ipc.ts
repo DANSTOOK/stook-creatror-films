@@ -36,6 +36,9 @@ export const IPC = {
   proxiesUsage: 'proxies:usage',
   proxiesProgress: 'proxies:progress',
   contentPeaks: 'content:peaks',
+  relinkPick: 'relink:pick',
+  relinkFind: 'relink:find',
+  relinkApply: 'relink:apply',
   contentThumbs: 'content:thumbs',
   documentState: 'app:document-state',
   saveBeforeClose: 'app:save-before-close',
@@ -347,6 +350,12 @@ export interface FilmoraApi {
    * Optional so a bridge without it (a browser shim) still satisfies the type.
    */
   contentPeaks?(path: string, seconds: number): Promise<string | null>;
+  /** Find a missing file: the Open dialog where it used to be; the chosen path, allowlisted, or null. */
+  relinkPick?(name: string, oldPath: string | undefined, kind: MediaKind): Promise<string | null>;
+  /** Which of these file names are in `folder` (one a relinked file was picked from). */
+  relinkFind?(folder: string, names: string[]): Promise<{ name: string; path: string }[]>;
+  /** Point a missing clip's URL at its found file; the URL to use from now on. */
+  relinkApply?(url: string, path: string): Promise<string>;
   /** The file's filmstrip, made the same way: a `media://` URL, or null. */
   contentThumbs?(path: string, kind: 'video' | 'image', seconds: number): Promise<string | null>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */

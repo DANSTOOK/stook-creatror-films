@@ -12,6 +12,7 @@ import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
+import { RelinkDialog } from './components/RelinkDialog/RelinkDialog';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { useClipContent } from './media/useClipContent';
 import { usePresence } from './hooks/usePresence';
@@ -539,6 +540,7 @@ export default function App(): JSX.Element {
       </div>
 
       <UnsavedChangesDialog />
+      <RelinkDialog />
       <Toaster />
       <TooltipLayer />
     </div>

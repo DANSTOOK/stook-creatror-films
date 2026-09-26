@@ -68,7 +68,22 @@ function Toast({ toast }: { toast: AppNotification }): JSX.Element {
       className="scf-toast flex items-start gap-2.5 rounded-menu border border-panel-600 bg-panel-800 px-3 py-2.5 shadow-xl shadow-black/50"
     >
       <Icon size={16} className={`mt-px shrink-0 ${ICON_CLASS[toast.tone]}`} aria-hidden />
-      <p className="min-w-0 flex-1 break-words text-sm text-slate-100">{toast.message}</p>
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-sm text-slate-100">{toast.message}</p>
+        {toast.action && (
+          // The one clickable thing in a toast besides its close button.
+          <button
+            type="button"
+            className="tool-button pointer-events-auto -ml-2 mt-1 text-accent-hover"
+            onClick={() => {
+              toast.action?.run();
+              dismiss(toast.id);
+            }}
+          >
+            {toast.action.label}
+          </button>
+        )}
+      </div>
       <button
         type="button"
         className="pointer-events-auto -mr-1 -mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-slate-400 hover:bg-panel-700 hover:text-slate-100"

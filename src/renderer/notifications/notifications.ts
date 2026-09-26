@@ -30,6 +30,12 @@ export interface AppNotification {
    * save does not carry "Saved to ..." along.
    */
   view: 'editor' | 'home';
+  /**
+   * One thing to do about it, as a button on the toast: "Relink…" on the
+   * message that a project opened with files missing. The history keeps the
+   * text only; the button belongs to the moment.
+   */
+  action?: { label: string; run(): void };
 }
 
 /** How long each kind stays up. Problems stay longer: they may need reading twice. */
@@ -86,7 +92,7 @@ export const useNotifications = create<NotificationState>((set) => ({
 export function notify(
   message: string,
   tone: NotificationTone = 'info',
-  options: { persistent?: boolean } = {},
+  options: { persistent?: boolean; action?: AppNotification['action'] } = {},
 ): number {
   const id = nextId;
   nextId += 1;
@@ -96,6 +102,7 @@ export function notify(
     tone,
     at: Date.now(),
     view: useSessionStore.getState().view === 'home' ? 'home' : 'editor',
+    ...(options.action ? { action: options.action } : {}),
   };
   const { toasts, history, unread, dismiss } = useNotifications.getState();
   for (const toast of toasts) if (toast.message === message) dismiss(toast.id);
