@@ -140,6 +140,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const [savedPreference, setSavedPreference] = useState<GpuPreference | null>(null);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [running, setRunning] = useState(false);
+  /** YouTube's upload form is open under the result. */
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   /** What the last export finished writing: the dialog's finished state. */
   const [result, setResult] = useState<FinishedExport | null>(null);
@@ -697,7 +699,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {done && result && (
-            <div className="mb-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_20rem] md:items-start">
+            // Beside the result while it is two buttons; once "Upload from
+            // here" opens its form, the panel takes the full width below the
+            // result card - in the narrow column it grew long and left a
+            // hole under the card.
+            <div className={`mb-3 grid gap-3 md:items-start ${uploadOpen ? '' : 'md:grid-cols-[minmax(0,1fr)_20rem]'}`}>
               <ExportResult
                 result={result}
                 error={actionError}
@@ -706,7 +712,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               />
               {/* A finished video YouTube takes: offer to send it there, beside the result. */}
               {/\.(mp4|mov|webm)$/i.test(result.path) && (
-                <YouTubePanel path={result.path} defaultTitle={fileName} />
+                <YouTubePanel path={result.path} defaultTitle={fileName} onExpandedChange={setUploadOpen} />
               )}
             </div>
           )}

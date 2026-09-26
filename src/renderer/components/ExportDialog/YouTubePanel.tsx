@@ -46,10 +46,15 @@ export interface YouTubePanelProps {
   /** The file the export just finished writing. */
   path: string;
   defaultTitle: string;
+  /** "Upload from here" opened or closed: the dialog lays the panel out full width while open. */
+  onExpandedChange?(expanded: boolean): void;
 }
 
-export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Element {
+export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePanelProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  useEffect(() => onExpandedChange?.(expanded), [expanded, onExpandedChange]);
+  // Gone with its export (New export): the dialog goes back to two columns.
+  useEffect(() => () => onExpandedChange?.(false), [onExpandedChange]);
   const [status, setStatus] = useState<YouTubeStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,7 +126,7 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
   return (
     // A column beside the export's result card, so everything here stacks:
     // the two ways in, then the form of the one that was opened.
-    <section data-testid="youtube-panel" className="space-y-3 rounded-lg border border-panel-700 bg-panel-950 p-4">
+    <section data-testid="youtube-panel" data-state={expanded ? 'open' : 'closed'} className="space-y-3 rounded-lg border border-panel-700 bg-panel-950 p-4">
       <div className="space-y-1">
         <h3 className="field-label flex items-center gap-1.5">
           <Youtube size={14} />
@@ -131,7 +136,8 @@ export function YouTubePanel({ path, defaultTitle }: YouTubePanelProps): JSX.Ele
           Open YouTube Studio and drag the file in, or upload it from here.
         </p>
       </div>
-      <div className="flex flex-col gap-2">
+      {/* Side by side once the panel is full width; stacked in the narrow column. */}
+      <div className={`flex gap-2 ${expanded ? 'flex-row flex-wrap' : 'flex-col'}`}>
         <button
           type="button"
           data-testid="youtube-open-studio"

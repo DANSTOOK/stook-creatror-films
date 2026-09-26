@@ -31,6 +31,12 @@ se comprobó.
   y que solo crece; ahora muestra hasta el final del último clip
   (00:00:19:00), y *Ir al final* va ahí.
 
+- **Exportar: con «Upload from here» abierto quedaba un hueco** bajo la
+  tarjeta del resultado, porque el formulario de YouTube crecía en su columna
+  estrecha de la derecha. Ahora, al abrirlo, el panel de YouTube pasa a todo
+  el ancho debajo del resultado, con sus dos botones en fila; cerrado, sigue
+  al lado del resultado como antes.
+
 ### Cambiado
 
 - **El visor, como el de Final Cut o Resolve:**
@@ -241,6 +247,9 @@ se comprobó.
   arrastrar bordes, restablecer con doble clic y recordar el ancho en una
   sesión nueva: **126/126**. Capturas `after-en-1366-editor.png`,
   `after-en-1180-*.png` y `after-en-1024-editor.png`.
+- **Exportar:** captura con «Upload from here» abierto tras una exportación
+  (`after-en-1600-export-upload-expanded.png`; antes en
+  `before-en-1600-export-upload-expanded.png`, con el hueco).
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto
