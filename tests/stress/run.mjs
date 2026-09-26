@@ -802,6 +802,9 @@ async function main() {
     window.on('pageerror', (error) => consoleIssues.push(`[pageerror] ${error.message}`));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 950));
     await pick(app, [projectFile]);
+    // The editor has to be mounted before its shortcuts exist: a key pressed
+    // while the page is still loading reaches nobody.
+    await window.waitForSelector('#root > *');
     t = Date.now();
     await window.keyboard.press('Control+o');
     await window.getByText('Opened', { exact: false }).first().waitFor({ state: 'visible', timeout: 300_000 });
