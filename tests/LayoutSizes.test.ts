@@ -4,12 +4,45 @@ import {
   LAYOUT_LIMITS,
   MIN_PREVIEW_HEIGHT,
   MIN_PREVIEW_WIDTH,
+  NARROW_WIDTHS,
   clampLayout,
+  isCompactWindow,
   parseLayout,
   resizePanel,
+  responsiveLayout,
 } from '../src/renderer/layout/layoutSizes';
 
 const roomy = { width: 1400, height: 900 };
+
+describe('panel layout in smaller windows', () => {
+  it('leaves the layout alone in a wide window', () => {
+    expect(responsiveLayout(DEFAULT_LAYOUT, 1600)).toEqual(DEFAULT_LAYOUT);
+  });
+
+  it('starts the side panels narrower below 1440px', () => {
+    const narrow = responsiveLayout(DEFAULT_LAYOUT, 1366);
+    expect(narrow.mediaWidth).toBe(NARROW_WIDTHS.mediaWidth);
+    expect(narrow.inspectorWidth).toBe(NARROW_WIDTHS.inspectorWidth);
+    expect(narrow.timelineHeight).toBe(DEFAULT_LAYOUT.timelineHeight);
+  });
+
+  it('keeps a width somebody chose, whatever the window', () => {
+    const chosen = { ...DEFAULT_LAYOUT, mediaWidth: 340 };
+    expect(responsiveLayout(chosen, 1366).mediaWidth).toBe(340);
+  });
+
+  it('gives an untouched timeline a third of a short window, and leaves a chosen one', () => {
+    expect(responsiveLayout(DEFAULT_LAYOUT, 1600, 760).timelineHeight).toBe(258);
+    expect(responsiveLayout(DEFAULT_LAYOUT, 1600, 950).timelineHeight).toBe(DEFAULT_LAYOUT.timelineHeight);
+    expect(responsiveLayout({ ...DEFAULT_LAYOUT, timelineHeight: 360 }, 1600, 760).timelineHeight).toBe(360);
+  });
+
+  it('calls a window compact below 1280px, and only then', () => {
+    expect(isCompactWindow(1279)).toBe(true);
+    expect(isCompactWindow(1280)).toBe(false);
+    expect(isCompactWindow(0)).toBe(false);
+  });
+});
 
 describe('panel layout', () => {
   it('keeps the defaults when they fit', () => {

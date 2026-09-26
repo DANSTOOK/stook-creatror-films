@@ -18,7 +18,9 @@ import {
   DEFAULT_LAYOUT,
   LAYOUT_LIMITS,
   clampLayout,
+  isCompactWindow,
   loadLayout,
+  responsiveLayout,
   resizePanel,
   saveLayout,
   type LayoutKey,
@@ -92,7 +94,43 @@ export default function App(): JSX.Element {
    * same reason: on a laptop the picture is worth more than any of them. The
    * viewer cannot be hidden - it is what the rest is for.
    */
-  const [hidden, setHidden] = useState<Record<PanelKey, boolean>>({ media: false, inspector: false, timeline: false });
+  const [chosenHidden, setHidden] = useState<Record<PanelKey, boolean>>({ media: false, inspector: false, timeline: false });
+
+  /*
+    A narrow window folds the side panels away (layoutSizes.ts); the title
+    bar's buttons then bring one back for as long as it is wanted. What was
+    chosen in a wide window is kept for when the window is wide again.
+  */
+  const [windowWidth, setWindowWidth] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth));
+  const [windowHeight, setWindowHeight] = useState(() => (typeof window === 'undefined' ? 0 : window.innerHeight));
+  useEffect(() => {
+    const onResize = (): void => {
+      setWindowWidth(window.innerWidth);
+      setWindowHeight(window.innerHeight);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const compact = isCompactWindow(windowWidth);
+  const [revealed, setRevealed] = useState({ media: false, inspector: false });
+  useEffect(() => {
+    if (!compact) setRevealed({ media: false, inspector: false });
+  }, [compact]);
+  const hidden: Record<PanelKey, boolean> = {
+    timeline: chosenHidden.timeline,
+    media: chosenHidden.media || (compact && !revealed.media),
+    inspector: chosenHidden.inspector || (compact && !revealed.inspector),
+  };
+
+  /** Show or hide a panel: in a compact window, the side panels are revealed instead. */
+  const togglePanelRef = useRef<(panel: PanelKey) => void>(() => undefined);
+  togglePanelRef.current = (panel) => {
+    if (compact && panel !== 'timeline' && !chosenHidden[panel]) {
+      setRevealed((current) => ({ ...current, [panel]: !current[panel] }));
+      return;
+    }
+    setHidden((current) => ({ ...current, [panel]: !current[panel] }));
+  };
   const exportPresence = usePresence(exportOpen);
   const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
@@ -167,9 +205,9 @@ export default function App(): JSX.Element {
       else if (key === 'i' && editing) run = () => runMenuCommand.current('import');
       else if (key === 'e' && editing && hasNativeBridge()) run = () => setExportOpen(true);
       // Final Cut's browser, timeline and inspector keys.
-      else if (key === '1' && editing) run = () => setHidden((current) => ({ ...current, media: !current.media }));
-      else if (key === '2' && editing) run = () => setHidden((current) => ({ ...current, timeline: !current.timeline }));
-      else if (key === '4' && editing) run = () => setHidden((current) => ({ ...current, inspector: !current.inspector }));
+      else if (key === '1' && editing) run = () => togglePanelRef.current('media');
+      else if (key === '2' && editing) run = () => togglePanelRef.current('timeline');
+      else if (key === '4' && editing) run = () => togglePanelRef.current('inspector');
       if (!run) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -228,7 +266,7 @@ export default function App(): JSX.Element {
   // Sizes are fitted to the window on every render rather than stored fitted,
   // so shrinking the window and growing it back returns the panels to the
   // sizes that were chosen.
-  const fitted = clampLayout(layout, space);
+  const fitted = clampLayout(responsiveLayout(layout, windowWidth, windowHeight), space);
   const dragOrigin = useRef<PanelLayout>(fitted);
   const latest = useRef<PanelLayout>(layout);
   latest.current = layout;
@@ -295,7 +333,7 @@ export default function App(): JSX.Element {
       timelineShown: !hidden.timeline,
       fullscreenViewer,
     });
-  }, [language, view, canUndo, canRedo, hidden, fullscreenViewer]);
+  }, [language, view, canUndo, canRedo, hidden.media, hidden.inspector, hidden.timeline, fullscreenViewer]);
 
   // Kept in a ref so the listener is registered once and always runs the
   // current actions.
@@ -323,6 +361,7 @@ export default function App(): JSX.Element {
       case 'import':
         // The media panel owns importing; bring it back first if it was put away.
         setHidden((current) => ({ ...current, media: false }));
+        if (compact) setRevealed((current) => ({ ...current, media: true }));
         window.setTimeout(() => window.dispatchEvent(new Event(MENU_IMPORT_EVENT)), 0);
         return;
       case 'export':
@@ -350,13 +389,13 @@ export default function App(): JSX.Element {
         else store.paste();
         return;
       case 'toggleMedia':
-        setHidden((current) => ({ ...current, media: !current.media }));
+        togglePanelRef.current('media');
         return;
       case 'toggleInspector':
-        setHidden((current) => ({ ...current, inspector: !current.inspector }));
+        togglePanelRef.current('inspector');
         return;
       case 'toggleTimeline':
-        setHidden((current) => ({ ...current, timeline: !current.timeline }));
+        togglePanelRef.current('timeline');
         return;
       case 'fullscreenViewer':
         store.setUi({ fullscreenViewer: !store.ui.fullscreenViewer });
@@ -383,8 +422,7 @@ export default function App(): JSX.Element {
     return window.filmora.onMenuCommand((command) => runMenuCommand.current(command));
   }, []);
 
-  const togglePanel = (panel: PanelKey): void =>
-    setHidden((current) => ({ ...current, [panel]: !current[panel] }));
+  const togglePanel = (panel: PanelKey): void => togglePanelRef.current(panel);
 
   return (
     <div className="flex h-full flex-col bg-panel-950">

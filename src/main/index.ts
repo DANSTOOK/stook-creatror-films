@@ -81,8 +81,9 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1680,
     height: 960,
-    minWidth: 1180,
-    minHeight: 700,
+    // Narrow windows fold the side panels away rather than crushing the viewer.
+    minWidth: 1024,
+    minHeight: 640,
     show: false,
     // Automated runs happen off-screen and out of the taskbar (background.ts).
     ...(BACKGROUND ? { x: OFF_SCREEN, y: OFF_SCREEN, skipTaskbar: true } : {}),

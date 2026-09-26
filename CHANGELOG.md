@@ -80,6 +80,17 @@ se comprobó.
     en Resolve. El título «Línea de tiempo» se ve también a 1280 px.
   - Los **menús contextuales** de clip, pista, zona vacía y regla están en
     español; «Enlazar 1 clips» pasa a «Enlazar clips».
+- **Ventanas más pequeñas: el visor no se queda en una miniatura.**
+  - Por debajo de 1440 px los paneles laterales empiezan más estrechos
+    (medios 220 px, inspector 264 px), solo si están a su ancho de siempre:
+    un ancho que se eligió arrastrando se respeta.
+  - Por debajo de 1280 px los paneles laterales se pliegan y sus botones de
+    la barra de título los sacan cuando hacen falta; al volver a una ventana
+    ancha, todo queda como estaba.
+  - En una ventana baja (menos de 900 px) la línea de tiempo, si no se ha
+    tocado, ocupa un tercio del alto en vez de 300 px: a 1366×768 la imagen
+    pasa de 535×301 a 604×340 px.
+  - La ventana puede estrecharse hasta 1024×640 (antes 1180×700).
 - **Una barra de título propia, con la barra de herramientas dentro**, como
   en Final Cut. Antes había dos franjas: la barra de Windows y, debajo, una
   fila de trece botones con texto (Nuevo, Abrir, Guardar, Deshacer, Rehacer,
@@ -221,6 +232,15 @@ se comprobó.
   línea de tiempo por «Split at playhead»: **126/126**. Capturas a 1600 y a
   1280 px (`after-en-*-timeline*.png`, `after-en-1600-menu-*.png`; antes en
   `before-en-1600-timeline.png` y `before-en-1600-menu-*.png`).
+- **Ventanas pequeñas** (`probe-responsive.mjs`): a 1600 px medios 260 e
+  inspector 300; a 1366 px, 220 y 264; a 1180 px los dos plegados y el visor
+  con 1168 px de ancho; su botón devuelve el inspector y queda pulsado; a
+  1024 px la barra de la línea de tiempo cabe sin desbordarse; y de vuelta a
+  1600 px todo está como antes. **6/6.** Pruebas unitarias nuevas en
+  `LayoutSizes.test.ts` (5). La batería de interfaz, con sus pruebas de
+  arrastrar bordes, restablecer con doble clic y recordar el ancho en una
+  sesión nueva: **126/126**. Capturas `after-en-1366-editor.png`,
+  `after-en-1180-*.png` y `after-en-1024-editor.png`.
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto

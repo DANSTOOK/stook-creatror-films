@@ -42,6 +42,42 @@ export const LAYOUT_LIMITS: Record<LayoutKey, Limit> = {
 export const MIN_PREVIEW_WIDTH = 320;
 export const MIN_PREVIEW_HEIGHT = 200;
 
+/**
+ * Smaller windows. Below NARROW_WINDOW_PX the side panels start narrower -
+ * only where they are at their default width: a width somebody chose is
+ * kept. Below COMPACT_WINDOW_PX they fold away and the title bar's buttons
+ * bring them back on demand, so the viewer never shrinks to a thumbnail,
+ * which is what a 1280px window with both panels open used to leave it.
+ */
+export const NARROW_WINDOW_PX = 1440;
+export const COMPACT_WINDOW_PX = 1280;
+export const NARROW_WIDTHS = { mediaWidth: 220, inspectorWidth: 264 } as const;
+/**
+ * In a short window the picture is limited by height, not width: an
+ * untouched timeline takes about a third of the window there instead of its
+ * usual 300px (a 760px laptop window gets 258px, and the picture the rest).
+ */
+export const SHORT_WINDOW_PX = 900;
+export const SHORT_TIMELINE_SHARE = 0.34;
+
+/** The layout as a window this wide shows it: narrower side panels where they are untouched. */
+export function responsiveLayout(layout: PanelLayout, windowWidth: number, windowHeight = 0): PanelLayout {
+  const short = windowHeight > 0 && windowHeight < SHORT_WINDOW_PX && layout.timelineHeight === DEFAULT_LAYOUT.timelineHeight;
+  const timelineHeight = short
+    ? Math.max(LAYOUT_LIMITS.timelineHeight.min, Math.round(windowHeight * SHORT_TIMELINE_SHARE))
+    : layout.timelineHeight;
+  if (!(windowWidth > 0) || windowWidth >= NARROW_WINDOW_PX) return { ...layout, timelineHeight };
+  return {
+    ...layout,
+    timelineHeight,
+    mediaWidth: layout.mediaWidth === DEFAULT_LAYOUT.mediaWidth ? NARROW_WIDTHS.mediaWidth : layout.mediaWidth,
+    inspectorWidth: layout.inspectorWidth === DEFAULT_LAYOUT.inspectorWidth ? NARROW_WIDTHS.inspectorWidth : layout.inspectorWidth,
+  };
+}
+
+/** A window too narrow for both side panels and a usable viewer. */
+export const isCompactWindow = (windowWidth: number): boolean => windowWidth > 0 && windowWidth < COMPACT_WINDOW_PX;
+
 /** Keyboard step for a focused border; Shift moves four times as far. */
 export const LAYOUT_STEP_PX = 16;
 
