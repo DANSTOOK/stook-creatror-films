@@ -52,6 +52,7 @@ import { useIsDirty, useSessionStore } from './store/useSessionStore';
 import { t, useLanguageStore, useT } from './i18n';
 import { notify } from './notifications/notifications';
 import { NotificationsButton, Toaster } from './notifications/Toaster';
+import { TooltipLayer } from './components/Tooltip/Tooltip';
 import { MENU_IMPORT_EVENT } from './components/MediaLibrary/MediaLibrary';
 import type { MenuCommand } from '@shared/types/ipc';
 
@@ -613,6 +614,7 @@ export default function App(): JSX.Element {
 
       <UnsavedChangesDialog />
       <Toaster />
+      <TooltipLayer />
     </div>
   );
 }

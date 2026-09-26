@@ -16,12 +16,40 @@ fotogramas exportados correctos).
 
 ---
 
-## Sin publicar — Rediseño, fase 1: orden y coherencia
+## Sin publicar — Rediseño, fase 2: aspecto Mac
+
+El segundo paso del rediseño: la forma del editor. Una barra de título propia
+con la barra de herramientas dentro, como Final Cut; paneles con menos ruido;
+un inspector por pestañas; y controles dibujados por el editor en vez de los
+de Windows. Todo lo que se tocó está en los dos idiomas. Cada punto dice cómo
+se comprobó.
+
+### Cambiado
+
+- **Casillas, interruptores, listas y deslizadores con el aspecto del
+  editor.** Eran los de Windows: una casilla clara y un deslizador azul grueso
+  en medio de un editor oscuro, distintos de un diálogo a otro. Ahora la
+  casilla es un cuadro de 14 px con el borde a 3,7:1, un ajuste de encendido y
+  apagado es un interruptor (como en el inspector de Resolve), las listas
+  llevan su flecha y los deslizadores son una línea fina con un botón redondo;
+  el valor se lee en el número de al lado. Siguen siendo controles nativos por
+  debajo: el teclado, el lector de pantalla y las pruebas funcionan igual.
+  Las listas desplegadas, que dibuja el sistema, salen oscuras.
+
+### Cómo se comprobó
+
+- **Controles:** capturas del mezclador, los ajustes del proyecto y la
+  exportación con los controles nuevos (`after-controls-*.png` en la carpeta
+  de la fase 2 del bloc de notas de la sesión). El interruptor de «auto
+  ducking» se marcó y desmarcó con `check()`/`uncheck()` de Playwright, igual
+  que en la comprobación de interfaz.
+
+### También sin publicar — Rediseño, fase 1: orden y coherencia
 
 El primero de tres pasos del rediseño: poner orden, sin cambiar todavía la
 forma del editor. Cada punto dice cómo se comprobó.
 
-### Arreglado
+#### Arreglado
 
 - **Ctrl+R ya no recarga la aplicación.** El menú que Electron trae de serie
   seguía activo (oculto, pero activo): su «Ver > Recargar» estaba en Ctrl+R,
@@ -35,7 +63,7 @@ forma del editor. Cada punto dice cómo se comprobó.
   lista, el botón y el menú *Edición* dicen «Ctrl+Y o Ctrl+Mayús+Z» (el menú
   solo puede mostrar uno y muestra Ctrl+Y).
 
-### Cambiado
+#### Cambiado
 
 - **La barra de título de Windows es oscura siempre.** Seguía el tema de
   Windows, así que con Windows en modo claro era una franja blanca encima de
@@ -153,7 +181,7 @@ forma del editor. Cada punto dice cómo se comprobó.
   relleno de 32 px, el único control de ese tamaño. Casillas y deslizadores
   usan el mismo azul.
 
-### Añadido
+#### Añadido
 
 - **Un menú de aplicación de verdad: Archivo, Edición, Ver, Ventana, Ayuda**
   (se muestra con Alt, como antes). Cada opción ejecuta la misma acción que su
@@ -178,7 +206,7 @@ forma del editor. Cada punto dice cómo se comprobó.
   está abajo, en *Sigue en inglés*). Las fechas y horas siguen el formato del
   idioma elegido.
 
-### Decisiones tomadas
+#### Decisiones tomadas
 
 - **La barra de menús sigue oculta hasta pulsar Alt**, como antes; el botón
   *Ventana* del editor se queda como menú rápido con lo mismo que *Ver* y
@@ -209,7 +237,7 @@ forma del editor. Cada punto dice cómo se comprobó.
   con la rotación del clip (no estaba en la lista, pero es el mismo arreglo de
   unidades).
 
-### Sigue en inglés
+#### Sigue en inglés
 
 Lo que todavía no está traducido (fases 2 y 3):
 - **Panel de medios:** título, Importar, Añadir carpeta, contenedores, barra
@@ -230,7 +258,7 @@ Lo que todavía no está traducido (fases 2 y 3):
   FFmpeg (motivos de un error de importación o de exportación) y los títulos
   y filtros de los diálogos nativos de abrir y guardar.
 
-### Cómo se comprobó
+#### Cómo se comprobó
 
 - **Menú (punto 1):** una prueba (`probe-menu.mjs`) que envía las teclas con
   `webContents.sendInputEvent`, el mismo camino que una tecla real a través

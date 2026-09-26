@@ -103,6 +103,146 @@
     outline: 2px solid theme('colors.accent.hover');
     outline-offset: 1px;
   }
+
+  /*
+    Native controls, drawn in the editor's own style.
+
+    They stay real <input> and <select> elements - the keyboard, screen
+    readers and the tests' check/fill/selectOption all keep working - and only
+    their paint changes. The native look was a light Windows checkbox and a
+    thick blue slider in the middle of a dark editor, and it differed from
+    one dialog to the next. `color-scheme: dark` makes what is still drawn by
+    the system (a select's open list, a date picker) dark as well.
+  */
+  :root {
+    color-scheme: dark;
+  }
+
+  /* A box: 14px, the border at 3.7:1 on the panels (slate-500 on panel-900). */
+  input[type='checkbox'] {
+    appearance: none;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    border: 1px solid theme('colors.slate.500');
+    border-radius: 3px;
+    background: theme('colors.panel.950') center / 10px 10px no-repeat;
+    cursor: pointer;
+    transition: background-color 120ms var(--ease-standard), border-color 120ms var(--ease-standard);
+  }
+
+  input[type='checkbox']:hover:not(:disabled) {
+    border-color: theme('colors.slate.400');
+  }
+
+  input[type='checkbox']:checked {
+    border-color: theme('colors.accent.DEFAULT');
+    background-color: theme('colors.accent.DEFAULT');
+    /* A white tick, inline: no image file, no network. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.6 3.6' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+
+  input[type='checkbox']:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+
+  /*
+    An on/off setting is a switch, as in Resolve's inspector and every
+    settings pane on the Mac. Still a checkbox underneath (role="switch" says
+    what it is). The thumb is a light dot on either side - it carries the
+    state, so it is what has to stand out: slate-200 on the off track is
+    9.6:1, white on the accent 5.2:1.
+  */
+  input[type='checkbox'][role='switch'] {
+    width: 26px;
+    height: 16px;
+    border-radius: 9999px;
+    border-color: theme('colors.slate.500');
+    background-color: theme('colors.panel.700');
+    background-image: radial-gradient(circle, theme('colors.slate.200') 4.5px, transparent 5px);
+    background-size: 16px 14px;
+    background-position: 0 center;
+    transition: background-color 140ms var(--ease-standard), background-position 160ms var(--ease-out);
+  }
+
+  input[type='checkbox'][role='switch']:checked {
+    border-color: theme('colors.accent.DEFAULT');
+    background-color: theme('colors.accent.DEFAULT');
+    background-image: radial-gradient(circle, white 4.5px, transparent 5px);
+    background-position: 9px center;
+  }
+
+  /*
+    Sliders: a thin track and a small round knob, as Final Cut and Resolve
+    draw them - the value is read in the number beside it, not in the bar.
+    A slider that knows its value sets --fill (0-100%) and the track fills
+    to it in the accent.
+  */
+  input[type='range'] {
+    appearance: none;
+    height: 16px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 9999px;
+    background: linear-gradient(
+      to right,
+      theme('colors.accent.hover') 0 var(--fill, 0%),
+      theme('colors.slate.600') var(--fill, 0%) 100%
+    );
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4.5px;
+    border-radius: 9999px;
+    border: 1px solid rgb(0 0 0 / 0.35);
+    background: theme('colors.slate.100');
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+    transition: transform 90ms var(--ease-standard);
+  }
+
+  input[type='range']:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+  }
+
+  input[type='range']:focus-visible {
+    outline: none;
+  }
+
+  input[type='range']:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid theme('colors.accent.hover');
+    outline-offset: 1px;
+  }
+
+  input[type='range']:disabled {
+    cursor: default;
+    opacity: 0.4;
+  }
+
+  /* A select reads as a field with a chevron, not as a Windows combo box. */
+  select {
+    appearance: none;
+    padding-right: 24px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+    background-size: 12px 12px;
+    cursor: pointer;
+  }
+
+  select option {
+    background-color: theme('colors.panel.800');
+    color: theme('colors.slate.200');
+  }
 }
 
 @keyframes scf-fade-in {
