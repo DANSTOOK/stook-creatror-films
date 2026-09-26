@@ -420,16 +420,19 @@ export function MediaLibrary(): JSX.Element {
         <span className="min-w-0 flex-1 truncate">{tr('media.title')}</span>
         <div className="flex shrink-0 items-center gap-1 font-normal">
           <ProxyBar />
-          {/* Import stays one click away: it is what the panel is for. */}
+          {/*
+            Import stays one click away - it is what the panel is for - as an
+            icon: with its word as well, the panel's own title no longer fit
+            in a 220px panel. The empty panel still says it in full.
+          */}
           <button
             type="button"
-            className="tool-button tool-button-dense px-2"
+            className="tool-button tool-button-dense w-6 px-0"
             onClick={handleImportClick}
             disabled={busy}
-            {...tip(tr('media.import'), { shortcut: 'Ctrl+I', hint: tr('media.importHint'), named: false })}
+            {...tip(busy ? tr('media.importing') : tr('media.import'), { shortcut: 'Ctrl+I', hint: tr('media.importHint') })}
           >
             <Import size={14} />
-            {busy ? tr('media.importing') : tr('media.import')}
           </button>
           <button
             ref={addButtonRef}

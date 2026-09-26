@@ -135,8 +135,10 @@ se comprobó.
     interruptor de editar con proxies). Solo aparece si hay metraje pesado.
   - Los **dos iconos de carpeta idénticos y sin texto** se juntan en un solo
     «+»: *Importar archivos…* (Ctrl+I), *Importar carpeta…* y *Nueva
-    carpeta*. «Importar» sigue a un clic, con su texto: es para lo que está
-    el panel.
+    carpeta*. «Importar» sigue a un clic, como icono (con su palabra, el
+    título del panel no cabía en 220 px); el panel vacío lo dice entero. El
+    indicador de proxies muestra «0/3» y su nombre completo en la
+    descripción.
   - **Las carpetas ya no salen dos veces.** El árbol es la barra lateral y la
     lista de abajo solo muestra clips, como el explorador de Final Cut; encima
     de la lista, el nombre de la carpeta y cuántos clips tiene. Las filas del
@@ -152,7 +154,10 @@ se comprobó.
   llevan su flecha y los deslizadores son una línea fina con un botón redondo;
   el valor se lee en el número de al lado. Siguen siendo controles nativos por
   debajo: el teclado, el lector de pantalla y las pruebas funcionan igual.
-  Las listas desplegadas, que dibuja el sistema, salen oscuras.
+  Las listas desplegadas, que dibuja el sistema, salen oscuras. Los campos
+  numéricos pierden las flechitas de Windows, que ocupaban 15 px de cada
+  campo y cortaban «100» en las parejas X/Y del inspector: las flechas del
+  teclado, la rueda y arrastrar la etiqueta hacen lo mismo mejor.
 
 ### Añadido
 

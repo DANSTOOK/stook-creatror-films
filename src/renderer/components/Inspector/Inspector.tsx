@@ -139,7 +139,7 @@ function NumberInput({ id, value, min, max, step = 0.01, unit, factor = 1, label
         id={id}
         type="number"
         aria-label={label}
-        className={`numeric-input timecode h-control-dense pl-1.5 text-right ${unit ? 'pr-5' : 'pr-1.5'}`}
+        className={`numeric-input timecode h-control-dense pl-1.5 text-right ${unit ? 'pr-4' : 'pr-1.5'}`}
         value={shown}
         min={min === undefined ? undefined : min * factor}
         max={max === undefined ? undefined : max * factor}
@@ -147,7 +147,7 @@ function NumberInput({ id, value, min, max, step = 0.01, unit, factor = 1, label
         onChange={(event) => onChange(Number(event.target.value) / factor)}
       />
       {unit && (
-        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center text-2xs text-slate-400">
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-2xs text-slate-400">
           {unit}
         </span>
       )}
@@ -160,7 +160,7 @@ function NumberRow(props: Omit<NumberInputProps, 'id'> & { label: string }): JSX
   const id = useId();
   const step = props.step ?? 0.01;
   return (
-    <div className="grid grid-cols-[88px_1fr] items-center gap-2">
+    <div className="grid grid-cols-[76px_1fr] items-center gap-2">
       <ScrubLabel htmlFor={id} value={props.value} step={step / (props.factor ?? 1)} onChange={props.onChange} className="field-label truncate">
         {props.label}
       </ScrubLabel>
@@ -203,7 +203,7 @@ function PairRow({
     </span>
   );
   return (
-    <div className="grid grid-cols-[88px_1fr] items-center gap-2">
+    <div className="grid grid-cols-[76px_1fr] items-center gap-2">
       <span className="field-label truncate">{label}</span>
       <span className="flex min-w-0 gap-2">
         {axis(xId, xLabel, 'X', x, 'x')}
@@ -239,7 +239,7 @@ function SliderRow({
   // boost/cut is centred, and a fill from the left would say the wrong thing.
   const fill = min >= 0 ? { '--fill': `${((value - min) / (max - min || 1)) * 100}%` } : undefined;
   return (
-    <div className="grid grid-cols-[88px_1fr_64px] items-center gap-2">
+    <div className="grid grid-cols-[76px_1fr_64px] items-center gap-2">
       <ScrubLabel htmlFor={id} value={value} step={step} onChange={(next) => onChange(Math.min(max, Math.max(min, next)))} className="field-label truncate">
         {label}
       </ScrubLabel>
@@ -275,7 +275,7 @@ function SliderRow({
 
 function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }): JSX.Element {
   return (
-    <label className="grid grid-cols-[88px_1fr] items-center gap-2 text-xs text-slate-300">
+    <label className="grid grid-cols-[76px_1fr] items-center gap-2 text-xs text-slate-300">
       <span className="field-label truncate">{label}</span>
       <input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
@@ -367,7 +367,7 @@ function InfoRows({ clip, asset, fps }: { clip: Clip; asset: MediaAsset | undefi
   if (asset?.sourcePath) rows.push([t('inspector.infoFile'), asset.sourcePath]);
 
   return (
-    <dl className="grid grid-cols-[88px_1fr] gap-x-2 gap-y-1.5 p-3 text-2xs">
+    <dl className="grid grid-cols-[76px_1fr] gap-x-2 gap-y-1.5 p-3 text-2xs">
       {rows.map(([name, value]) => (
         <div key={name} className="contents">
           <dt className="text-slate-400">{name}</dt>
@@ -632,7 +632,7 @@ export function Inspector(): JSX.Element {
           onReset={() => resetEffect('mask')}
           onRemove={() => removeEffect('mask')}
         >
-          <label className="grid grid-cols-[88px_1fr] items-center gap-2">
+          <label className="grid grid-cols-[76px_1fr] items-center gap-2">
             <span className="field-label">{t('inspector.shape')}</span>
             <select
               className="numeric-input h-control-dense"

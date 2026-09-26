@@ -228,6 +228,17 @@
     opacity: 0.4;
   }
 
+  /*
+    Number fields without the spin arrows. They took 15px of every field -
+    enough to clip "100" in the inspector's X/Y pairs - for something the
+    arrow keys, the wheel and dragging the label all do better.
+  */
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
   /* A select reads as a field with a chevron, not as a Windows combo box. */
   select {
     appearance: none;

@@ -76,10 +76,11 @@ export function ProxyBar(): JSX.Element | null {
           ready === heavy.length ? 'text-emerald-300' : ''
         }`}
         onClick={() => setOpen((value) => !value)}
-        {...tip(t('proxy.label', { ready, total: heavy.length }), { hint: t('proxy.hint'), named: false })}
+        // Short in the header ("0/3"); the whole name is its label and its tooltip.
+        {...tip(t('proxy.label', { ready, total: heavy.length }), { hint: `${t('proxy.label', { ready, total: heavy.length })} - ${t('proxy.hint')}` })}
       >
         {busy ? <Loader2 size={12} className="animate-spin" /> : <Gauge size={12} />}
-        {t('proxy.label', { ready, total: heavy.length })}
+        {ready}/{heavy.length}
       </button>
 
       <div
