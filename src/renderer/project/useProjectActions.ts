@@ -307,7 +307,7 @@ export function useProjectActions(): ProjectActions {
     await pendingRecord;
     await withViewTransition(() => {
       useProjectStore.getState().newProject();
-      useSessionStore.getState().startProject(null, 'Untitled project', currentMarker());
+      useSessionStore.getState().startProject(null, t('home.untitled'), currentMarker());
     });
     return true;
   }, [confirmLeave]);

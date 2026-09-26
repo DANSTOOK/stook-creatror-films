@@ -1,4 +1,5 @@
 import type { MediaAsset, Track, TrackType } from '@shared/types';
+import { trackName, trackNameNumber } from '@renderer/i18n/defaultNames';
 
 /**
  * How tracks are laid out on the timeline, and what may go on each.
@@ -75,16 +76,18 @@ export function insertionRow(rows: readonly Track[], type: TrackType, row?: numb
   return Math.min(Math.max(row, first), Math.max(first, last + 1));
 }
 
-/** "Video 3", "Audio 2": one more than the highest number already used. */
+/**
+ * "Video 3", "Audio 2": one more than the highest number already used, in
+ * the language on screen (i18n/defaultNames.ts).
+ */
 export function nextTrackName(tracks: readonly Track[], type: TrackType): string {
-  const label = `${type[0].toUpperCase()}${type.slice(1)}`;
-  const pattern = new RegExp(`^${label} (\\d+)$`);
   let highest = tracks.filter((track) => track.type === type).length;
   for (const track of tracks) {
-    const match = pattern.exec(track.name);
-    if (match) highest = Math.max(highest, Number(match[1]));
+    if (track.type !== type) continue;
+    const number = trackNameNumber(type, track.name);
+    if (number !== null) highest = Math.max(highest, number);
   }
-  return `${label} ${highest + 1}`;
+  return trackName(type, highest + 1);
 }
 
 /**

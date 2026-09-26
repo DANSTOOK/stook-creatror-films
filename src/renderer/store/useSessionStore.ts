@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { isDirty, librarySignature, type SavedMarker } from '@renderer/project/projectSession';
 import { useHistoryStore } from './useHistoryStore';
 import { useProjectStore } from './useProjectStore';
+import { t } from '@renderer/i18n';
 
 /**
  * Which screen is showing, and which project file is open.
@@ -47,7 +48,7 @@ function initialView(): AppView {
 export const useSessionStore = create<SessionState>((set, get) => ({
   view: initialView(),
   projectPath: null,
-  projectName: 'Untitled project',
+  projectName: t('home.untitled'),
   saved: null,
   unsavedPrompt: null,
 
@@ -60,7 +61,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   closeProject() {
-    set({ projectPath: null, projectName: 'Untitled project', saved: null, view: 'home' });
+    set({ projectPath: null, projectName: t('home.untitled'), saved: null, view: 'home' });
   },
 
   markSaved(marker, path, name) {

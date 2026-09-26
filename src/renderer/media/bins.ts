@@ -1,5 +1,6 @@
 import type { MediaAsset, MediaBin } from '@shared/types';
 import { createId } from '@shared/utils/id';
+import { binName } from '@renderer/i18n/defaultNames';
 
 /**
  * Bins: folders in the media library, as DaVinci Resolve's Media Pool has them.
@@ -17,12 +18,15 @@ import { createId } from '@shared/utils/id';
  * Pure, so it is tested directly.
  */
 
-/** Name for a new bin: "Bin 1", "Bin 2"... the first one not taken among its siblings. */
+/**
+ * Name for a new bin: "Bin 1", "Bin 2"... ("Carpeta 1" in Spanish) the first
+ * one not taken among its siblings.
+ */
 export function nextBinName(bins: readonly MediaBin[], parentId: string | null): string {
   const taken = new Set(childBins(bins, parentId).map((bin) => bin.name.toLowerCase()));
   let index = 1;
-  while (taken.has(`bin ${index}`)) index += 1;
-  return `Bin ${index}`;
+  while (taken.has(binName(index).toLowerCase())) index += 1;
+  return binName(index);
 }
 
 /** The bins directly inside `parentId` (null for the top level), sorted by name as a person sorts. */

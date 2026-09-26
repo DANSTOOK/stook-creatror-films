@@ -21,6 +21,7 @@ import { createId } from '@shared/utils/id';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
+import { markerName, trackName } from '@renderer/i18n/defaultNames';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -172,7 +173,7 @@ export function defaultBusForName(name: string, type: TrackType = 'audio'): Audi
 }
 
 export function createTrack(type: TrackType, order: number, name?: string): Track {
-  const resolved = name ?? `${type[0].toUpperCase()}${type.slice(1)} ${order + 1}`;
+  const resolved = name ?? trackName(type, order + 1);
   return {
     id: createId('track'),
     name: resolved,
@@ -193,7 +194,7 @@ export function createMarker(frame: number, label?: string, color?: string): Mar
   return {
     id: createId('marker'),
     frame: rounded,
-    label: label ?? `Marker ${rounded}`,
+    label: label ?? markerName(rounded),
     color: color ?? DEFAULT_MARKER_COLOR,
   };
 }
@@ -274,9 +275,9 @@ export function createEmptyProject(
   fps: ProjectState['fps'] = 30,
 ): ProjectState {
   const tracks = [
-    createTrack('video', 0, 'Video 1'),
-    createTrack('video', 1, 'Video 2'),
-    createTrack('audio', 2, 'Audio 1'),
+    createTrack('video', 0, trackName('video', 1)),
+    createTrack('video', 1, trackName('video', 2)),
+    createTrack('audio', 2, trackName('audio', 1)),
   ];
 
   return {
@@ -339,7 +340,7 @@ export function normalizeProject(project: ProjectState): ProjectState {
     .map((marker, index) => ({
       id: marker?.id ?? createId('marker'),
       frame: Math.max(0, Math.round(finite(marker?.frame, 0))),
-      label: marker?.label ?? `Marker ${index + 1}`,
+      label: marker?.label ?? markerName(index + 1),
       color: marker?.color ?? DEFAULT_MARKER_COLOR,
     }))
     .sort((a, b) => a.frame - b.frame);

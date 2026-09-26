@@ -606,7 +606,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.projectsCreate, async (_event, folder: unknown, name: unknown, contents: unknown): Promise<string> => {
     if (typeof folder !== 'string' || !allowedFolders.has(folder)) throw new Error('Choose the folder for the project first');
     if (typeof contents !== 'string') throw new Error('Nothing to write');
-    const base = cleanProjectName(typeof name === 'string' ? name : '') || 'Untitled project';
+    const base = cleanProjectName(typeof name === 'string' ? name : '') || mt('home.untitled');
     await mkdir(folder, { recursive: true });
     let target = join(folder, `${base}.scf`);
     for (let copy = 2; await stat(target).then(() => true, () => false); copy += 1) {
@@ -746,7 +746,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const entry = snapshot as { name?: unknown; path?: unknown; contents?: unknown };
     if (typeof entry.contents !== 'string' || entry.contents.length === 0) return;
     await recovery.write({
-      name: typeof entry.name === 'string' && entry.name.trim() ? entry.name : 'Untitled project',
+      name: typeof entry.name === 'string' && entry.name.trim() ? entry.name : mt('home.untitled'),
       path: typeof entry.path === 'string' ? entry.path : null,
       savedAt: new Date().toISOString(),
       contents: entry.contents,
@@ -785,7 +785,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       const previous = findRecent(list, project.path);
       const { list: next, dropped } = recordRecent(list, {
         path: project.path,
-        name: typeof project.name === 'string' && project.name.trim() ? project.name.trim() : 'Untitled project',
+        name: typeof project.name === 'string' && project.name.trim() ? project.name.trim() : mt('home.untitled'),
         lastOpened: new Date().toISOString(),
         width: Number(project.width) || 0,
         height: Number(project.height) || 0,
