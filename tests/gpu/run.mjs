@@ -119,7 +119,7 @@ async function runPreference(preference) {
       ...process.env,
       FILMORA_GPU: preference,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
-      ELECTRON_RUN_AS_NODE: undefined, SCF_SKIP_HOME: '1', SCF_NO_CLOSE_PROMPT: '1',
+      ELECTRON_RUN_AS_NODE: undefined, SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1', SCF_SKIP_HOME: '1', SCF_NO_CLOSE_PROMPT: '1',
     },
   });
 

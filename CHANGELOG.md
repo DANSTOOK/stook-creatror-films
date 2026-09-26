@@ -67,8 +67,31 @@ se comprobó.
   debajo: el teclado, el lector de pantalla y las pruebas funcionan igual.
   Las listas desplegadas, que dibuja el sistema, salen oscuras.
 
+### Añadido
+
+- **Las pruebas ya no se ponen delante.** Con `SCF_BACKGROUND=1` la aplicación
+  abre su ventana fuera de la pantalla, sin tomar el foco y sin aparecer en la
+  barra de tareas; si una prueba la centra o la cambia de tamaño, vuelve a
+  quedar fuera. Sigue pintando al ritmo de la pantalla: se desactivan la
+  limitación en segundo plano y el cálculo de oclusión de Chromium, que
+  bajaría una ventana tapada a un fotograma por segundo. Todas las baterías
+  (interfaz, extremo a extremo, estrés, movimiento, GPU, metraje largo y
+  rendimiento) arrancan así; `SCF_BACKGROUND=0` devuelve la ventana visible
+  para mirar una ejecución. Un arranque normal no cambia.
+
 ### Cómo se comprobó
 
+- **Modo en segundo plano** (`probe-background.mjs`): ninguna ventana nuestra
+  tiene el foco; la ventana está visible (pinta) pero en ninguna pantalla
+  (-32000, -32000) y con el tamaño pedido; centrarla y ponerle otras medidas
+  la deja fuera, con las medidas nuevas; la página cuenta como visible; una
+  captura de la página funciona; y requestAnimationFrame va a 178,6 fps
+  (mediana 5,60 ms, p95 5,70 ms) en una pantalla de 180 Hz. **7/7.** La prueba
+  de movimiento en segundo plano: **13/13**, con las mismas medianas y p95 que
+  con la ventana visible (5,6 y 5,7-5,8 ms); los peores fotogramas sueltos
+  llegan a 28-55 ms frente a 6-44 ms de la última ejecución visible (con el
+  PC en uso), con un solo fotograma largo, al ir y volver de la pantalla de
+  inicio, y ninguna congelación.
 - **Barra de título, con el ratón de verdad** (`probe-titlebar.mjs`, que
   mueve el puntero de Windows, no el de Playwright): el área de la barra que
   deja la superposición de Windows es de 1144 px en una ventana de 1280, y

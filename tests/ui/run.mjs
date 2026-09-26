@@ -232,7 +232,7 @@ async function main() {
     // ELECTRON_RUN_AS_NODE is cleared for the same reason as in the e2e runner:
     // the child must start as Electron even when this script was launched by an
     // Electron binary running in Node mode.
-    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined },
+    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined, SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1' },
   });
 
   const consoleIssues = [];
@@ -2313,6 +2313,7 @@ async function main() {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       ELECTRON_RUN_AS_NODE: undefined,
+      SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1',
       SCF_NO_CLOSE_PROMPT: '1',
     },
   });

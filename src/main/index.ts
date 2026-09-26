@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electro
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { installAppMenu, menuLanguage } from './appMenu';
+import { BACKGROUND, OFF_SCREEN, applyBackgroundSwitches, keepOffScreen } from './background';
 import { translate } from '@shared/i18n';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
@@ -46,6 +47,7 @@ if (!app.requestSingleInstanceLock()) {
 // silently ignored - which is where the HEVC switch used to live, inside
 // whenReady, doing nothing.
 applyGpuPreferenceAtStartup();
+applyBackgroundSwitches();
 registerMediaSchemeAsPrivileged();
 // Hardware video decode keeps scrubbing responsive on large timelines.
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
@@ -82,6 +84,8 @@ function createWindow(): void {
     minWidth: 1180,
     minHeight: 700,
     show: false,
+    // Automated runs happen off-screen and out of the taskbar (background.ts).
+    ...(BACKGROUND ? { x: OFF_SCREEN, y: OFF_SCREEN, skipTaskbar: true } : {}),
     backgroundColor: '#0d0f14',
     title: 'STOOK CREATOR FILMS',
     // The project's own logo in the title bar and taskbar, instead of
@@ -102,10 +106,14 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: false,
       webgl: true,
+      // Off-screen and unfocused, a test window must still paint at full rate.
+      ...(BACKGROUND ? { backgroundThrottling: false } : {}),
     },
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  // In background mode shown without taking the focus, and kept off-screen.
+  keepOffScreen(mainWindow);
+  mainWindow.once('ready-to-show', () => (BACKGROUND ? mainWindow?.showInactive() : mainWindow?.show()));
 
   // External links open in the user's browser, never inside the editor shell.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -182,7 +190,8 @@ app.whenReady().then(() => {
   // The full-screen viewer takes the whole screen, not just the window, as
   // Final Cut's Play Full Screen and Resolve's Cinema Viewer do.
   ipcMain.on(IPC.windowFullScreen, (_event, on: unknown) => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(on === true);
+    // Not in background mode: full screen would put the window on a display.
+    if (mainWindow && !mainWindow.isDestroyed() && !BACKGROUND) mainWindow.setFullScreen(on === true);
   });
 
   ipcMain.handle(IPC.closeAfterSave, () => {
@@ -200,7 +209,7 @@ app.whenReady().then(() => {
 });
 
 app.on('second-instance', () => {
-  if (!mainWindow) return;
+  if (!mainWindow || BACKGROUND) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.focus();
 });

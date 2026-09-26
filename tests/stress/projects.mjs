@@ -118,7 +118,7 @@ async function main() {
     const application = await electron.launch({
       args: ['--js-flags=--expose-gc', `--user-data-dir=${profileDir}`, join(projectRoot, 'dist-electron/main/index.js')],
       cwd: projectRoot,
-      env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined, SCF_SKIP_HOME: undefined, SCF_NO_CLOSE_PROMPT: undefined },
+      env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined, SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1', SCF_SKIP_HOME: undefined, SCF_NO_CLOSE_PROMPT: undefined },
     });
     const page = await application.firstWindow();
     page.on('console', (message) => {

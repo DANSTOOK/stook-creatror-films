@@ -311,6 +311,7 @@ function runElectron() {
         // would make the harness start as plain Node, where `app` does not
         // exist and the run dies before it renders anything.
         ELECTRON_RUN_AS_NODE: undefined,
+        SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1',
       },
       // Inherit stdio for stderr so Electron's own warnings are visible.
       stdio: ['ignore', 'pipe', 'pipe'],

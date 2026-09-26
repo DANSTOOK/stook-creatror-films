@@ -8,6 +8,7 @@ import {
   type YouTubeUploadResult,
 } from '@shared/types/ipc';
 import { isFinishedExport } from '../ipc/fileSystem';
+import { BACKGROUND } from '../background';
 import { GOOGLE_ENDPOINTS, YouTubeClient, type OAuthClient, type YouTubeEndpoints } from './YouTubeClient';
 
 /**
@@ -103,7 +104,8 @@ export function registerYouTubeHandlers(getWindow: () => BrowserWindow | null): 
     await client.signIn(stored);
     // The browser has the focus now; bring the editor back.
     const window = getWindow();
-    if (window && !window.isDestroyed()) {
+    // Not in background mode (SCF_BACKGROUND): a test never takes the focus.
+    if (window && !window.isDestroyed() && !BACKGROUND) {
       if (window.isMinimized()) window.restore();
       window.focus();
     }
