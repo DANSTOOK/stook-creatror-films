@@ -18,6 +18,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
+import { tip } from '@renderer/components/Tooltip/Tooltip';
 import type { MediaAsset, MediaBin, MediaKind } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import {
@@ -37,7 +38,7 @@ import { ProxyBar } from './ProxyBar';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { notify } from '@renderer/notifications/notifications';
-import { t } from '@renderer/i18n';
+import { keyLabel, t, useT } from '@renderer/i18n';
 
 /**
  * The media library: asset import, bins, and the transparent-asset toggle.
@@ -50,6 +51,13 @@ import { t } from '@renderer/i18n';
  * top, imports landing in the bin being looked at, clips dragged onto a bin to
  * file them, and a folder added with its subfolders turning into bins of the
  * same names. See media/bins.ts for the rules.
+ *
+ * The bin list is the sidebar and the list below it shows clips only, as
+ * Final Cut's browser does: folders used to be listed twice, in the tree and
+ * again as rows above the clips. The header has one "+" for everything that
+ * adds to the library (files, a folder, a new bin) where there were two
+ * identical unlabelled folder icons, and proxies are a small indicator there
+ * rather than a strip across the panel.
  */
 
 const KIND_ICONS: Record<MediaKind, typeof FileVideo> = {
@@ -78,7 +86,9 @@ export function MediaLibrary(): JSX.Element {
   const removeAsset = useProjectStore((state) => state.removeAsset);
   const setCurrentBin = useProjectStore((state) => state.setCurrentBin);
 
+  const tr = useT();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const [busy, setBusy] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -96,6 +106,7 @@ export function MediaLibrary(): JSX.Element {
   useFlip(assetListRef, visibleAssets.map((asset) => asset.id).join('|'));
   const subBins = useMemo(() => childBins(bins, currentBinId), [bins, currentBinId]);
   const path = useMemo(() => binPath(bins, currentBinId), [bins, currentBinId]);
+  const currentBinName = path.length > 0 ? path[path.length - 1].name : 'Master';
   const libraryEmpty = assets.length === 0 && bins.length === 0;
 
   const applyOutcome = useCallback(
@@ -292,23 +303,23 @@ export function MediaLibrary(): JSX.Element {
   const binMenu = (bin: MediaBin | null): ContextMenuItem[] =>
     bin
       ? [
-          { label: 'New bin inside', icon: FolderPlus, onSelect: () => newBin(bin.id) },
-          { label: 'Rename bin', icon: Pencil, onSelect: () => setRenamingBinId(bin.id) },
+          { label: tr('media.newBinInside'), icon: FolderPlus, onSelect: () => newBin(bin.id) },
+          { label: tr('media.renameBin'), icon: Pencil, onSelect: () => setRenamingBinId(bin.id) },
           { separator: true },
           {
-            label: 'Delete bin (its clips move up)',
+            label: tr('media.deleteBin'),
             icon: Trash2,
             danger: true,
             onSelect: () => useProjectStore.getState().deleteBin(bin.id),
           },
         ]
-      : [{ label: 'New bin', icon: FolderPlus, onSelect: () => newBin(null) }];
+      : [{ label: tr('media.newBin'), icon: FolderPlus, onSelect: () => newBin(null) }];
 
   const renameField = (bin: MediaBin): JSX.Element => (
     <input
       autoFocus
       defaultValue={bin.name}
-      aria-label="Bin name"
+      aria-label={tr('media.binName')}
       className="numeric-input h-6 min-w-0 flex-1"
       onClick={(event) => event.stopPropagation()}
       onFocus={(event) => event.currentTarget.select()}
@@ -337,8 +348,8 @@ export function MediaLibrary(): JSX.Element {
         role="treeitem"
         aria-selected={selected}
         aria-expanded={bin && children.length > 0 ? open : undefined}
-        title={bin ? 'Double-click to rename, right-click for more, drop clips here to file them' : 'Everything not in a bin'}
-        className={`flex h-7 cursor-pointer items-center gap-1 rounded pr-1.5 text-xs ${
+        // 24px rows, the dense size: a sidebar of names, not a list of cards.
+        className={`flex h-6 cursor-pointer items-center gap-1 rounded-control pr-1.5 text-xs ${
           selected ? 'bg-accent/20 text-accent-hover' : 'text-slate-300 hover:bg-panel-800'
         } ${dropBin === id ? 'ring-1 ring-accent' : ''}`}
         style={{ paddingLeft: 4 + depth * BIN_INDENT_PX }}
@@ -350,7 +361,7 @@ export function MediaLibrary(): JSX.Element {
         {bin && children.length > 0 ? (
           <button
             type="button"
-            aria-label={open ? `Collapse ${bin.name}` : `Expand ${bin.name}`}
+            aria-label={tr(open ? 'media.collapse' : 'media.expand', { name: bin.name })}
             className="flex h-5 w-4 shrink-0 items-center justify-center text-slate-400 hover:text-slate-200"
             onClick={(event) => {
               event.stopPropagation();
@@ -390,7 +401,7 @@ export function MediaLibrary(): JSX.Element {
     return all
       .filter((target) => target.id !== currentBinId)
       .map((target) => ({
-        label: `Move to ${target.label}`,
+        label: tr('media.moveTo', { name: target.label }),
         icon: FolderSymlink,
         onSelect: () => useProjectStore.getState().moveAssetsToBin([asset.id], target.id),
       }));
@@ -405,43 +416,50 @@ export function MediaLibrary(): JSX.Element {
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
     >
-      <header className="panel-header justify-between">
-        <span>Media</span>
-        <div className="flex items-center gap-0.5 font-normal">
+      <header className="panel-header">
+        <span className="min-w-0 flex-1 truncate">{tr('media.title')}</span>
+        <div className="flex shrink-0 items-center gap-1 font-normal">
+          <ProxyBar />
+          {/* Import stays one click away: it is what the panel is for. */}
           <button
             type="button"
-            className="tool-button h-7 px-1.5"
-            aria-label="New bin"
-            title="New bin inside the one shown"
-            onClick={() => newBin(currentBinId)}
-          >
-            <FolderPlus size={14} />
-          </button>
-          {hasNativeBridge() && (
-            <button
-              type="button"
-              className="tool-button h-7 px-1.5"
-              aria-label="Add folder and subfolders"
-              title="Add a folder with its subfolders - each folder becomes a bin"
-              onClick={handleFolderClick}
-              disabled={busy}
-            >
-              <FolderInput size={14} />
-            </button>
-          )}
-          <button
-            type="button"
-            className="tool-button h-7"
+            className="tool-button tool-button-dense px-2"
             onClick={handleImportClick}
             disabled={busy}
+            {...tip(tr('media.import'), { shortcut: 'Ctrl+I', hint: tr('media.importHint'), named: false })}
           >
             <Import size={14} />
-            {busy ? 'Importing...' : 'Import'}
+            {busy ? tr('media.importing') : tr('media.import')}
+          </button>
+          <button
+            ref={addButtonRef}
+            type="button"
+            data-testid="media-add-menu"
+            aria-haspopup="menu"
+            aria-expanded={menu !== null && menu.label === tr('media.add')}
+            className="tool-button tool-button-dense w-6 px-0"
+            disabled={busy}
+            onClick={() => {
+              const box = addButtonRef.current?.getBoundingClientRect();
+              openMenu(
+                { preventDefault: () => undefined, clientX: box?.left ?? 0, clientY: (box?.bottom ?? 0) + 4 },
+                [
+                  { label: tr('media.importFiles'), icon: Import, shortcut: keyLabel('Ctrl+I'), onSelect: handleImportClick },
+                  ...(hasNativeBridge()
+                    ? [{ label: tr('media.importFolder'), icon: FolderInput, onSelect: handleFolderClick }]
+                    : []),
+                  { separator: true },
+                  { label: tr('media.newBin'), icon: FolderPlus, onSelect: () => newBin(currentBinId) },
+                ],
+                { label: tr('media.add') },
+              );
+            }}
+            {...tip(tr('media.add'), { hint: tr('media.addHint') })}
+          >
+            <Plus size={15} />
           </button>
         </div>
       </header>
-
-      <ProxyBar />
 
       <input
         ref={fileInputRef}
@@ -475,54 +493,25 @@ export function MediaLibrary(): JSX.Element {
             className="flex w-full flex-col items-center gap-2 rounded border border-dashed border-panel-600 p-6 text-center hover:border-accent hover:bg-panel-800"
           >
             <Upload size={20} className="text-slate-400" />
-            <span className="text-xs text-slate-300">Drop files here</span>
-            <span className="text-2xs leading-relaxed text-slate-400">
-              or click to browse. Video, audio, and transparent PNG sprite sheets.
-            </span>
+            <span className="text-xs text-slate-300">{tr('media.dropHere')}</span>
+            <span className="text-2xs leading-relaxed text-slate-400">{tr('media.dropHint')}</span>
           </button>
         ) : (
           <>
-            {/* Where the list is, and where an import will land. */}
-            <div className="mb-1.5 flex min-w-0 items-center gap-1 px-1 text-2xs text-slate-400">
-              <button type="button" className="shrink-0 hover:text-slate-200" onClick={() => setCurrentBin(null)}>
-                Master
-              </button>
-              {path.map((bin) => (
-                <span key={bin.id} className="flex min-w-0 items-center gap-1">
-                  <ChevronRight size={10} className="shrink-0" />
-                  <button
-                    type="button"
-                    className="truncate hover:text-slate-200"
-                    onClick={() => setCurrentBin(bin.id)}
-                  >
-                    {bin.name}
-                  </button>
-                </span>
-              ))}
+            {/*
+              Which bin the clips are from, and where an import will land.
+              Its folders are in the list above and only there.
+            */}
+            <div className="mb-1.5 flex min-w-0 items-baseline gap-2 px-1">
+              <span className="truncate text-xs font-semibold text-slate-200">{currentBinName}</span>
+              <span className="shrink-0 text-2xs tabular-nums text-slate-400">
+                {tr(visibleAssets.length === 1 ? 'media.oneClip' : 'media.clips', { count: visibleAssets.length })}
+              </span>
             </div>
 
-            {subBins.map((bin) => (
-              <div
-                key={bin.id}
-                className={`mb-1 flex cursor-pointer items-center gap-2 rounded border border-transparent px-2 py-1.5 text-xs text-slate-300 hover:border-panel-600 hover:bg-panel-800 ${
-                  dropBin === bin.id ? 'ring-1 ring-accent' : ''
-                }`}
-                title="Open this bin - or drop clips on it to file them"
-                onClick={() => setCurrentBin(bin.id)}
-                onContextMenu={(event) => openMenu(event, binMenu(bin))}
-                {...binDropProps(bin.id)}
-              >
-                <span className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-panel-950">
-                  <Folder size={16} className="text-slate-400" />
-                </span>
-                <span className="min-w-0 flex-1 truncate">{bin.name}</span>
-                <span className="text-2xs tabular-nums text-slate-400">{countAssetsDeep(assets, bins, bin.id)}</span>
-              </div>
-            ))}
-
-            {visibleAssets.length === 0 && subBins.length === 0 && (
+            {visibleAssets.length === 0 && (
               <p className="px-2 py-6 text-center text-2xs leading-relaxed text-slate-400">
-                This bin is empty. Import here, or drag clips onto a bin in the list above.
+                {tr(subBins.length > 0 ? 'media.onlyBins' : 'media.emptyBin')}
               </p>
             )}
 
@@ -534,7 +523,6 @@ export function MediaLibrary(): JSX.Element {
                     key={asset.id}
                     data-flip-key={asset.id}
                     draggable={!asset.missing}
-                    title={asset.missing ? undefined : 'Drag onto the timeline or a bin, or use + to add it'}
                     onDragStart={(event) => {
                       event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
                       // Copy onto the timeline, move onto a bin.
@@ -549,19 +537,19 @@ export function MediaLibrary(): JSX.Element {
                     onContextMenu={(event) =>
                       openMenu(event, [
                         {
-                          label: 'Add at playhead',
+                          label: tr('media.addAtPlayhead'),
                           icon: Plus,
                           disabled: asset.missing,
                           onSelect: () => addAtPlayhead(asset),
                         },
                         {
-                          label: 'Add to end of track',
+                          label: tr('media.addToEnd'),
                           icon: ArrowRightToLine,
                           disabled: asset.missing,
                           onSelect: () => useProjectStore.getState().appendAsset(asset),
                         },
                         {
-                          label: 'Add on a new track',
+                          label: tr('media.addOnNewTrack'),
                           icon: Rows3,
                           disabled: asset.missing,
                           onSelect: () => useProjectStore.getState().addAssetOnNewTrack(asset),
@@ -570,7 +558,7 @@ export function MediaLibrary(): JSX.Element {
                         ...moveTargets(asset),
                         { separator: true },
                         {
-                          label: 'Remove from library',
+                          label: tr('media.remove'),
                           icon: Trash2,
                           danger: true,
                           onSelect: () => removeAsset(asset.id),
@@ -598,19 +586,19 @@ export function MediaLibrary(): JSX.Element {
                         {asset.proxyUri && (
                           <span
                             className="ml-1 rounded bg-sky-900/60 px-1 text-sky-300"
-                            title="Edited from a small stand-in; the export reads this file"
+                            title={tr('media.proxyBadgeHint')}
                           >
-                            proxy
+                            {tr('media.proxyBadge')}
                           </span>
                         )}
                         {asset.hasAlphaChannel && (
                           <span className="ml-1 rounded bg-emerald-900/60 px-1 text-emerald-300">
-                            alpha
+                            {tr('media.alphaBadge')}
                           </span>
                         )}
                         {asset.missing && (
                           <span className="ml-1 rounded bg-red-900/60 px-1 text-red-300">
-                            missing
+                            {tr('media.missingBadge')}
                           </span>
                         )}
                       </p>
@@ -618,18 +606,18 @@ export function MediaLibrary(): JSX.Element {
 
                     <button
                       type="button"
-                      title="Add at the playhead (right-click for more)"
-                      className="tool-button h-7 px-1.5 opacity-0 group-hover:opacity-100"
+                      className="tool-button tool-button-dense opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
                       disabled={asset.missing}
                       onClick={() => addAtPlayhead(asset)}
+                      {...tip(tr('media.addAtPlayhead'), { hint: tr('media.addAtPlayheadHint') })}
                     >
                       <Plus size={14} />
                     </button>
                     <button
                       type="button"
-                      title="Remove from library"
-                      className="tool-button h-7 px-1.5 opacity-0 hover:text-red-400 group-hover:opacity-100"
+                      className="tool-button tool-button-dense opacity-0 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
                       onClick={() => removeAsset(asset.id)}
+                      {...tip(tr('media.remove'))}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -644,7 +632,7 @@ export function MediaLibrary(): JSX.Element {
       {dragActive && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-panel-950/80">
           <span className="rounded border border-accent px-3 py-2 text-xs text-accent-hover">
-            Drop to import{path.length > 0 ? ` into ${path[path.length - 1].name}` : ''}
+            {path.length > 0 ? tr('media.dropInto', { name: currentBinName }) : tr('media.dropToImport')}
           </span>
         </div>
       )}

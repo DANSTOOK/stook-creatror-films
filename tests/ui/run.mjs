@@ -191,6 +191,12 @@ async function appMenu(window, menu, item) {
   await window.waitForTimeout(250);
 }
 
+/** An entry of the media panel's "+" menu: Import files, Import folder, New bin. */
+async function mediaAdd(window, item) {
+  await window.getByTestId('media-add-menu').click();
+  await window.getByRole('menuitem', { name: item }).click();
+}
+
 /**
  * Close an app, and give up on asking nicely after a few seconds.
  *
@@ -314,7 +320,7 @@ async function main() {
     /* Add to the timeline -------------------------------------------------- */
     const assetRow = window.locator('li').filter({ hasText: assetName }).first();
     await assetRow.hover();
-    await assetRow.getByTitle(/Add at the playhead/).click();
+    await assetRow.getByRole('button', { name: 'Add at the playhead' }).click();
 
     // The inspector is the observable proof a clip exists and is selectable.
     // The clip lands on Video 1, the lower of the two picture rows (the one
@@ -909,7 +915,7 @@ async function main() {
       };
     });
 
-    await window.getByRole('button', { name: 'New bin', exact: true }).click();
+    await mediaAdd(window, 'New bin');
     const binNameField = window.getByLabel('Bin name');
     await binNameField.waitFor({ state: 'visible', timeout: 5_000 });
     await binNameField.fill('Shots');
@@ -928,7 +934,7 @@ async function main() {
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, folderImportRoot);
-    await window.getByRole('button', { name: 'Add folder and subfolders' }).click();
+    await mediaAdd(window, /^Import folder/);
     await window.waitForFunction(
       () => window.__scfStore.getState().assets.some((a) => a.name === 'still-b.png'),
       null,
@@ -969,7 +975,7 @@ async function main() {
       `bins [${afterFolderDrop.bins.join(', ')}]; still-drop.png in "${afterFolderDrop.assets['still-drop.png'] ?? 'not imported'}"`);
 
     // Bin edits undo from the keyboard like any other edit.
-    await window.getByRole('button', { name: 'New bin', exact: true }).click();
+    await mediaAdd(window, 'New bin');
     const tempBinName = window.getByLabel('Bin name');
     await tempBinName.waitFor({ state: 'visible', timeout: 5_000 });
     await tempBinName.fill('Temp');
@@ -2076,10 +2082,14 @@ async function main() {
       return heavy.id;
     });
 
+    // A small indicator in the media panel's header ("Proxies 0/1"); its
+    // controls open from it.
     const barShown = await window.getByTestId('proxy-bar').count();
-    check('4K footage brings up the proxy strip', barShown === 1, `${barShown} strips`);
+    check('4K footage brings up the proxy indicator', barShown === 1, `${barShown} indicators`);
 
+    await window.getByTestId('proxy-indicator').click();
     await window.getByTestId('build-proxies').click();
+    await window.keyboard.press('Escape');
     await window.waitForFunction(
       (id) => window.__scfStore.getState().assets.find((asset) => asset.id === id)?.proxyUri !== undefined,
       heavyId,

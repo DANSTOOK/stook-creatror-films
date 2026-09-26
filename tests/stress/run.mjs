@@ -384,7 +384,8 @@ async function main() {
     t = Date.now();
     await window.getByRole('treeitem', { name: /^Master/ }).click().catch(() => undefined);
     await pick(app, [imagesDir]);
-    await window.getByRole('button', { name: 'Add folder and subfolders' }).click();
+    await window.getByTestId('media-add-menu').click();
+    await window.getByRole('menuitem', { name: /^Import folder/ }).click();
     await window.waitForFunction(() => window.__scfStore.getState().assets.some((a) => a.name === 'portrait.jpg'), null, { timeout: 120_000 });
     const expectedStills = 17 + photoCount;
     await window.waitForFunction(

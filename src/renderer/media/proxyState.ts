@@ -7,6 +7,7 @@
  */
 
 import type { MediaAsset } from '@shared/types';
+import { translate, type Language } from '@shared/i18n';
 
 export const PROXY_STORAGE_KEY = 'scf.useProxies.v1';
 
@@ -49,18 +50,20 @@ export function proxyPhaseOf(
 export function proxySummary(
   assets: readonly MediaAsset[],
   building: ReadonlyMap<string, number>,
+  language: Language = 'en',
 ): string {
   const heavy = assets.filter(wantsProxy);
-  if (heavy.length === 0) return 'No footage here is heavy enough to need one.';
+  if (heavy.length === 0) return translate(language, 'proxy.summaryNone');
 
   const ready = heavy.filter((asset) => asset.proxyUri).length;
+  const total = heavy.length;
   if (building.size > 0) {
     const done = [...building.values()].reduce((sum, fraction) => sum + fraction, 0);
     const percent = Math.round((done / building.size) * 100);
-    return `Building ${building.size} of ${heavy.length}... ${percent}%`;
+    return translate(language, 'proxy.summaryBuilding', { count: building.size, total, percent });
   }
-  if (ready === heavy.length) return `${ready} of ${heavy.length} ready. Exports still use the originals.`;
-  return `${ready} of ${heavy.length} ready.`;
+  if (ready === total) return translate(language, 'proxy.summaryAllReady', { ready, total });
+  return translate(language, 'proxy.summaryReady', { ready, total });
 }
 
 /** Bytes as something a person reads. */

@@ -57,6 +57,22 @@ se comprobó.
 - **Descripciones emergentes propias** en los botones de icono: salen antes
   que las de Windows, dicen el atajo cuando lo hay (con «Mayús» en español) y,
   con una ya a la vista, la del icono de al lado aparece al momento.
+- **Panel de medios con menos ruido:**
+  - Los **proxies** eran una franja de dos líneas y una casilla que empujaba
+    todo hacia abajo; ahora son un indicador pequeño en la cabecera,
+    «Proxies 0/3», que abre sus controles en un recuadro (crear, detener y el
+    interruptor de editar con proxies). Solo aparece si hay metraje pesado.
+  - Los **dos iconos de carpeta idénticos y sin texto** se juntan en un solo
+    «+»: *Importar archivos…* (Ctrl+I), *Importar carpeta…* y *Nueva
+    carpeta*. «Importar» sigue a un clic, con su texto: es para lo que está
+    el panel.
+  - **Las carpetas ya no salen dos veces.** El árbol es la barra lateral y la
+    lista de abajo solo muestra clips, como el explorador de Final Cut; encima
+    de la lista, el nombre de la carpeta y cuántos clips tiene. Las filas del
+    árbol miden 24 px.
+  - Todo el panel está en español: título, importar, menús de carpetas y de
+    clips, etiquetas (*falta*, *alfa*), el estado vacío y los avisos de los
+    proxies.
 - **Casillas, interruptores, listas y deslizadores con el aspecto del
   editor.** Eran los de Windows: una casilla clara y un deslizador azul grueso
   en medio de un editor oscuro, distintos de un diálogo a otro. Ahora la
@@ -86,7 +102,8 @@ se comprobó.
   (-32000, -32000) y con el tamaño pedido; centrarla y ponerle otras medidas
   la deja fuera, con las medidas nuevas; la página cuenta como visible; una
   captura de la página funciona; y requestAnimationFrame va a 178,6 fps
-  (mediana 5,60 ms, p95 5,70 ms) en una pantalla de 180 Hz. **7/7.** La prueba
+  (mediana 5,60 ms, p95 5,70-5,80 ms) en una pantalla de 180 Hz. **7/7.** La
+  batería de interfaz completa en segundo plano: **126/126**. La prueba
   de movimiento en segundo plano: **13/13**, con las mismas medianas y p95 que
   con la ventana visible (5,6 y 5,7-5,8 ms); los peores fotogramas sueltos
   llegan a 28-55 ms frente a 6-44 ms de la última ejecución visible (con el
@@ -114,6 +131,12 @@ se comprobó.
   posición del menú como estado mientras había otra actualización pendiente).
   La posición se pone ahora directamente en el elemento; el clic en *Archivo*
   de la prueba lo cubre.
+- **Panel de medios:** la batería de interfaz crea y nombra una carpeta,
+  importa una carpeta con subcarpetas y deshace carpetas desde el «+»; abre
+  el indicador de proxies y crea el proxy del clip 4K desde él. **126/126.**
+  Capturas del panel, del menú «+» y del recuadro de proxies
+  (`after-en-1600-media*.png`; antes en `before-en-1600-media.png`). El
+  recuadro va fijado a la ventana: dentro del panel quedaba recortado.
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto
