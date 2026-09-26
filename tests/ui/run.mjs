@@ -337,7 +337,7 @@ async function main() {
 
     /* The hand tool -------------------------------------------------------- */
     const surface = window.locator('canvas').last();
-    await window.getByRole('button', { name: 'Pan' }).click();
+    await window.getByRole('radio', { name: 'Pan' }).click();
 
     const scrollBefore = await window.evaluate(() => {
       const el = [...document.querySelectorAll('div')].find((d) => d.scrollWidth > d.clientWidth + 50);
@@ -355,7 +355,7 @@ async function main() {
 
     check('hand tool actually pans the timeline', scrollAfter > scrollBefore,
       `scrollLeft ${scrollBefore} -> ${scrollAfter}`);
-    await window.getByRole('button', { name: 'Select' }).click();
+    await window.getByRole('radio', { name: 'Select' }).click();
 
     /* Context menu honesty --------------------------------------------------- */
     await surface.click({ button: 'right', position: { x: 500, y: 200 } });
@@ -527,7 +527,7 @@ async function main() {
 
     // Razor, then click the clip well away from the playhead.
     await window.keyboard.press('Escape');
-    await window.getByTitle(/Razor tool/).first().click();
+    await window.getByRole('radio', { name: 'Razor' }).click();
     const videoRow = await window.evaluate(() => {
       const { project } = window.__scfStore.getState();
       return project.tracks.filter((t) => t.type === 'video').length;
@@ -541,7 +541,7 @@ async function main() {
       afterRazor.clips.length === beforeCut + 1 && boundary === placed,
       `cut at frame ${boundary}, playhead at ${placed}, click at ${videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)} (${videoRow} video track)`);
     await window.keyboard.press('Control+z');
-    await window.getByTitle(/Selection tool/).first().click();
+    await window.getByRole('radio', { name: 'Select' }).click();
 
     // The scissors on the playhead cut at the line too.
     const beforeScissors = (await clipsNow()).clips.length;
@@ -632,8 +632,8 @@ async function main() {
         .map((el) => ({ name: el.textContent.trim(), y: el.getBoundingClientRect().top }))
         .sort((a, b) => a.y - b.y)
         .map((entry) => entry.name));
-    await window.getByTitle('Add video track').click();
-    await window.getByTitle('Add audio track').click();
+    await window.getByRole('button', { name: 'Add video track' }).click();
+    await window.getByRole('button', { name: 'Add audio track' }).click();
     const rowsShown = [...new Set(await headerNames())];
     check('a new video track goes on top and a new audio track at the bottom',
       rowsShown.join(',') === 'Video 3,Video 2,Video 1,Audio 1,Audio 2', rowsShown.join(' / '));
@@ -818,7 +818,7 @@ async function main() {
     const ppfNow = await window.evaluate(() => window.__scfStore.getState().ui.pixelsPerFrame);
     await window.mouse.click(bandBox.x + 40, bandBox.y + 3);
     const markerFrame = (await projectNow()).frame;
-    await window.getByTitle('Add marker at the playhead (M)').click();
+    await window.getByRole('button', { name: 'Add marker', exact: true }).click();
     const withMarker = await projectNow();
     // The button opens the new marker's name field right on the ruler, over
     // the next stretch of it - so a click there only places the caret. Name
@@ -835,7 +835,7 @@ async function main() {
       `field ${namingFocused ? 'focused' : 'not focused'}, label ${JSON.stringify(markerLabel)}`);
     await window.mouse.click(bandBox.x + 160, bandBox.y + 3);
     const awayFrame = (await projectNow()).frame;
-    await window.getByTitle('Previous marker').click();
+    await window.getByRole('button', { name: 'Previous marker' }).click();
     const jumpedTo = (await projectNow()).frame;
     check('a marker lands on the playhead and Previous marker jumps back to it',
       withMarker.markers.length === beforeSettings.markers.length + 1 &&
@@ -857,7 +857,7 @@ async function main() {
     // themselves, not on the handle: a handle that moves without resizing
     // anything cannot pass.
     const mediaPanel = window.getByTestId('media-panel');
-    const timelinePanel = window.locator('section.panel').filter({ has: window.getByTitle('Split at playhead (B)') }).first();
+    const timelinePanel = window.locator('section.panel').filter({ has: window.getByRole('button', { name: 'Split at playhead' }) }).first();
     const dragHandle = async (name, dx, dy) => {
       const box = await window.getByRole('separator', { name }).boundingBox();
       const x = box.x + box.width / 2;

@@ -68,6 +68,18 @@ se comprobó.
   - La LUT tiene su grupo en la pestaña Color; la información del archivo es
     la pestaña Info.
   - Todo el inspector está en español.
+- **Barra de la línea de tiempo con iconos:**
+  - Selección, Cuchilla, Mano y Recorte son un **control segmentado** de
+    iconos (uno siempre elegido); cortar, eliminar, ajuste, imán y marcadores
+    son iconos, cada uno con su descripción y su tecla (V, C, H, T, B, Supr,
+    S, N, M). Antes era una fila de palabras que a 1280 px se comía el título.
+  - El **zoom es un deslizador** (en pasos logarítmicos, como se siente un
+    zoom), con − y + a los lados y *Ajustar*.
+  - La barra **empieza donde empiezan las pistas**: el título ocupa el ancho
+    de las cabeceras de pista y las herramientas quedan sobre el lienzo, como
+    en Resolve. El título «Línea de tiempo» se ve también a 1280 px.
+  - Los **menús contextuales** de clip, pista, zona vacía y regla están en
+    español; «Enlazar 1 clips» pasa a «Enlazar clips».
 - **Una barra de título propia, con la barra de herramientas dentro**, como
   en Final Cut. Antes había dos franjas: la barra de Windows y, debajo, una
   fila de trece botones con texto (Nuevo, Abrir, Guardar, Deshacer, Rehacer,
@@ -203,6 +215,12 @@ se comprobó.
   pestaña Color y busca el botón por su nombre entero («Load .cube LUT»),
   porque ahora hay también un grupo llamado LUT: **126/126**. Capturas
   `after-en-1600-inspector*.png` (antes en `before-en-1600-inspector*.png`).
+- **Línea de tiempo:** la batería de interfaz elige las herramientas por su
+  nombre en el control segmentado (Selección, Cuchilla, Mano), añade pistas,
+  marcadores y salta al anterior por el nombre de sus botones, y encuentra la
+  línea de tiempo por «Split at playhead»: **126/126**. Capturas a 1600 y a
+  1280 px (`after-en-*-timeline*.png`, `after-en-1600-menu-*.png`; antes en
+  `before-en-1600-timeline.png` y `before-en-1600-menu-*.png`).
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto

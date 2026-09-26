@@ -33,7 +33,9 @@ import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/com
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { dismissNotification, notify } from '@renderer/notifications/notifications';
-import { t } from '@renderer/i18n';
+import { keyLabel, t, useT } from '@renderer/i18n';
+import { tip } from '@renderer/components/Tooltip/Tooltip';
+import { MAX_PIXELS_PER_FRAME, MIN_PIXELS_PER_FRAME } from './zoom';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
 import { isLinked } from './linkGroups';
@@ -124,6 +126,8 @@ export interface MarqueeRect {
 
 /** Multi-track timeline: track headers plus the canvas editing surface. */
 export function Timeline(): JSX.Element {
+  // Re-renders the toolbar when the language changes; menus read `t` as they open.
+  const tr = useT();
   const project = useProjectStore((state) => state.project);
   const ui = useProjectStore((state) => state.ui);
   const waveforms = useMediaStore((state) => state.waveforms);
@@ -253,55 +257,55 @@ export function Timeline(): JSX.Element {
 
       return [
         {
-          label: 'Rename track',
+          label: t('timeline.renameTrack'),
           icon: Pencil,
           onSelect: () => setRenamingTrackId(track.id),
         },
         { separator: true },
         {
-          label: 'Add track above',
+          label: t('timeline.addTrackAbove'),
           icon: Plus,
           onSelect: () => state.addTrackAt(track.type, index),
         },
         {
-          label: 'Add track below',
+          label: t('timeline.addTrackBelow'),
           icon: Plus,
           onSelect: () => state.addTrackAt(track.type, index + 1),
         },
         { separator: true },
         {
-          label: 'Move up',
+          label: t('timeline.moveUp'),
           icon: ArrowUp,
           // Within its group: a picture track never goes below the audio.
           disabled: !canMoveTrack(tracks, track.id, -1),
           onSelect: () => state.moveTrack(track.id, -1),
         },
         {
-          label: 'Move down',
+          label: t('timeline.moveDown'),
           icon: ArrowDown,
           disabled: !canMoveTrack(tracks, track.id, 1),
           onSelect: () => state.moveTrack(track.id, 1),
         },
         { separator: true },
         {
-          label: track.visible ? 'Hide track' : 'Show track',
+          label: t(track.visible ? 'timeline.hideTrack' : 'timeline.showTrack'),
           icon: track.visible ? EyeOff : Eye,
           onSelect: () => state.updateTrack(track.id, { visible: !track.visible }),
         },
         {
-          label: track.muted ? 'Unmute track' : 'Mute track',
+          label: t(track.muted ? 'timeline.unmuteTrack' : 'timeline.muteTrack'),
           icon: track.muted ? Volume2 : VolumeX,
           onSelect: () => state.updateTrack(track.id, { muted: !track.muted }),
         },
         {
-          label: track.locked ? 'Unlock track' : 'Lock track',
+          label: t(track.locked ? 'timeline.unlockTrack' : 'timeline.lockTrack'),
           icon: track.locked ? LockOpen : Lock,
           onSelect: () => state.updateTrack(track.id, { locked: !track.locked }),
         },
         { separator: true },
         {
           // Saying how much goes with it makes an undoable delete predictable.
-          label: clipCount > 0 ? `Delete track (${clipCount} clips)` : 'Delete track',
+          label: clipCount > 0 ? t('timeline.deleteTrackClips', { count: clipCount }) : t('timeline.deleteTrack'),
           icon: Trash2,
           danger: true,
           disabled: tracks.length <= 1,
@@ -323,30 +327,32 @@ export function Timeline(): JSX.Element {
 
       return [
         {
-          label: 'Split at playhead',
+          label: t('timeline.split'),
           icon: Scissors,
           shortcut: 'B',
           disabled: !canSplit,
           onSelect: () => state.razorAtFrame(state.project.currentFrame, [clip.id]),
         },
         {
-          label: 'Speed / Duration...',
+          label: t('timeline.speed'),
           icon: Gauge,
           shortcut: 'Ctrl+R',
           onSelect: () => setSpeedFor(clip.id),
         },
         {
-          label: selected.length > 1 ? `Duplicate ${selected.length} clips` : 'Duplicate',
+          label: selected.length > 1 ? t('timeline.duplicateMany', { count: selected.length }) : t('timeline.duplicate'),
           icon: Copy,
           onSelect: () => state.duplicateClips(selected),
         },
         { separator: true },
         {
           label: isLinked(state.project.clips, selected)
-            ? 'Unlink clips'
-            : `Link ${selected.length} clips`,
+            ? t('timeline.unlink')
+            : selected.length > 1
+              ? t('timeline.link', { count: selected.length })
+              : t('timeline.linkClips'),
           icon: Link2,
-          shortcut: isLinked(state.project.clips, selected) ? 'Ctrl+Shift+L' : 'Ctrl+L',
+          shortcut: keyLabel(isLinked(state.project.clips, selected) ? 'Ctrl+Shift+L' : 'Ctrl+L'),
           disabled: selected.length < 2 && !clip.linkGroup,
           onSelect: () => {
             state.selectClips(selected);
@@ -356,7 +362,7 @@ export function Timeline(): JSX.Element {
         },
         { separator: true },
         {
-          label: 'Cut',
+          label: t('timeline.cut'),
           icon: Scissors,
           shortcut: 'Ctrl+X',
           onSelect: () => {
@@ -365,7 +371,7 @@ export function Timeline(): JSX.Element {
           },
         },
         {
-          label: 'Copy',
+          label: t('timeline.copy'),
           icon: Copy,
           shortcut: 'Ctrl+C',
           onSelect: () => {
@@ -374,7 +380,7 @@ export function Timeline(): JSX.Element {
           },
         },
         {
-          label: 'Paste at playhead',
+          label: t('timeline.paste'),
           icon: ClipboardPaste,
           shortcut: 'Ctrl+V',
           disabled: !state.clipboard,
@@ -382,19 +388,19 @@ export function Timeline(): JSX.Element {
         },
         { separator: true },
         {
-          label: clip.mask.enabled ? 'Disable mask' : 'Enable mask',
+          label: t(clip.mask.enabled ? 'timeline.maskOff' : 'timeline.maskOn'),
           onSelect: () =>
             state.updateClip(clip.id, { mask: { ...clip.mask, enabled: !clip.mask.enabled } }),
         },
         {
-          label: clip.chromaKey.enabled ? 'Disable chroma key' : 'Enable chroma key',
+          label: t(clip.chromaKey.enabled ? 'timeline.chromaOff' : 'timeline.chromaOn'),
           onSelect: () =>
             state.updateClip(clip.id, {
               chromaKey: { ...clip.chromaKey, enabled: !clip.chromaKey.enabled },
             }),
         },
         {
-          label: clip.pixelArt.enabled ? 'Disable pixel art' : 'Enable pixel art',
+          label: t(clip.pixelArt.enabled ? 'timeline.pixelOff' : 'timeline.pixelOn'),
           onSelect: () =>
             state.updateClip(clip.id, {
               pixelArt: { ...clip.pixelArt, enabled: !clip.pixelArt.enabled },
@@ -402,9 +408,9 @@ export function Timeline(): JSX.Element {
         },
         { separator: true },
         {
-          label: selected.length > 1 ? `Delete ${selected.length} clips` : 'Delete clip',
+          label: selected.length > 1 ? t('timeline.deleteClips', { count: selected.length }) : t('timeline.deleteClip'),
           icon: Trash2,
-          shortcut: 'Del',
+          shortcut: keyLabel('Del'),
           danger: true,
           onSelect: () => state.removeClips(selected),
         },
@@ -418,17 +424,17 @@ export function Timeline(): JSX.Element {
     // No "add text track": nothing renders text yet, so offering it would
     // create a track that can never show anything.
     return [
-      { label: 'Add video track', icon: Plus, onSelect: () => state.addTrack('video') },
-      { label: 'Add audio track', icon: Plus, onSelect: () => state.addTrack('audio') },
+      { label: t('timeline.addVideoTrack'), icon: Plus, onSelect: () => state.addTrack('video') },
+      { label: t('timeline.addAudioTrack'), icon: Plus, onSelect: () => state.addTrack('audio') },
       { separator: true },
       {
-        label: 'Split at playhead',
+        label: t('timeline.split'),
         icon: Scissors,
         shortcut: 'B',
         onSelect: () => state.razorAtFrame(),
       },
       {
-        label: 'Paste at playhead',
+        label: t('timeline.paste'),
         icon: ClipboardPaste,
         shortcut: 'Ctrl+V',
         disabled: !state.clipboard,
@@ -452,7 +458,7 @@ export function Timeline(): JSX.Element {
       if (marker) {
         return [
           {
-            label: 'Rename marker',
+            label: t('timeline.renameMarker'),
             icon: Pencil,
             onSelect: () => {
               state.setUi({ selectedMarkerId: marker.id });
@@ -460,14 +466,14 @@ export function Timeline(): JSX.Element {
             },
           },
           {
-            label: 'Move to playhead',
+            label: t('timeline.markerToPlayhead'),
             icon: Flag,
             disabled: marker.frame === state.project.currentFrame,
             onSelect: () => state.updateMarker(marker.id, { frame: state.project.currentFrame }),
           },
           { separator: true },
           {
-            label: 'Delete marker',
+            label: t('timeline.deleteMarker'),
             icon: Trash2,
             danger: true,
             onSelect: () => state.removeMarker(marker.id),
@@ -477,7 +483,7 @@ export function Timeline(): JSX.Element {
 
       return [
         {
-          label: 'Add marker here',
+          label: t('timeline.addMarkerHere'),
           icon: Flag,
           onSelect: () => {
             const id = state.addMarker(frame);
@@ -485,7 +491,7 @@ export function Timeline(): JSX.Element {
           },
         },
         {
-          label: 'Add marker at playhead',
+          label: t('timeline.addMarkerAtPlayhead'),
           icon: Flag,
           shortcut: 'M',
           onSelect: () => {
@@ -495,7 +501,7 @@ export function Timeline(): JSX.Element {
         },
         { separator: true },
         {
-          label: markerCount > 0 ? `Clear all markers (${markerCount})` : 'Clear all markers',
+          label: markerCount > 0 ? t('timeline.clearMarkersCount', { count: markerCount }) : t('timeline.clearMarkers'),
           icon: Trash2,
           danger: true,
           disabled: markerCount === 0,
@@ -1058,169 +1064,162 @@ export function Timeline(): JSX.Element {
                   ? 'grab'
                   : 'default';
 
+  /** One segment of the tool picker: an icon, its name for the tooltip and the screen reader, its key. */
   const toolButton = (
     tool: 'select' | 'razor' | 'hand' | 'trim',
     label: string,
+    key: string,
     hint: string,
     Icon: typeof MousePointer2,
   ): JSX.Element => (
     <button
       type="button"
-      title={hint}
-      aria-pressed={ui.tool === tool}
-      className={`tool-button ${ui.tool === tool ? 'tool-button-active' : ''}`}
+      role="radio"
+      aria-checked={ui.tool === tool}
+      className={`tool-button tool-button-dense w-7 px-0 ${ui.tool === tool ? 'bg-panel-600 text-slate-50' : ''}`}
       onClick={() => store.getState().setTool(tool)}
+      {...tip(label, { shortcut: key, hint })}
     >
       <Icon size={14} />
-      {label}
     </button>
   );
 
+  /** An icon button that says what it does in its tooltip. */
+  const iconButton = (
+    label: string,
+    Icon: typeof MousePointer2,
+    onClick: () => void,
+    options: { shortcut?: string; hint?: string; pressed?: boolean; disabled?: boolean; danger?: boolean } = {},
+  ): JSX.Element => (
+    <button
+      type="button"
+      aria-pressed={options.pressed}
+      disabled={options.disabled}
+      className={`tool-button tool-button-dense w-7 px-0 ${options.pressed ? 'tool-button-active' : ''} ${options.danger ? 'hover:text-red-400' : ''}`}
+      onClick={onClick}
+      {...tip(label, { shortcut: options.shortcut, hint: options.hint })}
+    >
+      <Icon size={14} />
+    </button>
+  );
+
+  // The zoom slider works in logarithmic steps: each notch is the same
+  // factor, the way a zoom feels, rather than the same number of pixels.
+  const logMin = Math.log(MIN_PIXELS_PER_FRAME);
+  const logMax = Math.log(MAX_PIXELS_PER_FRAME);
+  const zoomValue = (Math.log(ui.pixelsPerFrame) - logMin) / (logMax - logMin);
+
   return (
     <section className="panel h-full">
-      <header className="panel-header justify-between">
-        {/* Named like the other three panels: it was the only one without a
-            title, which made the row read as a floating toolbar. */}
-        <span className="hidden shrink-0 pr-1 xl:inline">Timeline</span>
-        <div className="flex items-center gap-1.5 font-normal">
-          <div className="toolbar-group">
-            {toolButton('select', 'Select', 'Selection tool (V)', MousePointer2)}
-            {toolButton('razor', 'Razor', 'Razor tool (C) - click a clip to cut it at the playhead', Scissors)}
-            {toolButton('hand', 'Pan', 'Hand tool (H)', Hand)}
-            {toolButton(
-              'trim',
-              'Trim',
-              'Trim tool (T): a shared join rolls, a free edge ripples, the top of a clip slips and the bottom slides',
-              ArrowLeftRight,
-            )}
+      {/*
+        The toolbar starts where the tracks start: the title sits over the
+        track headers (the same 168px) and the tools over the canvas, as in
+        Resolve. Icons with tooltips that say the key; the tools are one
+        segmented control, since exactly one is always chosen.
+      */}
+      <header className="panel-header gap-0 !px-0">
+        <span className="flex shrink-0 items-center px-3" style={{ width: HEADER_WIDTH }}>
+          {tr('timeline.title')}
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2 font-normal">
+          <div role="radiogroup" aria-label={tr('timeline.tools')} className="toolbar-group">
+            {toolButton('select', tr('timeline.toolSelect'), 'V', tr('timeline.toolSelectHint'), MousePointer2)}
+            {toolButton('razor', tr('timeline.toolRazor'), 'C', tr('timeline.toolRazorHint'), Scissors)}
+            {toolButton('hand', tr('timeline.toolPan'), 'H', tr('timeline.toolPanHint'), Hand)}
+            {toolButton('trim', tr('timeline.toolTrim'), 'T', tr('timeline.toolTrimHint'), ArrowLeftRight)}
           </div>
 
-          <div className="toolbar-group">
-            <button
-              type="button"
-              title="Split at playhead (B)"
-              className="tool-button"
-              onClick={() => store.getState().razorAtFrame()}
-            >
-              <Scissors size={14} />
-              Split at playhead
-            </button>
-
-            <button
-              type="button"
-              title="Delete selected clips (Del)"
-              className="tool-button hover:text-red-400"
-              disabled={ui.selectedClipIds.length === 0}
-              onClick={() => store.getState().removeClips(ui.selectedClipIds)}
-            >
-              <Trash2 size={14} />
-              Delete
-            </button>
-
-            <button
-              type="button"
-              title="Snap to clip edges, the playhead and markers (S)"
-              aria-pressed={ui.snappingEnabled}
-              className={`tool-button ${ui.snappingEnabled ? 'tool-button-active' : ''}`}
-              onClick={() => store.getState().setUi({ snappingEnabled: !ui.snappingEnabled })}
-            >
-              <Crosshair size={14} />
-              Snap
-            </button>
-
-            <button
-              type="button"
-              title="Magnet (N): deleting, moving or trimming a clip closes the gap it leaves"
-              aria-pressed={ui.rippleEnabled}
-              className={`tool-button ${ui.rippleEnabled ? 'tool-button-active' : ''}`}
-              onClick={() => store.getState().setUi({ rippleEnabled: !ui.rippleEnabled })}
-            >
-              <Magnet size={14} />
-              Magnet
-            </button>
+          <div className="flex items-center gap-0.5">
+            {iconButton(tr('timeline.split'), Scissors, () => store.getState().razorAtFrame(), { shortcut: 'B' })}
+            {iconButton(tr('timeline.deleteSelected'), Trash2, () => store.getState().removeClips(ui.selectedClipIds), {
+              shortcut: keyLabel('Del'),
+              disabled: ui.selectedClipIds.length === 0,
+              danger: true,
+            })}
           </div>
 
-          <div className="toolbar-group">
-            <button
-              type="button"
-              title="Add marker at the playhead (M)"
-              className="tool-button"
-              onClick={() => {
+          <span aria-hidden className="h-4 w-px shrink-0 bg-panel-700" />
+
+          <div className="flex items-center gap-0.5">
+            {iconButton(tr('timeline.snap'), Crosshair, () => store.getState().setUi({ snappingEnabled: !ui.snappingEnabled }), {
+              shortcut: 'S',
+              hint: tr('timeline.snapHint'),
+              pressed: ui.snappingEnabled,
+            })}
+            {iconButton(tr('timeline.magnet'), Magnet, () => store.getState().setUi({ rippleEnabled: !ui.rippleEnabled }), {
+              shortcut: 'N',
+              hint: tr('timeline.magnetHint'),
+              pressed: ui.rippleEnabled,
+            })}
+          </div>
+
+          <span aria-hidden className="h-4 w-px shrink-0 bg-panel-700" />
+
+          <div className="flex items-center gap-0.5">
+            {iconButton(
+              tr('timeline.addMarker'),
+              Flag,
+              () => {
                 const id = store.getState().addMarker();
                 if (id) setRenamingMarkerId(id);
-              }}
-            >
-              <Flag size={14} />
-              Marker
-            </button>
-            <button
-              type="button"
-              title="Previous marker"
-              className="tool-button"
-              disabled={project.markers.length === 0}
-              onClick={() => store.getState().goToMarker(-1)}
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button
-              type="button"
-              title="Next marker"
-              className="tool-button"
-              disabled={project.markers.length === 0}
-              onClick={() => store.getState().goToMarker(1)}
-            >
-              <ChevronRight size={14} />
-            </button>
+              },
+              { shortcut: 'M', hint: tr('timeline.addMarkerHint') },
+            )}
+            {iconButton(tr('timeline.previousMarker'), ChevronLeft, () => store.getState().goToMarker(-1), { disabled: project.markers.length === 0 })}
+            {iconButton(tr('timeline.nextMarker'), ChevronRight, () => store.getState().goToMarker(1), { disabled: project.markers.length === 0 })}
           </div>
-        </div>
 
-        <div className="flex items-center gap-1.5 font-normal">
-          <div className="toolbar-group">
+          <div className="min-w-2 flex-1" />
+
+          <div className="flex shrink-0 items-center gap-0.5">
             <button
               type="button"
-              title="Add video track"
-              className="tool-button"
+              className="tool-button tool-button-dense px-1.5"
               onClick={() => store.getState().addTrack('video')}
+              {...tip(tr('timeline.addVideoTrack'))}
             >
-              <Plus size={14} />
-              Video
+              <Plus size={13} />
+              {tr('timeline.video')}
             </button>
             <button
               type="button"
-              title="Add audio track"
-              className="tool-button"
+              className="tool-button tool-button-dense px-1.5"
               onClick={() => store.getState().addTrack('audio')}
+              {...tip(tr('timeline.addAudioTrack'))}
             >
-              <Plus size={14} />
-              Audio
+              <Plus size={13} />
+              {tr('timeline.audio')}
             </button>
           </div>
 
-          <div className="toolbar-group">
+          <span aria-hidden className="h-4 w-px shrink-0 bg-panel-700" />
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            {iconButton(tr('timeline.zoomOut'), ZoomOut, () => store.getState().zoomBy(1 / 1.4), { shortcut: '-' })}
+            <input
+              type="range"
+              aria-label={tr('timeline.zoom')}
+              className="w-24"
+              min={0}
+              max={1}
+              step={0.005}
+              value={zoomValue}
+              style={{ '--fill': `${zoomValue * 100}%` } as React.CSSProperties}
+              onChange={(event) => {
+                const wanted = Math.exp(logMin + Number(event.target.value) * (logMax - logMin));
+                store.getState().zoomBy(wanted / ui.pixelsPerFrame);
+              }}
+              {...tip(tr('timeline.zoom'), { hint: tr('timeline.zoomHint'), named: false })}
+            />
+            {iconButton(tr('timeline.zoomIn'), ZoomIn, () => store.getState().zoomBy(1.4), { shortcut: '=' })}
             <button
               type="button"
-              title="Zoom out (-, or Ctrl+wheel)"
-              className="tool-button"
-              onClick={() => store.getState().zoomBy(1 / 1.4)}
-            >
-              <ZoomOut size={14} />
-            </button>
-            <button
-              type="button"
-              title="Zoom in (=, or Ctrl+wheel)"
-              className="tool-button"
-              onClick={() => store.getState().zoomBy(1.4)}
-            >
-              <ZoomIn size={14} />
-            </button>
-            <button
-              type="button"
-              title="Fit the whole timeline in view (\)"
-              className="tool-button"
+              className="tool-button tool-button-dense px-1.5"
               onClick={() => store.getState().zoomToFit()}
+              {...tip(tr('timeline.fitHint'), { shortcut: '\\', named: false })}
             >
-              <Maximize2 size={14} />
-              Fit
+              <Maximize2 size={13} />
+              {tr('timeline.fit')}
             </button>
           </div>
         </div>
