@@ -261,6 +261,101 @@ se comprobó.
   ducking» se marcó y desmarcó con `check()`/`uncheck()` de Playwright, igual
   que en la comprobación de interfaz.
 
+- **Batería completa, al final de la fase**, en modo de segundo plano y
+  contra la compilación de desarrollo: **126/126 comprobaciones de interfaz**
+  (incluidas la segunda sesión que reabre el proyecto y la medición de
+  contraste de todo el texto en pantalla), **753/753 pruebas unitarias** (62
+  archivos) y las dos comprobaciones de tipos sin errores. **Movimiento:
+  13/13**, con medianas de 5,6 ms y p95 de 5,7 ms en todos los escenarios. La
+  comprobación de la barra de progreso esperaba 1,2 s fijos antes de mirarla,
+  y una exportación de 150 fotogramas ahora termina en unos 900 ms: se la
+  perdía. Ahora mira cada 100 ms desde los 300 ms y se queda con la última
+  lectura antes de terminar (la barra escala con `transform`, como antes).
+- **Capturas finales** del editor completo a 1600×950 y 1280×760, en inglés y
+  en español, con el visor a pantalla completa (con controles y sin ellos),
+  las cuatro pestañas del inspector, el menú de la aplicación, el menú «+» de
+  medios, el recuadro de proxies y los menús de clip, pista y regla
+  (`final-*.png` en la carpeta de la fase 2 del bloc de notas de la sesión).
+
+### Decisiones tomadas
+
+- **Se habla de «bins» en inglés y de «carpetas» en español**, como Resolve y
+  Premiere en cada idioma; *Import folder…* es la carpeta del disco. Los bins
+  nuevos siguen llamándose «Bin 1» (nombre por defecto, ver abajo).
+- **Importar se queda en la cabecera del panel de medios**, como icono, además
+  de estar en el «+»: es la acción del panel. El «+» junta todo lo que añade
+  a la biblioteca.
+- **Exportar es el único botón con texto de la barra de título**, a 28 px de
+  alto (no 32): en una franja de 40 px un botón de 32 quedaba apretado.
+- **El mezclador es un botón más de la barra**, pulsado mientras está abierto;
+  no es un panel, así que no está entre los tres que se muestran y ocultan.
+- **La línea de tiempo también se puede ocultar** (Ctrl+2), como en Final Cut,
+  y el visor se queda con todo el alto. Se deja ocultar a la vez que los
+  medios: queda el visor con el inspector.
+- **Sin deslizador bajo la imagen**, ni fino: el cursor se arrastra en la
+  regla. Solo lo hay en pantalla completa, donde no hay línea de tiempo.
+- **Pantalla completa ocupa la pantalla**, no solo la ventana, como el
+  *Play Full Screen* de Final Cut; en modo de segundo plano no se hace.
+- **Alt solo y F10 abren el menú de la aplicación**, como abrirían la barra
+  de menús de cualquier programa de Windows. Alt como modificador (Alt+clic,
+  Alt+arrastrar, Alt+F4) no lo abre.
+- **Ventana y Preferencias ya no tienen botón propio**: están en el menú
+  (*Ver*, *Edición > Preferencias…*, *Archivo > Ajustes del proyecto…*,
+  *Ayuda > Atajos de teclado*) y los paneles en sus tres botones.
+- **Casillas en los diálogos, interruptores para encender y apagar** (los
+  efectos del inspector, el ducking automático), como pide la guía de Apple.
+- **Mover un valor de la corrección de color la enciende**, y añadir una
+  máscara la crea rectangular: un control que no cambia nada en pantalla
+  parece roto.
+- **La máscara conserva el nombre «Rotación»** para su propio giro: dentro de
+  su grupo no se confunde con el del clip.
+
+### Sigue en inglés
+
+Lo que todavía no está traducido (fase 3):
+- **Cuerpo del diálogo Exportar** (formato, alfa, resolución, tramo, archivo,
+  miniatura, hardware, progreso y tarjeta del resultado) y el **panel de
+  YouTube**. Se tocó su maquetación, no sus textos.
+- **Nombres por defecto:** pistas «Video 1»/«Audio 1», el contenedor
+  «Master», los bins «Bin 1» y «Untitled project» al pulsar *Proyecto en
+  blanco* (también en la cabecera del visor, que muestra el nombre del
+  proyecto).
+- **Mensajes técnicos** que vienen tal cual del proceso principal o de FFmpeg
+  y los títulos y filtros de los diálogos nativos de abrir y guardar.
+- **Marcadores:** el nombre por defecto «Marker 90» y el de la regla.
+
+### Notas para la animación
+
+Para quien anime la interfaz después (el agente de movimiento):
+- **Paneles:** cada área tiene un envoltorio fijo con `data-panel`
+  (`media`, `inspector`, `timeline`) y `data-state="open|closed"`; el
+  contenido solo se monta abierto (las pruebas cuentan `media-panel` = 0 al
+  ocultarlo). Para animar la salida, mantenerlo montado con `usePresence`
+  (`hooks/usePresence.ts`) mientras dura.
+- **Grupos del inspector:** `section[data-section][data-state]`; el cuerpo
+  sigue en la página con `hidden` al plegarse. El chevron ya gira con
+  `transition-transform`.
+- **Pestañas del inspector:** `[role=tabpanel][data-tab]`; el contenido de
+  cada pestaña se monta al elegirla.
+- **Controles de pantalla completa:** `[data-testid=fullscreen-controls]
+  [data-state="shown|hidden"]`, hoy con una transición de opacidad de 300 ms;
+  el visor lleva `data-state="docked|fullscreen"`.
+- **Recuadro de proxies:** siempre en la página, con `hidden` y
+  `data-state`; usa `.scf-menu`, que vuelve a animar al mostrarse.
+- **Menús:** `.scf-menu` en cada nivel, con `data-state="open"`; la
+  posición se pone en el elemento (`style.left/top/transformOrigin`) en un
+  `useLayoutEffect`, no en el estado de React — guardarla en el estado
+  provocó un bucle de renders. No reintroducir estado de posición.
+- **Descripciones emergentes:** una sola capa (`TooltipLayer`) con
+  `data-state="measuring|open"`; aparece a los 450 ms, al momento si otra
+  acaba de cerrarse. Sin animación de entrada todavía.
+- **Barra de título:** `app-drag` / `app-no-drag`. Cualquier capa nueva que
+  cubra la franja superior (un fondo de diálogo, un menú) necesita
+  `-webkit-app-region: no-drag`, o esa zona arrastrará la ventana en vez de
+  recibir el clic; `.scf-overlay` y `.scf-menu` ya lo llevan.
+- **Rendimiento:** la prueba de movimiento corre en modo de segundo plano
+  (`SCF_BACKGROUND=1`) y da la misma cadencia que con la ventana visible.
+
 ### También sin publicar — Rediseño, fase 1: orden y coherencia
 
 El primero de tres pasos del rediseño: poner orden, sin cambiar todavía la

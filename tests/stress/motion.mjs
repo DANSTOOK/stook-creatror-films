@@ -279,13 +279,21 @@ async function openSettingsIn(window) {
     let bar = null;
     const rendering = await sampler('rendering', async () => {
       await exportDialog.getByRole('button', { name: 'Start export' }).click();
-      await sleep(1200);
-      bar = await window.evaluate(() => {
-        const element = document.querySelector('.scf-progress-bar');
-        if (!element) return null;
-        const style = getComputedStyle(element);
-        return { transition: style.transitionProperty, transform: style.transform, width: style.width };
-      });
+      // Read while it is really moving. A fixed 1.2 s wait missed it once a
+      // 150-frame render took under a second (900 ms here): look every 100 ms
+      // from 300 ms in, and keep the last reading taken before it finished.
+      await sleep(300);
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const reading = await window.evaluate(() => {
+          const element = document.querySelector('.scf-progress-bar');
+          if (!element) return null;
+          const style = getComputedStyle(element);
+          return { transition: style.transitionProperty, transform: style.transform, width: style.width };
+        });
+        if (!reading) break;
+        bar = reading;
+        await sleep(100);
+      }
       await exportDialog.getByText('Export finished', { exact: false }).waitFor({ timeout: 300_000 }).catch(() => undefined);
     }, 300);
     check('the progress bar was on screen to be judged, and it scales rather than resizes',
