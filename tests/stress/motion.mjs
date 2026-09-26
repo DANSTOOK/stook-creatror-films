@@ -407,6 +407,72 @@ async function main() {
     await window.locator('.scf-dialog').waitFor({ state: 'detached', timeout: 2_000 });
     check('paused, the blur behind a dialog is back', pausedBlur.startsWith('blur('), pausedBlur);
 
+    /* The timeline zoom: animated, retargeted per wheel event, cheap -------- */
+    // Ctrl+wheel over the timeline canvas, from the page (Playwright's mouse,
+    // not the system's): each event moves the target, the canvas eases to it.
+    const canvasBox = await window.locator('canvas').last().boundingBox();
+    const zoomBurst = async (events, delta) => {
+      await window.mouse.move(canvasBox.x + canvasBox.width * 0.4, canvasBox.y + 60);
+      await window.keyboard.down('Control');
+      for (let i = 0; i < events; i += 1) {
+        await window.mouse.wheel(0, delta);
+        await sleep(16);
+      }
+      await window.keyboard.up('Control');
+    };
+    const zoomState = () => window.evaluate(() => ({
+      ppf: window.__scfStore.getState().ui.pixelsPerFrame,
+      drawn: window.__scfMotion?.zoomStats?.frames ?? 0,
+    }));
+
+    step('timeline zoom with the wheel and a pinch, paused');
+    const zoomBefore = await zoomState();
+    let afterNotch = null;
+    const zoomPaused = await sampler('zoomPaused', async () => {
+      await window.mouse.move(canvasBox.x + canvasBox.width * 0.4, canvasBox.y + 60);
+      await window.keyboard.down('Control');
+      await window.mouse.wheel(0, -100);
+      afterNotch = await zoomState();
+      await window.keyboard.up('Control');
+      await sleep(250);
+      // A pinch: forty small events, which the old code took as forty notches.
+      await zoomBurst(40, 2.5);
+      await sleep(250);
+      await zoomBurst(10, 100);
+    });
+    const zoomAfter = await zoomState();
+    const notchRatio = afterNotch.ppf / zoomBefore.ppf;
+    check('a wheel notch zooms by 1.25 at once in the store, and the canvas draws the way there',
+      Math.abs(notchRatio - 1.25) < 0.01 && zoomAfter.drawn - zoomBefore.drawn >= 10,
+      `x${notchRatio.toFixed(3)} straight away; ${zoomAfter.drawn - zoomBefore.drawn} in-between frames drawn`);
+    check('zooming the timeline stays smooth', zoomPaused.freezes === 0 && zoomPaused.p95 < 35 && zoomPaused.loafWorst < 100, describe(zoomPaused));
+
+    step('timeline zoom and page-turning while the video plays');
+    await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      store.setCurrentFrame(0);
+      store.setUi({ pixelsPerFrame: 60, scrollLeftPx: 0 });
+    });
+    const scrolls = [];
+    const zoomPlaying = await sampler('zoomPlaying', async () => {
+      await window.evaluate(() => window.__scfStore.getState().setPlaying(true));
+      for (let i = 0; i < 24; i += 1) {
+        scrolls.push(await window.evaluate(() => Math.round(window.__scfStore.getState().ui.scrollLeftPx)));
+        await sleep(100);
+      }
+      await zoomBurst(8, -60);
+      await sleep(200);
+      await zoomBurst(8, 60);
+      await sleep(300);
+      await window.evaluate(() => window.__scfStore.getState().setPlaying(false));
+    });
+    const pages = new Set(scrolls).size;
+    check('playing past the edge turns the page instead of scrolling continuously',
+      pages >= 2 && pages <= 6, `${pages} different scroll positions in 24 readings over 2.4 s: ${[...new Set(scrolls)].join(', ')}`);
+    check('zooming while the video plays stays smooth', zoomPlaying.freezes === 0 && zoomPlaying.p95 < 45 && zoomPlaying.loafWorst < 100, describe(zoomPlaying));
+    await window.getByRole('button', { name: 'Fit', exact: true }).click().catch(() => undefined);
+    await sleep(300);
+
     /* The progress bar, while it really exists -------------------------------- */
     // It only exists during a render, so the sweep below never saw the one
     // element the change was about: it used to animate its width, laying the

@@ -798,6 +798,22 @@ section[data-section] > [id^='inspector-section-'],
   }
 }
 
+/*
+  The full-screen viewer's controls: they fade up when the pointer moves, and
+  fade away (drifting 8px down) after a moment of stillness. Opacity only
+  needs the compositor, so this costs the playing video nothing.
+*/
+.scf-autohide {
+  transition:
+    opacity var(--settle-standard) var(--spring-standard),
+    transform var(--settle-standard) var(--spring-standard);
+}
+
+.scf-autohide[data-state='hidden'] {
+  opacity: 0;
+  transform: translateY(var(--shift-sm));
+}
+
 /* The unsaved-changes dot pulses a few times when the project changes, then rests. */
 .scf-dirty-dot {
   animation: scf-pulse-dot 1.2s ease-in-out 3;

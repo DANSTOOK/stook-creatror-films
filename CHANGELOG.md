@@ -372,6 +372,34 @@ adónde va; nada de lo que se usa a menudo hace esperar.
   hacen sitio deslizándose; al arrastrar archivos encima, la zona de soltar
   aparece con un fundido y su rótulo crece.
 - **Exportación terminada:** la marca de verificación aparece con el rebote.
+- **Zoom de la línea de tiempo, siempre animado:** rueda, pellizco del panel
+  táctil, botones, teclas, deslizador y «Ajustar». El valor cambia al
+  instante (cada clic y cada prueba lo leen ya) y el lienzo dibuja el camino
+  hasta él en unos 150 ms; cada evento de rueda solo mueve el destino, así que
+  el gesto se sigue sin cola ni retraso. El punto bajo el puntero (o el
+  cursor de reproducción) se queda quieto en cada fotograma, no solo al final.
+- **Arreglado: el pellizco del panel táctil** hacía zoom ×1,25 por evento, y
+  un pellizco suave cruzaba todo el rango. Ahora el zoom es proporcional al
+  desplazamiento: diez eventos pequeños suman lo que una muesca de la rueda
+  (que sigue siendo ×1,25).
+- **El imán:** los clips que una edición empuja se deslizan a su sitio en
+  180 ms, dibujados en el lienzo; los clics ya usan la posición final. No
+  mientras se recorta un borde (lo que le sigue va pegado al puntero).
+- **Ajuste:** la línea de ajuste destella 120 ms cuando engancha algo nuevo.
+- **Reproduciendo, la línea de tiempo pasa página** cuando el cursor sale de
+  la vista, como el «desplazamiento por páginas» de Premiere: salta una vez y
+  se queda quieta, nunca un desplazamiento continuo.
+- **Visor a pantalla completa:** en pausa crece desde su sitio en el editor
+  (muelle estándar) y vuelve a él al salir en 120 ms; reproduciendo es
+  instantáneo. Sus controles aparecen
+  y se ocultan con un fundido (y 8 px de caída).
+
+**Lo que se queda quieto a propósito:** la selección, el cursor de
+reproducción, arrastrar el cursor y cualquier arrastre (van 1:1 con el
+puntero); el tamaño de los paneles al mostrarlos, ocultarlos o volver al
+tamaño por defecto con doble clic en el divisor (es reorganizar el visor
+WebGL); los deslizadores (el nativo no puede animar su botón); el
+desplazamiento normal de la línea de tiempo.
 - **Mientras se reproduce o se exporta** (`data-playing` / `data-exporting`
   en `<html>`): se quita el desenfoque detrás de diálogos y menús y no corre
   nada decorativo. En pausa, el desenfoque sigue como estaba.
@@ -403,6 +431,33 @@ real ni capturas de pantalla):
 - `npm run test:ui` **126/126**, también con los paneles, los controles y el
   inspector animados (ocultar un panel sigue dejando `media-panel` en 0 al
   instante: el fantasma vive en una raíz sombra cerrada que nada de fuera ve).
+- Al final de las tres fases: pruebas unitarias **64 archivos**, las dos
+  comprobaciones de tipos sin errores, `npm run test:ui` **126/126** (la
+  primera pasada dio 125/126: el visor medido 400 ms después de salir de
+  pantalla completa aún se estaba encogiendo; la salida pasó a 120 ms, como
+  toda salida), `npm run test:stress:projects` **41/41** y
+  `npm run test:motion` **26/26**.
+- Zoom: `tests/ZoomMotion.test.ts` (5 pruebas): llega exacto al valor del
+  almacén en ≤ 170 ms, el punto bajo el puntero no se mueve en ningún
+  fotograma, un segundo evento a medio camino continúa en vez de reiniciar,
+  un desplazamiento solo nunca se anima, y el pellizco es proporcional. En
+  `npm run test:motion` (ahora **26/26**): una muesca multiplica el zoom por
+  1,250 al instante y el lienzo dibuja los fotogramas intermedios; con rueda y
+  pellizco en pausa p95 5,8 ms y 0 perdidos; reproduciendo con zoom p95
+  5,7 ms, 0,79 % perdidos, 0 fotogramas largos, 0 congelaciones; en 2,4 s de reproducción a
+  zoom máximo la vista pasó 3 páginas (4 posiciones), no 24.
+- Coste del zoom animado durante la reproducción, medido aparte con la misma
+  secuencia alternando tres casos, tres veces cada uno: solo reproducir 0 %
+  perdidos; con zoom animado 0-0,18 %; con zoom instantáneo 0-0,17 %: el
+  mismo coste. En la GPU integrada Intel (`FILMORA_GPU=low-power`): 0 %
+  perdidos en los tres casos.
+- Imán y visor, con la sonda: tras borrar un clip con el imán, el almacén ya
+  tiene el siguiente en el fotograma 0 mientras el lienzo aún lo dibuja
+  deslizándose; pantalla completa en pausa lleva 1 animación al entrar y al
+  salir, 0 reproduciendo; los controles pasan a `hidden` con opacidad 0 y
+  8 px de caída. El paso real a pantalla completa de Windows no se puede
+  probar en segundo plano (la ventana no sale de fuera de la pantalla):
+  queda para probar a mano.
 - Sonda en segundo plano: al ocultar medios, 0 paneles en la página y 1
   fantasma; al mostrarlo, el contenido empieza en `translateX(-16px)` y
   opacidad 0 y termina en su sitio; el resaltado de herramientas pasa de
@@ -442,8 +497,8 @@ Para quien anime la interfaz después (el agente de movimiento):
   `useLayoutEffect`, no en el estado de React — guardarla en el estado
   provocó un bucle de renders. No reintroducir estado de posición.
 - **Descripciones emergentes:** una sola capa (`TooltipLayer`) con
-  `data-state="measuring|open"`; aparece a los 450 ms, al momento si otra
-  acaba de cerrarse. Sin animación de entrada todavía.
+  `data-state="measuring|open"`; aparecía a los 450 ms, al momento si otra
+  acaba de cerrarse. Ahora aparece a los 500 ms con un fundido de 4 px.
 - **Barra de título:** `app-drag` / `app-no-drag`. Cualquier capa nueva que
   cubra la franja superior (un fondo de diálogo, un menú) necesita
   `-webkit-app-region: no-drag`, o esa zona arrastrará la ventana en vez de

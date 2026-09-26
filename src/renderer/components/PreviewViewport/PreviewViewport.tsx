@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronFirst,
   ChevronLast,
@@ -18,6 +18,8 @@ import { useTransport } from '@renderer/hooks/useTransport';
 import { projectContentLength } from '@renderer/components/Timeline/timelineOps';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { useT } from '@renderer/i18n';
+import { motionQuiet, motionReduced } from '@renderer/motion/environment';
+import { EASE_EXIT, EXIT_MS, SPRINGS } from '@renderer/motion/tokens.generated';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { useCompositor } from './useCompositor';
 import { ViewportControls } from './ViewportControls';
@@ -68,6 +70,56 @@ export function PreviewViewport(): JSX.Element {
     if (!hasNativeBridge()) return undefined;
     window.filmora.setWindowFullScreen(fullscreen);
     return undefined;
+  }, [fullscreen]);
+
+  /*
+    Going full screen, paused, the viewer grows out of where it sat in the
+    editor, and shrinks back into it on the way out (FLIP: the layout changes
+    at once, a transform runs from the old box to the new one). Going in is
+    the standard spring; coming back is an exit, 120 ms, so the editor is
+    back at once. Playing, it is instant: the picture is what is being
+    watched.
+  */
+  const sectionRef = useRef<HTMLElement>(null);
+  const dockedBox = useRef<DOMRect | null>(null);
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section || fullscreen) return undefined;
+    const observer = new ResizeObserver(() => {
+      dockedBox.current = section.getBoundingClientRect();
+    });
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [fullscreen]);
+  const firstLayout = useRef(true);
+  useLayoutEffect(() => {
+    if (firstLayout.current) {
+      firstLayout.current = false;
+      return;
+    }
+    const section = sectionRef.current;
+    const docked = dockedBox.current;
+    if (!section || !docked || useProjectStore.getState().ui.isPlaying || motionQuiet() || motionReduced()) return;
+    const whole = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    const from = fullscreen ? docked : whole;
+    const to = section.getBoundingClientRect();
+    if (to.width === 0 || to.height === 0) return;
+    const start = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`;
+    section.style.transformOrigin = 'top left';
+    const duration = fullscreen ? SPRINGS.standard.settleMs : EXIT_MS;
+    section.animate([{ transform: start }, { transform: 'none' }], {
+      duration,
+      easing: fullscreen ? SPRINGS.standard.easing : EASE_EXIT,
+    });
+    // Shrinking back, it passes over the panels around it.
+    if (!fullscreen) {
+      section.style.zIndex = '60';
+      section.style.position = 'relative';
+      window.setTimeout(() => {
+        section.style.zIndex = '';
+        section.style.position = '';
+      }, duration);
+    }
   }, [fullscreen]);
 
   // Full screen shows the picture and nothing else: the controls come up when
@@ -152,6 +204,7 @@ export function PreviewViewport(): JSX.Element {
 
   return (
     <section
+      ref={sectionRef}
       data-testid="preview-panel"
       data-state={fullscreen ? 'fullscreen' : 'docked'}
       className={
@@ -246,8 +299,8 @@ export function PreviewViewport(): JSX.Element {
         <footer
           data-testid="fullscreen-controls"
           data-state={controlsShown ? 'shown' : 'hidden'}
-          className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-6 pb-5 pt-12 transition-opacity duration-300 ${
-            controlsShown ? 'opacity-100' : 'pointer-events-none opacity-0'
+          className={`scf-autohide absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent px-6 pb-5 pt-12 ${
+            controlsShown ? '' : 'pointer-events-none'
           }`}
         >
           {/* A thin scrubber: here there is no timeline to drag the playhead on. */}

@@ -47,6 +47,7 @@ import { importDroppedFiles } from '@renderer/media/importMedia';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { canMoveTrack, timelineRows } from './trackRows';
 import { useIndicator } from '@renderer/motion/useIndicator';
+import { wheelZoomFactor } from './zoomMotion';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
@@ -198,6 +199,8 @@ export function Timeline(): JSX.Element {
 
   // Ctrl+wheel zooms around the pointer, like every editor. Registered by hand
   // because React's onWheel is passive and cannot stop the page from scrolling.
+  // A touchpad pinch arrives as Ctrl+wheel too, in small steps: the zoom is in
+  // proportion to the delta (zoomMotion.ts), and the canvas eases to it.
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -206,11 +209,32 @@ export function Timeline(): JSX.Element {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       const anchor = event.clientX - element.getBoundingClientRect().left;
-      store.getState().zoomBy(event.deltaY < 0 ? 1.25 : 1 / 1.25, anchor);
+      store.getState().zoomBy(wheelZoomFactor(event.deltaY, event.deltaMode), anchor);
     };
     element.addEventListener('wheel', onWheel, { passive: false });
     return () => element.removeEventListener('wheel', onWheel);
   }, [store]);
+
+  /*
+    Playing past the edge of the view turns the page, as Premiere's "page
+    scroll" does: the view jumps so the playhead starts again near the left,
+    and holds still until it reaches the edge again. Never a continuous
+    scroll - the whole timeline moving under the eye at 30 fps is the one
+    thing that makes a long play tiring to watch - and never animated.
+  */
+  useEffect(
+    () =>
+      store.subscribe((state, previous) => {
+        if (!state.ui.isPlaying || state.project.currentFrame === previous.project.currentFrame) return;
+        const { pixelsPerFrame, scrollLeftPx, viewportWidthPx } = state.ui;
+        if (!(viewportWidthPx > 0)) return;
+        const x = state.project.currentFrame * pixelsPerFrame - scrollLeftPx;
+        if (x >= 0 && x <= viewportWidthPx - 2) return;
+        const lead = x < 0 ? viewportWidthPx * 0.9 : viewportWidthPx * 0.05;
+        state.setUi({ scrollLeftPx: Math.max(0, state.project.currentFrame * pixelsPerFrame - lead) });
+      }),
+    [store],
+  );
 
   // The canvas paints in scroll-space, so it needs the live scroll offset.
   useEffect(() => {
@@ -1378,6 +1402,7 @@ export function Timeline(): JSX.Element {
                 hover={hover}
                 activeTrim={activeTrim}
                 cursor={cursor}
+                animateDisplacement={drag.kind !== 'trim' && drag.kind !== 'smartTrim'}
                 onPointerLeave={() => setHover(null)}
                 waveforms={waveforms}
                 width={viewportWidth}

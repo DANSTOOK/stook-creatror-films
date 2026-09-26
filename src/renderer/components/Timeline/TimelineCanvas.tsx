@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef } from 'react';
+﻿import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Clip, Marker, ProjectState, Track } from '@shared/types';
 import { framesToShortLabel } from '@shared/utils/timecode';
 import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
@@ -7,6 +7,8 @@ import { clipEndFrame, clipsInPaintOrder } from './timelineOps';
 import { frameToPixel, type SnapTarget } from './snapping';
 import { sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
 import { fadeLengths } from '@renderer/timing/clipFades';
+import { motionQuiet, motionReduced } from '@renderer/motion/environment';
+import { stepZoomView, type DisplayedView } from './zoomMotion';
 
 /**
  * Multi-track drawing surface.
@@ -67,6 +69,11 @@ export interface TimelineCanvasProps {
   activeTrim?: ClipHover | null;
   /** CSS cursor for what a press would do here. */
   cursor?: string;
+  /**
+   * Clips pushed aside by an edit slide to their new places. Off while an
+   * edge is being trimmed: what follows a trim has to track the pointer.
+   */
+  animateDisplacement?: boolean;
   onPointerDown(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerMove(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerUp(event: React.PointerEvent<HTMLCanvasElement>): void;
@@ -81,6 +88,26 @@ export interface ClipHover {
 
 /** How long the trim handles take to grow in, in milliseconds. */
 const HANDLE_ANIMATION_MS = 140;
+/** A clip pushed aside by the magnet (or an undo) glides this long to its place. */
+const SLIDE_MS = 180;
+/** The snap line flashes this long when it catches something new. */
+const SNAP_FLASH_MS = 120;
+/** More clips than this moving at once is a new project or a big edit: no slide. */
+const SLIDE_LIMIT = 60;
+
+interface Slide {
+  /** Frames between where it is drawn at the start and where it really is. */
+  fromOffset: number;
+  startedAt: number;
+}
+
+const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+
+function slideOffset(slide: Slide | undefined, now: number): number {
+  if (!slide) return 0;
+  const t = (now - slide.startedAt) / SLIDE_MS;
+  return t >= 1 ? 0 : slide.fromOffset * (1 - easeOutCubic(Math.max(0, t)));
+}
 
 /**
  * Trim handles on a clip's edges.
@@ -640,7 +667,7 @@ function drawPlayhead(
 }
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
-  const { project, ui, tracks, activeSnap, waveforms, width, height } = props;
+  const { project, ui: storeUi, tracks, activeSnap, waveforms, width, height } = props;
   const marquee = props.marquee ?? null;
   const hover = props.hover ?? null;
   const activeTrim = props.activeTrim ?? null;
@@ -656,10 +683,85 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   }
   const animationFrame = useRef<number | null>(null);
 
+  /*
+    What is drawn can run a few milliseconds behind what the store says, and
+    only here: a zoom eases to the store's value (zoomMotion.ts), a clip the
+    magnet pushed aside glides to its new start, the snap line flashes. The
+    store - and so every click, every hit test - already has the final value.
+    Nothing here renders React; it is the same paint, called again while
+    something is still moving, and a still timeline costs nothing.
+  */
+  const displayed = useRef<DisplayedView | null>(null);
+  const lastPaintAt = useRef(0);
+  const slides = useRef(new Map<string, Slide>());
+  const previousClips = useRef<ProjectState['clips'] | null>(null);
+  const snapFlash = useRef<{ key: string; at: number } | null>(null);
+  const animateDisplacement = props.animateDisplacement ?? true;
+
+  // Before the paint effect: which clips moved, and from where they were drawn.
+  useLayoutEffect(() => {
+    const before = previousClips.current;
+    previousClips.current = project.clips;
+    if (!before || before === project.clips) return;
+    const now = performance.now();
+    if (!animateDisplacement || motionQuiet() || motionReduced()) {
+      slides.current.clear();
+      return;
+    }
+    const selected = new Set(storeUi.selectedClipIds);
+    const moved: Array<[string, number]> = [];
+    for (const [id, clip] of Object.entries(project.clips)) {
+      const old = before[id];
+      if (!old || old.trackId !== clip.trackId || old.startFrame === clip.startFrame || selected.has(id)) continue;
+      // From where it is on screen right now, so a second push carries on from there.
+      const drawnAt = old.startFrame + slideOffset(slides.current.get(id), now);
+      moved.push([id, drawnAt - clip.startFrame]);
+    }
+    if (moved.length === 0) return;
+    if (moved.length > SLIDE_LIMIT) {
+      slides.current.clear();
+      return;
+    }
+    for (const [id, fromOffset] of moved) {
+      // A jump across the whole view is not a slide anyone could follow.
+      if (Math.abs(fromOffset * storeUi.pixelsPerFrame) > width * 1.5) slides.current.delete(id);
+      else slides.current.set(id, { fromOffset, startedAt: now });
+    }
+    // The selection and scale are read at the moment of the edit only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.clips]);
+
   const paint = useCallback(() => {
+    const now = performance.now();
     const handleProgress = hoverKey
-      ? Math.min(1, (performance.now() - hoverStartedAt.current) / HANDLE_ANIMATION_MS)
+      ? Math.min(1, (now - hoverStartedAt.current) / HANDLE_ANIMATION_MS)
       : 0;
+    const dt = lastPaintAt.current ? Math.min(50, now - lastPaintAt.current) : 16;
+    lastPaintAt.current = now;
+    const zoom = stepZoomView(
+      displayed.current,
+      { pixelsPerFrame: storeUi.pixelsPerFrame, scrollLeftPx: storeUi.scrollLeftPx },
+      dt,
+      width,
+      motionReduced(),
+    );
+    displayed.current = zoom.view;
+    // The view as drawn: the store's, or a step on the way to it.
+    const ui: EditorUiState = zoom.moving
+      ? { ...storeUi, pixelsPerFrame: zoom.view.pixelsPerFrame, scrollLeftPx: zoom.view.scrollLeftPx }
+      : storeUi;
+    let sliding = false;
+    const drawnClip = (clip: Clip): Clip => {
+      const slide = slides.current.get(clip.id);
+      if (!slide) return clip;
+      const offset = slideOffset(slide, now);
+      if (offset === 0) {
+        slides.current.delete(clip.id);
+        return clip;
+      }
+      sliding = true;
+      return { ...clip, startFrame: clip.startFrame + offset };
+    };
     const canvas = canvasRef.current;
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
@@ -692,7 +794,8 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
 
       // Same order the pointer hit-tests in, reversed: what is drawn on top is
       // what a click selects.
-      for (const clip of clipsInPaintOrder(project, track.id, selected)) {
+      for (const storedClip of clipsInPaintOrder(project, track.id, selected)) {
+        const clip = drawnClip(storedClip);
         // Cull clips that are entirely off-screen before touching the 2D API.
         const startX = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
         const endX = frameToPixel(clipEndFrame(clip), ui.pixelsPerFrame, ui.scrollLeftPx);
@@ -753,28 +856,51 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       context.globalAlpha = 1;
     }
 
+    let flashing = false;
     if (activeSnap) {
       const x = Math.round(frameToPixel(activeSnap.frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
+      // Catching something new flashes the line for a moment, so a snap is
+      // felt as well as seen: a glow that fades out in 120 ms.
+      const key = `${activeSnap.kind}:${activeSnap.frame}`;
+      if (snapFlash.current?.key !== key) snapFlash.current = { key, at: now };
+      const flash = motionReduced() ? 1 : (now - snapFlash.current.at) / SNAP_FLASH_MS;
+      if (flash < 1) {
+        flashing = true;
+        context.save();
+        context.globalAlpha = 0.45 * (1 - flash);
+        context.strokeStyle = '#22d3ee';
+        context.lineWidth = 5;
+        context.beginPath();
+        context.moveTo(x, RULER_HEIGHT);
+        context.lineTo(x, height);
+        context.stroke();
+        context.restore();
+      }
       context.strokeStyle = '#22d3ee';
       context.lineWidth = 1;
       context.beginPath();
       context.moveTo(x, RULER_HEIGHT);
       context.lineTo(x, height);
       context.stroke();
+    } else {
+      snapFlash.current = null;
     }
 
     drawRuler(context, project, ui, width);
     drawMarkerFlags(context, project, ui, width);
     drawPlayhead(context, project, ui, height);
 
-    // Keep painting only while the handles are still growing in; a still
+    // Keep painting only while something is still on its way; a still
     // timeline costs nothing.
-    if (handleProgress > 0 && handleProgress < 1) {
+    if ((handleProgress > 0 && handleProgress < 1) || zoom.moving || sliding || flashing) {
       animationFrame.current = requestAnimationFrame(paint);
+    } else {
+      lastPaintAt.current = 0;
     }
-  }, [project, ui, tracks, activeSnap, waveforms, width, height, marquee, hover, activeTrim, hoverKey]);
+  }, [project, storeUi, tracks, activeSnap, waveforms, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
+    if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
     animationFrame.current = requestAnimationFrame(paint);
     return () => {
       if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
@@ -783,7 +909,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
 
   // The pointer says what a press would do: the parent works that out from
   // what is under it (a trim edge, a clip, empty space) and the active tool.
-  const cursor = props.cursor ?? (ui.tool === 'hand' ? 'grab' : 'default');
+  const cursor = props.cursor ?? (storeUi.tool === 'hand' ? 'grab' : 'default');
 
   return (
     <canvas
