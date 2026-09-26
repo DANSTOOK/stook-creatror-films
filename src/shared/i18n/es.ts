@@ -502,6 +502,15 @@ export const es: Messages = {
   'media.proxyBadgeHint': 'Se edita con una copia ligera; la exportación lee este archivo',
   'media.alphaBadge': 'alfa',
   'media.missingBadge': 'falta',
+  'media.master': 'Principal',
+  'media.view': 'Vista',
+  'media.viewGrid': 'Miniaturas',
+  'media.viewList': 'Lista',
+  'media.clipsLabel': 'Clips de {name}',
+  'media.still': 'Imagen fija',
+  'media.relink': 'Volver a vincular…',
+  'media.relinkShort': 'Vincular',
+  'media.relinkHint': 'Buscar el archivo que perdió este clip, y los demás que falten de la misma carpeta',
 
   /* Viewer --------------------------------------------------------------- */
   'viewer.fit': 'Ajustar',

@@ -93,7 +93,7 @@ export function BackupSettings({ onRestore }: BackupSettingsProps): JSX.Element 
         {backups && backups.length > 0 && (
           <ul className="max-h-40 space-y-1 overflow-y-auto" data-testid="backup-list">
             {backups.map((backup) => (
-              <li key={backup.file} className="list-item flex items-center justify-between gap-2 px-2 py-1.5">
+              <li key={backup.file} className="row-item flex items-center justify-between gap-2 px-2 py-1.5">
                 <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
                   <span className="timecode">
                     {new Date(backup.savedAt).toLocaleString(currentLocale(), { dateStyle: 'medium', timeStyle: 'short' })}

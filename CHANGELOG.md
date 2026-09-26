@@ -116,6 +116,34 @@ Cada punto dice cómo se comprobó. Todo se probó en segundo plano
 - **La onda es lineal, no en decibelios**: lo que se ve es lo que dirá el
   medidor del mezclador.
 
+### Medios: miniaturas o lista (punto 9)
+
+- **Añadido: vista de miniaturas**, la que abre por defecto, como la de
+  Resolve y el explorador de Final Cut: cada clip es una imagen de 16:9 con su
+  **duración encima** (0:20, 1:02:07) y el nombre debajo; un sonido enseña su
+  forma de onda en vez de una nota musical. Al lado del nombre de la carpeta
+  hay un par de botones **Miniaturas / Lista**; la elección se recuerda en este
+  equipo. La lista enseña nombre, tamaño y duración (o «Imagen fija»).
+- **Las acciones flotan sobre la imagen** (añadir en el cursor, quitar) al
+  pasar el ratón o al llegar con el tabulador, en vez de empujar el nombre.
+  Cada clip se alcanza con el teclado (Intro lo elige).
+- La carpeta raíz se llama «Principal» en español.
+- **Arreglado: las filas de la lista salían con la imagen encima del
+  nombre**, cada una de unos 110 px de alto (se ve en
+  `before-en-1600-media.png`). La clase `list-item` de las filas es también
+  una utilidad de Tailwind (`display: list-item`) y ganaba al `flex`; ahora se
+  llama `row-item`. Lo mismo pasaba en la lista de copias de Ajustes del
+  proyecto.
+
+**Cómo se comprobó** (`probe-media.mjs`, **7/7**; y la batería de interfaz entera, **126/126**, con la importación, «Add at the playhead», las carpetas y soltar desde el Explorador): las miniaturas son la vista
+por defecto; la miniatura de un clip de 20 s dice «0:20»; al pasar el ratón
+aparece «Add at the playhead» y el nombre no se mueve ni un píxel (19, 267,
+109×16 antes y después); con el foco del teclado en la miniatura sus acciones
+se ven (opacidad 1); **arrastrar una miniatura a la línea de tiempo** crea el
+clip (5 → 6 clips); la lista enseña filas; y en una sesión nueva sigue en
+lista. Capturas `after-en-1600-media*.png` (miniaturas, con el ratón encima,
+lista) y `after-es-1280-media.png`; antes, `before-en-1600-media*.png`.
+
 ---
 
 ## v1.27.0-beta.1 — El rediseño: orden, aspecto Mac y animaciones

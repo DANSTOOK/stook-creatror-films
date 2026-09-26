@@ -3,15 +3,14 @@ import {
   ArrowRightToLine,
   ChevronDown,
   ChevronRight,
-  FileVideo,
   Folder,
   FolderInput,
   FolderPlus,
   FolderSymlink,
-  Image as ImageIcon,
   Import,
+  LayoutGrid,
   Library,
-  Music,
+  List,
   Pencil,
   Plus,
   Rows3,
@@ -19,7 +18,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
-import type { MediaAsset, MediaBin, MediaKind } from '@shared/types';
+import type { MediaAsset, MediaBin } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import {
   ACCEPT_ATTRIBUTE,
@@ -33,8 +32,9 @@ import {
 } from '@renderer/media/importMedia';
 import { assetsInBin, binPath, childBins, countAssetsDeep } from '@renderer/media/bins';
 import { useFlip } from '@renderer/motion/useFlip';
-import { assetLengthSeconds } from '@renderer/media/assetLength';
 import { ProxyBar } from './ProxyBar';
+import { AssetItem, loadMediaView, saveMediaView, type MediaView } from './AssetItem';
+import { useMediaStore } from '@renderer/store/useMediaStore';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { notify } from '@renderer/notifications/notifications';
@@ -59,12 +59,6 @@ import { keyLabel, t, useT } from '@renderer/i18n';
  * identical unlabelled folder icons, and proxies are a small indicator there
  * rather than a strip across the panel.
  */
-
-const KIND_ICONS: Record<MediaKind, typeof FileVideo> = {
-  video: FileVideo,
-  audio: Music,
-  image: ImageIcon,
-};
 
 /** Indent per level in the bin list. */
 const BIN_INDENT_PX = 12;
@@ -97,6 +91,14 @@ export function MediaLibrary(): JSX.Element {
   /** Bin a clip is being dragged over: `undefined` for none, `null` for Master. */
   const [dropBin, setDropBin] = useState<string | null | undefined>(undefined);
   const dragDepth = useRef(0);
+  // Thumbnails or a list, as Resolve's Media Pool and Final Cut's browser
+  // offer; a setting of this machine, like the panel sizes.
+  const [view, setViewState] = useState<MediaView>(loadMediaView);
+  const setView = (next: MediaView): void => {
+    saveMediaView(next);
+    setViewState(next);
+  };
+  const waveforms = useMediaStore((state) => state.waveforms);
 
   const visibleAssets = useMemo(() => assetsInBin(assets, bins, currentBinId), [assets, bins, currentBinId]);
 
@@ -106,7 +108,7 @@ export function MediaLibrary(): JSX.Element {
   useFlip(assetListRef, visibleAssets.map((asset) => asset.id).join('|'));
   const subBins = useMemo(() => childBins(bins, currentBinId), [bins, currentBinId]);
   const path = useMemo(() => binPath(bins, currentBinId), [bins, currentBinId]);
-  const currentBinName = path.length > 0 ? path[path.length - 1].name : 'Master';
+  const currentBinName = path.length > 0 ? path[path.length - 1].name : tr('media.master');
   const libraryEmpty = assets.length === 0 && bins.length === 0;
 
   const applyOutcome = useCallback(
@@ -377,7 +379,7 @@ export function MediaLibrary(): JSX.Element {
         {bin && renamingBinId === bin.id ? (
           renameField(bin)
         ) : (
-          <span className="min-w-0 flex-1 truncate">{bin ? bin.name : 'Master'}</span>
+          <span className="min-w-0 flex-1 truncate">{bin ? bin.name : tr('media.master')}</span>
         )}
         <span className="shrink-0 text-2xs tabular-nums text-slate-400">{count}</span>
       </div>
@@ -393,7 +395,7 @@ export function MediaLibrary(): JSX.Element {
   /** "Move to" entries for a clip: every bin but the one it is in. */
   const moveTargets = (asset: MediaAsset): ContextMenuItem[] => {
     const all: { id: string | null; label: string }[] = [
-      { id: null, label: 'Master' },
+      { id: null, label: tr('media.master') },
       ...bins
         .map((bin) => ({ id: bin.id, label: binPath(bins, bin.id).map((entry) => entry.name).join(' / ') }))
         .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })),
@@ -505,11 +507,36 @@ export function MediaLibrary(): JSX.Element {
               Which bin the clips are from, and where an import will land.
               Its folders are in the list above and only there.
             */}
-            <div className="mb-1.5 flex min-w-0 items-baseline gap-2 px-1">
+            <div className="mb-1.5 flex min-w-0 items-center gap-2 px-1">
               <span className="truncate text-xs font-semibold text-slate-200">{currentBinName}</span>
               <span className="shrink-0 text-2xs tabular-nums text-slate-400">
                 {tr(visibleAssets.length === 1 ? 'media.oneClip' : 'media.clips', { count: visibleAssets.length })}
               </span>
+              <span className="flex-1" />
+              {/* Thumbnails or list: two choices, one always on, so a segmented pair. */}
+              <div role="radiogroup" aria-label={tr('media.view')} className="flex shrink-0 items-center rounded-control bg-panel-950 p-px">
+                {(
+                  [
+                    ['grid', tr('media.viewGrid'), LayoutGrid],
+                    ['list', tr('media.viewList'), List],
+                  ] as const
+                ).map(([value, label, Icon]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={view === value}
+                    data-testid={`media-view-${value}`}
+                    className={`flex h-5 w-6 items-center justify-center rounded-[3px] ${
+                      view === value ? 'bg-panel-600 text-slate-100' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    onClick={() => setView(value)}
+                    {...tip(label)}
+                  >
+                    <Icon size={12} />
+                  </button>
+                ))}
+              </div>
             </div>
 
             {visibleAssets.length === 0 && (
@@ -518,115 +545,58 @@ export function MediaLibrary(): JSX.Element {
               </p>
             )}
 
-            <ul ref={assetListRef} className="flex flex-col gap-1">
-              {visibleAssets.map((asset) => {
-                const Icon = KIND_ICONS[asset.kind];
-                return (
-                  <li
-                    key={asset.id}
-                    data-flip-key={asset.id}
-                    draggable={!asset.missing}
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
-                      // Copy onto the timeline, move onto a bin.
-                      event.dataTransfer.effectAllowed = 'copyMove';
-                    }}
-                    onDragEnd={() => setDropBin(undefined)}
-                    onClick={() => setUi({ selectedAssetId: asset.id })}
-                    aria-selected={selectedAssetId === asset.id}
-                    className={`list-item group cursor-grab active:cursor-grabbing ${
-                      selectedAssetId === asset.id ? 'border-accent/70 bg-panel-800' : ''
-                    }`}
-                    onContextMenu={(event) =>
-                      openMenu(event, [
-                        {
-                          label: tr('media.addAtPlayhead'),
-                          icon: Plus,
-                          disabled: asset.missing,
-                          onSelect: () => addAtPlayhead(asset),
-                        },
-                        {
-                          label: tr('media.addToEnd'),
-                          icon: ArrowRightToLine,
-                          disabled: asset.missing,
-                          onSelect: () => useProjectStore.getState().appendAsset(asset),
-                        },
-                        {
-                          label: tr('media.addOnNewTrack'),
-                          icon: Rows3,
-                          disabled: asset.missing,
-                          onSelect: () => useProjectStore.getState().addAssetOnNewTrack(asset),
-                        },
-                        { separator: true },
-                        ...moveTargets(asset),
-                        { separator: true },
-                        {
-                          label: tr('media.remove'),
-                          icon: Trash2,
-                          danger: true,
-                          onSelect: () => removeAsset(asset.id),
-                        },
-                      ])
-                    }
-                  >
-                    {asset.thumbnailUri ? (
-                      <img
-                        src={asset.thumbnailUri}
-                        alt=""
-                        className="h-8 w-12 shrink-0 rounded object-cover alpha-checkerboard"
-                      />
-                    ) : (
-                      <span className="flex h-8 w-12 shrink-0 items-center justify-center rounded bg-panel-950">
-                        <Icon size={16} className="text-slate-400" />
-                      </span>
-                    )}
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs text-slate-200">{asset.name}</p>
-                      <p className="text-2xs text-slate-400">
-                        {asset.width > 0 ? `${asset.width}x${asset.height} - ` : ''}
-                        {Math.round(assetLengthSeconds(asset, project.fps))}s
-                        {asset.proxyUri && (
-                          <span
-                            className="ml-1 rounded bg-sky-900/60 px-1 text-sky-300"
-                            title={tr('media.proxyBadgeHint')}
-                          >
-                            {tr('media.proxyBadge')}
-                          </span>
-                        )}
-                        {asset.hasAlphaChannel && (
-                          <span className="ml-1 rounded bg-emerald-900/60 px-1 text-emerald-300">
-                            {tr('media.alphaBadge')}
-                          </span>
-                        )}
-                        {asset.missing && (
-                          <span className="ml-1 rounded bg-red-900/60 px-1 text-red-300">
-                            {tr('media.missingBadge')}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="tool-button tool-button-dense opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
-                      disabled={asset.missing}
-                      onClick={() => addAtPlayhead(asset)}
-                      {...tip(tr('media.addAtPlayhead'), { hint: tr('media.addAtPlayheadHint') })}
-                    >
-                      <Plus size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="tool-button tool-button-dense opacity-0 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
-                      onClick={() => removeAsset(asset.id)}
-                      {...tip(tr('media.remove'))}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </li>
-                );
-              })}
+            <ul
+              ref={assetListRef}
+              role="listbox"
+              aria-label={tr('media.clipsLabel', { name: currentBinName })}
+              data-view={view}
+              className={view === 'grid' ? 'grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-x-2 gap-y-2.5' : 'flex flex-col gap-1'}
+            >
+              {visibleAssets.map((asset) => (
+                <AssetItem
+                  key={asset.id}
+                  asset={asset}
+                  view={view}
+                  selected={selectedAssetId === asset.id}
+                  fps={project.fps}
+                  peaks={asset.kind === 'audio' ? waveforms[asset.uri] : undefined}
+                  onSelect={() => setUi({ selectedAssetId: asset.id })}
+                  onDragEnd={() => setDropBin(undefined)}
+                  onAdd={() => addAtPlayhead(asset)}
+                  onRemove={() => removeAsset(asset.id)}
+                  onContextMenu={(event) =>
+                    openMenu(event, [
+                      {
+                        label: tr('media.addAtPlayhead'),
+                        icon: Plus,
+                        disabled: asset.missing,
+                        onSelect: () => addAtPlayhead(asset),
+                      },
+                      {
+                        label: tr('media.addToEnd'),
+                        icon: ArrowRightToLine,
+                        disabled: asset.missing,
+                        onSelect: () => useProjectStore.getState().appendAsset(asset),
+                      },
+                      {
+                        label: tr('media.addOnNewTrack'),
+                        icon: Rows3,
+                        disabled: asset.missing,
+                        onSelect: () => useProjectStore.getState().addAssetOnNewTrack(asset),
+                      },
+                      { separator: true },
+                      ...moveTargets(asset),
+                      { separator: true },
+                      {
+                        label: tr('media.remove'),
+                        icon: Trash2,
+                        danger: true,
+                        onSelect: () => removeAsset(asset.id),
+                      },
+                    ])
+                  }
+                />
+              ))}
             </ul>
           </>
         )}

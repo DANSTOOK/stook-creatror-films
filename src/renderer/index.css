@@ -292,8 +292,12 @@
   }
 
 
-  /* A row in a list of things - media clips, and anything else that is picked. */
-  .list-item {
+  /*
+    A row in a list of things - media clips, and anything else that is picked.
+    Not ".list-item": that is also a Tailwind utility (display: list-item),
+    which won over the flex here and stacked every row's picture over its name.
+  */
+  .row-item {
     @apply flex items-center gap-2 rounded-md border border-transparent px-2 py-2
            hover:border-accent/40 hover:bg-panel-800;
     transition: background-color var(--dur-micro) var(--ease-standard),
@@ -301,11 +305,34 @@
       opacity var(--settle-standard) var(--spring-standard);
   }
 
-  .list-item:hover {
+  .row-item:hover {
     transform: translateY(-1px);
   }
 
-  .list-item:active {
+  /*
+    A clip as a thumbnail (the media panel's grid view): the picture, its
+    length on it, the name under it. Selection is the accent ring round the
+    picture, as in Final Cut's browser, not a filled row.
+  */
+  .media-tile {
+    @apply flex min-w-0 flex-col rounded-menu p-1 hover:bg-panel-800;
+    transition: background-color var(--dur-micro) var(--ease-standard),
+      opacity var(--settle-standard) var(--spring-standard);
+  }
+
+  .media-tile > span:first-child {
+    @apply ring-1 ring-transparent;
+  }
+
+  .media-tile-selected {
+    @apply bg-panel-800;
+  }
+
+  .media-tile-selected > span:first-child {
+    @apply ring-2 ring-accent;
+  }
+
+  .row-item:active {
     transform: translateY(0);
   }
 
@@ -760,7 +787,8 @@ section[data-section] > [id^='inspector-section-'],
   the others close the same way.
 */
 @starting-style {
-  .list-item[data-flip-key] {
+  .row-item[data-flip-key],
+  .media-tile[data-flip-key] {
     opacity: 0;
   }
 }

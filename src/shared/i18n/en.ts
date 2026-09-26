@@ -502,6 +502,15 @@ export const en = {
   'media.proxyBadgeHint': 'Edited from a small stand-in; the export reads this file',
   'media.alphaBadge': 'alpha',
   'media.missingBadge': 'missing',
+  'media.master': 'Master',
+  'media.view': 'View',
+  'media.viewGrid': 'Thumbnails',
+  'media.viewList': 'List',
+  'media.clipsLabel': 'Clips in {name}',
+  'media.still': 'Still',
+  'media.relink': 'Relink…',
+  'media.relinkShort': 'Relink',
+  'media.relinkHint': 'Find the file this clip lost, and any others missing from the same folder',
 
   /* Viewer --------------------------------------------------------------- */
   'viewer.fit': 'Fit',
