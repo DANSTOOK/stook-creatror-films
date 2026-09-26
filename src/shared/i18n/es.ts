@@ -443,4 +443,23 @@ export const es: Messages = {
   'media.proxyBadgeHint': 'Se edita con una copia ligera; la exportación lee este archivo',
   'media.alphaBadge': 'alfa',
   'media.missingBadge': 'falta',
+
+  /* Viewer --------------------------------------------------------------- */
+  'viewer.fit': 'Ajustar',
+  'viewer.zoom': 'Zoom del visor',
+  'viewer.transform': 'Transformar',
+  'viewer.transformHint': 'Transformar: tiradores en el clip seleccionado para moverlo, escalarlo y girarlo',
+  'viewer.fullscreen': 'Visor a pantalla completa',
+  'viewer.leaveFullscreen': 'Salir de pantalla completa',
+  'viewer.toStart': 'Ir al inicio',
+  'viewer.previousFrame': 'Fotograma anterior',
+  'viewer.play': 'Reproducir',
+  'viewer.pause': 'Pausa',
+  'viewer.nextFrame': 'Fotograma siguiente',
+  'viewer.toEnd': 'Ir al final',
+  'viewer.loop': 'Reproducir en bucle',
+  'viewer.lengthHint': 'Duración del montaje: hasta el final del último clip',
+  'viewer.playhead': 'Cursor de reproducción',
+  'viewer.alpha': 'alfa',
+  'viewer.compositorFailed': 'No se pudo iniciar el compositor: {error}',
 };

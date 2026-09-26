@@ -443,6 +443,25 @@ export const en = {
   'media.proxyBadgeHint': 'Edited from a small stand-in; the export reads this file',
   'media.alphaBadge': 'alpha',
   'media.missingBadge': 'missing',
+
+  /* Viewer --------------------------------------------------------------- */
+  'viewer.fit': 'Fit',
+  'viewer.zoom': 'Viewer zoom',
+  'viewer.transform': 'Transform',
+  'viewer.transformHint': 'Transform - handles on the selected clip, to move, scale and turn it',
+  'viewer.fullscreen': 'Full-screen viewer',
+  'viewer.leaveFullscreen': 'Leave full screen',
+  'viewer.toStart': 'Go to start',
+  'viewer.previousFrame': 'Previous frame',
+  'viewer.play': 'Play',
+  'viewer.pause': 'Pause',
+  'viewer.nextFrame': 'Next frame',
+  'viewer.toEnd': 'Go to end',
+  'viewer.loop': 'Loop playback',
+  'viewer.lengthHint': 'Length of the edit: up to the end of the last clip',
+  'viewer.playhead': 'Playhead',
+  'viewer.alpha': 'alpha',
+  'viewer.compositorFailed': 'The compositor could not start: {error}',
 };
 
 export type Messages = typeof en;

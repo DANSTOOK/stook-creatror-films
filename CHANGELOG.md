@@ -24,8 +24,30 @@ un inspector por pestañas; y controles dibujados por el editor en vez de los
 de Windows. Todo lo que se tocó está en los dos idiomas. Cada punto dice cómo
 se comprobó.
 
+### Arreglado
+
+- **El visor decía que un montaje de 19 segundos duraba un minuto.** Mostraba
+  la longitud del lienzo del proyecto, que un proyecto nuevo fija en un minuto
+  y que solo crece; ahora muestra hasta el final del último clip
+  (00:00:19:00), y *Ir al final* va ahí.
+
 ### Cambiado
 
+- **El visor, como el de Final Cut o Resolve:**
+  - La cabecera dice de quién es la imagen (el nombre del proyecto), el
+    **zoom** (Ajustar, 50 %, 100 %, 200 %; al 100 % un píxel de la imagen es
+    un píxel de la pantalla) y el formato, «1920×1080 · 30 fps», que antes
+    estaba abajo a la derecha. Transformar y pantalla completa pasan a iconos
+    con su descripción y su atajo.
+  - Se va el **deslizador blanco grueso** bajo la imagen: el cursor se
+    arrastra en la regla de la línea de tiempo, como en Resolve y Final Cut.
+  - El **código de tiempo es grande** (15 px, cifras tabulares) y a su lado,
+    más pequeña, la duración real.
+  - **Pantalla completa solo muestra la imagen**, sobre negro, a pantalla
+    entera (no solo la ventana). Los controles —un deslizador fino, el código
+    de tiempo, el transporte y *Salir de pantalla completa*— aparecen al mover
+    el ratón y se van, con el puntero, tras 2,5 s quieto. Escape sale.
+  - Todo el visor está en español: cabecera, botones y descripciones.
 - **Una barra de título propia, con la barra de herramientas dentro**, como
   en Final Cut. Antes había dos franjas: la barra de Windows y, debajo, una
   fila de trece botones con texto (Nuevo, Abrir, Guardar, Deshacer, Rehacer,
@@ -137,6 +159,17 @@ se comprobó.
   Capturas del panel, del menú «+» y del recuadro de proxies
   (`after-en-1600-media*.png`; antes en `before-en-1600-media.png`). El
   recuadro va fijado a la ventana: dentro del panel quedaba recortado.
+- **Visor** (`probe-viewer.mjs`): con un montaje de 19 s el visor dice
+  00:00:19:00 y en ningún sitio 00:01:00:00; el código de tiempo mide 15 px
+  con cifras tabulares; no hay deslizador bajo la imagen; el formato está en
+  la cabecera; *Ir al final* deja el cursor en el fotograma 570; al 100 % el
+  lienzo mide 1920 px CSS a escala 1x (859 ajustado); en pantalla completa
+  los controles se ocultan a los 2,5 s y vuelven al mover el ratón, no hay
+  cabecera, y Escape sale. **9/9.** Capturas `after-en-1600-viewer*.png` y
+  `after-en-1600-fullscreen-*.png` (antes en `before-en-1600-viewer.png`).
+  La comprobación de interfaz de Mayús+F y Escape sigue pasando. Pasar la
+  ventana a pantalla completa de verdad no se probó con la ventana a la vista:
+  en modo de segundo plano no se hace, para no ocupar la pantalla de nadie.
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto
