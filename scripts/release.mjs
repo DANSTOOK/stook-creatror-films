@@ -66,7 +66,11 @@ git('add', 'package.json', 'package-lock.json');
 if (git('diff', '--cached', '--name-only') !== '') git('commit', '-m', `Release ${tag}`);
 // Verbatim: the default cleanup strips every line starting with '#' as a
 // comment, which deletes all the ### headings from the release notes.
-git('tag', '-a', tag, '--cleanup=verbatim', '-m', notes);
+// From a file, not `-m`: a long changelog section overflows Windows' 32K
+// command line (spawnSync ENAMETOOLONG), which is how v1.27.0-beta.1 failed.
+const notesFile = '.git/SCF_RELEASE_NOTES';
+writeFileSync(notesFile, notes);
+git('tag', '-a', tag, '--cleanup=verbatim', '-F', notesFile);
 
 console.log(`release: tagged ${tag}`);
 
