@@ -56,6 +56,19 @@ export const t = (key: MessageKey, params?: MessageParams): string =>
 /** The current locale tag, for dates and numbers. */
 export const currentLocale = (): string => localeOf(useLanguageStore.getState().language);
 
+/**
+ * A key combination as this language's keyboards label it: Shift is Mayús,
+ * Delete is Supr and Space is Espacio on a Spanish keyboard. Written in
+ * English ("Ctrl+Shift+S") everywhere in the code.
+ */
+export function keyLabel(combo: string): string {
+  if (useLanguageStore.getState().language !== 'es') return combo;
+  return combo
+    .split('+')
+    .map((part) => ({ Shift: 'Mayús', Del: 'Supr', Delete: 'Supr', Space: 'Espacio', Home: 'Inicio', End: 'Fin' })[part] ?? part)
+    .join('+');
+}
+
 /** `t` for a component: re-renders it when the language changes. */
 export function useT(): (key: MessageKey, params?: MessageParams) => string {
   const language = useLanguageStore((state) => state.language);

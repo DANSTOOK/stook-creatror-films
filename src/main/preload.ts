@@ -9,6 +9,7 @@ import {
   IPC,
   type FilmoraApi,
   type MediaProbe,
+  type AppMenuEntry,
   type MenuCommand,
   type PickedFile,
   type ProjectBackup,
@@ -75,6 +76,9 @@ const api: FilmoraApi = {
     };
   },
   editText: (operation) => ipcRenderer.send(IPC.editText, operation),
+  appMenuModel: () => ipcRenderer.invoke(IPC.appMenuModel) as Promise<AppMenuEntry[]>,
+  appMenuInvoke: (id) => ipcRenderer.send(IPC.appMenuInvoke, id),
+  setWindowFullScreen: (on) => ipcRenderer.send(IPC.windowFullScreen, on),
   openProject: () =>
     ipcRenderer.invoke(IPC.openProject) as Promise<{ path: string; contents: string } | null>,
   openLut: () =>

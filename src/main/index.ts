@@ -25,6 +25,11 @@ const PRELOAD = join(DIST_ELECTRON, 'preload/preload.js');
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow: BrowserWindow | null = null;
+
+/** The page's title bar: its height and colours, for the caption buttons drawn over it. */
+const TITLE_BAR_HEIGHT = 40;
+const TITLE_BAR_COLOR = '#0e0f11';
+const TITLE_BAR_SYMBOLS = '#cbd5e1';
 let pipeline: EncoderPipeline | null = null;
 
 /** What the renderer last said about the open project, for the close prompt. */
@@ -67,10 +72,9 @@ app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 if (process.env.SCF_DISABLE_VSYNC) app.commandLine.appendSwitch('disable-gpu-vsync');
 
 function createWindow(): void {
-  // The editor is dark whatever Windows is set to, and so is its frame:
-  // Windows draws the native title bar dark for a window whose theme is dark.
-  // A white bar over a dark editor was the brightest thing on screen. (A
-  // title bar of the app's own comes with the next phase of the redesign.)
+  // The editor is dark whatever Windows is set to: native menus, dialogs and
+  // scrollbars follow this. A white bar over a dark editor was the brightest
+  // thing on screen.
   nativeTheme.themeSource = 'dark';
   mainWindow = new BrowserWindow({
     width: 1680,
@@ -83,7 +87,15 @@ function createWindow(): void {
     // The project's own logo in the title bar and taskbar, instead of
     // Electron's. Vite copies public/icon.ico next to index.html.
     icon: join(RENDERER_DIST, 'icon.ico'),
-    autoHideMenuBar: true,
+    /*
+      The title bar is the page's own, with the toolbar in it, as Final Cut
+      does (components/TitleBar). Windows keeps drawing the minimise,
+      maximise and close buttons over it - so Snap layouts on the maximise
+      button, double-click to maximise and the system menu all still work -
+      in the bar's own colours: panel-950 behind, slate-300 symbols.
+    */
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: TITLE_BAR_COLOR, symbolColor: TITLE_BAR_SYMBOLS, height: TITLE_BAR_HEIGHT },
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -165,6 +177,12 @@ app.whenReady().then(() => {
     if (!state || typeof state !== 'object') return;
     const { dirty, name } = state as { dirty?: unknown; name?: unknown };
     documentState = { dirty: dirty === true, name: typeof name === 'string' && name ? name : 'Untitled project' };
+  });
+
+  // The full-screen viewer takes the whole screen, not just the window, as
+  // Final Cut's Play Full Screen and Resolve's Cinema Viewer do.
+  ipcMain.on(IPC.windowFullScreen, (_event, on: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(on === true);
   });
 
   ipcMain.handle(IPC.closeAfterSave, () => {

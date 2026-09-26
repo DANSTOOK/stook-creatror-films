@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { keyLabel } from '@renderer/i18n';
 
 /**
  * Tooltips, drawn by the editor rather than by Windows.
@@ -41,7 +42,7 @@ export function tip(label: string, options: { shortcut?: string; hint?: string; 
   // A button with visible text already has its name; the tip only adds to it.
   if (options.named !== false) props['aria-label'] = label;
   if (options.shortcut) {
-    props['data-shortcut'] = options.shortcut;
+    props['data-shortcut'] = keyLabel(options.shortcut);
     props['aria-keyshortcuts'] = options.shortcut.replace(/Ctrl/g, 'Control');
   }
   return props;

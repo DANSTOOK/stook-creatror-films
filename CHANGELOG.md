@@ -26,6 +26,37 @@ se comprobó.
 
 ### Cambiado
 
+- **Una barra de título propia, con la barra de herramientas dentro**, como
+  en Final Cut. Antes había dos franjas: la barra de Windows y, debajo, una
+  fila de trece botones con texto (Nuevo, Abrir, Guardar, Deshacer, Rehacer,
+  Mezclador, Ventana…). Ahora es una sola franja de 40 px:
+  - A la izquierda, el icono de la aplicación, que es el **botón del menú**
+    (Archivo, Edición, Ver, Ventana, Ayuda); luego Inicio y el nombre del
+    proyecto con su punto de cambios sin guardar.
+  - En medio, nada: esa parte arrastra la ventana, y un doble clic la
+    maximiza.
+  - A la derecha, tres botones que muestran u ocultan **Medios, Línea de
+    tiempo e Inspector** (Ctrl+1, Ctrl+2, Ctrl+4, las teclas de Final Cut),
+    el Mezclador, la campana de avisos, **Exportar** —el único botón con
+    texto— y los botones de minimizar, maximizar y cerrar, que sigue
+    dibujando Windows en los colores de la barra (así funcionan los diseños
+    de Snap al pasar por maximizar).
+  - Nuevo, Abrir, Guardar, Deshacer y Rehacer salen de la barra: están en el
+    menú y en sus teclas de siempre, y se añaden **Ctrl+N** (nuevo), **Ctrl+I**
+    (importar) y **Ctrl+E** (exportar).
+  - Con la ventana en segundo plano, el nombre del proyecto se atenúa, como
+    en las ventanas inactivas de macOS.
+- **El menú de la aplicación se abre desde el icono, con Alt o con F10.** Bajo
+  una barra de título propia Windows no puede mostrar la barra de menús, así
+  que el editor dibuja el mismo menú (lo lee del proceso principal, no es una
+  copia) con submenús, marcas en *Ver > Medios / Línea de tiempo / Inspector*
+  y el atajo de cada orden. Se recorre con las flechas; Escape vuelve atrás.
+  Alt pulsado como modificador (Alt+clic, Alt+arrastrar) no lo abre.
+- **Se puede ocultar la línea de tiempo** (Ctrl+2 o su botón): el visor se
+  queda con todo el alto.
+- **Descripciones emergentes propias** en los botones de icono: salen antes
+  que las de Windows, dicen el atajo cuando lo hay (con «Mayús» en español) y,
+  con una ya a la vista, la del icono de al lado aparece al momento.
 - **Casillas, interruptores, listas y deslizadores con el aspecto del
   editor.** Eran los de Windows: una casilla clara y un deslizador azul grueso
   en medio de un editor oscuro, distintos de un diálogo a otro. Ahora la
@@ -38,6 +69,28 @@ se comprobó.
 
 ### Cómo se comprobó
 
+- **Barra de título, con el ratón de verdad** (`probe-titlebar.mjs`, que
+  mueve el puntero de Windows, no el de Playwright): el área de la barra que
+  deja la superposición de Windows es de 1144 px en una ventana de 1280, y
+  Exportar acaba en 1136; pulsar el botón de maximizar maximiza la ventana y
+  pulsarlo otra vez la restaura; arrastrar la zona vacía de la barra mueve la
+  ventana (de 60,60 a 170,116); un doble clic en ella la maximiza; un botón de
+  la barra (ocultar el inspector) hace clic en vez de arrastrar; el botón del
+  menú abre el menú; Alt solo lo abre y las flechas entran en un submenú;
+  Alt+clic no lo abre; la ventana sigue titulada para la barra de tareas.
+  **11/11.** Captura de la ventana con su marco desde la pantalla
+  (`after-titlebar-native.png`).
+- **Pruebas de interfaz:** guardar y abrir pasan por *Archivo > Guardar* y
+  *Archivo > Abrir proyecto* del menú nuevo (una vez con Ctrl+S), los ajustes
+  del proyecto por *Archivo > Ajustes del proyecto*, ocultar los medios por su
+  botón y el inspector por *Ver > Inspector* y Ctrl+4. Las pruebas de estrés y
+  de movimiento abren los ajustes por el mismo camino. **126/126** en la
+  batería completa.
+- **Un fallo encontrado por el camino:** abrir un submenú con un clic
+  colgaba el menú (React se quedaba en un bucle de renders al guardar la
+  posición del menú como estado mientras había otra actualización pendiente).
+  La posición se pone ahora directamente en el elemento; el clic en *Archivo*
+  de la prueba lo cubre.
 - **Controles:** capturas del mezclador, los ajustes del proyecto y la
   exportación con los controles nuevos (`after-controls-*.png` en la carpeta
   de la fase 2 del bloc de notas de la sesión). El interruptor de «auto

@@ -90,10 +90,11 @@ async function averageLuma(file) {
   }
 }
 
-/** Project settings now live in the Window menu, as they do on a Mac. */
+/** Project settings: File > Project settings, from the title bar's menu button. */
 async function openSettingsIn(window) {
-  await window.getByTestId('window-menu-button').click();
-  await window.getByRole('menuitem', { name: 'Project settings...' }).click();
+  await window.getByTestId('app-menu-button').click();
+  await window.getByRole('menuitem', { name: 'File', exact: true }).click();
+  await window.getByRole('menuitem', { name: /^Project settings/ }).click();
 }
 
 async function main() {

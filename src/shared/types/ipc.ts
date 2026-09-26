@@ -41,6 +41,9 @@ export const IPC = {
   menuCommand: 'app:menu-command',
   menuState: 'app:menu-state',
   editText: 'app:edit-text',
+  appMenuModel: 'app:menu-model',
+  appMenuInvoke: 'app:menu-invoke',
+  windowFullScreen: 'app:window-full-screen',
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
   chooseExportPath: 'dialog:choose-export-path',
@@ -128,6 +131,7 @@ export type MenuCommand =
   | 'paste'
   | 'toggleMedia'
   | 'toggleInspector'
+  | 'toggleTimeline'
   | 'fullscreenViewer'
   | 'resetLayout'
   | 'mixer'
@@ -143,7 +147,28 @@ export interface MenuState {
   canRedo: boolean;
   mediaShown: boolean;
   inspectorShown: boolean;
+  timelineShown: boolean;
   fullscreenViewer: boolean;
+}
+
+/**
+ * One entry of the application menu, as the page draws it.
+ *
+ * The window has no native menu bar any more - the title bar is the page's
+ * own - so the page shows the same menu in its menu button. It is read from
+ * the main process's Menu rather than kept as a second list, so the two can
+ * never disagree; choosing an entry clicks the real item by its id.
+ */
+export interface AppMenuEntry {
+  id?: string;
+  /** Without the "&" mnemonic markers. */
+  label: string;
+  type: 'normal' | 'separator' | 'checkbox' | 'submenu';
+  /** As Electron writes it, e.g. "CmdOrCtrl+S". */
+  accelerator?: string;
+  enabled: boolean;
+  checked?: boolean;
+  submenu?: AppMenuEntry[];
 }
 
 /**
@@ -325,6 +350,12 @@ export interface FilmoraApi {
   onMenuCommand(listener: (command: MenuCommand) => void): () => void;
   /** Cut, copy or paste inside the focused text field, as the menu does it. */
   editText(operation: 'cut' | 'copy' | 'paste'): void;
+  /** The application menu, to draw in the title bar's menu button. */
+  appMenuModel(): Promise<AppMenuEntry[]>;
+  /** Choose an application-menu entry by its id, as a click on it would. */
+  appMenuInvoke(id: string): void;
+  /** The whole screen for the picture (the full-screen viewer), or back. */
+  setWindowFullScreen(on: boolean): void;
   /**
    * Pick a `.cube` LUT. Returns the path as well as the contents, because the
    * path is what lets the look survive saving and reopening the project.

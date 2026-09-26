@@ -9,7 +9,11 @@ import type { ContextMenuItem, ContextMenuState } from './ContextMenu';
  */
 export function useContextMenu(): {
   menu: ContextMenuState | null;
-  open(event: { preventDefault(): void; clientX: number; clientY: number }, items: ContextMenuItem[]): void;
+  open(
+    event: { preventDefault(): void; clientX: number; clientY: number },
+    items: ContextMenuItem[],
+    options?: { keyboard?: boolean; label?: string },
+  ): void;
   close(): void;
 } {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
@@ -18,10 +22,11 @@ export function useContextMenu(): {
     (
       event: { preventDefault(): void; clientX: number; clientY: number },
       items: ContextMenuItem[],
+      options: { keyboard?: boolean; label?: string } = {},
     ) => {
       event.preventDefault();
       if (items.length === 0) return;
-      setMenu({ x: event.clientX, y: event.clientY, items });
+      setMenu({ x: event.clientX, y: event.clientY, items, ...options });
     },
     [],
   );

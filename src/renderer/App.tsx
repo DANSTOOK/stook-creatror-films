@@ -1,21 +1,4 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import {
-  FilePlus2,
-  FolderOpen,
-  Headphones,
-  Home as HomeIcon,
-  Keyboard,
-  Languages,
-  LayoutDashboard,
-  PanelLeft,
-  PanelRight,
-  PanelsTopLeft,
-  Redo2,
-  Save,
-  Settings2,
-  Share2,
-  Undo2,
-} from 'lucide-react';
 import { ExportDialog } from './components/ExportDialog';
 import { Home } from './components/Home/Home';
 import { Inspector } from './components/Inspector';
@@ -25,7 +8,6 @@ import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
-import { ContextMenu, useContextMenu } from './components/ContextMenu';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
@@ -47,11 +29,12 @@ import { useProjectActions } from './project/useProjectActions';
 import { useAutosave } from './project/useAutosave';
 import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import { useHistoryStore } from './store/useHistoryStore';
+import { TitleBar, type PanelKey } from './components/TitleBar/TitleBar';
 import { useProjectStore } from './store/useProjectStore';
 import { useIsDirty, useSessionStore } from './store/useSessionStore';
-import { t, useLanguageStore, useT } from './i18n';
+import { t, useLanguageStore } from './i18n';
 import { notify } from './notifications/notifications';
-import { NotificationsButton, Toaster } from './notifications/Toaster';
+import { Toaster } from './notifications/Toaster';
 import { TooltipLayer } from './components/Tooltip/Tooltip';
 import { MENU_IMPORT_EVENT } from './components/MediaLibrary/MediaLibrary';
 import type { MenuCommand } from '@shared/types/ipc';
@@ -101,17 +84,15 @@ export default function App(): JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
-  const tr = useT();
   /**
    * Areas that are put away.
    *
-   * Final Cut hides the browser and the inspector from its Window menu, and
-   * for the same reason: on a laptop the picture is worth more than either
-   * of them. The timeline and the viewer cannot be hidden - with both gone
-   * there is no editor left.
+   * Final Cut shows and hides its browser, timeline and inspector from
+   * buttons in its toolbar (and Ctrl+Cmd+1, Ctrl+Cmd+2, Cmd+4), and for the
+   * same reason: on a laptop the picture is worth more than any of them. The
+   * viewer cannot be hidden - it is what the rest is for.
    */
-  const [hidden, setHidden] = useState({ media: false, inspector: false });
-  const { menu: windowMenu, open: openWindowMenu, close: closeWindowMenu } = useContextMenu();
+  const [hidden, setHidden] = useState<Record<PanelKey, boolean>>({ media: false, inspector: false, timeline: false });
   const exportPresence = usePresence(exportOpen);
   const mixerPresence = usePresence(mixerOpen);
   const settingsPresence = usePresence(settingsOpen);
@@ -174,8 +155,21 @@ export default function App(): JSX.Element {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
       let run: (() => void) | null = null;
+      // With a dialog open, only saving still reaches the project: a new
+      // project or a second dialog under a modal one would be lost behind it.
+      const modal = document.querySelector('[aria-modal="true"]') !== null;
+      const editing = view === 'editor' && !event.shiftKey && !modal;
       if (key === 's' && view === 'editor') run = () => void actions.save(event.shiftKey);
-      else if (key === 'o' && !event.shiftKey) run = () => void actions.openFromDialog();
+      else if (key === 'o' && !event.shiftKey && !modal) run = () => void actions.openFromDialog();
+      // The keys New, Import and Export have in Premiere and Final Cut, now
+      // that their buttons have left the toolbar for the menu.
+      else if (key === 'n' && !event.shiftKey && !modal) run = () => void actions.newBlank();
+      else if (key === 'i' && editing) run = () => runMenuCommand.current('import');
+      else if (key === 'e' && editing && hasNativeBridge()) run = () => setExportOpen(true);
+      // Final Cut's browser, timeline and inspector keys.
+      else if (key === '1' && editing) run = () => setHidden((current) => ({ ...current, media: !current.media }));
+      else if (key === '2' && editing) run = () => setHidden((current) => ({ ...current, timeline: !current.timeline }));
+      else if (key === '4' && editing) run = () => setHidden((current) => ({ ...current, inspector: !current.inspector }));
       if (!run) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -282,10 +276,6 @@ export default function App(): JSX.Element {
 
   const canUndo = useHistoryStore((state) => state.canUndo);
   const canRedo = useHistoryStore((state) => state.canRedo);
-  const undo = useProjectStore((state) => state.undo);
-  const redo = useProjectStore((state) => state.redo);
-
-  const desktopOnly = (title: string): string => (nativeAvailable ? title : tr('toolbar.desktopOnly'));
 
   /* The application menu ---------------------------------------------------- */
 
@@ -302,6 +292,7 @@ export default function App(): JSX.Element {
       canRedo,
       mediaShown: !hidden.media,
       inspectorShown: !hidden.inspector,
+      timelineShown: !hidden.timeline,
       fullscreenViewer,
     });
   }, [language, view, canUndo, canRedo, hidden, fullscreenViewer]);
@@ -364,11 +355,14 @@ export default function App(): JSX.Element {
       case 'toggleInspector':
         setHidden((current) => ({ ...current, inspector: !current.inspector }));
         return;
+      case 'toggleTimeline':
+        setHidden((current) => ({ ...current, timeline: !current.timeline }));
+        return;
       case 'fullscreenViewer':
         store.setUi({ fullscreenViewer: !store.ui.fullscreenViewer });
         return;
       case 'resetLayout':
-        setHidden({ media: false, inspector: false });
+        setHidden({ media: false, inspector: false, timeline: false });
         commitLayout({ ...DEFAULT_LAYOUT });
         return;
       case 'mixer':
@@ -389,228 +383,107 @@ export default function App(): JSX.Element {
     return window.filmora.onMenuCommand((command) => runMenuCommand.current(command));
   }, []);
 
+  const togglePanel = (panel: PanelKey): void =>
+    setHidden((current) => ({ ...current, [panel]: !current[panel] }));
+
   return (
-    <div className="relative h-full">
-      <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col gap-1.5 bg-panel-950 p-1.5">
-        <header className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-panel-700 bg-panel-900 px-2 shadow-md shadow-black/30">
-          <button
-            type="button"
-            className="group flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-panel-800"
-            onClick={() => void actions.goHome()}
-            title={tr('toolbar.homeHint')}
-            aria-label={tr('toolbar.home')}
-          >
-            {/* The project logo. It has its own light ground, so it sits in a
-                rounded tile rather than being cut out against the dark header. */}
-            <img
-              src={LOGO_URL}
-              alt="SCF"
-              className="h-6 w-6 rounded-md transition-transform duration-200 group-hover:scale-110"
-              draggable={false}
-            />
-            <HomeIcon size={13} className="text-slate-400 transition-colors duration-150 group-hover:text-slate-200" />
-          </button>
+    <div className="flex h-full flex-col bg-panel-950">
+      <TitleBar
+        editor={view === 'editor'}
+        logoUrl={LOGO_URL}
+        projectName={projectName}
+        projectPath={projectPath}
+        dirty={dirty}
+        shown={{ media: !hidden.media, timeline: !hidden.timeline, inspector: !hidden.inspector }}
+        onTogglePanel={togglePanel}
+        mixerOpen={mixerOpen}
+        onMixer={() => setMixerOpen((open) => !open)}
+        onHome={() => void actions.goHome()}
+        onExport={() => setExportOpen(true)}
+        nativeAvailable={nativeAvailable}
+      />
 
-          <div className="toolbar-group">
-            <button type="button" className="tool-button" onClick={() => void actions.newBlank()} title={tr('toolbar.newHint')}>
-              <FilePlus2 size={14} />
-              {tr('toolbar.new')}
-            </button>
-            <button
-              type="button"
-              className="tool-button"
-              disabled={!nativeAvailable}
-              onClick={() => void actions.openFromDialog()}
-              title={desktopOnly(tr('toolbar.openHint'))}
-            >
-              <FolderOpen size={14} />
-              {tr('toolbar.open')}
-            </button>
-            <button
-              type="button"
-              className="tool-button"
-              disabled={!nativeAvailable}
-              onClick={() => void actions.save(false)}
-              title={desktopOnly(tr('toolbar.saveHint'))}
-            >
-              <Save size={14} />
-              {tr('toolbar.save')}
-            </button>
+      <div className="relative min-h-0 flex-1">
+        <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col px-1.5 pb-1.5">
+          <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
+            <main className="flex min-h-0 flex-1">
+              {/*
+                Each area has a wrapper that is always there, saying whether it
+                is open (data-state), so a later transition has something to
+                animate. What is inside is only mounted while it shows: a
+                hidden area gives its width to the picture, and its border goes
+                with it - a splitter for something that is not there is a
+                handle that does nothing.
+              */}
+              <div data-panel="media" data-state={hidden.media ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
+                {!hidden.media && (
+                  <>
+                    <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
+                      <MediaLibrary />
+                    </div>
+                    {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
+                  </>
+                )}
+              </div>
+              <PreviewViewport />
+              <div data-panel="inspector" data-state={hidden.inspector ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
+                {!hidden.inspector && (
+                  <>
+                    {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
+                    <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
+                      <Inspector />
+                    </div>
+                  </>
+                )}
+              </div>
+            </main>
+
+            <div data-panel="timeline" data-state={hidden.timeline ? 'closed' : 'open'} className="flex shrink-0 flex-col">
+              {!hidden.timeline && (
+                <>
+                  {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
+                  <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
+                    <Timeline />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="toolbar-group">
-            <button type="button" className="tool-button" disabled={!canUndo} onClick={undo} title={tr('toolbar.undoHint')}>
-              <Undo2 size={14} />
-              {tr('toolbar.undo')}
-            </button>
-            <button type="button" className="tool-button" disabled={!canRedo} onClick={redo} title={tr('toolbar.redoHint')}>
-              <Redo2 size={14} />
-              {tr('toolbar.redo')}
-            </button>
-          </div>
-
-          <div className="toolbar-group">
-            <button
-              type="button"
-              className={`tool-button ${mixerOpen ? 'tool-button-active' : ''}`}
-              onClick={() => setMixerOpen(true)}
-              title={tr('toolbar.mixerHint')}
-            >
-              <Headphones size={14} />
-              {tr('toolbar.mixer')}
-            </button>
-            {/*
-              One menu for the window itself, the way a Mac editor keeps it:
-              which areas are showing, how they are arranged, and the settings
-              that belong to the project rather than to a clip. Four loose
-              buttons of four different kinds were four decisions in the way.
-            */}
-            <button
-              type="button"
-              className={`tool-button ${windowMenu ? 'tool-button-active' : ''}`}
-              data-testid="window-menu-button"
-              aria-haspopup="menu"
-              onClick={(event) => {
-                const box = event.currentTarget.getBoundingClientRect();
-                openWindowMenu({ preventDefault: () => undefined, clientX: box.left, clientY: box.bottom + 4 }, [
-                  {
-                    label: hidden.media ? tr('quick.showMedia') : tr('quick.hideMedia'),
-                    icon: PanelLeft,
-                    onSelect: () => setHidden((current) => ({ ...current, media: !current.media })),
-                  },
-                  {
-                    label: hidden.inspector ? tr('quick.showInspector') : tr('quick.hideInspector'),
-                    icon: PanelRight,
-                    onSelect: () => setHidden((current) => ({ ...current, inspector: !current.inspector })),
-                  },
-                  { separator: true },
-                  {
-                    label: tr('quick.resetLayout'),
-                    icon: LayoutDashboard,
-                    onSelect: () => {
-                      setHidden({ media: false, inspector: false });
-                      commitLayout({ ...DEFAULT_LAYOUT });
-                    },
-                  },
-                  { separator: true },
-                  {
-                    label: tr('quick.projectSettings'),
-                    icon: Settings2,
-                    onSelect: () => setSettingsOpen(true),
-                  },
-                  {
-                    label: tr('quick.preferences'),
-                    icon: Languages,
-                    onSelect: () => setPreferencesOpen(true),
-                  },
-                  {
-                    label: tr('quick.shortcuts'),
-                    icon: Keyboard,
-                    shortcut: '?',
-                    onSelect: () => setShortcutsOpen(true),
-                  },
-                ]);
+          {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
+          {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
+          {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+          {preferencesPresence.mounted && (
+            <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
+          )}
+          {settingsPresence.mounted && (
+            <ProjectSettings
+              closing={settingsPresence.closing}
+              onClose={() => setSettingsOpen(false)}
+              onRestore={async (contents, savedAt) => {
+                // The panel goes first: what it was showing belongs to the
+                // project that is being replaced.
+                setSettingsOpen(false);
+                await actions.restoreContents(contents, savedAt);
               }}
-              title={tr('toolbar.windowHint')}
-            >
-              <PanelsTopLeft size={14} />
-              {tr('toolbar.window')}
-            </button>
-          </div>
-
-          {/* The open project, and whether it has unsaved changes. */}
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-3" title={projectPath ?? tr('toolbar.notSaved')}>
-            <span data-testid="project-name" className="truncate text-xs font-medium text-slate-200">
-              {projectName}
-            </span>
-            {dirty && (
-              <span
-                data-testid="unsaved-indicator"
-                className="scf-dirty-dot h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
-                title={tr('toolbar.unsaved')}
-              />
-            )}
-          </div>
-
-          <NotificationsButton />
-
-          <button
-            type="button"
-            className="button-primary"
-            disabled={!nativeAvailable}
-            onClick={() => setExportOpen(true)}
-            title={nativeAvailable ? tr('toolbar.exportHint') : tr('toolbar.exportDesktopOnly')}
-          >
-            <Share2 size={14} />
-            {tr('toolbar.export')}
-          </button>
-        </header>
-
-        <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
-          <main className="flex min-h-0 flex-1">
-            {/* A hidden area gives its width to the picture, and its border
-                goes with it: a splitter for something that is not there is a
-                handle that does nothing. */}
-            {!hidden.media && (
-              <>
-                <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
-                  <MediaLibrary />
-                </div>
-                {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
-              </>
-            )}
-            <PreviewViewport />
-            {!hidden.inspector && (
-              <>
-                {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
-                <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
-                  <Inspector />
-                </div>
-              </>
-            )}
-          </main>
-
-          {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
-
-          <div className="shrink-0" style={{ height: fitted.timelineHeight }}>
-            <Timeline />
-          </div>
+            />
+          )}
         </div>
 
-        {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
-        {mixerPresence.mounted && <Mixer closing={mixerPresence.closing} onClose={() => setMixerOpen(false)} />}
-        {windowMenu && <ContextMenu {...windowMenu} onClose={closeWindowMenu} />}
-        {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-        {preferencesPresence.mounted && (
-          <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
-        )}
-        {settingsPresence.mounted && (
-          <ProjectSettings
-            closing={settingsPresence.closing}
-            onClose={() => setSettingsOpen(false)}
-            onRestore={async (contents, savedAt) => {
-              // The panel goes first: what it was showing belongs to the
-              // project that is being replaced.
-              setSettingsOpen(false);
-              await actions.restoreContents(contents, savedAt);
-            }}
-          />
+        {/* The swap itself is a view transition (motion/viewTransition.ts), so this
+            is a plain switch: the browser cross-fades the two states for us. */}
+        {view === 'home' && (
+          <div className="absolute inset-0 z-40">
+            <Home
+              onBlank={() => void actions.newBlank()}
+              onCreate={actions.createProject}
+              onOpenDialog={() => void actions.openFromDialog()}
+              onOpenRecent={(path) => void actions.openRecent(path)}
+              onRecover={() => void actions.recoverUnsaved()}
+            />
+          </div>
         )}
       </div>
-
-      {/* The swap itself is a view transition (motion/viewTransition.ts), so this
-          is a plain switch: the browser cross-fades the two states for us. */}
-      {view === 'home' && (
-        <div className="absolute inset-0 z-40">
-          <Home
-            onBlank={() => void actions.newBlank()}
-            onCreate={actions.createProject}
-            onOpenDialog={() => void actions.openFromDialog()}
-            onOpenRecent={(path) => void actions.openRecent(path)}
-            onRecover={() => void actions.recoverUnsaved()}
-          />
-        </div>
-      )}
 
       <UnsavedChangesDialog />
       <Toaster />

@@ -433,6 +433,27 @@
     @apply border-panel-600;
   }
 
+  /*
+    The title bar drags the window wherever nothing is under the pointer.
+    Anything clickable in it opts out, or the click would start a drag. A
+    dialog's backdrop and a menu opt out too: Electron works out the drag
+    area from every element that asks for one, whatever is stacked on top,
+    so without this the dimmed strip over the title bar would move the
+    window instead of closing the dialog.
+  */
+  .app-drag {
+    -webkit-app-region: drag;
+  }
+
+  .app-no-drag,
+  .app-drag button,
+  .app-drag input,
+  .app-drag select,
+  .scf-overlay,
+  .scf-menu {
+    -webkit-app-region: no-drag;
+  }
+
   /* The transparency checkerboard behind the viewport frame. */
   .alpha-checkerboard {
     background-color: #1d2025;

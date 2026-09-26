@@ -48,10 +48,11 @@ const percentile = (values, p) => {
   return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
 };
 
-/** Project settings now live in the Window menu, as they do on a Mac. */
+/** Project settings: File > Project settings, from the title bar's menu button. */
 async function openSettingsIn(window) {
-  await window.getByTestId('window-menu-button').click();
-  await window.getByRole('menuitem', { name: 'Project settings...' }).click();
+  await window.getByTestId('app-menu-button').click();
+  await window.getByRole('menuitem', { name: 'File', exact: true }).click();
+  await window.getByRole('menuitem', { name: /^Project settings/ }).click();
 }
  async function main() {
   await rm(workDir, { recursive: true, force: true });

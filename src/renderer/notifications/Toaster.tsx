@@ -124,7 +124,7 @@ export function NotificationsButton(): JSX.Element {
         type="button"
         className={`tool-button relative w-7 px-0 ${open ? 'tool-button-active' : ''}`}
         aria-label={t('notify.history')}
-        title={t('notify.history')}
+        data-tooltip={t('notify.history')}
         aria-haspopup="dialog"
         aria-expanded={open}
         data-testid="notifications-button"

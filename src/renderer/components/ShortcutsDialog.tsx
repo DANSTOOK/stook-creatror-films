@@ -75,9 +75,14 @@ export const SHORTCUT_GROUPS: Group[] = [
   {
     title: 'keys.groupProject',
     items: [
+      { keys: 'keys.newKeys', what: 'keys.new' },
       { keys: 'keys.saveKeys', what: 'keys.save' },
       { keys: 'keys.saveAsKeys', what: 'keys.saveAs' },
       { keys: 'keys.openKeys', what: 'keys.open' },
+      { keys: 'keys.importKeys', what: 'keys.import' },
+      { keys: 'keys.exportKeys', what: 'keys.export' },
+      { keys: 'keys.panelKeys', what: 'keys.panels' },
+      { keys: 'keys.menuKeys', what: 'keys.menu' },
       { keys: 'keys.question', what: 'keys.thisList' },
       { keys: 'keys.esc', what: 'keys.closeOpen' },
     ],

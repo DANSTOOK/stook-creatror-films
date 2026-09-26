@@ -787,7 +787,7 @@ async function main() {
     await app.evaluate(({ dialog }, file) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
     }, projectFile);
-    await window.getByRole('button', { name: 'Save' }).click();
+    await window.keyboard.press('Control+s');
     await window.getByText('Saved to', { exact: false }).waitFor({ state: 'visible', timeout: 60_000 });
     const savedBytes = (await stat(projectFile)).size;
     report.memory.afterEdit = await memory(app);
@@ -802,7 +802,7 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 950));
     await pick(app, [projectFile]);
     t = Date.now();
-    await window.getByRole('button', { name: 'Open' }).click();
+    await window.keyboard.press('Control+o');
     await window.getByText('Opened', { exact: false }).first().waitFor({ state: 'visible', timeout: 300_000 });
     report.timings.reopen = Date.now() - t;
     const reopened = await window.evaluate(() => ({

@@ -177,10 +177,17 @@ const packagedExe = process.env.UI_PACKAGED
  */
 const offline = Boolean(process.env.UI_OFFLINE);
 
-/** Open a Window-menu entry: the menu button, then the item by name. */
-async function openWindowMenu(window, item) {
-  await window.getByTestId('window-menu-button').click();
-  await window.getByRole('menuitem', { name: item }).click();
+/**
+ * Choose an application-menu entry the way a user does: the menu button at
+ * the left of the title bar, the menu (File, Edit...), then the item. The
+ * window has no native menu bar under its own title bar; this is the same
+ * menu, read from the main process.
+ */
+async function appMenu(window, menu, item) {
+  await window.getByTestId('app-menu-button').click();
+  await window.getByRole('menuitem', { name: menu, exact: true }).click();
+  // A ticked entry (View > Inspector) is a checkbox item.
+  await window.getByRole('menuitem', { name: item }).or(window.getByRole('menuitemcheckbox', { name: item })).click();
   await window.waitForTimeout(250);
 }
 
@@ -580,14 +587,14 @@ async function main() {
     await app.evaluate(({ dialog }, project) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: project });
     }, projectPath);
-    await window.getByRole('button', { name: 'Save' }).click();
+    await appMenu(window, 'File', /^Save$/);
     await window.getByText('Saved to', { exact: false })
       .waitFor({ state: 'visible', timeout: 15_000 });
 
     await app.evaluate(({ dialog }, project) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [project] });
     }, projectPath);
-    await window.getByRole('button', { name: 'Open' }).click();
+    await appMenu(window, 'File', /^Open project/);
     await window.getByText('Opened', { exact: false })
       .waitFor({ state: 'visible', timeout: 30_000 });
 
@@ -648,7 +655,7 @@ async function main() {
       };
     });
 
-    await window.getByTitle('Mixer - levels, pan, EQ and auto ducking').click();
+    await window.getByRole('button', { name: 'Mixer', exact: true }).click();
     const mixer = window.locator('div.panel', { hasText: 'Auto ducking' });
     await mixer.waitFor({ state: 'visible', timeout: 10_000 });
     const masterFader = mixer.locator('label', { hasText: 'Master level' }).locator('input[type=range]');
@@ -688,7 +695,7 @@ async function main() {
       `closed ${mixerClosed}, master ${afterMixer.master}, ducking ${afterMixer.ducking}`);
 
     const beforeSettings = await projectNow();
-    await openWindowMenu(window, 'Project settings...');
+    await appMenu(window, 'File', /^Project settings/);
     const settings = window.locator('div.panel', { hasText: 'Project settings' });
     await settings.waitFor({ state: 'visible', timeout: 10_000 });
 
@@ -986,7 +993,8 @@ async function main() {
     await app.evaluate(({ dialog }, project) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: project });
     }, projectPath);
-    await window.getByRole('button', { name: 'Save' }).click();
+    // Ctrl+S this time: the key and the menu are the same save.
+    await window.keyboard.press('Control+s');
     let savedBins = 0;
     for (let attempt = 0; attempt < 50 && savedBins !== 6; attempt += 1) {
       await window.waitForTimeout(200);
@@ -1695,10 +1703,11 @@ async function main() {
     }, viewerClip);
     await window.waitForTimeout(200);
 
-    /* The Window menu -------------------------------------------------------- */
-    // Final Cut hides the browser and the inspector from its Window menu; the
-    // point of hiding one is the room it gives back, so that is what is
-    // measured rather than the menu having been clicked.
+    /* Showing and hiding the panels ------------------------------------------ */
+    // Final Cut hides the browser and the inspector from buttons in its
+    // toolbar; so does the title bar here. The point of hiding one is the
+    // room it gives back, so that is what is measured rather than the button
+    // having been clicked.
     const previewWidth = () => window.evaluate(() => {
       const canvas = document.querySelector('canvas');
       const preview = canvas?.closest('section');
@@ -1707,23 +1716,25 @@ async function main() {
 
     const widthWithMedia = await previewWidth();
     const mediaWidthBefore = Math.round((await window.getByTestId('media-panel').boundingBox()).width);
-    await openWindowMenu(window, 'Hide media');
+    await window.getByTestId('toggle-media').click();
     const mediaGone = await window.getByTestId('media-panel').count();
     const widthWithout = await previewWidth();
     check('hiding the media panel gives its room to the picture',
       mediaGone === 0 && widthWithout > widthWithMedia,
       `preview ${widthWithMedia} -> ${widthWithout} px, media panel ${mediaGone === 0 ? 'gone' : 'still there'}`);
 
-    await openWindowMenu(window, 'Show media');
+    await window.getByTestId('toggle-media').click();
     const mediaBack = await window.getByTestId('media-panel').count();
     const mediaWidthAfter = Math.round((await window.getByTestId('media-panel').boundingBox()).width);
     check('showing it again puts it back at the width it had',
       mediaBack === 1 && Math.abs(mediaWidthAfter - mediaWidthBefore) <= 2,
       `${mediaWidthAfter} px, was ${mediaWidthBefore} px`);
 
-    await openWindowMenu(window, 'Hide inspector');
+    // The same toggle from the menu, View > Inspector, and back with Ctrl+4.
+    await appMenu(window, 'View', 'Inspector');
     const inspectorGone = await window.getByTestId('inspector-panel').count();
-    await openWindowMenu(window, 'Show inspector');
+    await window.keyboard.press('Control+4');
+    await window.waitForTimeout(250);
     const inspectorBack = await window.getByTestId('inspector-panel').count();
     check('the inspector hides and comes back the same way',
       inspectorGone === 0 && inspectorBack === 1,
@@ -2180,7 +2191,7 @@ async function main() {
       `${kept.length} copies, newest ${kept[0]?.savedAt ?? 'none'}`);
 
     // The backups are listed in Settings, and one can be put back on screen.
-    await openWindowMenu(window, 'Project settings...');
+    await appMenu(window, 'File', /^Project settings/);
     await window.waitForTimeout(400);
     const listed = await window.getByTestId('backup-list').count();
     const intervalShown = await window.getByTestId('autosave-interval').inputValue().catch(() => 'none');
