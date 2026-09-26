@@ -12,6 +12,7 @@ import {
   type WaveformPeaks,
 } from '@renderer/audio/WaveformExtractor';
 import { useMediaStore } from '@renderer/store/useMediaStore';
+import { mainMakesClipContent } from '@renderer/media/useClipContent';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
 /**
@@ -169,17 +170,27 @@ export function useAudioPlayback(): void {
           // instead of the whole source, which for 45 minutes was a gigabyte.
           const stream = await AudioStream.open(audioUrl);
 
+          // The waveform is the main process's job when it can do it
+          // (useClipContent): measured there by ffmpeg, off this thread,
+          // and kept on disk. Walking the whole file here to draw it was
+          // the renderer decoding a second copy of every sound it imported.
+          const peaksHere = !mainMakesClipContent() || !asset.sourcePath;
+
           if (stream) {
             engine.registerStream(asset.uri, stream);
-            const peaks = await peaksFromStream(stream, asset.uri, extractor);
-            if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+            if (peaksHere) {
+              const peaks = await peaksFromStream(stream, asset.uri, extractor);
+              if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+            }
           } else {
             // Anything else - MP3, WAV, FLAC, a bare .aac - is decoded whole,
             // as it always was, and the waveform read off that same buffer.
             const bytes = await fetch(audioUrl).then((response) => response.arrayBuffer());
             const buffer = await engine.registerSource(asset.uri, bytes);
-            const peaks = extractor.fromBuffer(asset.uri, buffer);
-            if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+            if (peaksHere) {
+              const peaks = extractor.fromBuffer(asset.uri, buffer);
+              if (!cancelled) useMediaStore.getState().setWaveform(asset.uri, peaks);
+            }
           }
         } catch {
           // A video with no audio track is the common case here, not an error.

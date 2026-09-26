@@ -34,6 +34,8 @@ export interface ContextMenuItem {
   danger?: boolean;
   /** A tick beside it: the item is an on/off setting and this is its state. */
   checked?: boolean;
+  /** With `checked`: one choice among its neighbours (announced as a radio item). */
+  radio?: boolean;
   /** Items of a menu that opens beside this one. */
   submenu?: ContextMenuItem[];
   onSelect?(): void;
@@ -305,7 +307,7 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
                   id={`${idPrefix}-${depth}-${index}`}
                   type="button"
                   tabIndex={-1}
-                  role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                  role={item.checked === undefined ? 'menuitem' : item.radio ? 'menuitemradio' : 'menuitemcheckbox'}
                   aria-checked={item.checked === undefined ? undefined : item.checked}
                   aria-haspopup={item.submenu ? 'menu' : undefined}
                   // The key is announced as a shortcut, not read as part of

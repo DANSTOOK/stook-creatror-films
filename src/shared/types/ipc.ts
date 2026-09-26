@@ -35,6 +35,8 @@ export const IPC = {
   proxiesClear: 'proxies:clear',
   proxiesUsage: 'proxies:usage',
   proxiesProgress: 'proxies:progress',
+  contentPeaks: 'content:peaks',
+  contentThumbs: 'content:thumbs',
   documentState: 'app:document-state',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
@@ -339,6 +341,14 @@ export interface FilmoraApi {
   /** How many proxies are kept, and how much room they take. */
   proxiesUsage(): Promise<ProxyUsage>;
   onProxyProgress(listener: (progress: ProxyProgressEvent) => void): () => void;
+  /**
+   * The file's waveform, measured by ffmpeg in the main process and kept on
+   * disk: a `media://` URL of the peaks file, or null when it has no sound.
+   * Optional so a bridge without it (a browser shim) still satisfies the type.
+   */
+  contentPeaks?(path: string, seconds: number): Promise<string | null>;
+  /** The file's filmstrip, made the same way: a `media://` URL, or null. */
+  contentThumbs?(path: string, kind: 'video' | 'image', seconds: number): Promise<string | null>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
   /** The window asked to save before closing; save, then call closeAfterSave. */

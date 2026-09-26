@@ -1,6 +1,10 @@
-﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
+  AudioWaveform,
+  Film,
+  GalleryHorizontal,
+  Type,
   ArrowDown,
   Gauge,
   Link2,
@@ -48,6 +52,7 @@ import { emitScrub } from '@renderer/audio/scrubAudio';
 import { canMoveTrack, timelineRows } from './trackRows';
 import { useIndicator } from '@renderer/motion/useIndicator';
 import { wheelZoomFactor } from './zoomMotion';
+import type { ClipAppearance } from '@renderer/media/clipContent';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
@@ -133,7 +138,21 @@ export function Timeline(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const ui = useProjectStore((state) => state.ui);
   const waveforms = useMediaStore((state) => state.waveforms);
+  const filmstrips = useMediaStore((state) => state.filmstrips);
+  const contentVersion = useMediaStore((state) => state.contentVersion);
+  const clipAppearance = useMediaStore((state) => state.clipAppearance);
+  const assets = useProjectStore((state) => state.assets);
   const store = useProjectStore;
+  // Clips whose file is missing are drawn offline, not as healthy clips that play nothing.
+  const offlineUris = useMemo(
+    () => new Set(assets.filter((asset) => asset.missing).map((asset) => asset.uri)),
+    [assets],
+  );
+  const canvasLabels = useMemo(
+    () => ({ offline: tr('timeline.mediaOffline'), keyframes: (count: number) => tr('timeline.keyframes', { count }) }),
+    [tr],
+  );
+  const appearanceButtonRef = useRef<HTMLButtonElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragMode>({ kind: 'none' });
@@ -1199,6 +1218,42 @@ export function Timeline(): JSX.Element {
 
           <div className="min-w-2 flex-1" />
 
+          {/*
+            Clip appearance, after Final Cut's button of the same name: what
+            the clips show inside. A setting of this machine, remembered.
+          */}
+          <button
+            ref={appearanceButtonRef}
+            type="button"
+            data-testid="clip-appearance"
+            aria-haspopup="menu"
+            aria-expanded={menu !== null && menu.label === tr('timeline.clipAppearance')}
+            className="tool-button tool-button-dense w-7 shrink-0 px-0"
+            onClick={() => {
+              const box = appearanceButtonRef.current?.getBoundingClientRect();
+              const choice = (value: ClipAppearance, label: string, icon: typeof Film): ContextMenuItem => ({
+                label,
+                icon,
+                radio: true,
+                checked: clipAppearance === value,
+                onSelect: () => useMediaStore.getState().setClipAppearance(value),
+              });
+              openMenu(
+                { preventDefault: () => undefined, clientX: box?.left ?? 0, clientY: (box?.bottom ?? 0) + 4 },
+                [
+                  choice('both', tr('timeline.appearanceBoth'), GalleryHorizontal),
+                  choice('filmstrip', tr('timeline.appearanceFilmstrip'), Film),
+                  choice('waveform', tr('timeline.appearanceWaveform'), AudioWaveform),
+                  choice('name', tr('timeline.appearanceName'), Type),
+                ],
+                { label: tr('timeline.clipAppearance') },
+              );
+            }}
+            {...tip(tr('timeline.clipAppearance'), { hint: tr('timeline.clipAppearanceHint') })}
+          >
+            <GalleryHorizontal size={14} />
+          </button>
+
           <div className="flex shrink-0 items-center gap-0.5">
             <button
               type="button"
@@ -1405,6 +1460,11 @@ export function Timeline(): JSX.Element {
                 animateDisplacement={drag.kind !== 'trim' && drag.kind !== 'smartTrim'}
                 onPointerLeave={() => setHover(null)}
                 waveforms={waveforms}
+                filmstrips={filmstrips}
+                offlineUris={offlineUris}
+                appearance={clipAppearance}
+                contentVersion={contentVersion}
+                labels={canvasLabels}
                 width={viewportWidth}
                 height={Math.max(canvasHeight, trackRowTop(tracks.length))}
                 onPointerDown={onPointerDown}

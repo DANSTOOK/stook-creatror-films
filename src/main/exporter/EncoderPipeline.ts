@@ -43,6 +43,11 @@ export class EncoderPipeline {
 
   constructor(private readonly onProgress: ProgressListener) {}
 
+  /** A render is running: background work (filmstrips, waveforms) waits for it. */
+  get busy(): boolean {
+    return this.jobs.size > 0;
+  }
+
   /**
    * Build the full ffmpeg argument list.
    *

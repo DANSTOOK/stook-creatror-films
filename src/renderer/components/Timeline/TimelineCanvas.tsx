@@ -5,7 +5,8 @@ import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
 import type { EditorUiState } from '@renderer/store/types';
 import { clipEndFrame, clipsInPaintOrder } from './timelineOps';
 import { frameToPixel, type SnapTarget } from './snapping';
-import { sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
+import { isReversed, sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
+import type { ClipAppearance, Filmstrip } from '@renderer/media/clipContent';
 import { fadeLengths } from '@renderer/timing/clipFades';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { stepZoomView, type DisplayedView } from './zoomMotion';
@@ -59,6 +60,15 @@ export interface TimelineCanvasProps {
   activeSnap: SnapTarget | null;
   /** Decoded peaks per source URI, for audio-bearing clips. */
   waveforms: Record<string, WaveformPeaks>;
+  /** Filmstrips per source URI, for clips with pictures. */
+  filmstrips?: Record<string, Filmstrip>;
+  /** Source URIs whose files are missing: drawn as offline. */
+  offlineUris?: ReadonlySet<string>;
+  /** What clips show inside: see ClipAppearance. */
+  appearance?: ClipAppearance;
+  /** Changes when a filmstrip frame has been decoded, to paint it. */
+  contentVersion?: number;
+  labels?: CanvasLabels;
   width: number;
   height: number;
   /** Rubber band being dragged, in canvas coordinates. */
@@ -258,7 +268,13 @@ function drawRuler(
 }
 
 /**
- * Draw the waveform inside a clip body.
+ * The waveform inside a clip, in the band `[bandTop, bandBottom]`.
+ *
+ * Rectified - the louder of each min/max pair, drawn up from the band's floor
+ * as one filled shape - the way Final Cut and current Premiere draw clip
+ * audio: the same height shows twice the detail of a wave mirrored about a
+ * centre line, and a loud passage reads as tall rather than as thick. Linear
+ * in level, so half the height is half the amplitude (-6 dB).
  *
  * Peaks span the whole source file, so the visible slice is the window the clip
  * actually uses - which is what makes a trimmed clip show the right audio and a
@@ -270,25 +286,27 @@ function drawWaveform(
   peaks: WaveformPeaks,
   x: number,
   clipWidth: number,
-  top: number,
+  bandTop: number,
+  bandBottom: number,
   fps: number,
   canvasWidth: number,
+  fill: string,
 ): void {
-  if (peaks.durationSeconds <= 0 || clipWidth < 4) return;
+  if (peaks.durationSeconds <= 0 || clipWidth < 4 || bandBottom - bandTop < 4) return;
 
   // A retimed clip covers more or less footage than the time it fills: at
   // 200% the wave is squeezed into half the width, which is what it sounds
   // like. Drawn from the footage the clip consumes, not from its length.
   const sourceStart = clip.sourceOffsetFrames / fps;
   const sourceEnd = sourceStart + sourceFramesUsed(clip) / fps;
+  const reversed = isReversed(clip);
 
   const firstBucket = Math.floor((sourceStart / peaks.durationSeconds) * peaks.bucketCount);
   const lastBucket = Math.ceil((sourceEnd / peaks.durationSeconds) * peaks.bucketCount);
   const span = lastBucket - firstBucket;
   if (span <= 0) return;
 
-  const midY = top + TRACK_HEIGHT / 2;
-  const amplitude = (TRACK_HEIGHT - 18) / 2;
+  const height = bandBottom - bandTop;
 
   // Only the on-screen slice of the clip is walked. A 45-minute clip zoomed in
   // is millions of pixels wide, and iterating all of them every frame to draw
@@ -298,31 +316,113 @@ function drawWaveform(
   const lastPixel = Math.min(clipWidth, Math.ceil(canvasWidth - x));
   if (lastPixel <= firstPixel) return;
 
-  context.save();
-  context.beginPath();
-  context.rect(x + firstPixel, top + 2, lastPixel - firstPixel, TRACK_HEIGHT - 4);
-  context.clip();
-
-  context.strokeStyle = 'rgba(226, 232, 240, 0.55)';
-  context.lineWidth = 1;
-  context.beginPath();
-
-  // One vertical stroke per output pixel - or per bucket when there are fewer
-  // buckets than pixels, so a zoomed-in waveform is not drawn as a solid block.
+  // One column per output pixel - or per bucket when there are fewer buckets
+  // than pixels - and each column is the loudest bucket under it, so a
+  // zoomed-out wave keeps its peaks instead of sampling past them. The walk
+  // is bounded: a column never looks at more than 64 buckets.
   const step = Math.max(1, clipWidth / span);
+  const bucketsPerPixel = Math.min(64, Math.max(1, Math.floor(span / clipWidth)));
+
+  context.save();
+  context.fillStyle = fill;
+  context.beginPath();
+  context.moveTo(x + firstPixel, bandBottom);
   for (let pixel = firstPixel; pixel <= lastPixel; pixel += step) {
-    const ratio = pixel / clipWidth;
-    const bucket = Math.min(peaks.bucketCount - 1, Math.floor(firstBucket + ratio * span));
-    const min = peaks.peaks[bucket * 2];
-    const max = peaks.peaks[bucket * 2 + 1];
-
-    const columnX = Math.round(x + pixel) + 0.5;
-    context.moveTo(columnX, midY - max * amplitude);
-    context.lineTo(columnX, midY - min * amplitude);
+    const ratio = reversed ? 1 - pixel / clipWidth : pixel / clipWidth;
+    const from = Math.max(0, Math.min(peaks.bucketCount - 1, Math.floor(firstBucket + ratio * span)));
+    const to = Math.min(peaks.bucketCount - 1, from + bucketsPerPixel - 1);
+    let level = 0;
+    for (let bucket = from; bucket <= to; bucket += 1) {
+      const loud = Math.max(Math.abs(peaks.peaks[bucket * 2]), Math.abs(peaks.peaks[bucket * 2 + 1]));
+      if (loud > level) level = loud;
+    }
+    const columnTop = bandBottom - Math.min(1, level) * height;
+    context.lineTo(x + pixel, columnTop);
+    context.lineTo(Math.min(x + lastPixel, x + pixel + step), columnTop);
   }
-
-  context.stroke();
+  context.lineTo(x + lastPixel, bandBottom);
+  context.closePath();
+  context.fill();
   context.restore();
+}
+
+/**
+ * A filmstrip along the clip, in the band `[bandTop, bandTop + bandHeight]`.
+ *
+ * Tiles are laid from the clip's start, each as wide as a frame of its shape
+ * is at the band's height, and each shows the picture where it begins - the
+ * way Final Cut and Resolve draw one. Only the tiles on screen are drawn, so
+ * the cost follows the width of the view, whatever the zoom.
+ */
+function drawFilmstrip(
+  context: CanvasRenderingContext2D,
+  clip: Clip,
+  strip: Filmstrip,
+  x: number,
+  clipWidth: number,
+  bandTop: number,
+  bandHeight: number,
+  fps: number,
+  canvasWidth: number,
+): void {
+  const tileWidth = Math.max(8, bandHeight * strip.aspect);
+  const first = Math.max(0, Math.floor(-x / tileWidth));
+  const last = Math.min(Math.ceil(clipWidth / tileWidth), Math.ceil((canvasWidth - x) / tileWidth));
+  const sourceStart = clip.sourceOffsetFrames / fps;
+  const sourceSeconds = sourceFramesUsed(clip) / fps;
+  const reversed = isReversed(clip);
+
+  for (let tile = first; tile < last; tile += 1) {
+    const left = x + tile * tileWidth;
+    const along = Math.min(1, (tile * tileWidth) / clipWidth);
+    const seconds = sourceStart + (reversed ? 1 - along : along) * sourceSeconds;
+    const frame = strip.frameAt(seconds);
+    const bitmap = strip.bitmap(frame) ?? strip.nearestDecoded(frame);
+    if (bitmap) {
+      context.drawImage(bitmap, left, bandTop, tileWidth, bandHeight);
+    } else {
+      // Still on its way: a shade of the clip, not a hole.
+      context.fillStyle = 'rgba(13, 15, 20, 0.3)';
+      context.fillRect(left, bandTop, tileWidth - 1, bandHeight);
+    }
+  }
+}
+
+/**
+ * The file behind this clip is not where the project says: red stripes and
+ * the words, as Resolve and Premiere mark offline media, instead of a clip
+ * that looks fine and plays nothing.
+ */
+function drawOffline(
+  context: CanvasRenderingContext2D,
+  bodyLeft: number,
+  bodyWidth: number,
+  top: number,
+  label: string,
+): void {
+  const bodyTop = top + 2;
+  const height = TRACK_HEIGHT - 4;
+  context.fillStyle = '#3b1717';
+  context.fillRect(bodyLeft, bodyTop, bodyWidth, height);
+  context.strokeStyle = 'rgba(248, 113, 113, 0.28)';
+  context.lineWidth = 6;
+  context.beginPath();
+  const start = Math.floor((bodyLeft - height) / 16) * 16;
+  for (let stripe = start; stripe < bodyLeft + bodyWidth + height; stripe += 16) {
+    context.moveTo(stripe, bodyTop + height);
+    context.lineTo(stripe + height, bodyTop);
+  }
+  context.stroke();
+  if (bodyWidth > 90) {
+    context.font = LABEL_FONT;
+    const textWidth = context.measureText(label).width;
+    const labelX = Math.max(bodyLeft, 0) + 7;
+    context.fillStyle = '#3b1717';
+    context.fillRect(labelX - 4, bodyTop + height - 19, textWidth + 8, 16);
+    context.fillStyle = '#fecaca';
+    context.textBaseline = 'middle';
+    context.fillText(label, labelX, bodyTop + height - 11);
+  }
 }
 
 /** Two links of a chain: the mark a linked clip carries. */
@@ -408,6 +508,46 @@ function drawFades(
   grip(x + fadeIn * pixelsPerFrame);
   grip(x + clipWidth - fadeOut * pixelsPerFrame);
 }
+/** Words the canvas writes, in the interface language. */
+export interface CanvasLabels {
+  offline: string;
+  keyframes(count: number): string;
+}
+
+const DEFAULT_LABELS: CanvasLabels = {
+  offline: 'Media offline',
+  keyframes: (count) => `${count} keyframes`,
+};
+
+/** What a clip carries: its pictures, its sound, and whether its file is there at all. */
+export interface ClipContent {
+  peaks?: WaveformPeaks;
+  filmstrip?: Filmstrip;
+  offline?: boolean;
+}
+
+/**
+ * The waveform's colour on each kind of clip. Measured with contrast.ts
+ * against what it is drawn on: 4.1:1 on an audio clip, 6.8:1 on the dark
+ * sound strip of a video clip (3:1 is the bar for graphics).
+ */
+export const WAVE_FILL: Record<Track['type'], string> = {
+  video: '#bfdbfe',
+  audio: '#a7f3d0',
+  text: '#e9d5ff',
+  adjustment: '#fde68a',
+};
+
+/** The darker strip a video clip's sound is drawn on, under its pictures. */
+export const SOUND_STRIP = 'rgba(8, 10, 14, 0.35)';
+
+/** Behind a clip name drawn over pictures: dark enough for 4.5:1 over a white frame. */
+export const NAME_BAND = 'rgba(10, 11, 14, 0.66)';
+/** The height of that band, from the top of the clip body. */
+const NAME_BAND_HEIGHT = 16;
+/** The pictures' share of a clip that shows both: the sound gets the rest (22 px). */
+const FILMSTRIP_SHARE = 30;
+
 function drawClip(
   context: CanvasRenderingContext2D,
   clip: Clip,
@@ -415,11 +555,13 @@ function drawClip(
   top: number,
   ui: EditorUiState,
   selected: boolean,
-  peaks: WaveformPeaks | undefined,
+  content: ClipContent,
+  appearance: ClipAppearance,
   fps: number,
   canvasWidth: number,
   /** The pointer is on this clip: the fade grips are offered. */
   hovered: boolean,
+  labels: CanvasLabels,
 ): void {
   const x = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
   const clipWidth = Math.max(2, clip.durationFrames * ui.pixelsPerFrame);
@@ -431,23 +573,64 @@ function drawClip(
   const bodyLeft = Math.max(x, -8);
   const bodyRight = Math.min(x + clipWidth, canvasWidth + 8);
   const bodyWidth = Math.max(2, bodyRight - bodyLeft);
+  const bodyTop = top + 2;
+  const bodyHeight = TRACK_HEIGHT - 4;
+  const bodyBottom = bodyTop + bodyHeight;
 
   context.save();
 
   const radius = Math.min(4, bodyWidth / 2);
   context.beginPath();
-  context.roundRect(bodyLeft, top + 2, bodyWidth, TRACK_HEIGHT - 4, radius);
+  context.roundRect(bodyLeft, bodyTop, bodyWidth, bodyHeight, radius);
 
   context.fillStyle = TRACK_TYPE_COLORS[track.type];
   context.globalAlpha = track.visible ? 1 : 0.4;
   context.fill();
 
+  /*
+    What the clip shows inside, after Final Cut's clip appearance: pictures
+    on top and sound under them, either one alone, or only the name. A clip
+    with only one of the two shows that one across its whole height; a sound
+    clip shows its wave in every mode but "names only".
+  */
+  let pictureBottom = bodyTop;
+  if (content.offline) {
+    context.save();
+    context.clip();
+    drawOffline(context, bodyLeft, bodyWidth, top, labels.offline);
+    context.restore();
+  } else if (appearance !== 'name') {
+    const picture = track.type !== 'audio' && appearance !== 'waveform' ? content.filmstrip : undefined;
+    const peaks = track.type === 'audio' || appearance !== 'filmstrip' || !picture ? content.peaks : undefined;
+
+    context.save();
+    context.clip();
+    if (picture) {
+      // A clip without sound gives its pictures the whole body.
+      const pictureHeight = peaks ? FILMSTRIP_SHARE : bodyHeight;
+      drawFilmstrip(context, clip, picture, x, clipWidth, bodyTop, pictureHeight, fps, canvasWidth);
+      pictureBottom = bodyTop + pictureHeight;
+    }
+    if (peaks) {
+      let bandTop = bodyTop + NAME_BAND_HEIGHT;
+      if (picture) {
+        // The sound's own strip under the pictures, darker, so the wave reads on it.
+        context.fillStyle = SOUND_STRIP;
+        context.fillRect(bodyLeft, pictureBottom, bodyWidth, bodyBottom - pictureBottom);
+        bandTop = pictureBottom + 2;
+      }
+      drawWaveform(context, clip, peaks, x, clipWidth, bandTop, bodyBottom - 1, fps, canvasWidth, WAVE_FILL[track.type]);
+    }
+    context.restore();
+  }
+
+  // The outline goes over the pictures, so a selected clip stays marked.
   context.globalAlpha = 1;
+  context.beginPath();
+  context.roundRect(bodyLeft, bodyTop, bodyWidth, bodyHeight, radius);
   context.lineWidth = selected ? 2 : 1;
   context.strokeStyle = selected ? SELECTED_OUTLINE : '#0e0f11';
   context.stroke();
-
-  if (peaks) drawWaveform(context, clip, peaks, x, clipWidth, top, fps, canvasWidth);
 
   drawFades(context, clip, x, clipWidth, top, ui.pixelsPerFrame, hovered);
 
@@ -471,16 +654,27 @@ function drawClip(
     // The label rides along the visible part of the clip, so a long clip that
     // starts off screen still says what it is.
     const labelX = Math.max(x, 0) + 7;
+    context.font = LABEL_FONT;
+    context.textBaseline = 'top';
 
     // A linked clip wears a chain, so a group is visible without having to
     // click one to find out what else moves with it.
     const nameX = clip.linkGroup ? labelX + 16 : labelX;
-    if (clip.linkGroup) drawLinkMark(context, labelX, top + 8);
+
+    // Over pictures the name sits on a dark chip: light text straight on a
+    // light frame would disappear. A chip, not a band across the clip, so
+    // the rest of the filmstrip stays in view.
+    const overPicture = pictureBottom > bodyTop;
+    if (overPicture) {
+      context.fillStyle = NAME_BAND;
+      context.beginPath();
+      context.roundRect(labelX - 4, bodyTop + 1, nameX - labelX + context.measureText(clip.name).width + 8, NAME_BAND_HEIGHT - 1, 3);
+      context.fill();
+    }
+    if (clip.linkGroup) drawLinkMark(context, labelX, top + 6);
 
     context.fillStyle = '#e2e8f0';
-    context.font = LABEL_FONT;
-    context.textBaseline = 'top';
-    context.fillText(clip.name, nameX, top + 7);
+    context.fillText(clip.name, nameX, top + 4);
 
     const keyframeCount =
       clip.transform.position.length +
@@ -488,19 +682,22 @@ function drawClip(
       clip.transform.rotation.length +
       clip.transform.opacity.length;
 
-    // A retimed clip says so, the way every editor marks one.
+    // A retimed clip says so, the way every editor marks one; over pictures
+    // each note gets a dark chip of its own.
+    const note = (text: string, noteX: number, colour: string): number => {
+      const width = context.measureText(text).width;
+      if (overPicture) {
+        context.fillStyle = NAME_BAND;
+        context.fillRect(noteX - 3, top + 20, width + 6, 15);
+      }
+      context.fillStyle = colour;
+      context.fillText(text, noteX, top + 21);
+      return noteX + width + 10;
+    };
+    let noteX = labelX;
     const speed = speedLabel(clip);
-    if (speed) {
-      context.fillStyle = '#fcd34d';
-      context.font = LABEL_FONT;
-      context.fillText(speed, labelX, top + 24);
-    }
-
-    if (keyframeCount > 0) {
-      context.fillStyle = '#cbd5f5';
-      context.font = LABEL_FONT;
-      context.fillText(`${keyframeCount} keyframes`, speed ? labelX + 42 : labelX, top + 24);
-    }
+    if (speed) noteX = note(speed, noteX, '#fcd34d');
+    if (keyframeCount > 0) note(labels.keyframes(keyframeCount), noteX, '#cbd5f5');
     context.restore();
   }
 
@@ -668,6 +865,11 @@ function drawPlayhead(
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   const { project, ui: storeUi, tracks, activeSnap, waveforms, width, height } = props;
+  const filmstrips = props.filmstrips;
+  const offlineUris = props.offlineUris;
+  const appearance = props.appearance ?? 'both';
+  const contentVersion = props.contentVersion ?? 0;
+  const labels = props.labels ?? DEFAULT_LABELS;
   const marquee = props.marquee ?? null;
   const hover = props.hover ?? null;
   const activeTrim = props.activeTrim ?? null;
@@ -808,10 +1010,16 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           top,
           ui,
           selected.has(clip.id),
-          waveforms[clip.sourceUri],
+          {
+            peaks: waveforms[clip.sourceUri],
+            filmstrip: filmstrips?.[clip.sourceUri],
+            offline: offlineUris?.has(clip.sourceUri) ?? false,
+          },
+          appearance,
           project.fps,
           width,
           hover?.clipId === clip.id || activeTrim?.clipId === clip.id,
+          labels,
         );
 
         const held = activeTrim?.clipId === clip.id;
@@ -897,7 +1105,10 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     } else {
       lastPaintAt.current = 0;
     }
-  }, [project, storeUi, tracks, activeSnap, waveforms, width, height, marquee, hover, activeTrim, hoverKey]);
+    // contentVersion is not read in the paint: it changes when a filmstrip
+    // frame has been decoded, and that is exactly when to paint again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, storeUi, tracks, activeSnap, waveforms, filmstrips, offlineUris, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
     if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);

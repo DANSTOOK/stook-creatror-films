@@ -107,6 +107,9 @@ const api: FilmoraApi = {
       ipcRenderer.off(IPC.proxiesProgress, handler);
     };
   },
+  contentPeaks: (path, seconds) => ipcRenderer.invoke(IPC.contentPeaks, path, seconds) as Promise<string | null>,
+  contentThumbs: (path, kind, seconds) =>
+    ipcRenderer.invoke(IPC.contentThumbs, path, kind, seconds) as Promise<string | null>,
   chooseExportFolder: () => ipcRenderer.invoke(IPC.chooseExportFolder) as Promise<string | null>,
   resolveExportTarget: (folder, name, format) =>
     ipcRenderer.invoke(IPC.resolveExportTarget, folder, name, format) as Promise<{ path: string; exists: boolean; inUse: boolean }>,

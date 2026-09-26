@@ -13,6 +13,7 @@ import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
 import { useAudioPlayback } from './hooks/useAudioPlayback';
+import { useClipContent } from './media/useClipContent';
 import { usePresence } from './hooks/usePresence';
 import { useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
 import {
@@ -62,6 +63,7 @@ export default function App(): JSX.Element {
   usePlaybackClock();
   useEditorShortcuts();
   useAudioPlayback();
+  useClipContent();
 
   // Swallow drops that land outside a drop zone. Chromium's default is to open
   // the dropped file in the window - the whole editor replaced by a video

@@ -5,6 +5,7 @@ import { AudioStream } from './audio/AudioStream';
 import { renderTimelineAudio, streamTimelineAudio } from './audio/renderMix';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useProjectStore } from './store/useProjectStore';
+import { useMediaStore } from './store/useMediaStore';
 import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import './index.css';
 import { installMotionEnvironment } from './motion/environment';
@@ -25,6 +26,8 @@ prepareGhosts();
 // The stress test storms undo and redo and has to stop exactly where it began,
 // which only the history itself can say.
 (window as { __scfHistory?: typeof useHistoryStore }).__scfHistory = useHistoryStore;
+// Waveforms and filmstrips arrive from the main process; the probes wait for them.
+(window as { __scfMediaStore?: typeof useMediaStore }).__scfMediaStore = useMediaStore;
 
 // Which file the preview is drawing from: with proxies on it is the small
 // stand-in, and the interface tests check exactly that - and that an export

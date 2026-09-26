@@ -18,6 +18,7 @@ import {
 } from '../projects/recentProjects';
 import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
+import { ClipContentStore } from '../media/clipContent';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
@@ -620,6 +621,40 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.proxiesUsage, async () => {
     const records = await proxies.list();
     return { count: records.length, bytes: records.reduce((sum, record) => sum + record.bytes, 0) };
+  });
+
+  /*
+    Filmstrips and waveforms (media/clipContent.ts): made here, off the page,
+    one at a time and never during a render; the page gets the finished file.
+  */
+  const content = new ClipContentStore(
+    join(app.getPath('userData'), 'scf', 'content'),
+    resolveFfmpegPath(),
+    () => pipeline.busy,
+  );
+  app.on('before-quit', () => content.cancelAll());
+
+  ipcMain.handle(IPC.contentPeaks, async (_event, path: unknown, seconds: unknown) => {
+    if (typeof path !== 'string') return null;
+    assertAllowed(path);
+    const file = await content.get({ kind: 'peaks', path, seconds: Number(seconds) || 0 });
+    if (!file) return null;
+    allowedPaths.add(file);
+    return mediaUrlFor(file);
+  });
+
+  ipcMain.handle(IPC.contentThumbs, async (_event, path: unknown, kind: unknown, seconds: unknown) => {
+    if (typeof path !== 'string') return null;
+    assertAllowed(path);
+    const file = await content.get({
+      kind: 'thumbs',
+      path,
+      seconds: Number(seconds) || 0,
+      thumbKind: kind === 'image' ? 'image' : 'video',
+    });
+    if (!file) return null;
+    allowedPaths.add(file);
+    return mediaUrlFor(file);
   });
 
   ipcMain.handle(IPC.projectsBackups, async (_event, path: unknown) => {

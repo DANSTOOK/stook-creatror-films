@@ -16,6 +16,108 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Rediseño, fase 3: contenido y audio
+
+El tercer paso del rediseño: que la línea de tiempo y los medios enseñen lo
+que hay dentro de cada clip, un mezclador de verdad y el español completo.
+Cada punto dice cómo se comprobó. Todo se probó en segundo plano
+(`SCF_BACKGROUND=1`), sin ratón real ni capturas de la pantalla.
+
+### Añadido
+
+- **Los clips de la línea de tiempo enseñan su contenido** (punto 19 de la
+  auditoría). Un clip de vídeo lleva una **tira de fotogramas** a lo largo,
+  como en Final Cut y Resolve, y debajo su **forma de onda**; un clip de
+  sonido, la forma de onda en toda su altura. Antes un clip de vídeo era un
+  rectángulo azul con una onda fina y pálida por encima.
+  - La onda se dibuja **rectificada** (el nivel más alto de cada instante,
+    subiendo desde abajo, rellena), como la dibujan Final Cut y el Premiere de
+    hoy: en la misma altura cabe el doble de detalle que en una onda reflejada
+    sobre una línea central, y un pasaje fuerte se ve alto, no grueso. Es
+    lineal: media altura es la mitad del nivel (−6 dB).
+  - **Aspecto de los clips**, un botón nuevo en la barra de la línea de tiempo
+    (el de Final Cut se llama igual): *Fotogramas y forma de onda* (lo normal),
+    *Fotogramas*, *Formas de onda* y *Solo nombres*. Se recuerda en este
+    equipo. Un clip que solo tiene una de las dos cosas la enseña en toda su
+    altura; uno de sonido enseña su onda en todos los modos menos *Solo
+    nombres*.
+  - Las **imágenes fijas** repiten su imagen a lo largo del clip.
+  - Un clip cuyo **archivo falta** se dibuja con franjas rojas y «Falta el
+    archivo» («Media offline» en inglés), como marcan Resolve y Premiere los
+    medios desconectados, en vez de un clip que parece sano y no reproduce
+    nada.
+  - El nombre del clip, y la velocidad o los fotogramas clave, van sobre una
+    pastilla oscura cuando hay imagen debajo: sobre un fotograma blanco se
+    leen a 4,5:1 o más. «N keyframes» también se lee en español.
+- **Las tiras y las ondas se hacen fuera de la reproducción.** Las hace
+  FFmpeg en el proceso principal, **una cosa cada vez, con prioridad por debajo
+  de la del editor y nunca mientras se exporta**, y se guardan en disco
+  (`scf/content` dentro de los datos de la aplicación), identificadas como los
+  proxies por ruta, tamaño y fecha del archivo: un archivo que no cambia no se
+  vuelve a medir nunca, ni en esta sesión ni en la siguiente. Un vídeo corto
+  (hasta 3 minutos) se decodifica entero para escoger sus fotogramas; uno largo
+  solo por sus fotogramas clave, que son segundos en vez de minutos de CPU.
+  Como mucho 240 fotogramas por archivo, de 72 px de alto.
+  - La página solo lee los archivos terminados y dibuja **desde esa caché, en
+    el mismo bucle de dibujo de siempre**: una tira por cada trozo de clip
+    visible, con cada fotograma decodificado por el navegador fuera del hilo
+    principal y solo cuando hace falta, en una caché limitada (800 fotogramas,
+    unos 30 MB).
+  - Antes la onda se medía en la propia página, decodificando otra vez todo
+    el sonido de cada archivo importado en el hilo que dibuja la línea de
+    tiempo y reproduce, y se tiraba al cerrar.
+
+### Cómo se comprobó
+
+- **Pruebas unitarias nuevas** (`tests/ClipContent.test.ts`, 13): cuántos
+  fotogramas guarda una tira (nunca más de 240, nunca más cerca de 0,25 s),
+  que un vídeo corto se decodifica entero y uno largo por fotogramas clave, la
+  lectura de los tiempos que da FFmpeg, el plegado de la onda en pares mín/máx
+  aunque las muestras lleguen partidas, el tope de tamaño de una onda de horas,
+  que lo que escribe el proceso principal la página lo lee igual (onda y tira),
+  qué fotograma se enseña en cada instante, y el **contraste** de lo nuevo con
+  `contrast.ts`: la onda sobre un clip de sonido 4,1:1 y sobre la franja oscura
+  de un clip de vídeo 6,8:1 (el mínimo para gráficos es 3:1); el nombre sobre
+  un fotograma blanco, 4,5:1 o más.
+- **Sonda** (`probe-content.mjs`), **9/9**: con cinco archivos importados, las
+  cuatro tiras (tres vídeos y la imagen) y las tres ondas llegan en 5,3 s desde
+  que empieza la importación y quedan en disco; cada uno de los cuatro modos se
+  elige en el menú del botón y se recuerda; el menú marca el modo actual como
+  opción única (`menuitemradio`); una segunda sesión los lee de la caché (1,3 s
+  contando la importación); un proyecto reabierto en otra sesión con un archivo
+  movido lo marca como que falta y el clip sale con franjas.
+- **Rendimiento, antes y después, con la misma sonda** (`perf.mjs`: escena de
+  38 s en tres pistas, reproducción, exportación por el diálogo, y una línea de
+  tiempo de 45 minutos con nueve copias de un vídeo de 5 minutos), en la GPU
+  dedicada y en la Intel (`FILMORA_GPU=low-power`):
+  - Reproducir la escena (3 × 5 s ajustada y 3 × 5 s con zoom): GPU dedicada
+    0–0,11 % de fotogramas perdidos, p95 5,8–5,9 ms, antes y después; Intel
+    0 % y p95 7,2–7,4 ms, antes y después. Ningún fotograma largo.
+  - Reproducir mientras entra un archivo de 5 minutos (y se hacen su tira y su
+    onda): GPU dedicada 0,13 % → 0,13 %; Intel 0,23 % → 0,38 %, sin fotogramas
+    largos. Su onda estaba lista antes de terminar los 8 s de la prueba.
+  - Línea de tiempo de 45 minutos, 40 pasos de zoom, 60 de desplazamiento y
+    5 s de reproducción: 0–0,14 % perdidos antes y 0–0,11 % después (dedicada);
+    0 % antes y después (Intel).
+  - Exportar la escena (1.140 fotogramas): dedicada 3,38 y 2,88 s antes, 3,41 y
+    3,40 s después; Intel 10,69 y 11,10 s antes, 10,61 y 10,59 s después.
+- Capturas en la carpeta `redesign-phase3` del bloc de notas de la sesión:
+  `before-en-1600-timeline.png` / `after-en-1600-timeline.png`, los cuatro
+  modos (`after-en-1600-timeline-appearance-*.png`), el menú, el zoom de
+  cerca y el clip sin archivo (`after-en-1600-timeline-offline.png`).
+
+### Decisiones tomadas
+
+- **Sin control de altura de clip.** Final Cut lo tiene, pero aquí cambiaría
+  la fila de 58 px de la que dependen las pruebas y el ratón; se queda la
+  altura y se reparte mejor: 30 px de imagen y 22 de sonido.
+- **Fotogramas y forma de onda por defecto**, como el modo de Final Cut que
+  enseña las dos cosas.
+- **La onda es lineal, no en decibelios**: lo que se ve es lo que dirá el
+  medidor del mezclador.
+
+---
+
 ## v1.27.0-beta.1 — El rediseño: orden, aspecto Mac y animaciones
 
 Instalador de prueba con las fases 1 y 2 del rediseño y el sistema de
