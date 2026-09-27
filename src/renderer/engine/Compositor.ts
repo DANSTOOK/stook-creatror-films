@@ -3,6 +3,7 @@ import { sourceFrameFor } from '@renderer/timing/clipSpeed';
 import { fadeGainAt } from '@renderer/timing/clipFades';
 import { degToRad } from '@shared/utils/math';
 import { evaluateTransform } from './KeyframeEvaluator';
+import { cdlOf, DEFAULT_PIVOT } from '@renderer/color/grade';
 import { FULLSCREEN_MATRIX, GLProgram, RenderTarget, makeQuadMatrix } from './GLProgram';
 import type { LUTLoader } from './LUTLoader';
 
@@ -457,6 +458,12 @@ export class Compositor {
         program.set('u_saturation', grading.saturation);
         program.set('u_temperature', grading.temperature);
         program.set('u_tint', grading.tint);
+        program.set('u_pivot', grading.pivot ?? DEFAULT_PIVOT);
+        const cdl = cdlOf(grading);
+        program.set('u_cdlActive', cdl.active);
+        program.set('u_cdlSlope', new Float32Array(cdl.slope));
+        program.set('u_cdlOffset', new Float32Array(cdl.offset));
+        program.set('u_cdlPower', new Float32Array(cdl.power));
         program.set('u_lutEnabled', loaded !== undefined);
         program.set('u_lutIntensity', grading.lutIntensity);
 

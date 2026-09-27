@@ -57,6 +57,20 @@ export interface ColorGradingConfig {
   saturation: number; // 0.0 to 2.0
   temperature: number; // -1.0 to 1.0
   tint: number; // -1.0 to 1.0
+  /**
+   * The level contrast turns about, 0-1 on the encoded picture. 0.5, the
+   * fixed pivot before it could be moved.
+   */
+  pivot: number;
+  /**
+   * The primaries wheels - lift, gamma, gain, offset - as R, G, B each, 0
+   * neutral, -1..1. Carried to the GPU as one ASC CDL; the units are in
+   * src/renderer/color/grade.ts. Projects saved before them open neutral.
+   */
+  lift: [number, number, number];
+  gamma: [number, number, number];
+  gain: [number, number, number];
+  offset: [number, number, number];
   /** Blob URL for this session. Does not survive a reload. */
   lutUri?: string;
   /**

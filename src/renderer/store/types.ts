@@ -22,6 +22,7 @@ import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
 import { markerName, trackName } from '@renderer/i18n/defaultNames';
+import { DEFAULT_PIVOT, neutralWheel, normalizeGrading } from '@renderer/color/grade';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -249,6 +250,11 @@ export function createClip(input: CreateClipInput): Clip {
       temperature: 0,
       tint: 0,
       lutIntensity: 1,
+      pivot: DEFAULT_PIVOT,
+      lift: neutralWheel(),
+      gamma: neutralWheel(),
+      gain: neutralWheel(),
+      offset: neutralWheel(),
     },
     chromaKey: {
       enabled: false,
@@ -381,7 +387,15 @@ export function normalizeProject(project: ProjectState): ProjectState {
       Object.fromEntries(
         Object.entries(project.clips).map(([id, clip]) => [
           id,
-          { ...clip, volume: finite(clip.volume, 1), pan: finite(clip.pan, 0), eq: normalizeEq(clip.eq) },
+          {
+            ...clip,
+            volume: finite(clip.volume, 1),
+            pan: finite(clip.pan, 0),
+            eq: normalizeEq(clip.eq),
+            // A grade saved before the wheels opens with them neutral, so it
+            // looks exactly as it did.
+            colorGrading: normalizeGrading(clip.colorGrading),
+          },
         ]),
       ),
     ),

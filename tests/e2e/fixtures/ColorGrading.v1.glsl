@@ -12,15 +12,6 @@ uniform float u_contrast;      //  0.0 to 2.0, 1.0 is neutral
 uniform float u_saturation;    //  0.0 to 2.0, 1.0 is neutral
 uniform float u_temperature;   // -1.0 (cool) to 1.0 (warm)
 uniform float u_tint;          // -1.0 (green) to 1.0 (magenta)
-uniform float u_pivot;         // level contrast turns about, 0.5 by default
-
-// The primaries wheels as one ASC CDL (see src/renderer/color/grade.ts):
-// out = (in * slope + offset) ^ power. Skipped entirely when every wheel is
-// neutral, so an untouched grade is bit for bit what it was before them.
-uniform bool u_cdlActive;
-uniform vec3 u_cdlSlope;
-uniform vec3 u_cdlOffset;
-uniform vec3 u_cdlPower;
 
 uniform sampler3D u_lutTexture;
 uniform bool u_lutEnabled;
@@ -75,23 +66,16 @@ void main() {
 
     color = linearToSrgb(max(color, 0.0));
 
-    // Primaries: lift, gamma, gain, offset. A negative value has no power;
-    // it passes through as it is and the final clamp takes care of it.
-    if (u_cdlActive) {
-        color = color * u_cdlSlope + u_cdlOffset;
-        color = mix(color, pow(max(color, vec3(0.0)), u_cdlPower), step(vec3(0.0), color));
-    }
-
-    color = (color - u_pivot) * u_contrast + u_pivot;
+    color = (color - 0.5) * u_contrast + 0.5;
 
     float luma = dot(clamp(color, 0.0, 1.0), LUMA_REC709);
     color = mix(vec3(luma), color, u_saturation);
 
-    // No clamp before the look: a LUT made for values past 1 gets them, and
-    // the one clamp is at the very end.
+    color = clamp(color, 0.0, 1.0);
+
     if (u_lutEnabled) {
         color = mix(color, applyLUT(color), clamp(u_lutIntensity, 0.0, 1.0));
     }
 
-    fragColor = vec4(clamp(color, 0.0, 1.0), texColor.a);
+    fragColor = vec4(color, texColor.a);
 }
