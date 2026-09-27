@@ -119,13 +119,17 @@ function Wheel({ wheel, value, mode, onChange }: { wheel: WheelId; value: Rgb; m
     const step = event.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
     const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
     const move = moves[event.key];
+    // The keys a wheel uses stop here: on the window the arrows step the
+    // playhead, and Delete deletes the selected clip - the one being graded.
     if (move) {
       event.preventDefault();
+      event.stopPropagation();
       onChange(withPuck(value, puck.x + move[0], puck.y + move[1]));
       return;
     }
     if (event.key === 'Delete' || event.key === 'Backspace' || event.key === 'Home') {
       event.preventDefault();
+      event.stopPropagation();
       onChange(withPuck(value, 0, 0));
     }
   };

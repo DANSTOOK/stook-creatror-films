@@ -56,6 +56,7 @@ export function CompareCurtain(): JSX.Element | null {
       event.stopPropagation();
       setUi({ compareSplit: clamp01(split + (event.key === 'ArrowLeft' ? -step : step)) });
     } else if (event.key === 'Escape') {
+      event.preventDefault();
       event.stopPropagation();
       setUi({ compareSplit: null });
     }
