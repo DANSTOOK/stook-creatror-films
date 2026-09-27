@@ -1,5 +1,6 @@
 import type { MediaKind } from '@shared/types';
 import { snapFrameRate } from '@shared/utils/frameRate';
+import { t } from '@renderer/i18n';
 
 /**
  * Renderer-side media probing.
@@ -114,11 +115,11 @@ function waitForMetadata(element: HTMLVideoElement | HTMLImageElement): Promise<
     };
     const onError = (): void => {
       clearTimeout(timer);
-      reject(new Error('The browser could not decode this file'));
+      reject(new Error(t('import.cannotDecode')));
     };
 
     const timer = setTimeout(
-      () => reject(new Error('Timed out reading media metadata')),
+      () => reject(new Error(t('import.metadataTimeout'))),
       METADATA_TIMEOUT_MS,
     );
 
@@ -193,7 +194,7 @@ export async function probeMediaElement(uri: string, kind: MediaKind): Promise<E
     audio.src = uri;
 
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Timed out reading audio metadata')), METADATA_TIMEOUT_MS);
+      const timer = setTimeout(() => reject(new Error(t('import.audioMetadataTimeout'))), METADATA_TIMEOUT_MS);
       audio.addEventListener(
         'loadedmetadata',
         () => {
@@ -206,7 +207,7 @@ export async function probeMediaElement(uri: string, kind: MediaKind): Promise<E
         'error',
         () => {
           clearTimeout(timer);
-          reject(new Error('The browser could not decode this audio file'));
+          reject(new Error(t('import.cannotDecodeAudio')));
         },
         { once: true },
       );

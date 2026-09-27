@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions } from 'electron';
 import { translate, type MessageKey } from '@shared/i18n';
+import { setMainLanguage } from './language';
 import { IPC, type AppMenuEntry, type MenuCommand, type MenuState } from '@shared/types/ipc';
 
 /**
@@ -225,6 +226,7 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
       fullscreenViewer: raw.fullscreenViewer === true,
     };
     reportedLanguage = state.language;
+    setMainLanguage(state.language);
     apply();
   });
 

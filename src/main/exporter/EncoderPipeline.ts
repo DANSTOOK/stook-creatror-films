@@ -3,6 +3,7 @@ import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ExportProgress, ExportSettings } from '@shared/types';
+import { lastLines, mt } from '../language';
 import {
   FORMAT_SUPPORTS_ALPHA,
   resolveFfmpegPath,
@@ -183,7 +184,7 @@ export class EncoderPipeline {
   }
 
   async start(settings: ExportSettings): Promise<string> {
-    if (!settings.outputPath) throw new Error('Export needs an output path');
+    if (!settings.outputPath) throw new Error(mt('main.exportNoPath'));
 
     // A PNG sequence writes into a directory; every other format writes a file.
     const directory =
@@ -244,7 +245,8 @@ export class EncoderPipeline {
           return;
         }
         discardPartial();
-        const message = `ffmpeg exited with code ${code}\n${job.stderr}`;
+        // A sentence in the page's language, with FFmpeg's last words as the detail.
+        const message = mt('main.ffmpegFailed', { code: String(code), detail: lastLines(job.stderr) || '-' });
         this.emit(job, { error: message, done: true });
         reject(new Error(message));
       });
@@ -287,7 +289,7 @@ export class EncoderPipeline {
     const job = this.jobs.get(jobId);
     if (!job) {
       if (this.cancelledJobs.has(jobId)) return;
-      throw new Error(`Unknown export job "${jobId}"`);
+      throw new Error(mt('main.unknownJob'));
     }
     if (job.cancelled) return;
 
@@ -298,8 +300,12 @@ export class EncoderPipeline {
       const expectedBytes = job.settings.width * job.settings.height * 4;
       if (frame.byteLength !== expectedBytes) {
         throw new Error(
-          `Frame size mismatch: expected ${expectedBytes} bytes for ` +
-            `${job.settings.width}x${job.settings.height} RGBA, received ${frame.byteLength}`,
+          mt('main.frameMismatch', {
+            expected: expectedBytes,
+            received: frame.byteLength,
+            width: job.settings.width,
+            height: job.settings.height,
+          }),
         );
       }
     }
@@ -392,7 +398,7 @@ export class EncoderPipeline {
       });
       child.on('error', reject);
       child.on('close', (code) =>
-        code === 0 ? resolve() : reject(new Error(`Adding the thumbnail failed: ${stderr.trim().slice(0, 300)}`)),
+        code === 0 ? resolve() : reject(new Error(mt('main.thumbnailFailed', { detail: lastLines(stderr) || '-' }))),
       );
     });
     await rename(temporary, outputPath);

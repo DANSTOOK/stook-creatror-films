@@ -3,7 +3,7 @@
  *
  * An error thrown in the main process reaches the page as "Error invoking
  * remote method 'media:relink': Error: <message>"; the message is already a
- * sentence in the interface language (main/i18n.ts), and the wrapper is
+ * sentence in the interface language (main/language.ts), and the wrapper is
  * noise, so it goes.
  */
 export function errorText(error: unknown): string {

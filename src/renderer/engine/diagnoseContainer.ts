@@ -1,5 +1,6 @@
 import type { ByteReader } from './mp4';
 import { fileSize, rangeReader } from './rangeFetch';
+import { t } from '@renderer/i18n';
 
 /**
  * Why a file would not open.
@@ -82,9 +83,7 @@ export async function diagnoseContainer(url: string): Promise<ContainerDiagnosis
  */
 export function explainDiagnosis(diagnosis: ContainerDiagnosis): string | null {
   if (!diagnosis.isIsoBmff || diagnosis.hasMoov) return null;
-  return diagnosis.hasMdat
-    ? 'the file is incomplete - it holds video data but no index, so writing or copying it never finished'
-    : 'the file is incomplete - its index is missing';
+  return diagnosis.hasMdat ? t('import.incompleteNoIndex') : t('import.indexMissing');
 }
 
 /** Best available reason a `media://` source would not open. */

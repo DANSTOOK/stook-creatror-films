@@ -3,6 +3,7 @@ import { open, stat } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { extname } from 'node:path';
 import type { YouTubePrivacy, YouTubeUploadMeta, YouTubeUploadResult } from '@shared/types/ipc';
+import { mt } from '../language';
 
 /**
  * Upload to YouTube with the account's own permission, never its password.
@@ -194,7 +195,7 @@ export class YouTubeClient {
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         if (error) {
           response.end(landingPage('Not connected', 'Nothing was shared. You can close this tab.'));
-          finish(() => reject(new Error(error === 'access_denied' ? 'Sign-in was declined.' : `Google said: ${error}`)));
+          finish(() => reject(new Error(error === 'access_denied' ? mt('main.ytDeclined') : mt('main.ytGoogleSaid', { error }))));
         } else {
           response.end(landingPage('Connected', 'You can close this tab and go back to the editor.'));
           finish(() => resolve({ code: returned as string, redirectUri }));
@@ -202,7 +203,7 @@ export class YouTubeClient {
       });
 
       const timer = setTimeout(
-        () => finish(() => reject(new Error('Sign-in timed out. Try again.'))),
+        () => finish(() => reject(new Error(mt('main.ytTimedOut')))),
         SIGN_IN_TIMEOUT_MS,
       );
       const finish = (settle: () => void): void => {
@@ -214,7 +215,7 @@ export class YouTubeClient {
       server.on('close', () => {
         clearTimeout(timer);
         // Closed by cancelSignIn: the promise must not hang.
-        reject(new Error('Sign-in was cancelled.'));
+        reject(new Error(mt('main.ytCancelled')));
       });
 
       this.pendingServer = server;
@@ -223,7 +224,7 @@ export class YouTubeClient {
       server.listen(0, '127.0.0.1', () => {
         const address = server.address();
         if (!address || typeof address === 'string') {
-          finish(() => reject(new Error('Could not open the sign-in return port.')));
+          finish(() => reject(new Error(mt('main.ytPort'))));
           return;
         }
         redirectUri = `http://127.0.0.1:${address.port}`;
@@ -275,7 +276,7 @@ export class YouTubeClient {
       error_description?: string;
     };
     if (!response.ok || !body.access_token) {
-      throw new Error(`Google did not grant access: ${body.error_description ?? body.error ?? response.status}`);
+      throw new Error(mt('main.ytNoGrant', { detail: String(body.error_description ?? body.error ?? response.status) }));
     }
     return {
       access: body.access_token,
@@ -287,9 +288,9 @@ export class YouTubeClient {
   /** A token good for at least another minute, refreshed if needed. */
   private async accessToken(force = false): Promise<string> {
     const tokens = this.tokens;
-    if (!tokens || !this.client) throw new Error('Not signed in to YouTube.');
+    if (!tokens || !this.client) throw new Error(mt('main.ytNotSignedIn'));
     if (!force && tokens.expiresAt - Date.now() > 60_000) return tokens.access;
-    if (!tokens.refresh) throw new Error('The YouTube sign-in expired. Sign in again.');
+    if (!tokens.refresh) throw new Error(mt('main.ytExpired'));
 
     const response = await fetch(this.endpoints.token, {
       method: 'POST',
@@ -321,10 +322,10 @@ export class YouTubeClient {
     onProgress: (sent: number, total: number) => void,
   ): Promise<YouTubeUploadResult> {
     const contentType = uploadContentType(path);
-    if (!contentType) throw new Error('YouTube takes MP4, MOV or WebM files.');
-    if (!PRIVACY.has(meta.privacy)) throw new Error('Unknown privacy setting.');
+    if (!contentType) throw new Error(mt('main.ytFormats'));
+    if (!PRIVACY.has(meta.privacy)) throw new Error(mt('main.ytPrivacy'));
     const total = (await stat(path)).size;
-    if (total === 0) throw new Error('The file is empty.');
+    if (total === 0) throw new Error(mt('main.ytEmpty'));
 
     const controller = new AbortController();
     this.upload = controller;
@@ -356,7 +357,7 @@ export class YouTubeClient {
         }),
       );
       const location = session.headers.get('location');
-      if (!session.ok || !location) throw new Error(await describeFailure(session, 'YouTube did not open the upload'));
+      if (!session.ok || !location) throw new Error(await describeFailure(session, mt('main.ytOpenFailed')));
 
       const file = await open(path, 'r');
       try {
@@ -391,7 +392,7 @@ export class YouTubeClient {
           if (response.status === 200 || response.status === 201) {
             onProgress(total, total);
             const video = (await response.json()) as { id?: string; status?: { privacyStatus?: YouTubePrivacy } };
-            if (!video.id) throw new Error('YouTube finished the upload without naming the video.');
+            if (!video.id) throw new Error(mt('main.ytNoId'));
             return {
               videoId: video.id,
               url: `https://youtu.be/${video.id}`,
@@ -409,7 +410,7 @@ export class YouTubeClient {
 
           if (response.status >= 500) {
             failures += 1;
-            if (failures > MAX_RETRIES) throw new Error(await describeFailure(response, 'YouTube kept failing'));
+            if (failures > MAX_RETRIES) throw new Error(await describeFailure(response, mt('main.ytKeptFailing')));
             // Exponential back-off with jitter, as the API guide asks.
             await delay(Math.min(32_000, 2 ** failures * 500) + Math.random() * 500, signal);
             offset = await this.uploadedSoFar(location, total, signal);
@@ -417,13 +418,13 @@ export class YouTubeClient {
             continue;
           }
 
-          throw new Error(await describeFailure(response, 'YouTube refused the upload'));
+          throw new Error(await describeFailure(response, mt('main.ytRefused')));
         }
       } finally {
         await file.close();
       }
     } catch (error) {
-      if (signal.aborted) throw new Error('Upload cancelled.');
+      if (signal.aborted) throw new Error(mt('main.ytUploadCancelled'));
       throw error;
     } finally {
       if (this.upload === controller) this.upload = null;
@@ -459,9 +460,9 @@ async function describeFailure(response: Response, what: string): Promise<string
   } | null;
   const reason = body?.error?.errors?.[0]?.reason;
   if (reason === 'quotaExceeded' || reason === 'uploadLimitExceeded') {
-    return `${what}: the daily upload limit for this Google project is used up. Try again tomorrow.`;
+    return mt('main.ytQuota', { what });
   }
-  return `${what} (${response.status}${body?.error?.message ? `: ${body.error.message}` : ''}).`;
+  return mt('main.ytFailure', { what, detail: `${response.status}${body?.error?.message ? `: ${body.error.message}` : ''}` });
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {

@@ -26,7 +26,7 @@ import { isGpuPreference } from '../gpu/classify';
 import { getGpuReport } from '../gpu/gpuInventory';
 import { writeGpuPreference } from '../gpu/gpuSettings';
 import { isOpenMediaPath, mediaUrlFor, retargetMediaUrl } from './mediaProtocol';
-import { mt } from '../i18n';
+import { mt } from '../language';
 
 const execFileAsync = promisify(execFile);
 
@@ -104,7 +104,7 @@ function classify(path: string): MediaKind {
 
 function assertAllowed(path: string): void {
   if (!allowedPaths.has(path)) {
-    throw new Error(`Access denied: "${path}" was not opened through a file dialog`);
+    throw new Error(mt('main.accessDenied', { name: basename(path) }));
   }
 }
 
@@ -435,16 +435,16 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (!window) return [];
 
     const result = await dialog.showOpenDialog(window, {
-      title: 'Import media',
+      title: mt('main.importTitle'),
       properties: ['openFile', 'multiSelections'],
       filters: [
         {
-          name: 'Media',
+          name: mt('main.filterMedia'),
           extensions: [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS, ...IMAGE_EXTENSIONS].map((e) =>
             e.slice(1),
           ),
         },
-        { name: 'All files', extensions: ['*'] },
+        { name: mt('main.filterAll'), extensions: ['*'] },
       ],
     });
 
@@ -483,7 +483,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (!window) return [];
 
     const result = await dialog.showOpenDialog(window, {
-      title: 'Add a folder and its subfolders',
+      title: mt('main.addFolderTitle'),
       properties: ['openDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return [];
@@ -515,10 +515,10 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (!window) return null;
 
     const result = await dialog.showOpenDialog(window, {
-      title: 'Open project',
+      title: mt('main.openProjectTitle'),
       properties: ['openFile'],
       // .scf is the project format since the rename; .fep files from before open too.
-      filters: [{ name: 'STOOK CREATOR FILMS project', extensions: ['scf', 'fep', 'json'] }],
+      filters: [{ name: mt('main.filterProject'), extensions: ['scf', 'fep', 'json'] }],
     });
 
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -567,7 +567,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.projectsOpenRecent, async (_event, path: unknown) => {
     if (typeof path !== 'string') return null;
     const list = await recentProjects.read();
-    if (!findRecent(list, path)) throw new Error('That project is not in the recent list');
+    if (!findRecent(list, path)) throw new Error(mt('main.notRecent'));
     const contents = await readFile(path, 'utf8');
     allowedPaths.add(path);
     await allowProjectReferences(contents);
@@ -594,7 +594,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const window = getWindow();
     if (!window) return null;
     const result = await dialog.showOpenDialog(window, {
-      title: 'Choose where to keep the project',
+      title: mt('main.projectFolderTitle'),
       properties: ['openDirectory', 'createDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -604,8 +604,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
   /** A new project file, named after the project and never over an existing one. */
   ipcMain.handle(IPC.projectsCreate, async (_event, folder: unknown, name: unknown, contents: unknown): Promise<string> => {
-    if (typeof folder !== 'string' || !allowedFolders.has(folder)) throw new Error('Choose the folder for the project first');
-    if (typeof contents !== 'string') throw new Error('Nothing to write');
+    if (typeof folder !== 'string' || !allowedFolders.has(folder)) throw new Error(mt('main.chooseProjectFolder'));
+    if (typeof contents !== 'string') throw new Error(mt('main.nothingToWrite'));
     const base = cleanProjectName(typeof name === 'string' ? name : '') || mt('home.untitled');
     await mkdir(folder, { recursive: true });
     let target = join(folder, `${base}.scf`);
@@ -628,7 +628,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
    * the previous save intact instead of a truncated project.
    */
   ipcMain.handle(IPC.projectsSave, async (_event, path: unknown, contents: unknown): Promise<string> => {
-    if (typeof path !== 'string' || typeof contents !== 'string') throw new Error('Nothing to save');
+    if (typeof path !== 'string' || typeof contents !== 'string') throw new Error(mt('main.nothingToSave'));
     assertAllowed(path);
     // One at a time per file, in the order asked: two saves racing to rename
     // could otherwise leave the older one on disk.
@@ -674,7 +674,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       const built = await proxies.build(path, size, Number(seconds) || 0, (fraction) => {
         getWindow()?.webContents.send(IPC.proxiesProgress, { path, fraction });
       });
-      if (!built) throw new Error(proxies.lastError ?? 'the proxy could not be built');
+      // FFmpeg's own words kept, inside a sentence in the page's language.
+      if (!built) throw new Error(mt('main.proxyFailed', { detail: proxies.lastError ?? '-' }));
       allowedPaths.add(built.file);
       return mediaUrlFor(built.file);
     },
@@ -804,9 +805,9 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (!window) return null;
 
     const result = await dialog.showOpenDialog(window, {
-      title: 'Load a .cube LUT',
+      title: mt('main.lutTitle'),
       properties: ['openFile'],
-      filters: [{ name: 'Cube LUT', extensions: ['cube'] }],
+      filters: [{ name: mt('main.filterLut'), extensions: ['cube'] }],
     });
 
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -821,9 +822,9 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (!window) return null;
 
     const result = await dialog.showSaveDialog(window, {
-      title: 'Save project',
-      defaultPath: suggestedName ?? 'untitled.scf',
-      filters: [{ name: 'STOOK CREATOR FILMS project', extensions: ['scf'] }],
+      title: mt('main.saveProjectTitle'),
+      defaultPath: suggestedName ?? `${mt('home.untitled')}.scf`,
+      filters: [{ name: mt('main.filterProject'), extensions: ['scf'] }],
     });
 
     if (result.canceled || !result.filePath) return null;
@@ -842,7 +843,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       // A PNG sequence needs a folder to write frame_00001.png into.
       if (format === 'png-sequence') {
         const result = await dialog.showOpenDialog(window, {
-          title: 'Choose a folder for the PNG sequence',
+          title: mt('main.pngFolderTitle'),
           properties: ['openDirectory', 'createDirectory'],
         });
         if (result.canceled || result.filePaths.length === 0) return null;
@@ -854,7 +855,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
         format === 'prores4444' ? 'mov' : format === 'webm-vp9' ? 'webm' : 'mp4';
 
       const result = await dialog.showSaveDialog(window, {
-        title: 'Export video',
+        title: mt('main.exportVideoTitle'),
         defaultPath: `export.${extension}`,
         filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
       });
@@ -881,7 +882,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const window = getWindow();
     if (!window) return null;
     const result = await dialog.showOpenDialog(window, {
-      title: 'Choose where to save the export',
+      title: mt('main.exportFolderTitle'),
       properties: ['openDirectory', 'createDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -900,7 +901,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(
     IPC.resolveExportTarget,
     async (_event, folder: string, name: string, format: ExportSettings['format']) => {
-      if (!allowedFolders.has(folder)) throw new Error('Choose the export folder first');
+      if (!allowedFolders.has(folder)) throw new Error(mt('main.chooseExportFolder'));
       const base = sanitizeFileName(name) || 'export';
       const path = join(folder, format === 'png-sequence' ? base : `${base}.${extensionFor(format)}`);
       allowedPaths.add(path);
@@ -913,9 +914,9 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const window = getWindow();
     if (!window) return null;
     const result = await dialog.showOpenDialog(window, {
-      title: 'Choose a thumbnail image',
+      title: mt('main.thumbnailTitle'),
       properties: ['openFile'],
-      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }],
+      filters: [{ name: mt('main.filterImages'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     allowedPaths.add(result.filePaths[0]);
@@ -954,7 +955,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.setGpuPreference, (_event, preference: unknown) => {
     // Validated here, not trusted from the renderer: this value becomes a
     // command-line switch on the next launch.
-    if (!isGpuPreference(preference)) throw new Error(`Unknown GPU preference "${String(preference)}"`);
+    if (!isGpuPreference(preference)) throw new Error(mt('main.unknownGpu', { value: String(preference) }));
     writeGpuPreference(preference);
   });
 
@@ -991,7 +992,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle(IPC.exportAudioAppend, async (_event, path: string, samples: ArrayBuffer) => {
     const handle = openMixes.get(path);
-    if (!handle) throw new Error('That audio mix is not open');
+    if (!handle) throw new Error(mt('main.mixNotOpen'));
     await handle.write(new Uint8Array(samples));
   });
 
@@ -1010,9 +1011,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     // Never render over footage the project is reading from. The dialog warns
     // first; this is the line that makes it impossible.
     if (settings.format !== 'png-sequence' && isOpenMediaPath(settings.outputPath)) {
-      throw new Error(
-        'That file is in this project as source footage. Exporting onto it would destroy it - choose another name or folder.',
-      );
+      throw new Error(mt('main.sourceFootage'));
     }
     if (settings.audioPath) assertAllowed(settings.audioPath);
     if (settings.thumbnailPath) assertAllowed(settings.thumbnailPath);
@@ -1041,7 +1040,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   // rendered to the end, so the page cannot open or run any path it names.
   const assertFinishedExport = (path: unknown): string => {
     if (typeof path !== 'string' || !isFinishedExport(path)) {
-      throw new Error('Only a file exported in this session can be opened from here.');
+      throw new Error(mt('main.onlyExported'));
     }
     return path;
   };
@@ -1053,7 +1052,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   ipcMain.handle(IPC.exportPlay, async (_event, path: unknown) => {
     // openPath reports failure as text (no player for .mov, say), not by throwing.
     const failure = await shell.openPath(assertFinishedExport(path));
-    if (failure) throw new Error(failure);
+    if (failure) throw new Error(mt('main.openFailed', { detail: failure }));
   });
 
   return pipeline;

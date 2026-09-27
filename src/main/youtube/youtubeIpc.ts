@@ -9,6 +9,7 @@ import {
 } from '@shared/types/ipc';
 import { isFinishedExport } from '../ipc/fileSystem';
 import { BACKGROUND } from '../background';
+import { mt } from '../language';
 import { GOOGLE_ENDPOINTS, YouTubeClient, type OAuthClient, type YouTubeEndpoints } from './YouTubeClient';
 
 /**
@@ -81,10 +82,10 @@ export function registerYouTubeHandlers(getWindow: () => BrowserWindow | null): 
 
   ipcMain.handle(IPC.youtubeConfigure, async (_event, clientId: unknown, clientSecret: unknown) => {
     if (typeof clientId !== 'string' || !looksLikeClientId(clientId)) {
-      throw new Error('That is not a Google client ID. It ends in .apps.googleusercontent.com.');
+      throw new Error(mt('main.ytNotClientId'));
     }
     if (typeof clientSecret !== 'string' || clientSecret.trim().length < 8) {
-      throw new Error('Paste the client secret from the same Google client.');
+      throw new Error(mt('main.ytSecret'));
     }
     // A different client: the old sign-in belongs to the old one.
     if (client.signedIn) await client.signOut();
@@ -100,7 +101,7 @@ export function registerYouTubeHandlers(getWindow: () => BrowserWindow | null): 
 
   ipcMain.handle(IPC.youtubeSignIn, async () => {
     const stored = readClient();
-    if (!stored) throw new Error('Enter the Google client first.');
+    if (!stored) throw new Error(mt('main.ytEnterClient'));
     await client.signIn(stored);
     // The browser has the focus now; bring the editor back.
     const window = getWindow();
@@ -125,7 +126,7 @@ export function registerYouTubeHandlers(getWindow: () => BrowserWindow | null): 
       // Only what this session rendered: the page cannot name any file on the
       // disk and have it sent to the internet.
       if (typeof path !== 'string' || !isFinishedExport(path)) {
-        throw new Error('Only a video exported in this session can be uploaded.');
+        throw new Error(mt('main.ytOnlyExported'));
       }
       let lastSentAt = 0;
       return client.uploadVideo(path, meta, (sent, total) => {

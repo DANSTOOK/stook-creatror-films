@@ -3,6 +3,8 @@ import { createId } from '@shared/utils/id';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { probeMediaElement } from '@renderer/engine/probeMedia';
 import { explainImportFailure } from '@renderer/engine/diagnoseContainer';
+import { t } from '@renderer/i18n';
+import { errorText } from '@renderer/errorText';
 
 /**
  * One import path for every way a file can arrive.
@@ -99,7 +101,7 @@ export interface RawImport {
 export async function buildAsset(input: RawImport, fps: number): Promise<MediaAsset> {
   const kind = classifyFile(input.name);
   const uri = input.uri ?? (input.blob ? URL.createObjectURL(input.blob) : '');
-  if (!uri) throw new Error(`Nothing to import for ${input.name}`);
+  if (!uri) throw new Error(t('import.nothing', { name: input.name }));
 
   const probe = await probeMediaElement(uri, kind);
 
@@ -183,7 +185,7 @@ export async function importFromFiles(
 
   for (const file of files) {
     if (!isSupportedFile(file.name)) {
-      rejected.push({ name: file.name, reason: 'Unsupported file type' });
+      rejected.push({ name: file.name, reason: t('import.unsupported') });
       continue;
     }
 
@@ -194,7 +196,7 @@ export async function importFromFiles(
     } catch (error) {
       rejected.push({
         name: file.name,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: errorText(error),
       });
     }
   }
@@ -210,7 +212,7 @@ export async function importFromFiles(
  */
 export async function importFromDialog(fps: number): Promise<ImportOutcome> {
   if (!hasNativeBridge()) {
-    throw new Error('The native file dialog is only available in the desktop app');
+    throw new Error(t('import.desktopOnly'));
   }
 
   return importPickedFiles(await window.filmora.openMedia(), fps);
@@ -224,7 +226,7 @@ export async function importFromDialog(fps: number): Promise<ImportOutcome> {
  */
 export async function importFolderFromDialog(fps: number): Promise<ImportOutcome> {
   if (!hasNativeBridge() || typeof window.filmora.openMediaFolder !== 'function') {
-    throw new Error('Adding a folder is only available in the desktop app');
+    throw new Error(t('import.folderDesktopOnly'));
   }
 
   return importPickedFiles(await window.filmora.openMediaFolder(), fps);
@@ -242,13 +244,13 @@ export async function importDroppedFolders(folders: File[], fps: number): Promis
   if (!hasNativeBridge() || typeof window.filmora.registerDroppedFolders !== 'function') {
     return {
       assets: [],
-      rejected: folders.map((folder) => ({ name: folder.name, reason: 'folders can only be added in the desktop app' })),
+      rejected: folders.map((folder) => ({ name: folder.name, reason: t('import.folderInBrowser') })),
     };
   }
 
   const picked = await window.filmora.registerDroppedFolders(folders);
   if (picked.length === 0) {
-    return { assets: [], rejected: folders.map((folder) => ({ name: folder.name, reason: 'no media files inside' })) };
+    return { assets: [], rejected: folders.map((folder) => ({ name: folder.name, reason: t('import.emptyFolder') })) };
   }
   return importPickedFiles(picked, fps);
 }
@@ -271,7 +273,7 @@ export async function importDroppedFiles(files: File[], fps: number): Promise<Im
   const supported = files.filter((file) => isSupportedFile(file.name));
   const unsupported = files
     .filter((file) => !isSupportedFile(file.name))
-    .map((file) => ({ name: file.name, reason: 'Unsupported file type' }));
+    .map((file) => ({ name: file.name, reason: t('import.unsupported') }));
 
   const picked = await window.filmora.registerDroppedFiles(supported);
   const pickedNames = new Set(picked.map((entry) => entry.name));
@@ -324,7 +326,7 @@ async function importPickedFiles(
       assets.push(asset);
       if (file.relativeDir) folders[asset.id] = file.relativeDir;
     } catch (error) {
-      const reported = error instanceof Error ? error.message : String(error);
+      const reported = errorText(error);
       // The decoder only ever says it could not decode the file. Read the
       // container's top-level boxes and, when they show the file simply stops
       // short, say that instead - it points at the file rather than the app.

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { lastLines, mt } from '../language';
 
 /**
  * Proxies: small stand-ins for footage too heavy to edit.
@@ -233,10 +234,10 @@ export class ProxyStore {
         complaint = `${complaint}${chunk.toString('utf8')}`.slice(-2000);
       });
 
-      child.on('error', (error) => resolve(`could not start the encoder: ${error.message}`));
+      child.on('error', (error) => resolve(mt('main.proxyNoStart', { detail: error.message })));
       child.on('close', (code) => {
         if (code === 0) resolve(null);
-        else resolve(complaint.trim().split(/\r?\n/).pop() || `the encoder stopped with code ${code}`);
+        else resolve(lastLines(complaint, 1) || mt('main.proxyStopped', { code: String(code) }));
       });
     });
 
