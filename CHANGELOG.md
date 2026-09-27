@@ -23,7 +23,9 @@ que hay dentro de cada clip, un mezclador de verdad y el español completo.
 Cada punto dice cómo se comprobó. Todo se probó en segundo plano
 (`SCF_BACKGROUND=1`), sin ratón real ni capturas de la pantalla.
 
-### Añadido
+### Los clips enseñan su contenido (punto 19)
+
+#### Añadido
 
 - **Los clips de la línea de tiempo enseñan su contenido** (punto 19 de la
   auditoría). Un clip de vídeo lleva una **tira de fotogramas** a lo largo,
@@ -67,7 +69,7 @@ Cada punto dice cómo se comprobó. Todo se probó en segundo plano
     el sonido de cada archivo importado en el hilo que dibuja la línea de
     tiempo y reproduce, y se tiraba al cerrar.
 
-### Cómo se comprobó
+#### Cómo se comprobó
 
 - **Pruebas unitarias nuevas** (`tests/ClipContent.test.ts`, 13): cuántos
   fotogramas guarda una tira (nunca más de 240, nunca más cerca de 0,25 s),
@@ -106,7 +108,7 @@ Cada punto dice cómo se comprobó. Todo se probó en segundo plano
   modos (`after-en-1600-timeline-appearance-*.png`), el menú, el zoom de
   cerca y el clip sin archivo (`after-en-1600-timeline-offline.png`).
 
-### Decisiones tomadas
+#### Decisiones tomadas
 
 - **Sin control de altura de clip.** Final Cut lo tiene, pero aquí cambiaría
   la fila de 58 px de la que dependen las pruebas y el ratón; se queda la
@@ -263,6 +265,92 @@ proyecto abría sin forma de arreglarlo.
   de 1.000 px de línea de tiempo, «Ajustar» se queda en su icono (el nombre
   sigue ahí para el lector de pantalla); comprobado en la captura
   `after-es-1280-mixer-playing.png`.
+
+### El español, completo
+
+- **Cambiado: todo lo que quedaba en inglés está en los dos idiomas.** El
+  inglés sigue siendo el idioma por defecto y no ha cambiado ni una palabra
+  (las pruebas leen los mismos textos).
+  - **Cuerpo del diálogo Exportar**: formato, alfa, resolución, tramo, archivo,
+    miniatura, hardware (GPU y codificador, con «GPU mediante WebCodecs» y los
+    motivos de «CPU (...)»), el progreso (transcurrido, falta, «tiempo real»),
+    los avisos de sonido y del camino lento, la tarjeta del resultado y
+    «Ajustes usados». Una exportación fallida se marca como alerta por su
+    estado, no buscando «Export failed» en el texto.
+  - **Panel de YouTube** entero: los pasos para crear el cliente de Google,
+    iniciar sesión, título, visibilidad, «¿Es para niños?», el progreso y el
+    resultado; y la página que enseña el navegador al volver del inicio de
+    sesión.
+  - **Nombres por defecto**, en el idioma que hay en pantalla cuando se crean
+    y conservados después: pistas «Vídeo 1» / «Audio 1», carpetas «Carpeta 1»,
+    marcadores «Marcador 90», «Proyecto sin título» (también el que pone el
+    proceso principal cuando falta el nombre), y la carpeta raíz «Principal».
+    Cambiar de idioma después no renombra nada; la numeración entiende los dos
+    («Vídeo 3» sigue a «Video 2»).
+  - **Mensajes del proceso principal**: los títulos y los filtros de los
+    cuadros de diálogo de Windows (Importar medios, Abrir proyecto, Guardar
+    proyecto, Exportar vídeo, la LUT, la miniatura, las carpetas…) y los
+    errores de importar, exportar, proxies, proyectos, copias y YouTube. El
+    proceso principal habla el idioma que le dice la página
+    (`src/main/language.ts`).
+  - **Los errores de FFmpeg** van dentro de una frase traducida que conserva
+    el detalle técnico: «FFmpeg se detuvo con el código 1. Lo que dijo: …» con
+    sus últimas líneas, y lo mismo para los proxies y la portada.
+  - **Motivos de una importación fallida** («Tipo de archivo no admitido», «el
+    archivo está incompleto: …», «El navegador no pudo decodificar…»).
+  - Los nombres de los divisores de paneles, de la pantalla de inicio y de la
+    lista de carpetas, para el lector de pantalla.
+
+**Sigue en inglés, a propósito:**
+- Nombres de códecs y formatos (MP4 / H.264, ProRes 4444, WebM / VP9, NVIDIA
+  NVENC, Intel Quick Sync, AMD AMF), resoluciones («1080p Full HD», «4K UHD»),
+  «fps», «dB», «px», y los nombres de producto (YouTube Studio, Google Cloud,
+  YouTube Data API v3, OAuth).
+- «Ducking» (el botón del mezclador), como ya decía «Ducking automático»: es
+  la palabra que usan los editores en español.
+- Errores internos que no deberían llegar a verse (un búfer de WebGL que no se
+  pudo crear, un trabajo de exportación desconocido) y los nombres de los
+  pasos del historial de deshacer, que no se enseñan en ningún sitio.
+- Lo que escribe el usuario o viene de sus archivos: nombres de clips y de
+  carpetas del disco («Footage», «B-roll»), marcadores con nombre propio.
+- El texto que devuelve el propio FFmpeg dentro de un error, que se deja tal
+  cual como detalle técnico.
+
+**Cómo se comprobó:**
+- Una vuelta completa por la aplicación en español (`tour-es.mjs`) con
+  capturas de cada pantalla y diálogo: inicio vacío y con recientes, editor
+  vacío y con la escena, menú de la aplicación, menú «+» de medios, menú de
+  un clip de medios, lista, menús de clip, regla, zona vacía y pista, aspecto
+  de los clips, una descripción emergente, las cuatro pestañas del inspector
+  y «Añadir efecto», Velocidad, el mezclador reproduciendo y su ducking,
+  Ajustes del proyecto, Preferencias, Atajos de teclado, los avisos, el visor
+  a pantalla completa, Exportar (listo, renderizando, terminado y con YouTube
+  abierto), guardar y «¿Guardar los cambios?». La vuelta lee todo el texto
+  visible y los nombres accesibles de cada pantalla y los compara con los
+  textos ingleses del diccionario que tienen otra traducción: **ninguno
+  aparece**. Capturas `tour-es-1600-*.png` (30) en la carpeta de la fase 3.
+  Además `after-es-1600-export-*.png`, `after-es-1600-relink-*.png` y
+  `after-es-1280-*.png`.
+- Pruebas unitarias nuevas: nombres por defecto (`tests/DefaultNames.test.ts`,
+  4: en inglés por defecto, en español con el editor en español, sin
+  renombrar al cambiar de idioma, y numeración a través de los dos idiomas) y
+  mensajes del proceso principal (`tests/MainLanguage.test.ts`, 5: inglés por
+  defecto, español cuando la página lo pide, el error de FFmpeg envuelto con
+  su detalle, el recorte de un error largo, y que todas las claves existen en
+  los dos diccionarios).
+- En inglés no cambió nada: la batería de interfaz entera, que busca los
+  textos ingleses, pasa igual.
+
+### Comprobación final de la fase
+
+En segundo plano (`SCF_BACKGROUND=1`), contra la compilación de desarrollo:
+- Las dos comprobaciones de tipos, sin errores.
+- Pruebas unitarias: **792/792** (68 archivos; eran 764 en 64).
+- Interfaz (`tests/ui/run.mjs`): **127/127**.
+- Movimiento (`tests/stress/motion.mjs`): **26/26**; diálogos p95 5,7 ms
+  (0,05 % perdidos), menús 5,7 ms (0 %), zoom reproduciendo 5,8 ms, render
+  5,7 ms; ningún fotograma largo en la interfaz ni congelaciones.
+- Proyectos (`tests/stress/projects.mjs`): **41/41**.
 
 ---
 
