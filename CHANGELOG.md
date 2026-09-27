@@ -35,6 +35,84 @@ En `main`, sin instalador todavía.
   la misma prueba: los cinco enlaces web llegaron al navegador, ninguno de los
   otros cinco, y no se abrió ninguna ventana.
 
+### Color, fase 1: visores y color correcto al exportar
+
+#### Añadido
+- **Visores de vídeo junto a la imagen**, como en Final Cut. El botón de la
+  cabecera del visor (icono de pulso) lo divide: visores a la izquierda,
+  imagen a la derecha. Se ven uno o dos a la vez, y cada uno se elige en su
+  menú: forma de onda (luma), desfile RGB, vectorscopio (con las dianas del 75 %
+  y la línea de tono de piel) e histograma RGB + luma. Escalas de 0 a 100 %,
+  medidas en BT.709. Miden la imagen final, con todas las pistas compuestas,
+  que es la misma que se exporta. La elección y si estaban abiertos se
+  recuerdan entre sesiones. Textos en inglés y en español.
+- **Qué cuestan.** En pausa se actualizan tras cada cambio y no hacen nada
+  mientras la imagen no cambia. Reproduciendo, se actualizan unas 12 veces por
+  segundo y se saltan un fotograma que llega tarde. Cerrados o durante una
+  exportación no hacen nada, y la copia en la GPU se libera. La lectura de la
+  GPU no espera nunca: va a un búfer con una valla y se recoge uno o dos
+  fotogramas después. El cálculo y el dibujo se hacen en un hilo aparte (un
+  worker con OffscreenCanvas). En el hilo de la página costaban 14 ms por
+  lectura y hacían perder fotogramas en 4K.
+
+#### Arreglado
+- **Los colores del vídeo exportado se veían desplazados en los
+  reproductores.** Por la tubería RGBA, ffmpeg convertía a YUV con la matriz
+  BT.601 y no marcaba el archivo. Un reproductor que lee un archivo HD sin
+  marcar como BT.709, que es lo normal, mostraba el rojo puro como 255,23,0 y
+  el verde puro como 0,215,0. Ahora la conversión usa BT.709 en rango TV y
+  el archivo va marcado bt709/bt709/bt709, tv. Vale para MP4, ProRes y WebM;
+  la secuencia PNG sigue en RGB.
+- **La vía WebCodecs (GPU) tampoco marcaba el color.** WebCodecs no deja elegir
+  la matriz, y el codificador de esta máquina usa BT.601. Antes de exportar se
+  mide cuál usa: se codifica un fotograma rojo y se vuelve a decodificar. La
+  secuencia se marca con lo que de verdad hizo (aquí smpte170m, con
+  primarios y transferencia bt709) para que los reproductores la lean bien.
+
+#### Cómo se comprobó
+- **Color al exportar** (`npm run test:colour`, nuevo, en una ventana que nunca
+  se muestra): 16 parches conocidos (primarios, grises, piel y barras al 75 %)
+  exportados por la tubería con libx264, por la tubería con NVENC y por
+  WebCodecs. Cada archivo se decodificó con las ecuaciones de libro, no con
+  el escalador de ffmpeg, que se desvía hasta 3 niveles por sí solo. Resultado:
+  **8/8**. Todos los parches quedan a menos de 1,2 niveles (tolerancia: 2) y
+  las marcas están presentes en los tres archivos. Antes del arreglo, el
+  archivo de la tubería salía sin marcas y el verde se desviaba 40 niveles.
+  Pruebas unitarias de los argumentos de ffmpeg y de la medición: 29/29 en
+  `ExportPipeline.test.ts`.
+- **Visores con patrones sintéticos** frente al cálculo de referencia:
+  - `Scopes.test.ts`, 7/7. La luma y el croma de las barras al 75 % coinciden
+    con el Y'CbCr publicado en SMPTE RP 219.
+  - `npm run test:scopes` (nuevo, en segundo plano), **16/16**. En la
+    aplicación y sobre lo que se lee de la GPU:
+    - gris al 50 %: los 147.456 puntos leídos valen 128, la forma de onda es
+      una sola línea en 50 y el vectorscopio un solo punto en el centro;
+    - rojo puro: 100 % en el desfile rojo y 0 % en verde y azul;
+    - una rampa: histograma plano, 576 píxeles en cada uno de los 256 niveles;
+    - las seis barras al 75 %: cada una en su diana, con 18.432 puntos.
+  - La misma prueba comprueba que no hay lecturas en pausa sin cambios,
+    visores cerrados ni durante una exportación.
+- **Cadencia en 4K** (3840×2160 a 30 fps, 6 s de reproducción, pantalla de
+  180 Hz):
+  - con los visores abiertos, 29,8 imágenes nuevas por segundo, huecos entre
+    fotogramas p95 5,7 ms y 12,2 lecturas por segundo;
+  - con los visores cerrados, 29,8 imágenes por segundo y p95 5,7 ms;
+  - coste en el hilo de la página: 0,11 ms por lectura; el worker tarda unos
+    2 ms.
+- **Sin romper lo demás**, todo en segundo plano:
+  - interfaz 127/127 (el que falta es el de sin red, que solo corre contra el
+    empaquetado);
+  - movimiento 26/26;
+  - extremo a extremo 21/21, incluida la fidelidad de color frente a ffmpeg.
+- Capturas en inglés y en español en el scratchpad de la sesión
+  (`color-phase1\`).
+
+#### Sin verificar
+- La marca de color de WebCodecs en **H.265** (`hevc_metadata`) solo está
+  cubierta por pruebas unitarias; la exportación real se comprobó en H.264.
+- ProRes y WebM llevan las mismas marcas y la misma matriz, comprobadas en los
+  argumentos, pero no se decodificaron parche a parche.
+
 ---
 
 ## v1.28.0-beta.1 — Rediseño, fase 3: contenido, audio y todo en español
