@@ -195,14 +195,34 @@ function drawVectorscope(context: Context, data: ScopeData, area: Box, scale: nu
     if (scratchContext) {
       const image = scratchContext.createImageData(VECTOR_SIZE, VECTOR_SIZE);
       const reference = Math.max(1, (data.width * data.height) / 4096);
-      for (let i = 0; i < data.vectorscope.length; i += 1) {
-        const value = intensity(data.vectorscope[i], reference);
-        if (value === 0) continue;
-        const offset = i * 4;
+      /*
+        Each lit cell also lights its neighbours, dimmer. The grid is 256
+        cells and the scope is drawn smaller than that, so a flat colour -
+        a colour bar, a graphic - would otherwise be a dot under a pixel wide,
+        lost inside its target's box.
+      */
+      const light = (cell: number, alpha: number): void => {
+        const offset = cell * 4;
+        if (image.data[offset + 3] >= alpha) return;
         image.data[offset] = TRACE_LUMA[0];
         image.data[offset + 1] = TRACE_LUMA[1];
         image.data[offset + 2] = TRACE_LUMA[2];
-        image.data[offset + 3] = Math.round(80 + 175 * value);
+        image.data[offset + 3] = alpha;
+      };
+      for (let i = 0; i < data.vectorscope.length; i += 1) {
+        const value = intensity(data.vectorscope[i], reference);
+        if (value === 0) continue;
+        const alpha = Math.round(80 + 175 * value);
+        const column = i % VECTOR_SIZE;
+        const row = (i - column) / VECTOR_SIZE;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const x = column + dx;
+            const y = row + dy;
+            if (x < 0 || y < 0 || x >= VECTOR_SIZE || y >= VECTOR_SIZE) continue;
+            light(y * VECTOR_SIZE + x, dx === 0 && dy === 0 ? alpha : Math.round(alpha * 0.6));
+          }
+        }
       }
       scratchContext.putImageData(image, 0, 0);
       context.imageSmoothingEnabled = true;
@@ -239,6 +259,8 @@ function drawHistogram(context: Context, data: ScopeData, plot: Box, scale: numb
     context.moveTo(x, plot.y);
     context.lineTo(x, plot.y + plot.height);
     context.stroke();
+    // The end numbers sit inside the plot, so "100" is not cut off.
+    context.textAlign = percent === 0 ? 'left' : percent === 100 ? 'right' : 'center';
     context.fillText(String(percent), x, plot.y + plot.height + 2 * scale);
   }
   const histogram = data.histogram;

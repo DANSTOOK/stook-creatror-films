@@ -376,9 +376,6 @@ async function main() {
       await choose(1, 'vectorscope');
       await sleep(900);
       await window.screenshot({ path: join(shotsDir, 'scopes-es-bars.png') });
-      await window.getByTestId('viewer-scopes').hover();
-      await sleep(900);
-      await window.screenshot({ path: join(shotsDir, 'scopes-es-tooltip.png') });
     }
 
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
