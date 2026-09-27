@@ -16,6 +16,108 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Color, fase 2: corrección primaria
+En `main`, sin instalador todavía.
+
+### Añadido
+- **Cuatro ruedas de color en la pestaña Color**, en rejilla de 2×2, como las
+  primarias de Resolve y las ruedas de Final Cut:
+  - Se llaman Sombras, Medios, Luces y Global en español y Lift, Gamma, Gain
+    y Offset en inglés. La ayuda de cada una da el nombre del otro idioma y
+    explica qué hace.
+  - El punto de cada rueda pone el color. Sigue al puntero sin saltar a él,
+    como en Resolve, y con Mayús va a una quinta parte de la velocidad.
+    También se mueve con las flechas, y Supr lo devuelve al centro.
+  - Sus direcciones son las del vectorscopio: arriba hacia el rojo, a la
+    derecha hacia el azul.
+  - La barra de debajo pone el brillo sin tocar el color.
+  - Doble clic en la rueda o en la barra la devuelve a cero.
+  - El modo **Números** muestra los mismos valores como campos Y, R, G y B,
+    para ajustar fino.
+- **Todo es un ASC CDL** (pendiente, desplazamiento y potencia), el formato
+  de intercambio del gremio:
+  - pendiente = Gain − Lift;
+  - desplazamiento = Lift + Offset;
+  - potencia = Gamma.
+- **Orden de aplicación:** exposición y balance de blancos, las ruedas,
+  contraste con su **pivote** (nuevo) y saturación con los pesos Rec.709.
+  La LUT va al final, ya sin recorte antes de ella; el único recorte es el
+  último paso.
+- **Restablecer por grupo:** «Corrección de color» y «Primarias» se
+  restablecen cada uno por su lado. Cada control es su propio paso de
+  deshacer, y arrastrar una rueda entera es uno solo.
+- **Antes/después en el visor.** Dos botones nuevos en la cabecera:
+  - **Ver sin corrección de color** (Mayús+D, como el bypass de Resolve). En
+    el visor aparece «Sin corrección».
+  - **Cortina de antes/después** (Mayús+W): a la izquierda la imagen sin
+    corregir y a la derecha la corregida. Se arrastra o se mueve con las
+    flechas.
+  - Son solo del visor. Ninguna exportación los recibe. **Los visores de
+    vídeo siempre miden la imagen corregida**, la misma que se exporta,
+    aunque la cortina o el bypass estén puestos: es la lectura de referencia
+    y no debe cambiar por mirar un antes.
+- **Copiar y pegar la corrección de color** entre clips:
+  - desde el menú contextual del clip, o con Ctrl+Alt+C y Ctrl+Alt+V;
+  - copia la corrección entera, LUT incluida;
+  - se pega en todos los clips de imagen seleccionados de una vez, y se
+    deshace en un solo paso.
+  - Las teclas nuevas aparecen en la lista de atajos.
+- Sin keyframes de color en esta fase, como estaba decidido.
+
+### Arreglado (durante el desarrollo, antes de entrar en `main`)
+- Supr con una rueda enfocada volvía el punto al centro y además borraba el
+  clip que se estaba corrigiendo, y las flechas movían también el cursor de
+  reproducción. Las teclas que usan la rueda y la cortina ya no llegan a los
+  atajos globales.
+
+### Cómo se comprobó
+- **Idéntico píxel a píxel con los valores neutros** (`npm run test:grade`,
+  nuevo, en la GPU real y en una ventana que nunca se muestra):
+  - los **16.777.216 colores de 8 bits** pasaron por el shader de la fase 1
+    y por el nuevo con las ruedas neutras;
+  - cuatro ajustes: todo neutro, los deslizadores antiguos movidos, una LUT
+    al 60 % y ambas cosas;
+  - resultado: **0 valores distintos** en media precisión flotante, no solo
+    en 8 bits.
+- **Colores conocidos frente a la referencia en JavaScript:**
+  - 112 colores × 5 ajustes de ruedas en la GPU, con un error máximo de
+    **0,12/255** (se exigía 1/255);
+  - `Grade.test.ts`, **16/16**: gain dobla, lift sube el negro sin mover el
+    blanco, gamma curva el centro con los extremos fijos, pivote, saturación
+    BT.709, el punto no cambia el brillo, y los proyectos antiguos se abren
+    neutros.
+- **Coste en 4K:** un pase de corrección con LUT a 3840×2160 tarda 0,40 ms
+  antes, 0,36 ms con las ruedas neutras y **0,43 ms con las cuatro
+  movidas**.
+- **Interfaz** (`npm run test:grade:ui`, nuevo, en segundo plano): **32/32**.
+  - Las ruedas se arrastran (un solo paso de deshacer), se devuelven con
+    doble clic, se mueven con el teclado y se escriben en Números, en
+    inglés y en español.
+  - Cada grupo se restablece solo a sí mismo.
+  - Gain +1 dobla un gris de 64 a 128 en la imagen.
+  - La cortina se arrastra y se mueve con el teclado: 64 a su izquierda y
+    128 a su derecha.
+  - **La cortina nunca llega a una exportación.** Con cortina y bypass
+    puestos, salió corregido todo lo que se exporta o se mide: el fotograma
+    de la tubería sin comprimir, el lienzo que lee el codificador de la GPU,
+    la lectura de los visores y un MP4 exportado de verdad por la ventana de
+    exportación (128 en ambos lados).
+  - «Pegar corrección de color en 2 clips» desde el menú, deshecho en un
+    paso, y Ctrl+Alt+C / Ctrl+Alt+V.
+  - Guardado y reabierto sin cambios. Un proyecto sin ruedas se abre con
+    ellas neutras y el resto como se guardó.
+- **Sin romper lo demás**, todo en segundo plano: unitarias **822/822**,
+  interfaz **127/127**, visores **16/16**, color al exportar **8/8**,
+  movimiento **26/26** y extremo a extremo **21/21**.
+- Capturas en inglés y en español en el scratchpad de la sesión
+  (`color-phase2\`).
+
+### Sin verificar
+- El antes/después compone la escena dos veces en el visor mientras está
+  puesto. No se midió la reproducción en 4K con la cortina puesta.
+
+---
+
 ## v1.29.0-beta.1 — Visores de vídeo, color correcto al exportar y enlaces seguros
 
 Instalador de prueba. Antes de publicarla pasó la batería completa en segundo
