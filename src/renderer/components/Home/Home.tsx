@@ -113,7 +113,7 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
   };
 
   return (
-    <main aria-label="Start screen" className="scf-home relative flex h-full overflow-hidden bg-panel-950">
+    <main aria-label={t('home.region')} className="scf-home relative flex h-full overflow-hidden bg-panel-950">
       {/* Slow light behind everything; still under reduced motion. */}
       <div aria-hidden className="scf-glow scf-glow-a pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full" />
       <div aria-hidden className="scf-glow scf-glow-b pointer-events-none absolute -bottom-48 right-[-120px] h-[600px] w-[600px] rounded-full" />
@@ -174,7 +174,7 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
             <div className="flex items-end gap-2">
               <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="field-label">{t('home.location')}</span>
-                <input readOnly className="numeric-input truncate" value={folder ?? ''} placeholder="Documents" title={folder ?? ''} />
+                <input readOnly className="numeric-input truncate" value={folder ?? ''} placeholder={t('home.folderPlaceholder')} title={folder ?? ''} />
               </label>
               <button
                 type="button"

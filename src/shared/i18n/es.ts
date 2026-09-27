@@ -99,6 +99,18 @@ export const es: Messages = {
   'main.ytSecret': 'Pega el secreto de cliente del mismo cliente de Google.',
   'main.ytEnterClient': 'Introduce antes el cliente de Google.',
   'main.ytOnlyExported': 'Solo se puede subir un vídeo exportado en esta sesión.',
+  'main.ytPageUnknown': 'No reconocido',
+  'main.ytPageUnknownBody': 'Este enlace no viene del inicio de sesión que abrió el editor.',
+  'main.ytPageNo': 'Sin conectar',
+  'main.ytPageNoBody': 'No se compartió nada. Puedes cerrar esta pestaña.',
+  'main.ytPageYes': 'Conectado',
+  'main.ytPageYesBody': 'Puedes cerrar esta pestaña y volver al editor.',
+  'layout.resizeMedia': 'Cambiar el tamaño del panel de medios',
+  'layout.resizeInspector': 'Cambiar el tamaño del inspector',
+  'layout.resizeTimeline': 'Cambiar el tamaño de la línea de tiempo',
+  'home.region': 'Pantalla de inicio',
+  'home.folderPlaceholder': 'Documentos',
+  'media.bins': 'Carpetas',
 
   /* Inspector ------------------------------------------------------------- */
   'inspector.title': 'Inspector',

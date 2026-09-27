@@ -485,7 +485,7 @@ export function MediaLibrary(): JSX.Element {
       {!libraryEmpty && (
         <nav
           role="tree"
-          aria-label="Bins"
+          aria-label={tr('media.bins')}
           className="max-h-[38%] shrink-0 overflow-y-auto border-b border-panel-700 p-1.5"
         >
           {binRow(null, 0)}

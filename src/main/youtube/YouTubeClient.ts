@@ -189,15 +189,15 @@ export class YouTubeClient {
         const returned = url.searchParams.get('code');
         if (url.searchParams.get('state') !== state || (!returned && !error)) {
           response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-          response.end(landingPage('Not recognised', 'This link did not come from the sign-in the editor started.'));
+          response.end(landingPage(mt('main.ytPageUnknown'), mt('main.ytPageUnknownBody')));
           return;
         }
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         if (error) {
-          response.end(landingPage('Not connected', 'Nothing was shared. You can close this tab.'));
+          response.end(landingPage(mt('main.ytPageNo'), mt('main.ytPageNoBody')));
           finish(() => reject(new Error(error === 'access_denied' ? mt('main.ytDeclined') : mt('main.ytGoogleSaid', { error }))));
         } else {
-          response.end(landingPage('Connected', 'You can close this tab and go back to the editor.'));
+          response.end(landingPage(mt('main.ytPageYes'), mt('main.ytPageYesBody')));
           finish(() => resolve({ code: returned as string, redirectUri }));
         }
       });

@@ -494,7 +494,7 @@ export default function App(): JSX.Element {
                         <MediaLibrary />
                       </div>
                     </PanelSlot>
-                    {border('mediaWidth', 'Resize the media panel', 'vertical', 1)}
+                    {border('mediaWidth', t('layout.resizeMedia'), 'vertical', 1)}
                   </>
                 )}
               </div>
@@ -502,7 +502,7 @@ export default function App(): JSX.Element {
               <div data-panel="inspector" data-state={hidden.inspector ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
                 {!hidden.inspector && (
                   <>
-                    {border('inspectorWidth', 'Resize the inspector', 'vertical', -1)}
+                    {border('inspectorWidth', t('layout.resizeInspector'), 'vertical', -1)}
                     <PanelSlot edge="right" className="flex min-h-0 shrink-0">
                       <div className="flex min-h-0 shrink-0" style={{ width: fitted.inspectorWidth }}>
                         <Inspector />
@@ -516,7 +516,7 @@ export default function App(): JSX.Element {
             <div data-panel="timeline" data-state={hidden.timeline ? 'closed' : 'open'} className="flex shrink-0 flex-col">
               {!hidden.timeline && (
                 <>
-                  {border('timelineHeight', 'Resize the timeline', 'horizontal', -1)}
+                  {border('timelineHeight', t('layout.resizeTimeline'), 'horizontal', -1)}
                   <PanelSlot edge="bottom" className="shrink-0">
                     <div className="flex shrink-0 gap-1.5" style={{ height: fitted.timelineHeight }}>
                       <div className="min-w-0 flex-1">

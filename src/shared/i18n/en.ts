@@ -99,6 +99,18 @@ export const en = {
   'main.ytSecret': 'Paste the client secret from the same Google client.',
   'main.ytEnterClient': 'Enter the Google client first.',
   'main.ytOnlyExported': 'Only a video exported in this session can be uploaded.',
+  'main.ytPageUnknown': 'Not recognised',
+  'main.ytPageUnknownBody': 'This link did not come from the sign-in the editor started.',
+  'main.ytPageNo': 'Not connected',
+  'main.ytPageNoBody': 'Nothing was shared. You can close this tab.',
+  'main.ytPageYes': 'Connected',
+  'main.ytPageYesBody': 'You can close this tab and go back to the editor.',
+  'layout.resizeMedia': 'Resize the media panel',
+  'layout.resizeInspector': 'Resize the inspector',
+  'layout.resizeTimeline': 'Resize the timeline',
+  'home.region': 'Start screen',
+  'home.folderPlaceholder': 'Documents',
+  'media.bins': 'Bins',
 
   /* Inspector ------------------------------------------------------------- */
   'inspector.title': 'Inspector',
