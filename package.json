@@ -19,6 +19,7 @@
     "test:watch": "node ./node_modules/vitest/vitest.mjs",
     "test:e2e": "node ./tests/e2e/run.mjs",
     "test:colour": "node ./tests/e2e/colour.mjs",
+    "test:grade": "node ./tests/e2e/grade.mjs",
     "test:ui": "node ./tests/ui/run.mjs",
     "test:scopes": "node ./tests/ui/scopes.mjs",
     "test:gpu": "node ./tests/gpu/run.mjs",

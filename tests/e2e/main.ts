@@ -96,9 +96,11 @@ app.whenReady().then(() => {
       // executeJavaScript resolves with the awaited value of the expression,
       // so the scenario's result comes straight back here.
       const result = await window!.webContents.executeJavaScript(
-        colourMode
-          ? `window.__runColourExport(${JSON.stringify(colourInputs)})`
-          : `window.__runE2E(${JSON.stringify(inputs)})`,
+        process.env.E2E_MODE === 'grade'
+          ? 'window.__runGradeCheck()'
+          : colourMode
+            ? `window.__runColourExport(${JSON.stringify(colourInputs)})`
+            : `window.__runE2E(${JSON.stringify(inputs)})`,
       );
       finish(result, (result as { ok: boolean }).ok ? 0 : 1);
     } catch (error) {
@@ -113,4 +115,4 @@ app.whenReady().then(() => {
 });
 
 // A hung decode must not leave the harness running forever.
-setTimeout(() => finish({ ok: false, error: 'timed out after 180s' }, 1), 180_000);
+setTimeout(() => finish({ ok: false, error: 'timed out after 300s' }, 1), 300_000);

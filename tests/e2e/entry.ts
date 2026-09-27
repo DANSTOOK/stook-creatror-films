@@ -1,5 +1,6 @@
 import { runScenario, type E2EInput } from './scenario';
 import { runColourExport, type ColourInput } from './colourExport';
+import { runGradeCheck } from './gradeCheck';
 
 /**
  * Renderer entry for the end-to-end run.
@@ -12,8 +13,10 @@ declare global {
   interface Window {
     __runE2E(input: E2EInput): Promise<unknown>;
     __runColourExport(input: ColourInput): Promise<unknown>;
+    __runGradeCheck(): Promise<unknown>;
   }
 }
 
 window.__runE2E = (input) => runScenario(input);
 window.__runColourExport = (input) => runColourExport(input);
+window.__runGradeCheck = () => runGradeCheck();
