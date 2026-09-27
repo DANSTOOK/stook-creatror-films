@@ -15,6 +15,7 @@ import { useIndicator } from '@renderer/motion/useIndicator';
 import { useFlip } from '@renderer/motion/useFlip';
 import { createClip } from '@renderer/store/types';
 import { useProjectStore, type NumberProperty, type VectorProperty } from '@renderer/store/useProjectStore';
+import { ColorWheels, neutralWheels, type WheelMode } from './ColorWheels';
 
 /**
  * Property inspector for the selected clip.
@@ -52,6 +53,8 @@ const TAB_LABELS: Record<Tab, MessageKey> = {
 };
 
 /** The settings a new clip starts with, to reset a section to. */
+const WHEEL_MODE_KEY = 'scf.wheelMode';
+
 const DEFAULTS = createClip({ trackId: '', name: '', sourceUri: '', startFrame: 0, durationFrames: 1 });
 
 const MASK_TYPES: { value: MaskConfig['type']; label: MessageKey }[] = [
@@ -436,6 +439,23 @@ export function Inspector(): JSX.Element {
   const lutInputRef = useRef<HTMLInputElement>(null);
   const [lutError, setLutError] = useState<string | null>(null);
 
+  /** Wheels or numbers for the primaries: a preference, kept across sessions. */
+  const [wheelMode, setWheelModeState] = useState<WheelMode>(() => {
+    try {
+      return window.localStorage.getItem(WHEEL_MODE_KEY) === 'numbers' ? 'numbers' : 'wheels';
+    } catch {
+      return 'wheels';
+    }
+  });
+  const setWheelMode = (mode: WheelMode): void => {
+    setWheelModeState(mode);
+    try {
+      window.localStorage.setItem(WHEEL_MODE_KEY, mode);
+    } catch {
+      // Kept for this session only.
+    }
+  };
+
   /**
    * Load a `.cube` file and upload it before it is referenced, so the very next
    * composited frame already has the look applied.
@@ -764,10 +784,14 @@ export function Inspector(): JSX.Element {
   /* Color tab --------------------------------------------------------------- */
 
   const grading = clip.colorGrading;
-  const setGrading = (patch: Partial<typeof grading>, merge = true): void =>
-    // Moving a grade turns the grade on: a slider that changes nothing on
-    // screen reads as broken.
-    updateClip(clip.id, { colorGrading: { ...grading, enabled: true, ...patch } }, merge ? `grade:${clip.id}` : undefined);
+  /**
+   * Moving a grade turns the grade on: a slider that changes nothing on
+   * screen reads as broken. Each control is its own undo step; a drag of
+   * one is a single step.
+   */
+  const setGrading = (patch: Partial<typeof grading>, control: string | false = 'basic'): void =>
+    updateClip(clip.id, { colorGrading: { ...grading, enabled: true, ...patch } }, control ? `grade:${clip.id}:${control}` : undefined);
+  const basicDefaults = DEFAULTS.colorGrading;
   const colorTab = (
     <>
       <Section
@@ -776,16 +800,55 @@ export function Inspector(): JSX.Element {
         enabled={grading.enabled}
         onEnabledChange={(enabled) => setGrading({ enabled }, false)}
         onReset={() =>
+          // This group only: the wheels and the look have their own resets.
           updateClip(clip.id, {
-            colorGrading: { ...grading, ...DEFAULTS.colorGrading, enabled: grading.enabled, lutUri: grading.lutUri, lutName: grading.lutName, lutSourcePath: grading.lutSourcePath, lutIntensity: grading.lutIntensity },
+            colorGrading: {
+              ...grading,
+              exposure: basicDefaults.exposure,
+              temperature: basicDefaults.temperature,
+              tint: basicDefaults.tint,
+              contrast: basicDefaults.contrast,
+              pivot: basicDefaults.pivot,
+              saturation: basicDefaults.saturation,
+            },
           })
         }
       >
-        <SliderRow label={t('inspector.exposure')} value={grading.exposure} min={-2} max={2} onChange={(exposure) => setGrading({ exposure })} />
-        <SliderRow label={t('inspector.contrast')} value={grading.contrast} max={2} onChange={(contrast) => setGrading({ contrast })} />
-        <SliderRow label={t('inspector.saturation')} value={grading.saturation} max={2} onChange={(saturation) => setGrading({ saturation })} />
-        <SliderRow label={t('inspector.temperature')} value={grading.temperature} min={-1} max={1} onChange={(temperature) => setGrading({ temperature })} />
-        <SliderRow label={t('inspector.tint')} value={grading.tint} min={-1} max={1} onChange={(tint) => setGrading({ tint })} />
+        {/* In the order they are applied: light, white balance, then tone. */}
+        <SliderRow label={t('inspector.exposure')} value={grading.exposure} min={-2} max={2} onChange={(exposure) => setGrading({ exposure }, 'exposure')} />
+        <SliderRow label={t('inspector.temperature')} value={grading.temperature} min={-1} max={1} onChange={(temperature) => setGrading({ temperature }, 'temperature')} />
+        <SliderRow label={t('inspector.tint')} value={grading.tint} min={-1} max={1} onChange={(tint) => setGrading({ tint }, 'tint')} />
+        <SliderRow label={t('inspector.contrast')} value={grading.contrast} max={2} onChange={(contrast) => setGrading({ contrast }, 'contrast')} />
+        <SliderRow label={t('inspector.pivot')} value={grading.pivot} onChange={(pivot) => setGrading({ pivot }, 'pivot')} />
+        <SliderRow label={t('inspector.saturation')} value={grading.saturation} max={2} onChange={(saturation) => setGrading({ saturation }, 'saturation')} />
+      </Section>
+
+      <Section
+        {...sectionProps('primaries')}
+        title={t('grade.primaries')}
+        right={
+          <span role="group" aria-label={t('grade.mode')} className="mr-1 flex items-center gap-0.5">
+            {(['wheels', 'numbers'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                data-testid={`wheel-mode-${mode}`}
+                aria-pressed={wheelMode === mode}
+                className={`tool-button tool-button-dense px-1.5 text-2xs ${wheelMode === mode ? 'tool-button-active' : ''}`}
+                onClick={() => setWheelMode(mode)}
+              >
+                {t(mode === 'wheels' ? 'grade.wheelsMode' : 'grade.numbersMode')}
+              </button>
+            ))}
+          </span>
+        }
+        onReset={() => updateClip(clip.id, { colorGrading: { ...grading, ...neutralWheels() } })}
+      >
+        <ColorWheels
+          values={{ lift: grading.lift, gamma: grading.gamma, gain: grading.gain, offset: grading.offset }}
+          mode={wheelMode}
+          onChange={(wheel, value) => setGrading({ [wheel]: value }, wheel)}
+        />
       </Section>
 
       <Section {...sectionProps('lut')} title={t('inspector.lut')}>
