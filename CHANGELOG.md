@@ -122,6 +122,60 @@ En `main`, sin instalador todavía.
 - Capturas en inglés y en español en el scratchpad de la sesión
   (`color-phase3\`).
 
+
+### Arreglado (pruebas)
+- **La batería de interfaz sobre el ejecutable recién empaquetado ya no
+  falla «al primer intento».** Era el problema conocido que quedó abierto en
+  la v1.29 (y que ya pasó en la v1.28). No era el antivirus, ni un perfil
+  viejo en `.ui-tmp`, ni el proceso anterior guardando el bloqueo de
+  instancia única. Eran dos causas, las dos de las pruebas y no de la app:
+  - **Se empaquetaba y se probaba a la vez.** Según las marcas de tiempo de
+    aquellas sesiones, las dos veces el empaquetado y la batería arrancaron
+    con dos segundos de diferencia, y `app.asar` se reescribió a mitad de la
+    prueba. electron-builder empieza vaciando `release/win-unpacked`: borra
+    todo lo que la app en marcha no tiene abierto, se para en lo primero que
+    sí, y termina con código 1, el mismo que da siempre el paso de firma
+    que falla en este equipo, así que nada parecía raro. Reproducido a
+    propósito: según quién llegara antes, la app no arrancaba («Process
+    failed to launch!») o la prueba pasaba **128/128 sobre un paquete al que
+    le faltaban `chrome_100_percent.pak` y `chrome_200_percent.pak`**. Ahora
+    la prueba espera a que el paquete esté completo y quieto antes de
+    arrancar, y lo compara al final: si cambió durante la prueba, falla
+    diciendo qué archivos cambiaron y por qué los resultados no valen.
+  - **Una carrera real al arrancar, en el modo sin red.** La prueba recarga
+    la página para que todo el arranque pase por el corte de red, y lo hacía
+    en cuanto existía la ventana. Si la recarga llegaba antes del primer
+    pintado, la app nunca recibía `ready-to-show`, la ventana no se mostraba
+    nunca, no pintaba ni un fotograma, y el clic en «Blank project» esperaba
+    30 s a que el botón estuviera «visible, enabled and stable» (Playwright
+    mide lo de *stable* en fotogramas). Es el mismo mensaje que el de la
+    v1.29, aunque aquella prueba duró 94 s y esta se para a los 39 s: aquel
+    fallo llegó más tarde, lo que encaja con el empaquetado a la vez. Solo
+    pasaba en arranques rápidos, de menos de un segundo. Ahora la
+    prueba espera a que la app haya enseñado su ventana antes de recargar.
+  - Además, si la prueba se para antes de tiempo imprime una línea `FAIL`
+    con el motivo. En la v1.28 la salida se filtró por
+    `FAIL|checks passed|network`, y un error lanzado no tenía ninguna de las
+    tres, así que parecía que no había impreso nada. Y dice cuánto tardó en
+    arrancar (`up in 0.9 s`).
+
+  Cómo se comprobó, siempre en segundo plano (`SCF_BACKGROUND=1`):
+  - **Carrera de arranque:** una sonda que repite los pasos de la prueba
+    (abrir, cortar la red, recargar) dejó la ventana sin mostrar **2 de 90
+    veces**, sin nada más en marcha. Esperando antes a que la ventana se
+    muestre: **0 de 90**. Sin recargar: 0 de 10. Una vuelta completa de la
+    batería, todavía sin este arreglo, también se paró en «Blank project»
+    (arranque en 0,6 s).
+  - **Empaquetar a la vez:** con el empaquetado lanzado 10 s y 40 s después
+    de la prueba, la comprobación nueva lo detecta
+    (`chrome_100_percent.pak (gone)…`). Sin `app.asar` se para en 30 s con
+    un mensaje claro en vez de «Process failed to launch!».
+  - **Batería completa:** empaquetar y después, una detrás de otra, 5
+    vueltas sobre el ejecutable recién empaquetado y sin red. **129/129 las
+    cinco**, cuatro de ellas con arranques de 0,9 s, los que antes caían en
+    la carrera. La comprobación 129 es la nueva: *el paquete no cambió
+    durante la prueba*.
+
 ---
 
 ## v1.30.0-beta.1 — Color, fase 2: ruedas, antes/después y copiar la corrección
@@ -233,7 +287,6 @@ reescribía la carpeta del programa; ahora se ejecutan una detrás de otra.
 ### Sin verificar
 - El antes/después compone la escena dos veces en el visor mientras está
   puesto. No se midió la reproducción en 4K con la cortina puesta.
-
 ---
 
 ## v1.29.0-beta.1 — Visores de vídeo, color correcto al exportar y enlaces seguros

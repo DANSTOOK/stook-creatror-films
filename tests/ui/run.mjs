@@ -1,6 +1,6 @@
 ﻿import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -169,6 +169,102 @@ async function probe(file) {
 const packagedExe = process.env.UI_PACKAGED
   ? join(projectRoot, 'release/win-unpacked/STOOK CREATOR FILMS.exe')
   : null;
+const packagedDir = packagedExe ? dirname(packagedExe) : null;
+
+/**
+ * The packaged build, file by file (size and time written), so the run can
+ * tell whether the build it is testing changed under it.
+ *
+ * The first packaged runs before v1.28.0-beta.1 and v1.29.0-beta.1 failed -
+ * a TimeoutError on one, no output worth the name on the other - and the next
+ * run passed. Both had been started at the same moment as the packaging, not
+ * after it. electron-builder begins by emptying release/win-unpacked: it
+ * deletes every file the running app does not hold open, gives up at the
+ * first one it does, and exits with code 1 - the code the signing step that
+ * always fails on this machine exits with, so nothing looked wrong. Run
+ * against that on purpose, the app failed to launch when packaging got there
+ * first, and passed 128/128 on a build with its chrome_*.pak files deleted
+ * when the run got there first. Nothing here noticed either.
+ */
+async function packagedFingerprint() {
+  // This script runs on Electron's Node, whose fs reads app.asar as a folder:
+  // the listing then walks the 4000 files inside it and never sees app.asar
+  // itself. Worse, Electron keeps an archive it has read open for good, and
+  // an open app.asar is exactly what stops packaging from replacing it.
+  const asarWas = process.noAsar;
+  process.noAsar = true;
+  try {
+    const files = new Map();
+    for (const entry of await readdir(packagedDir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const path = join(entry.parentPath ?? entry.path, entry.name);
+      const name = relative(packagedDir, path);
+      // Chromium's own log, written beside the exe while the app runs.
+      if (name === 'debug.log') continue;
+      const info = await stat(path).catch(() => null);
+      if (info) files.set(name, `${info.size} ${info.mtimeMs}`);
+    }
+    return files;
+  } finally {
+    process.noAsar = asarWas;
+  }
+}
+
+/** The files that differ between two fingerprints: changed, added or gone. */
+function buildChanges(before, after) {
+  const changed = [];
+  for (const [name, value] of before) {
+    if (!after.has(name)) changed.push(`${name} (gone)`);
+    else if (after.get(name) !== value) changed.push(`${name} (rewritten)`);
+  }
+  for (const name of after.keys()) if (!before.has(name)) changed.push(`${name} (new)`);
+  return changed;
+}
+
+let packagedAtStart = null;
+
+/**
+ * Start only from a build that is complete and has stopped changing.
+ *
+ * A build written in the last few seconds may still be being written; it is
+ * watched until it has been still for a while. This cannot see a packaging
+ * that starts after the run does - the comparison at the end is what catches
+ * that.
+ */
+async function settledPackagedBuild() {
+  const started = Date.now();
+  let current = await packagedFingerprint().catch(() => new Map());
+  // When a change was last seen here: a build that is already old starts at once.
+  let lastChange = 0;
+  for (;;) {
+    const newest = Math.max(0, ...[...current.values()].map((value) => Number(value.split(' ')[1])));
+    const complete = current.has(relative(packagedDir, packagedExe)) && current.has(join('resources', 'app.asar'));
+    const quietFor = Date.now() - Math.max(newest, lastChange);
+    if (complete && quietFor >= 10_000) return current;
+    const waitedFor = Date.now() - started;
+    // Missing a part and not being written either: nothing is coming.
+    if (waitedFor >= 180_000 || (!complete && Math.min(quietFor, waitedFor) >= 30_000)) {
+      throw new Error(complete
+        ? `the packaged build in ${packagedDir} kept changing for 3 minutes - is it still being packaged?`
+        : `no complete packaged build in ${packagedDir} (the exe or resources/app.asar is missing) - package it first, and wait for packaging to finish`);
+    }
+    await new Promise((done) => setTimeout(done, 1000));
+    const next = await packagedFingerprint().catch(() => new Map());
+    if (buildChanges(current, next).length > 0) lastChange = Date.now();
+    current = next;
+  }
+}
+
+/** Why a packaged run went wrong, when the reason is that the build changed. */
+async function describeBuildChanges() {
+  if (!packagedAtStart) return null;
+  const changed = buildChanges(packagedAtStart, await packagedFingerprint().catch(() => new Map()));
+  if (changed.length === 0) return null;
+  const listed = changed.slice(0, 6).join(', ') + (changed.length > 6 ? `, and ${changed.length - 6} more` : '');
+  return `the packaged build changed while the run was using it - ${listed}. `
+    + 'Something rewrote release/win-unpacked during the run (packaging started at the same time?), '
+    + 'so these results say nothing about the build: package first, wait for it to finish, then run.';
+}
 
 /**
  * Run with the network cut. Every attempted request is logged and cancelled,
@@ -229,7 +325,10 @@ async function main() {
     ]);
   }
 
+  if (packagedExe) packagedAtStart = await settledPackagedBuild();
+
   console.log(`2. launching the ${packagedExe ? 'PACKAGED' : 'development'} Electron app`);
+  const launchStarted = Date.now();
   const app = await electron.launch({
     ...(packagedExe
       ? { executablePath: packagedExe, args: [profileArg] }
@@ -253,6 +352,23 @@ async function main() {
     window.on('pageerror', (error) => consoleIssues.push(`[pageerror] ${error.message}`));
 
     if (offline) {
+      // The reload below waits for the app to have shown its window. The main
+      // process shows it once, on 'ready-to-show' - the page's first paint -
+      // and a reload that lands before that paint throws it away: the event
+      // never comes, the window is never shown, a window never shown draws no
+      // frames, and the first click waited 30 s for "Blank project" to be
+      // "visible, enabled and stable" (Playwright's stable is measured in
+      // animation frames). Fast starts only, under a second: a probe of this
+      // exact sequence left 2 windows in 90 unshown, and 0 in 90 with this wait.
+      await app.evaluate(({ BrowserWindow }) => new Promise((done, fail) => {
+        const main = BrowserWindow.getAllWindows()[0];
+        if (main.isVisible()) return done();
+        const timer = setTimeout(() => fail(new Error('the window was not shown within 30 s of opening')), 30_000);
+        main.once('show', () => {
+          clearTimeout(timer);
+          done();
+        });
+      }));
       // Cut the network for the whole Chromium session, and record anything
       // that even tries to leave the machine. Blocking alone would hide a
       // dependency; logging it is what proves there is none.
@@ -280,6 +396,8 @@ async function main() {
     }
 
     await window.waitForSelector('#root > *', { timeout: 30_000 });
+    // How long a start took, for a run that goes wrong on a slow one.
+    console.log(`   up in ${((Date.now() - launchStarted) / 1000).toFixed(1)} s`);
 
     console.log('3. driving the interface');
 
@@ -2434,13 +2552,24 @@ async function main() {
     await closeApp(second);
   }
 
+  if (packagedExe) {
+    const changed = await describeBuildChanges();
+    check('the packaged build stayed the same for the whole run', !changed, changed ?? 'unchanged');
+  }
+
   const failures = checks.filter((entry) => !entry.passed).length;
   console.log('');
   console.log(`${checks.length - failures}/${checks.length} UI checks passed`);
   if (failures > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error(error);
+  // A line a "FAIL|checks passed" filter finds. Without it a run that threw
+  // printed neither, and filtered like that looked as if it printed nothing.
+  console.log('');
+  console.log(`FAIL  the run stopped early: ${String(error?.message ?? error).split('\n')[0]}`);
+  const changed = await describeBuildChanges().catch(() => null);
+  if (changed) console.log(`FAIL  ${changed}`);
   process.exitCode = 1;
 });
