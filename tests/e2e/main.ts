@@ -24,9 +24,25 @@ const inputs = {
   ...(process.env.E2E_END ? { endFrame: Number(process.env.E2E_END) } : {}),
 };
 
+/**
+ * `E2E_MODE=colour` runs the colour-through-export check instead
+ * (colourExport.ts, driven by colour.mjs): a still of known patches exported
+ * by every path the dialog can take.
+ */
+const colourMode = process.env.E2E_MODE === 'colour';
+const colourInputs = {
+  patchesPath: process.env.E2E_PATCHES ?? '',
+  outputs: {
+    rawvideo: process.env.E2E_OUT_RAW ?? '',
+    webcodecs: process.env.E2E_OUT_WEBCODECS ?? '',
+    hardware: process.env.E2E_OUT_HARDWARE ?? '',
+  },
+  hardwareEncoder: process.env.E2E_HW_ENCODER ?? '',
+};
+
 // The renderer may only touch files that came from a dialog; in this harness
 // the harness itself vouches for them.
-for (const path of Object.values(inputs)) {
+for (const path of [...Object.values(inputs), colourInputs.patchesPath, ...Object.values(colourInputs.outputs)]) {
   if (typeof path === 'string' && path) allowPath(path);
 }
 
@@ -80,7 +96,9 @@ app.whenReady().then(() => {
       // executeJavaScript resolves with the awaited value of the expression,
       // so the scenario's result comes straight back here.
       const result = await window!.webContents.executeJavaScript(
-        `window.__runE2E(${JSON.stringify(inputs)})`,
+        colourMode
+          ? `window.__runColourExport(${JSON.stringify(colourInputs)})`
+          : `window.__runE2E(${JSON.stringify(inputs)})`,
       );
       finish(result, (result as { ok: boolean }).ok ? 0 : 1);
     } catch (error) {

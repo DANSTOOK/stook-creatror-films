@@ -397,6 +397,12 @@ export interface GpuReport {
  */
 export type ExportPipeMode = 'rawvideo' | 'annexb-h264' | 'annexb-hevc';
 
+/** The YUV matrix and range an encoder used, as measured. */
+export interface StreamColour {
+  matrix: 'bt709' | 'bt601';
+  fullRange: boolean;
+}
+
 export interface ExportSettings {
   format: ExportFormat;
   outputPath: string;
@@ -421,6 +427,12 @@ export interface ExportSettings {
    * `rawvideo` is always the safe fallback.
    */
   pipeMode: ExportPipeMode;
+  /**
+   * How the WebCodecs encoder converted RGB to YUV, measured before the
+   * render (measureStreamColour), so the muxer can tag the stream to match.
+   * Absent on the raw pipe, where ffmpeg converts with BT.709 itself.
+   */
+  streamColour?: StreamColour;
   /**
    * Temporary WAV holding the rendered audio mix, muxed as a second input.
    * Absent for a silent timeline or a format that carries no audio.

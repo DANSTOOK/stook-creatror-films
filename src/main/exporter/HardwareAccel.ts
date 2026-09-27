@@ -181,12 +181,61 @@ export function videoCodecArgs(settings: ExportSettings): string[] {
 }
 
 /**
- * Scaling filter. Nearest-neighbour is what keeps pixel-art sprites from being
- * blurred into mush when the project is upscaled on the way out.
+ * The colour tags every YUV export carries: Rec.709 primaries, transfer and
+ * matrix, TV (limited) range. What Resolve and Premiere write for HD SDR.
+ */
+export const REC709_TAGS: readonly string[] = [
+  '-colorspace', 'bt709',
+  '-color_primaries', 'bt709',
+  '-color_trc', 'bt709',
+  '-color_range', 'tv',
+];
+
+/**
+ * Bitstream filter that writes the colour tags into a WebCodecs stream.
+ *
+ * The stream arrives already encoded, so nothing can be converted here -
+ * only described. It is described as what the platform encoder actually did,
+ * measured by the renderer (`streamColour`): Rec.709 primaries and transfer
+ * always, and the matrix and range it really used. Tagging an encoder that
+ * used BT.601 as BT.709 would be the same colour shift the raw pipe had.
+ * Nothing is written when it could not be measured.
+ */
+export function streamColourFilter(settings: ExportSettings): string[] {
+  const colour = settings.streamColour;
+  if (!colour || settings.pipeMode === 'rawvideo') return [];
+  const filter = settings.pipeMode === 'annexb-hevc' ? 'hevc_metadata' : 'h264_metadata';
+  // H.273 code points: 1 is BT.709; 6 is SMPTE 170M, the BT.601 matrix.
+  const matrix = colour.matrix === 'bt709' ? 1 : 6;
+  return [
+    `${filter}=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=${matrix}:video_full_range_flag=${colour.fullRange ? 1 : 0}`,
+  ];
+}
+
+/**
+ * The filter between the RGBA pipe and the encoder: nearest-neighbour
+ * scaling for pixel art, and - for every YUV format - the RGB to YUV
+ * conversion itself, spelled out.
+ *
+ * Left to itself, ffmpeg's scaler converts RGB with the BT.601 matrix and
+ * writes no colour tags. Players read an untagged HD file as BT.709, so pure
+ * red played back as 255,23,0 and pure green as 0,215,0 - measured on this
+ * app's own exports. The matrix is named here, the range with it, and the
+ * file is tagged to match (REC709_TAGS), so every player decodes it the way
+ * it was encoded. A PNG sequence stays RGB: no matrix is involved.
  */
 export function scaleFilterArgs(settings: ExportSettings): string[] {
-  if (!settings.pixelArtScaling) return [];
-  return ['-sws_flags', 'neighbor', '-vf', `scale=${settings.width}:${settings.height}:flags=neighbor`];
+  const yuv = settings.format !== 'png-sequence';
+  const scale: string[] = [];
+  if (settings.pixelArtScaling) scale.push(`${settings.width}:${settings.height}:flags=neighbor`);
+  if (yuv) scale.push('out_color_matrix=bt709:out_range=tv');
+  if (scale.length === 0) return [];
+  return [
+    ...(settings.pixelArtScaling ? ['-sws_flags', 'neighbor'] : []),
+    '-vf',
+    `scale=${scale.join(':')}`,
+    ...(yuv ? REC709_TAGS : []),
+  ];
 }
 
 /**

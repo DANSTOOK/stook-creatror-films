@@ -6,7 +6,7 @@ import {
   describeAlphaFallback,
   videoCodecArgs,
 } from '@main/exporter/HardwareAccel';
-import { isWebCodecsEligible } from '@renderer/engine/WebCodecsEncoder';
+import { classifyRedLuma, isWebCodecsEligible } from '@renderer/engine/WebCodecsEncoder';
 import { DEFAULT_EXPORT_SETTINGS } from '@renderer/store/types';
 
 const settings = (overrides: Partial<ExportSettings> = {}): ExportSettings => ({
@@ -174,5 +174,63 @@ describe('isWebCodecsEligible', () => {
 
   it('refuses pixel-art scaling, which is an ffmpeg filter', () => {
     expect(isWebCodecsEligible(settings({ format: 'mp4-h264', pixelArtScaling: true }))).toBe(false);
+  });
+});
+
+describe('colour on the way out', () => {
+  // Left to itself ffmpeg converts RGB with BT.601 and tags nothing; a player
+  // reading the untagged HD file as BT.709 showed pure red as 255,23,0.
+  it('converts the raw pipe with the BT.709 matrix into TV range, and tags it', () => {
+    const args = EncoderPipeline.buildArgs(settings({ format: 'mp4-h264' }));
+    expect(argOf(args, '-vf')).toBe('scale=out_color_matrix=bt709:out_range=tv');
+    expect(argOf(args, '-colorspace')).toBe('bt709');
+    expect(argOf(args, '-color_primaries')).toBe('bt709');
+    expect(argOf(args, '-color_trc')).toBe('bt709');
+    expect(argOf(args, '-color_range')).toBe('tv');
+  });
+
+  it('does the same for every YUV format', () => {
+    for (const format of ['mp4-h265', 'prores4444', 'webm-vp9'] as const) {
+      const args = EncoderPipeline.buildArgs(settings({ format, outputPath: '/tmp/out.mov' }));
+      expect(argOf(args, '-vf')).toContain('out_color_matrix=bt709');
+      expect(argOf(args, '-colorspace')).toBe('bt709');
+    }
+  });
+
+  it('leaves a PNG sequence as RGB, with no matrix and no tags', () => {
+    const args = EncoderPipeline.buildArgs(settings({ format: 'png-sequence', outputPath: '/tmp/sprites' }));
+    expect(args).not.toContain('-vf');
+    expect(args).not.toContain('-colorspace');
+  });
+
+  it('keeps nearest-neighbour pixel-art scaling in the same filter', () => {
+    const args = EncoderPipeline.buildArgs(settings({ format: 'mp4-h264', pixelArtScaling: true, width: 640, height: 360 }));
+    expect(argOf(args, '-vf')).toBe('scale=640:360:flags=neighbor:out_color_matrix=bt709:out_range=tv');
+    expect(argOf(args, '-sws_flags')).toBe('neighbor');
+    const png = EncoderPipeline.buildArgs(settings({ format: 'png-sequence', pixelArtScaling: true, width: 640, height: 360, outputPath: '/tmp/sprites' }));
+    expect(argOf(png, '-vf')).toBe('scale=640:360:flags=neighbor');
+  });
+
+  it('tags a WebCodecs stream with the matrix its encoder was measured to use', () => {
+    const bt601 = EncoderPipeline.buildArgs(settings({ pipeMode: 'annexb-h264', streamColour: { matrix: 'bt601', fullRange: false } }));
+    expect(argOf(bt601, '-bsf:v')).toBe(
+      'h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=6:video_full_range_flag=0,setts=ts=N/(30*TB)',
+    );
+    const hevc = EncoderPipeline.buildArgs(settings({ pipeMode: 'annexb-hevc', streamColour: { matrix: 'bt709', fullRange: false } }));
+    expect(argOf(hevc, '-bsf:v')).toMatch(/^hevc_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1:/);
+  });
+
+  it('writes no colour tags when the encoder could not be measured', () => {
+    const args = EncoderPipeline.buildArgs(settings({ pipeMode: 'annexb-h264' }));
+    expect(argOf(args, '-bsf:v')).toBe('setts=ts=N/(30*TB)');
+  });
+
+  it('reads the matrix from the luma of pure red', () => {
+    expect(classifyRedLuma(63)).toEqual({ matrix: 'bt709', fullRange: false });
+    expect(classifyRedLuma(81)).toEqual({ matrix: 'bt601', fullRange: false });
+    expect(classifyRedLuma(82)).toEqual({ matrix: 'bt601', fullRange: false });
+    expect(classifyRedLuma(54)).toEqual({ matrix: 'bt709', fullRange: true });
+    expect(classifyRedLuma(76)).toEqual({ matrix: 'bt601', fullRange: true });
+    expect(classifyRedLuma(120)).toBeNull();
   });
 });

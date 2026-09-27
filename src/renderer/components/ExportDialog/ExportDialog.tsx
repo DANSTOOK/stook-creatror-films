@@ -23,7 +23,7 @@ import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/uti
 import { streamTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
-import { WebCodecsEncoder, detectCodecSupport } from '@renderer/engine/WebCodecsEncoder';
+import { WebCodecsEncoder, detectCodecSupport, measureStreamColour } from '@renderer/engine/WebCodecsEncoder';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
@@ -452,6 +452,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         activeGpu,
       });
       const support = jobPlan.pipeMode === 'rawvideo' ? null : probed;
+      // Which YUV matrix the platform encoder uses, so the file is tagged to
+      // match (measured once per size per session; see measureStreamColour).
+      const streamColour = support ? await measureStreamColour(settings, support) : null;
       // The audio is done by now; leaving "Rendering audio..." up for the whole
       // picture render made a slow export look stuck on the sound.
       setMessage(t('export.renderingWith', { encoder: jobPlan.label }));
@@ -459,6 +462,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         ...settings,
         pipeMode: jobPlan.pipeMode,
         hardwareEncoder: jobPlan.hardwareEncoder,
+        ...(streamColour ? { streamColour } : {}),
         ...(audioPath ? { audioPath, audioBitrateKbps, audioRawFormat } : {}),
         ...(thumbnailPath && coverArt ? { thumbnailPath } : {}),
       };

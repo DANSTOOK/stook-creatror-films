@@ -1,4 +1,4 @@
-import type { ExportPipeMode, ExportSettings } from '@shared/types';
+import type { ExportPipeMode, ExportSettings, StreamColour } from '@shared/types';
 
 /**
  * GPU-side encoding with the WebCodecs `VideoEncoder`.
@@ -32,6 +32,121 @@ const HEVC_CANDIDATES = ['hev1.1.6.L153.B0', 'hev1.1.6.L123.B0', 'hev1.1.6.L93.B
 export interface CodecSupport {
   pipeMode: ExportPipeMode;
   codec: string;
+}
+
+/** The one configuration the export and the colour measurement both use. */
+function encoderConfigFor(settings: ExportSettings, support: CodecSupport): VideoEncoderConfig {
+  return {
+    codec: support.codec,
+    width: settings.width,
+    height: settings.height,
+    bitrate: Math.max(500, settings.bitrateKbps) * 1000,
+    framerate: settings.fps,
+    latencyMode: 'quality',
+    ...(support.codec.startsWith('avc1') ? { avc: { format: 'annexb' as const } } : {}),
+    ...(support.codec.startsWith('hev1') ? { hevc: { format: 'annexb' as const } } : {}),
+  };
+}
+
+/**
+ * Luma of pure red, 8-bit, under each matrix and range an encoder might use.
+ * Red is where BT.601 and BT.709 differ most: 0.299 against 0.2126.
+ */
+const RED_LUMA: ReadonlyArray<{ colour: StreamColour; y: number }> = [
+  { colour: { matrix: 'bt709', fullRange: false }, y: 63 }, // 16 + 219 * 0.2126
+  { colour: { matrix: 'bt601', fullRange: false }, y: 81 }, // 16 + 219 * 0.299
+  { colour: { matrix: 'bt709', fullRange: true }, y: 54 }, // 255 * 0.2126
+  { colour: { matrix: 'bt601', fullRange: true }, y: 76 }, // 255 * 0.299
+];
+
+/** The matrix a measured luma of red belongs to, or null when none is close. */
+export function classifyRedLuma(y: number): StreamColour | null {
+  let best: { colour: StreamColour; y: number } | null = null;
+  for (const candidate of RED_LUMA) {
+    if (!best || Math.abs(candidate.y - y) < Math.abs(best.y - y)) best = candidate;
+  }
+  return best && Math.abs(best.y - y) <= 3 ? best.colour : null;
+}
+
+const measuredColour = new Map<string, Promise<StreamColour | null>>();
+
+/**
+ * Which matrix and range the platform encoder converts RGB with.
+ *
+ * A `VideoFrame` made from the canvas is RGB, and the encoder turns it into
+ * YUV by rules of its own and tags nothing. On the reference machine it used
+ * BT.601, so a player reading the untagged HD file as BT.709 showed pure
+ * green as 0,214,0. There is no setting for it in WebCodecs, so it is
+ * measured instead: one frame of pure red, encoded with the export's own
+ * configuration and decoded again in software, and the luma it came back
+ * with says the matrix. The muxer then tags the stream to match.
+ *
+ * Once per configuration per session. Null when it cannot be measured, and
+ * the stream is then left as the encoder wrote it.
+ */
+export function measureStreamColour(settings: ExportSettings, support: CodecSupport): Promise<StreamColour | null> {
+  const key = `${support.codec}|${settings.width}x${settings.height}`;
+  let measured = measuredColour.get(key);
+  if (!measured) {
+    measured = measureOnce(settings, support).catch(() => null);
+    measuredColour.set(key, measured);
+  }
+  return measured;
+}
+
+async function measureOnce(settings: ExportSettings, support: CodecSupport): Promise<StreamColour | null> {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoDecoder === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+    return null;
+  }
+  const { width, height } = settings;
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.fillStyle = '#ff0000';
+  context.fillRect(0, 0, width, height);
+
+  const chunks: EncodedVideoChunk[] = [];
+  const encoder = new VideoEncoder({ output: (chunk) => chunks.push(chunk), error: () => undefined });
+  try {
+    encoder.configure(encoderConfigFor(settings, support));
+    const frame = new VideoFrame(canvas, { timestamp: 0 });
+    encoder.encode(frame, { keyFrame: true });
+    frame.close();
+    await encoder.flush();
+  } finally {
+    if (encoder.state !== 'closed') encoder.close();
+  }
+  if (chunks.length === 0) return null;
+
+  let decoded: VideoFrame | null = null;
+  const decoder = new VideoDecoder({
+    output: (frame) => {
+      if (decoded) frame.close();
+      else decoded = frame;
+    },
+    error: () => undefined,
+  });
+  try {
+    // Software, so the frame lands in memory as planes that can be read.
+    decoder.configure({ codec: support.codec, codedWidth: width, codedHeight: height, hardwareAcceleration: 'prefer-software' });
+    decoder.decode(chunks[0]);
+    await decoder.flush();
+  } finally {
+    if (decoder.state !== 'closed') decoder.close();
+  }
+
+  const picture = decoded as VideoFrame | null;
+  if (!picture) return null;
+  try {
+    if (picture.format !== 'I420' && picture.format !== 'NV12') return null;
+    const bytes = new Uint8Array(picture.allocationSize());
+    const layout = await picture.copyTo(bytes);
+    const luma = layout[0];
+    const y = bytes[luma.offset + Math.floor(height / 2) * luma.stride + Math.floor(width / 2)];
+    return classifyRedLuma(y);
+  } finally {
+    picture.close();
+  }
 }
 
 /** Formats the WebCodecs path is allowed to handle at all. */
@@ -153,16 +268,7 @@ export class WebCodecsEncoder {
       },
     });
 
-    this.encoder.configure({
-      codec: support.codec,
-      width: settings.width,
-      height: settings.height,
-      bitrate: Math.max(500, settings.bitrateKbps) * 1000,
-      framerate: settings.fps,
-      latencyMode: 'quality',
-      ...(support.codec.startsWith('avc1') ? { avc: { format: 'annexb' as const } } : {}),
-      ...(support.codec.startsWith('hev1') ? { hevc: { format: 'annexb' as const } } : {}),
-    });
+    this.encoder.configure(encoderConfigFor(settings, support));
   }
 
   /** Microsecond presentation timestamp for a given frame index. */

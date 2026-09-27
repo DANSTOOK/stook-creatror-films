@@ -8,6 +8,7 @@ import {
   FORMAT_SUPPORTS_ALPHA,
   resolveFfmpegPath,
   scaleFilterArgs,
+  streamColourFilter,
   videoCodecArgs,
 } from './HardwareAccel';
 
@@ -126,8 +127,13 @@ export class EncoderPipeline {
         // ahead of its sound, and where the drift crossed half a frame two
         // frames rounded onto the same time. Counted from the packets, not
         // accumulated, so no drift can build up.
+        //
+        // Ahead of that, the colour tags. The platform encoder converts RGB
+        // to YUV with a matrix of its own choosing and writes no tags; the
+        // renderer measures which one it used (measureStreamColour) and it
+        // is written into the stream here, so players decode it the same way.
         '-bsf:v',
-        `setts=ts=N/(${settings.fps}*TB)`,
+        [...streamColourFilter(settings), `setts=ts=N/(${settings.fps}*TB)`].join(','),
         ...(settings.pipeMode === 'annexb-hevc' ? ['-tag:v', 'hvc1'] : []),
         '-movflags',
         '+faststart',
