@@ -22,7 +22,8 @@ import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
 import { markerName, trackName } from '@renderer/i18n/defaultNames';
-import { DEFAULT_PIVOT, neutralWheel, normalizeGrading } from '@renderer/color/grade';
+import { DEFAULT_PIVOT, neutralVignette, neutralWheel, normalizeGrading } from '@renderer/color/grade';
+import { neutralCurves } from '@renderer/color/curves';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -267,6 +268,8 @@ export function createClip(input: CreateClipInput): Clip {
       gamma: neutralWheel(),
       gain: neutralWheel(),
       offset: neutralWheel(),
+      curves: neutralCurves(),
+      vignette: neutralVignette(),
     },
     chromaKey: {
       enabled: false,

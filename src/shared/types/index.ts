@@ -50,6 +50,39 @@ export interface MaskConfig {
   invert: boolean;
 }
 
+/** A point on a grading curve: input across, output (or offset) up. */
+export interface CurvePoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * The curves of a grade (colour phase 3). Units and interpolation in
+ * src/renderer/color/curves.ts. Projects saved before them open neutral.
+ */
+export interface GradeCurves {
+  master: CurvePoint[];
+  red: CurvePoint[];
+  green: CurvePoint[];
+  blue: CurvePoint[];
+  hueVsHue: CurvePoint[];
+  hueVsSat: CurvePoint[];
+  hueVsLuma: CurvePoint[];
+  lumaVsSat: CurvePoint[];
+}
+
+/** A vignette centred on the frame. `amount` 0 is none. */
+export interface VignetteConfig {
+  /** -1 darkens the edges to black, +1 lightens them to white. */
+  amount: number;
+  /** Where the darkening begins, 0 (the centre) to 1 (past the corners). */
+  size: number;
+  /** -1 squarish, 0 the frame's own shape, +1 a circle. */
+  roundness: number;
+  /** How soft the edge is, 0 hard to 1 very soft. */
+  feather: number;
+}
+
 export interface ColorGradingConfig {
   enabled: boolean;
   exposure: number; // -2.0 to 2.0
@@ -71,6 +104,8 @@ export interface ColorGradingConfig {
   gamma: [number, number, number];
   gain: [number, number, number];
   offset: [number, number, number];
+  curves: GradeCurves;
+  vignette: VignetteConfig;
   /** Blob URL for this session. Does not survive a reload. */
   lutUri?: string;
   /**

@@ -1,4 +1,5 @@
-import type { ColorGradingConfig } from '@shared/types';
+import type { ColorGradingConfig, VignetteConfig } from '@shared/types';
+import { applyCurves, bakeCurves, normalizeCurves } from './curves';
 
 /**
  * The primary correction, as arithmetic.
@@ -143,7 +144,46 @@ export function normalizeGrading(grading: Partial<ColorGradingConfig> | undefine
     gamma: wheel(source.gamma),
     gain: wheel(source.gain),
     offset: wheel(source.offset),
+    curves: normalizeCurves(source.curves),
+    vignette: normalizeVignette(source.vignette),
   };
+}
+
+/* The vignette ------------------------------------------------------------ */
+
+export const neutralVignette = (): VignetteConfig => ({ amount: 0, size: 0.5, roundness: 0, feather: 0.5 });
+
+export function normalizeVignette(vignette: Partial<VignetteConfig> | undefined): VignetteConfig {
+  const source = vignette ?? {};
+  const clampTo = (value: unknown, low: number, high: number, fallback: number): number =>
+    Math.min(high, Math.max(low, finite(value, fallback)));
+  return {
+    amount: clampTo(source.amount, -1, 1, 0),
+    size: clampTo(source.size, 0, 1, 0.5),
+    roundness: clampTo(source.roundness, -1, 1, 0),
+    feather: clampTo(source.feather, 0, 1, 0.5),
+  };
+}
+
+/**
+ * How much of the vignette reaches a point of the frame, 0..1: `u`, `v`
+ * 0..1 across and down, `aspect` the frame's width over its height.
+ *
+ * Distance is measured from the centre in half-frames, on a superellipse:
+ * roundness 0 follows the frame's own shape, +1 bends it to a circle (the
+ * horizontal squeezed to the vertical's scale), -1 squares it off. The
+ * darkening starts at 1.4 x size and ramps over 1.2 x feather.
+ */
+export function vignetteWeight(u: number, v: number, aspect: number, vignette: VignetteConfig): number {
+  const px = (u - 0.5) * 2;
+  const py = (v - 0.5) * 2;
+  const qx = px * (1 + (aspect - 1) * Math.max(vignette.roundness, 0));
+  const exponent = 2 + 6 * Math.max(-vignette.roundness, 0);
+  const distance = (Math.abs(qx) ** exponent + Math.abs(py) ** exponent) ** (1 / exponent);
+  const start = vignette.size * 1.4;
+  const end = start + Math.max(vignette.feather, 0.01) * 1.2;
+  const t = Math.min(1, Math.max(0, (distance - start) / (end - start)));
+  return t * t * (3 - 2 * t);
 }
 
 /* The reference: one pixel through the whole primary grade --------------- */
@@ -156,7 +196,12 @@ const clamp01 = (c: number): number => Math.min(1, Math.max(0, c));
  * What the grading shader makes of one pixel (no LUT), 0..1 per channel.
  * Step for step the same as ColorGrading.glsl.
  */
-export function gradePixel(rgb: Rgb, grading: ColorGradingConfig): Rgb {
+export function gradePixel(
+  rgb: Rgb,
+  grading: ColorGradingConfig,
+  /** Where the pixel is, for the vignette; the centre when left out. */
+  at: { u: number; v: number; aspect: number } = { u: 0.5, v: 0.5, aspect: 16 / 9 },
+): Rgb {
   const exposure = 2 ** grading.exposure;
   const t = grading.temperature;
   const tint = grading.tint;
@@ -178,5 +223,17 @@ export function gradePixel(rgb: Rgb, grading: ColorGradingConfig): Rgb {
   color = color.map((value) => (value - grading.pivot) * grading.contrast + grading.pivot) as Rgb;
   const luma = KR * clamp01(color[0]) + KG * clamp01(color[1]) + KB * clamp01(color[2]);
   color = color.map((value) => luma + (value - luma) * grading.saturation) as Rgb;
+  // The curves: levels, then the versus curves. After saturation, before the LUT.
+  if (grading.curves) {
+    const baked = bakeCurves(grading.curves);
+    if (baked.levelsActive || baked.versusActive) color = applyCurves(color, baked);
+  }
+
+  // (The reference leaves the LUT out.) Then the vignette, then the clamp.
+  const vignette = grading.vignette;
+  if (vignette && vignette.amount !== 0) {
+    const weight = vignetteWeight(at.u, at.v, at.aspect, vignette) * Math.abs(vignette.amount);
+    color = color.map((value) => (vignette.amount < 0 ? value * (1 - weight) : value + (1 - value) * weight)) as Rgb;
+  }
   return color.map(clamp01) as Rgb;
 }
