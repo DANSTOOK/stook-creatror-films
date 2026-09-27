@@ -55,7 +55,23 @@ export const vectorPosition = (cb: number, cr: number): { x: number; y: number }
   y: 0.5 - cr,
 });
 
-const vectorCell = (value: number): number => Math.min(VECTOR_SIZE - 1, Math.max(0, Math.round(value * (VECTOR_SIZE - 1))));
+/*
+  The vectorscope cell of a pixel, from Y' and its R' and B': the column is
+  (Cb + 0.5) and the row (0.5 - Cr), each scaled to the grid and rounded.
+  Written out so the hot loop does two multiplies and no divisions.
+*/
+const LAST_CELL = VECTOR_SIZE - 1;
+const CELL_MIDDLE = LAST_CELL / 2;
+const CB_TO_CELL = LAST_CELL / (255 * 1.8556);
+const CR_TO_CELL = LAST_CELL / (255 * 1.5748);
+const clampCell = (value: number): number => (value < 0 ? 0 : value > LAST_CELL ? LAST_CELL : value);
+const cellColumn = (b: number, y: number): number => clampCell(((b - y) * CB_TO_CELL + CELL_MIDDLE + 0.5) | 0);
+const cellRow = (r: number, y: number): number => clampCell((CELL_MIDDLE - (r - y) * CR_TO_CELL + 0.5) | 0);
+
+/* Each channel's share of luma, per 8-bit value: a lookup beats three multiplies. */
+const LUMA_R = Float64Array.from({ length: 256 }, (_, v) => LUMA_709[0] * v);
+const LUMA_G = Float64Array.from({ length: 256 }, (_, v) => LUMA_709[1] * v);
+const LUMA_B = Float64Array.from({ length: 256 }, (_, v) => LUMA_709[2] * v);
 
 /**
  * The six 75% colour-bar targets a vectorscope's boxes are drawn for, in
@@ -97,7 +113,8 @@ export interface ScopeData {
  * Measure a frame for the scopes asked for, in one pass over its pixels.
  *
  * The frame is the small copy the compositor reads back (at most 512 pixels
- * across), so this is some 150 thousand pixels a pass, a few milliseconds.
+ * across), some 150 thousand pixels. It runs in the scopes' worker, off the
+ * thread that draws the picture.
  */
 export function computeScopes(frame: ScopeFrame, kinds: ReadonlySet<ScopeKind>): ScopeData {
   const { rgba, width, height } = frame;
@@ -116,15 +133,14 @@ export function computeScopes(frame: ScopeFrame, kinds: ReadonlySet<ScopeKind>):
     ? { r: new Uint32Array(LEVELS), g: new Uint32Array(LEVELS), b: new Uint32Array(LEVELS), y: new Uint32Array(LEVELS) }
     : undefined;
 
-  const [kr, kg, kb] = LUMA_709;
-  for (let i = 0; i < pixels; i += 1) {
-    const offset = i * 4;
+  const end = pixels * 4;
+  let x = 0;
+  for (let offset = 0; offset < end; offset += 4) {
     const r = rgba[offset];
     const g = rgba[offset + 1];
     const b = rgba[offset + 2];
-    const y = kr * r + kg * g + kb * b;
-    const level = Math.round(y);
-    const x = i % width;
+    const y = LUMA_R[r] + LUMA_G[g] + LUMA_B[b];
+    const level = (y + 0.5) | 0;
 
     if (waveform) waveform[level * width + x] += 1;
     if (parade) {
@@ -138,11 +154,10 @@ export function computeScopes(frame: ScopeFrame, kinds: ReadonlySet<ScopeKind>):
       histogram.b[b] += 1;
       histogram.y[level] += 1;
     }
-    if (vectorscope) {
-      const cb = (b - y) / 255 / 1.8556;
-      const cr = (r - y) / 255 / 1.5748;
-      vectorscope[vectorCell(0.5 - cr) * VECTOR_SIZE + vectorCell(cb + 0.5)] += 1;
-    }
+    if (vectorscope) vectorscope[cellRow(r, y) * VECTOR_SIZE + cellColumn(b, y)] += 1;
+
+    x += 1;
+    if (x === width) x = 0;
   }
 
   return { waveform, parade, vectorscope, histogram, width, height };
@@ -150,7 +165,6 @@ export function computeScopes(frame: ScopeFrame, kinds: ReadonlySet<ScopeKind>):
 
 /** The vectorscope cell a colour lands in, for tests and for drawing targets. */
 export function vectorCellOf(r: number, g: number, b: number): { column: number; row: number } {
-  const { cb, cr } = chroma709(r, g, b);
-  const { x, y } = vectorPosition(cb, cr);
-  return { column: vectorCell(x), row: vectorCell(y) };
+  const y = LUMA_R[r] + LUMA_G[g] + LUMA_B[b];
+  return { column: cellColumn(b, y), row: cellRow(r, y) };
 }

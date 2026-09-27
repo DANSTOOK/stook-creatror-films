@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
+  Activity,
   ChevronFirst,
   ChevronLast,
   Maximize2,
@@ -21,8 +22,10 @@ import { useT } from '@renderer/i18n';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { EASE_EXIT, EXIT_MS, SPRINGS } from '@renderer/motion/tokens.generated';
 import { hasNativeBridge } from '@renderer/media/importMedia';
+import { PanelSlot } from '@renderer/components/Layout/PanelSlot';
 import { useCompositor } from './useCompositor';
 import { ViewportControls } from './ViewportControls';
+import { ScopesPanel } from './ScopesPanel';
 
 /**
  * The viewer: the picture, what is being shown, and the transport.
@@ -47,6 +50,9 @@ const ZOOMS: Zoom[] = ['fit', 0.5, 1, 2];
 /** Idle time before the full-screen controls get out of the way. */
 const CONTROLS_IDLE_MS = 2500;
 
+/** Whether the video scopes were left open, kept across sessions. */
+const SCOPES_OPEN_KEY = 'scf.scopesOpen';
+
 export function PreviewViewport(): JSX.Element {
   const t = useT();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,6 +64,28 @@ export function PreviewViewport(): JSX.Element {
   const setUi = useProjectStore((state) => state.setUi);
   const projectName = useSessionStore((state) => state.projectName);
   const [zoom, setZoom] = useState<Zoom>('fit');
+
+  /*
+    The video scopes, beside the picture (Final Cut's layout): the viewer
+    splits, scopes on the left, picture on the right, next to the inspector
+    where the colour is changed. Not in the full-screen viewer, which is for
+    watching.
+  */
+  const [scopesOpen, setScopesOpenState] = useState(() => {
+    try {
+      return window.localStorage.getItem(SCOPES_OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setScopesOpen = (open: boolean): void => {
+    setScopesOpenState(open);
+    try {
+      window.localStorage.setItem(SCOPES_OPEN_KEY, open ? '1' : '0');
+    } catch {
+      // Kept for this session only.
+    }
+  };
 
   const length = useMemo(() => projectContentLength(project), [project]);
   const timecode = framesToTimecode(project.currentFrame, project.fps);
@@ -251,6 +279,16 @@ export function PreviewViewport(): JSX.Element {
             </button>
             <button
               type="button"
+              data-testid="viewer-scopes"
+              aria-pressed={scopesOpen}
+              className={`tool-button tool-button-dense w-6 px-0 ${scopesOpen ? 'tool-button-active' : ''}`}
+              onClick={() => setScopesOpen(!scopesOpen)}
+              {...tip(t('viewer.scopes'), { hint: t('viewer.scopesHint') })}
+            >
+              <Activity size={14} />
+            </button>
+            <button
+              type="button"
               data-testid="fullscreen-viewer"
               className="tool-button tool-button-dense w-6 px-0"
               onClick={() => setUi({ fullscreenViewer: true })}
@@ -262,8 +300,9 @@ export function PreviewViewport(): JSX.Element {
         </header>
       )}
 
+      <div className="flex min-h-0 flex-1">
       <div
-        className={`flex min-h-0 flex-1 ${
+        className={`flex min-h-0 min-w-0 flex-1 ${
           fullscreen ? 'items-center justify-center bg-black p-0' : zoom === 'fit' ? 'items-center justify-center bg-panel-950 p-4' : 'overflow-auto bg-panel-950 p-4'
         }`}
       >
@@ -292,6 +331,14 @@ export function PreviewViewport(): JSX.Element {
             <ViewportControls />
           </div>
         )}
+      </div>
+      {/* After the picture in the page, so the picture's canvas stays the
+          first one; drawn to its left. */}
+      {scopesOpen && !fullscreen && (
+        <PanelSlot edge="left" className="order-first flex min-h-0 w-[36%] min-w-[220px] max-w-[420px] shrink-0 border-r border-panel-700 bg-panel-900">
+          <ScopesPanel />
+        </PanelSlot>
+      )}
       </div>
 
       {fullscreen ? (

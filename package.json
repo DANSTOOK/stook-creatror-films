@@ -20,6 +20,7 @@
     "test:e2e": "node ./tests/e2e/run.mjs",
     "test:colour": "node ./tests/e2e/colour.mjs",
     "test:ui": "node ./tests/ui/run.mjs",
+    "test:scopes": "node ./tests/ui/scopes.mjs",
     "test:gpu": "node ./tests/gpu/run.mjs",
     "test:long": "node ./tests/long/run.mjs",
     "test:bench": "node ./tests/bench/run.mjs",

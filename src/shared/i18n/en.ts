@@ -786,6 +786,18 @@ export const en = {
   'viewer.playhead': 'Playhead',
   'viewer.alpha': 'alpha',
   'viewer.compositorFailed': 'The compositor could not start: {error}',
+  'viewer.scopes': 'Video scopes',
+  'viewer.scopesHint': 'Waveform, RGB parade, vectorscope and histogram, beside the picture',
+
+  /* Video scopes ---------------------------------------------------------- */
+  'scopes.waveform': 'Waveform (luma)',
+  'scopes.parade': 'RGB parade',
+  'scopes.vectorscope': 'Vectorscope',
+  'scopes.histogram': 'Histogram',
+  'scopes.one': 'One scope',
+  'scopes.two': 'Two scopes',
+  'scopes.choose': 'Scope {n}',
+  'scopes.skin': 'Skin',
 
   /* Inspector: tabs and sections ----------------------------------------- */
   'inspector.tabVideo': 'Video',

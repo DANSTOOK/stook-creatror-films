@@ -92,6 +92,37 @@ void main() {
 }
 `;
 
+/**
+ * A small copy of the finished frame for the video scopes.
+ *
+ * Point-sampled with texelFetch, never filtered: a scope has to show the
+ * values that are really in the picture, and averaging neighbours would
+ * invent in-between ones - a hard black/white edge would read as grey.
+ * Transparent areas are shown over black, as an opaque export has them.
+ */
+const SCOPE_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+
+in vec2 v_texCoord;
+out vec4 fragColor;
+
+uniform sampler2D u_inputTexture;
+uniform vec2 u_sourceSize;
+
+void main() {
+    ivec2 texel = ivec2(min(floor(v_texCoord * u_sourceSize), u_sourceSize - 1.0));
+    vec4 straight = texelFetch(u_inputTexture, texel, 0);
+    fragColor = vec4(straight.rgb * straight.a, 1.0);
+}
+`;
+
+/** A frame read back for the scopes: RGBA, rows bottom-up. */
+export interface ScopeCapture {
+  rgba: Uint8Array;
+  width: number;
+  height: number;
+}
+
 const QUAD_VERTICES = new Float32Array([
   // x, y, u, v
   0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1,
@@ -594,8 +625,113 @@ export class Compositor {
     return flipped;
   }
 
+  /* Video scopes ------------------------------------------------------------ */
+
+  private scopeProgram: GLProgram | null = null;
+  private scopeTarget: RenderTarget | null = null;
+  private scopeBuffer: WebGLBuffer | null = null;
+  private scopeBufferBytes = 0;
+  private scopeFence: WebGLSync | null = null;
+
+  /**
+   * Start reading a small copy of the last composited frame back, for the
+   * video scopes. Returns false when one is still in flight.
+   *
+   * Never waits on the GPU: the pixels go into a pixel-buffer object behind
+   * a fence, and `takeScopeCapture` collects them a frame or two later, once
+   * the fence has passed. A plain readPixels here would stall the pipeline
+   * for the whole frame, during playback, which is exactly what the scopes
+   * must not cost.
+   */
+  captureForScopes(maxWidth: number): boolean {
+    if (this.disposed || this.scopeFence) return false;
+    const { gl } = this;
+
+    const width = Math.max(1, Math.min(Math.floor(maxWidth), this.width));
+    const height = Math.max(1, Math.round((this.height * width) / this.width));
+
+    this.scopeProgram ??= new GLProgram(gl, baseVertexSource, SCOPE_FRAGMENT_SOURCE, 'scope-capture');
+    if (!this.scopeTarget) this.scopeTarget = new RenderTarget(gl, width, height, gl.RGBA8, 'scope');
+    else this.scopeTarget.resize(width, height);
+
+    const bytes = width * height * 4;
+    if (!this.scopeBuffer) this.scopeBuffer = gl.createBuffer();
+    if (!this.scopeBuffer) return false;
+
+    this.scopeTarget.bind();
+    gl.disable(gl.BLEND);
+    this.scopeProgram.use();
+    this.scopeProgram.set('u_transform', FULLSCREEN_MATRIX);
+    this.scopeProgram.set('u_flipY', false);
+    this.scopeProgram.set('u_sourceSize', new Float32Array([this.width, this.height]));
+    this.scopeProgram.setTexture('u_inputTexture', this.output.texture, 0);
+    gl.bindVertexArray(this.vaoFor(this.scopeProgram));
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindVertexArray(null);
+
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.scopeBuffer);
+    if (bytes !== this.scopeBufferBytes) {
+      gl.bufferData(gl.PIXEL_PACK_BUFFER, bytes, gl.STREAM_READ);
+      this.scopeBufferBytes = bytes;
+    }
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    // Unbound at once: with a pack buffer bound, the export's own readPixels
+    // would write into it instead of into its array.
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    this.scopeFence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    return this.scopeFence !== null;
+  }
+
+  /** The frame `captureForScopes` asked for, once the GPU has it; null until then. */
+  takeScopeCapture(): ScopeCapture | null {
+    const fence = this.scopeFence;
+    const target = this.scopeTarget;
+    if (!fence || !target || !this.scopeBuffer || this.disposed) return null;
+    const { gl } = this;
+
+    const status = gl.clientWaitSync(fence, 0, 0);
+    if (status === gl.TIMEOUT_EXPIRED) return null;
+    gl.deleteSync(fence);
+    this.scopeFence = null;
+    if (status === gl.WAIT_FAILED) return null;
+
+    const rgba = new Uint8Array(target.width * target.height * 4);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.scopeBuffer);
+    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, rgba);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    return { rgba, width: target.width, height: target.height };
+  }
+
+  /** Drop a readback in flight: the scopes were closed, or an export began. */
+  cancelScopeCapture(): void {
+    if (this.scopeFence) this.gl.deleteSync(this.scopeFence);
+    this.scopeFence = null;
+  }
+
+  /** Free the scope surfaces once the scopes are closed. */
+  releaseScopes(): void {
+    this.cancelScopeCapture();
+    const { gl } = this;
+    if (this.scopeProgram) {
+      const vao = this.vaos.get(this.scopeProgram);
+      if (vao) gl.deleteVertexArray(vao);
+      this.vaos.delete(this.scopeProgram);
+      this.scopeProgram.dispose();
+    }
+    this.scopeTarget?.dispose();
+    if (this.scopeBuffer) gl.deleteBuffer(this.scopeBuffer);
+    this.scopeProgram = null;
+    this.scopeTarget = null;
+    this.scopeBuffer = null;
+    this.scopeBufferBytes = 0;
+  }
+
   dispose(): void {
     if (this.disposed) return;
+    this.releaseScopes();
     this.disposed = true;
 
     const { gl } = this;

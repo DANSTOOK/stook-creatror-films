@@ -4,6 +4,7 @@ import {
   setActiveFrameRenderer,
 } from '@renderer/engine/FrameRenderer';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { tickScopes } from '@renderer/scopes/scopeFeed';
 
 /**
  * Wires the WebGL compositor to the store.
@@ -85,7 +86,7 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
   useEffect(() => {
     let cancelled = false;
 
-    const draw = (): void => {
+    const draw = (now: number): void => {
       if (cancelled) return;
       rafRef.current = requestAnimationFrame(draw);
 
@@ -96,6 +97,8 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
 
       try {
         renderer.drawViewport(project, ui.isPlaying, ui.pixelArtViewport);
+        // The video scopes read what was just drawn, when they are open.
+        tickScopes(renderer, project, ui.isPlaying, now);
       } catch (renderError) {
         cancelled = true;
         setError(renderError instanceof Error ? renderError.message : String(renderError));

@@ -105,6 +105,7 @@ export class TextureManager {
 
     const texture = existing?.texture ?? this.createEmptyTexture();
     const bytes = width * height * 4;
+    this.uploads += 1;
 
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
@@ -139,6 +140,17 @@ export class TextureManager {
     this.tick += 1;
     entry.lastUsed = this.tick;
     return entry.texture;
+  }
+
+  private uploads = 0;
+
+  /**
+   * Counts real uploads (not the skipped ones). A paused picture changes
+   * without the project changing when a seek lands; the video scopes watch
+   * this to know the frame is new.
+   */
+  get generation(): number {
+    return this.uploads;
   }
 
   /** Which decoded frame a key currently holds, as passed to `upload`. */

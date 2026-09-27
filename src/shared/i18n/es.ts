@@ -786,6 +786,18 @@ export const es: Messages = {
   'viewer.playhead': 'Cursor de reproducción',
   'viewer.alpha': 'alfa',
   'viewer.compositorFailed': 'No se pudo iniciar el compositor: {error}',
+  'viewer.scopes': 'Visores de vídeo',
+  'viewer.scopesHint': 'Forma de onda, desfile RGB, vectorscopio e histograma, junto a la imagen',
+
+  /* Video scopes ---------------------------------------------------------- */
+  'scopes.waveform': 'Forma de onda (luma)',
+  'scopes.parade': 'Desfile RGB',
+  'scopes.vectorscope': 'Vectorscopio',
+  'scopes.histogram': 'Histograma',
+  'scopes.one': 'Un visor',
+  'scopes.two': 'Dos visores',
+  'scopes.choose': 'Visor {n}',
+  'scopes.skin': 'Piel',
 
   /* Inspector: tabs and sections ----------------------------------------- */
   'inspector.tabVideo': 'Vídeo',
