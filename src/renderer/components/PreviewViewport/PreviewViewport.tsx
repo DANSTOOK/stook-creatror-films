@@ -3,6 +3,7 @@ import {
   Activity,
   ChevronFirst,
   ChevronLast,
+  CircleSlash2,
   Maximize2,
   Minimize2,
   Move,
@@ -11,6 +12,7 @@ import {
   Repeat,
   SkipBack,
   SkipForward,
+  SquareSplitHorizontal,
 } from 'lucide-react';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -26,6 +28,7 @@ import { PanelSlot } from '@renderer/components/Layout/PanelSlot';
 import { useCompositor } from './useCompositor';
 import { ViewportControls } from './ViewportControls';
 import { ScopesPanel } from './ScopesPanel';
+import { CompareCurtain } from './CompareCurtain';
 
 /**
  * The viewer: the picture, what is being shown, and the transport.
@@ -277,6 +280,27 @@ export function PreviewViewport(): JSX.Element {
             >
               <Move size={14} />
             </button>
+            {/* Before/after: the grade off, or a curtain across the picture. */}
+            <button
+              type="button"
+              data-testid="viewer-bypass"
+              aria-pressed={ui.gradeBypass}
+              className={`tool-button tool-button-dense w-6 px-0 ${ui.gradeBypass ? 'tool-button-active' : ''}`}
+              onClick={() => setUi({ gradeBypass: !ui.gradeBypass })}
+              {...tip(t('viewer.bypass'), { shortcut: 'Shift+D', hint: t('viewer.bypassHint') })}
+            >
+              <CircleSlash2 size={14} />
+            </button>
+            <button
+              type="button"
+              data-testid="viewer-compare"
+              aria-pressed={ui.compareSplit !== null}
+              className={`tool-button tool-button-dense w-6 px-0 ${ui.compareSplit !== null ? 'tool-button-active' : ''}`}
+              onClick={() => setUi({ compareSplit: ui.compareSplit === null ? 0.5 : null })}
+              {...tip(t('viewer.compare'), { shortcut: 'Shift+W', hint: t('viewer.compareHint') })}
+            >
+              <SquareSplitHorizontal size={14} />
+            </button>
             <button
               type="button"
               data-testid="viewer-scopes"
@@ -329,6 +353,7 @@ export function PreviewViewport(): JSX.Element {
             />
             {/* Drag the picture itself: move, scale, rotate. */}
             <ViewportControls />
+            <CompareCurtain />
           </div>
         )}
       </div>

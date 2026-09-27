@@ -156,7 +156,7 @@ export class RenderTarget {
     private readonly gl: WebGL2RenderingContext,
     public width: number,
     public height: number,
-    private readonly internalFormat: number = gl.RGBA8,
+    readonly internalFormat: number = gl.RGBA8,
     readonly label = 'render-target',
   ) {
     const texture = gl.createTexture();

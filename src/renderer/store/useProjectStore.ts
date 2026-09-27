@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   Clip,
+  ColorGradingConfig,
   DuckingSettings,
   ExportSettings,
   Keyframe,
@@ -116,6 +117,8 @@ interface ProjectStore {
   exportSettings: ExportSettings;
   /** Clips copied with Ctrl+C or Ctrl+X (point 10). Not saved with the project. */
   clipboard: ClipboardContent | null;
+  /** A clip's whole grade, copied with Ctrl+Alt+C. Not saved with the project. */
+  gradeClipboard: ColorGradingConfig | null;
   /** Name of the clip whose settings the project adopted, for the UI to report. */
   adoptedSettingsFrom: string | null;
 
@@ -241,6 +244,13 @@ interface ProjectStore {
   cutSelection(): void;
   /** Ctrl+V: paste at the playhead, select the result, playhead to its end. */
   paste(): void;
+  /** Ctrl+Alt+C: copy a clip's grade - the first selected one's by default. */
+  copyGrade(clipId?: string): void;
+  /**
+   * Ctrl+Alt+V: give the copied grade to these clips (the selection by
+   * default), audio clips left out. One undo step, however many clips.
+   */
+  pasteGrade(clipIds?: string[]): void;
   /**
    * Move a clip, inserting it where it lands: clips it would cover on that
    * track move along. `base` is the clips as they were when a drag began, so
@@ -396,6 +406,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   ui: { ...DEFAULT_UI_STATE },
   exportSettings: { ...DEFAULT_EXPORT_SETTINGS },
   clipboard: null,
+  gradeClipboard: null,
   adoptedSettingsFrom: null,
 
   /* Document ------------------------------------------------------------- */
@@ -1009,6 +1020,33 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { project, ui } = get();
     const content = copyClips(project, ui.selectedClipIds);
     if (content) set({ clipboard: content });
+  },
+
+  copyGrade(clipId) {
+    const { project, ui } = get();
+    const clip = project.clips[clipId ?? ui.selectedClipIds[0] ?? ''];
+    if (!clip) return;
+    // A copy, so later edits to the clip do not reach the clipboard. The
+    // whole grade, LUT included, as Resolve copies a grade.
+    set({ gradeClipboard: structuredClone(clip.colorGrading) });
+  },
+
+  pasteGrade(clipIds) {
+    const { gradeClipboard, ui } = get();
+    if (!gradeClipboard) return;
+    const targets = clipIds ?? ui.selectedClipIds;
+    get().transact('Paste grade', (project) => {
+      const audio = new Set(project.tracks.filter((track) => track.type === 'audio').map((track) => track.id));
+      const clips = { ...project.clips };
+      let changed = false;
+      for (const id of targets) {
+        const clip = clips[id];
+        if (!clip || audio.has(clip.trackId)) continue;
+        clips[id] = { ...clip, colorGrading: structuredClone(gradeClipboard) };
+        changed = true;
+      }
+      return changed ? { ...project, clips } : project;
+    });
   },
 
   cutSelection() {

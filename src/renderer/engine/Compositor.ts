@@ -75,9 +75,15 @@ out vec4 fragColor;
 uniform sampler2D u_inputTexture;
 uniform bool u_checkerboard;
 uniform vec2 u_resolution;
+// The viewer's before/after: left of u_split the ungraded frame is shown.
+// -1 shows none of it, 2 all of it. Only ever set when presenting.
+uniform sampler2D u_beforeTexture;
+uniform float u_split;
 
 void main() {
-    vec4 premultiplied = texture(u_inputTexture, v_texCoord);
+    vec4 premultiplied = v_texCoord.x < u_split
+        ? texture(u_beforeTexture, v_texCoord)
+        : texture(u_inputTexture, v_texCoord);
     vec3 straight = premultiplied.a > 0.0 ? premultiplied.rgb / premultiplied.a : vec3(0.0);
 
     if (u_checkerboard) {
@@ -144,6 +150,17 @@ export interface CompositorStats {
   lastFrameMs: number;
 }
 
+/**
+ * The viewer's before/after: the grade switched off (`bypass`), or a
+ * curtain at `split` (0..1 across the frame) with the ungraded frame to
+ * its left. Only the viewport passes one; an export never does, and the
+ * output the scopes read is always the graded frame.
+ */
+export interface ViewerCompare {
+  bypass: boolean;
+  split: number | null;
+}
+
 export interface CompositorOptions {
   /** Draws a checkerboard behind the frame in the viewport. Off for export. */
   showTransparencyGrid?: boolean;
@@ -169,6 +186,10 @@ export class Compositor {
   private pong: RenderTarget;
   /** Premultiplied accumulator for the whole frame. */
   private scene: RenderTarget;
+  /** The frame with no grades, for the viewer's before/after; only while comparing. */
+  private before: RenderTarget | null = null;
+  /** Where the last viewport frame's curtain was (see ViewerCompare); -1 for none. */
+  private presentSplit = -1;
   /** Straight-alpha result, the surface `readPixels` reads back. */
   private output: RenderTarget;
 
@@ -357,6 +378,7 @@ export class Compositor {
     for (const target of [this.ping, this.pong, this.scene, this.output]) {
       target.resize(w, h);
     }
+    this.before?.resize(w, h);
   }
 
   /** Swap the ping-pong pair after a pass has written into `pong`. */
@@ -438,7 +460,7 @@ export class Compositor {
     this.swap();
   }
 
-  private applyEffectChain(clip: Clip): void {
+  private applyEffectChain(clip: Clip, skipGrade = false): void {
     if (clip.chromaKey.enabled) {
       this.runPass(this.chromaKeyProgram, (program) => {
         program.set('u_keyColor', new Float32Array(clip.chromaKey.keyColor));
@@ -448,7 +470,7 @@ export class Compositor {
       });
     }
 
-    if (clip.colorGrading.enabled) {
+    if (clip.colorGrading.enabled && !skipGrade) {
       const grading = clip.colorGrading;
       const loaded = grading.lutUri ? this.lutLoader?.get(grading.lutUri) : undefined;
 
@@ -505,10 +527,10 @@ export class Compositor {
   }
 
   /** Blend the finished layer in `ping` onto the premultiplied scene buffer. */
-  private compositeLayer(opacity: number): void {
+  private compositeLayer(opacity: number, into: RenderTarget = this.scene): void {
     const { gl } = this;
 
-    this.scene.bind();
+    into.bind();
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -534,6 +556,7 @@ export class Compositor {
     frame: number,
     resolveSource: ClipSourceResolver,
     presentToCanvas = true,
+    compare?: ViewerCompare,
   ): void {
     if (this.disposed) throw new Error('Compositor has been disposed');
 
@@ -548,10 +571,12 @@ export class Compositor {
     // video layers can be exported straight to a sprite sheet.
     this.scene.clearTransparent();
 
+    const layers: Array<{ clip: Clip; source: ClipSource }> = [];
     for (const clip of Compositor.visibleClips(project, frame)) {
       const sourceFrame = sourceFrameFor(clip, frame);
       const source = resolveSource(clip, sourceFrame);
       if (!source) continue;
+      layers.push({ clip, source });
 
       const opacity = this.renderLayer(clip, frame, source);
       if (opacity <= 0) continue;
@@ -559,6 +584,30 @@ export class Compositor {
       this.applyEffectChain(clip);
       this.compositeLayer(opacity);
       this.stats.clipsDrawn += 1;
+    }
+
+    /*
+      The viewer's "before": the same layers again with every grade left
+      out, into a scene of its own, drawn only while a comparison is on and
+      only for the canvas. The graded scene - what the output target, the
+      scopes and every export get - is untouched by it.
+    */
+    const split = !presentToCanvas || !compare ? -1 : compare.bypass ? 2 : compare.split ?? -1;
+    this.presentSplit = split;
+    if (split > 0) {
+      if (!this.before) this.before = new RenderTarget(gl, this.width, this.height, this.scene.internalFormat, 'before');
+      this.before.bind();
+      this.before.clearTransparent();
+      for (const { clip, source } of layers) {
+        const opacity = this.renderLayer(clip, frame, source);
+        if (opacity <= 0) continue;
+        this.applyEffectChain(clip, true);
+        this.compositeLayer(opacity, this.before);
+      }
+    } else if (this.before) {
+      // Not comparing: the second scene is given back.
+      this.before.dispose();
+      this.before = null;
     }
 
     // Resolve premultiplied scene -> straight alpha output.
@@ -572,7 +621,9 @@ export class Compositor {
     this.resolveProgram.set('u_flipY', false);
     this.resolveProgram.set('u_checkerboard', false);
     this.resolveProgram.set('u_resolution', new Float32Array([this.width, this.height]));
+    this.resolveProgram.set('u_split', -1);
     this.resolveProgram.setTexture('u_inputTexture', this.scene.texture, 0);
+    this.resolveProgram.setTexture('u_beforeTexture', this.scene.texture, 1);
     this.drawQuad(this.resolveProgram);
 
     if (presentToCanvas) this.present();
@@ -596,7 +647,10 @@ export class Compositor {
     this.resolveProgram.set('u_flipY', false);
     this.resolveProgram.set('u_checkerboard', this.options.showTransparencyGrid === true);
     this.resolveProgram.set('u_resolution', new Float32Array([canvas.width, canvas.height]));
+    const split = this.before ? this.presentSplit : -1;
+    this.resolveProgram.set('u_split', split);
     this.resolveProgram.setTexture('u_inputTexture', this.scene.texture, 0);
+    this.resolveProgram.setTexture('u_beforeTexture', this.before?.texture ?? this.scene.texture, 1);
     this.drawQuad(this.resolveProgram);
   }
 
@@ -761,5 +815,7 @@ export class Compositor {
     }
 
     for (const target of [this.ping, this.pong, this.scene, this.output]) target.dispose();
+    this.before?.dispose();
+    this.before = null;
   }
 }

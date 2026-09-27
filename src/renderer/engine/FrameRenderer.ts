@@ -1,5 +1,5 @@
 ﻿import type { Clip, MediaAsset, ProjectState } from '@shared/types';
-import { Compositor, type ClipSource, type CompositorOptions } from './Compositor';
+import { Compositor, type ClipSource, type CompositorOptions, type ViewerCompare } from './Compositor';
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
 import { ScrubDecoder } from './ScrubDecoder';
@@ -238,7 +238,7 @@ export class FrameRenderer {
   }
 
   /** Non-blocking viewport draw. */
-  drawViewport(project: ProjectState, playing: boolean, pixelArtViewport: boolean): void {
+  drawViewport(project: ProjectState, playing: boolean, pixelArtViewport: boolean, compare?: ViewerCompare): void {
     // An export owns the video elements and the canvas right now.
     if (this.isExclusive) return;
 
@@ -277,6 +277,8 @@ export class FrameRenderer {
         return source;
       },
       true,
+      // The before/after is the viewer's alone: no export path passes it.
+      compare,
     );
   }
 

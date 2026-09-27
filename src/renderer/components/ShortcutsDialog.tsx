@@ -56,6 +56,9 @@ export const SHORTCUT_GROUPS: Group[] = [
       // Premiere, Resolve and every Mac app use.
       { keys: 'keys.redoKeys', what: 'keys.redo' },
       { keys: 'keys.linkKeys', what: 'keys.link' },
+      { keys: 'keys.gradeKeys', what: 'keys.grade' },
+      { keys: 'keys.bypassKeys', what: 'keys.bypass' },
+      { keys: 'keys.curtainKeys', what: 'keys.curtain' },
       { keys: 'keys.altClick', what: 'keys.oneOfGroup' },
       { keys: 'keys.speedKeys', what: 'keys.speed' },
     ],

@@ -236,6 +236,16 @@ export function useEditorShortcuts(): void {
         }
       }
 
+      // A grade, copied and pasted between clips: Ctrl+Alt+C and Ctrl+Alt+V,
+      // Premiere's and Final Cut's Paste Attributes pair. Checked by physical
+      // key, since Ctrl+Alt is AltGr on many layouts.
+      if (modifier && event.altKey && !event.shiftKey && (event.code === 'KeyC' || event.code === 'KeyV')) {
+        event.preventDefault();
+        if (event.code === 'KeyC') store.copyGrade();
+        else store.pasteGrade();
+        return;
+      }
+
       if (modifier) {
         switch (event.key.toLowerCase()) {
           case 'c':
@@ -345,6 +355,14 @@ export function useEditorShortcuts(): void {
         case 'f':
           // Shift+F fills the window with the picture; Escape comes back.
           if (event.shiftKey) store.setUi({ fullscreenViewer: !store.ui.fullscreenViewer });
+          return;
+        case 'd':
+          // Shift+D shows the picture with every grade off, as in Resolve.
+          if (event.shiftKey) store.setUi({ gradeBypass: !store.ui.gradeBypass });
+          return;
+        case 'w':
+          // Shift+W puts the before/after curtain up, or takes it down.
+          if (event.shiftKey) store.setUi({ compareSplit: store.ui.compareSplit === null ? 0.5 : null });
           return;
         case 'b':
           // Razor at the playhead, the keyboard equivalent of a razor click.

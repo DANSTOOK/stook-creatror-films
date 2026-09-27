@@ -10,6 +10,7 @@ import {
   Link2,
   ArrowUp,
   Copy,
+  Palette,
   ChevronLeft,
   ChevronRight,
   ClipboardPaste,
@@ -432,6 +433,27 @@ export function Timeline(): JSX.Element {
           disabled: !state.clipboard,
           onSelect: () => state.paste(),
         },
+        // A grade travels between picture clips; a sound has none.
+        ...(state.project.tracks.find((track) => track.id === clip.trackId)?.type === 'audio'
+          ? []
+          : [
+              { separator: true },
+              {
+                label: t('timeline.copyGrade'),
+                icon: Palette,
+                shortcut: keyLabel('Ctrl+Alt+C'),
+                onSelect: () => state.copyGrade(clip.id),
+              },
+              {
+                label: selected.length > 1 ? t('timeline.pasteGradeMany', { count: selected.length }) : t('timeline.pasteGrade'),
+                shortcut: keyLabel('Ctrl+Alt+V'),
+                disabled: !state.gradeClipboard,
+                onSelect: () => {
+                  state.selectClips(selected);
+                  state.pasteGrade(selected);
+                },
+              },
+            ]),
         { separator: true },
         {
           label: t(clip.mask.enabled ? 'timeline.maskOff' : 'timeline.maskOn'),

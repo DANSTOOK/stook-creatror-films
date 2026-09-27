@@ -86,6 +86,16 @@ export interface EditorUiState {
    */
   fullscreenViewer: boolean;
   /**
+   * The viewer shows the picture with every grade off (Resolve's bypass,
+   * Shift+D). The viewer only: exports and the scopes keep the grade.
+   */
+  gradeBypass: boolean;
+  /**
+   * The before/after curtain, 0..1 across the frame, ungraded to its left;
+   * null when it is not up. The viewer only, like the bypass.
+   */
+  compareSplit: number | null;
+  /**
    * Width of the visible timeline area, measured by the Timeline. Kept here so
    * store actions can fit or reveal content without reaching into the DOM.
    */
@@ -121,6 +131,8 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   showTransparencyGrid: true,
   transformMode: false,
   fullscreenViewer: false,
+  gradeBypass: false,
+  compareSplit: null,
   viewportWidthPx: 0,
   selectedMarkerId: null,
   inFrame: null,
