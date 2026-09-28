@@ -94,6 +94,11 @@ export function buildMenuTemplate(
       command('menu.copy', 'copy', { accelerator: 'CmdOrCtrl+C' }),
       command('menu.paste', 'paste', { accelerator: 'CmdOrCtrl+V' }),
       { type: 'separator' },
+      // Titles at the playhead, as Final Cut's Edit > Connect Title has them.
+      command('menu.addTitle', 'addTitle', { accelerator: 'CmdOrCtrl+Alt+T', enabled: inEditor }),
+      command('menu.addLowerThird', 'addLowerThird', { accelerator: 'CmdOrCtrl+Alt+Shift+T', enabled: inEditor }),
+      command('menu.addCredits', 'addCredits', { enabled: inEditor }),
+      { type: 'separator' },
       // Where Windows editors keep them (Premiere: Edit > Preferences).
       command('menu.preferences', 'preferences'),
     ],
@@ -170,6 +175,8 @@ export function buildMenuTemplate(
       command('menu.shortcuts', 'shortcuts', { accelerator: 'Shift+/', enabled: inEditor }),
       { type: 'separator' },
       { id: 'about', label: t('menu.about', { app: APP_NAME }), click: options.about },
+      // The fonts' licences, which the OFL asks to be shown with the app.
+      command('menu.fontLicenses', 'fontLicenses'),
     ],
   };
 
@@ -201,8 +208,14 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
       title: translate(state.language, 'menu.about', { app: APP_NAME }),
       message: APP_NAME,
       detail: translate(state.language, 'menu.aboutDetail', { version: app.getVersion() }),
+      // The bundled fonts' licences are one click away from here, as the OFL asks.
+      buttons: [translate(state.language, 'menu.ok'), translate(state.language, 'menu.fontLicenses')],
+      defaultId: 0,
+      cancelId: 0,
     };
-    void (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options));
+    void (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options)).then(({ response }) => {
+      if (response === 1) send('fontLicenses');
+    });
   };
 
   const apply = (): void => {

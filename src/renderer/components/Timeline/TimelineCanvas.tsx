@@ -8,6 +8,7 @@ import { frameToPixel, type SnapTarget } from './snapping';
 import { isReversed, sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
 import type { ClipAppearance, Filmstrip } from '@renderer/media/clipContent';
 import { fadeLengths } from '@renderer/timing/clipFades';
+import { isFamilyMissing } from '@renderer/text/fonts';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { stepZoomView, type DisplayedView } from './zoomMotion';
 
@@ -512,11 +513,14 @@ function drawFades(
 export interface CanvasLabels {
   offline: string;
   keyframes(count: number): string;
+  /** On a title whose font this computer does not have. */
+  fontMissing: string;
 }
 
 const DEFAULT_LABELS: CanvasLabels = {
   offline: 'Media offline',
   keyframes: (count) => `${count} keyframes`,
+  fontMissing: 'Font missing',
 };
 
 /** What a clip carries: its pictures, its sound, and whether its file is there at all. */
@@ -524,6 +528,8 @@ export interface ClipContent {
   peaks?: WaveformPeaks;
   filmstrip?: Filmstrip;
   offline?: boolean;
+  /** A title drawn in the fallback font, because its own is not on this computer. */
+  fontMissing?: boolean;
 }
 
 /**
@@ -583,7 +589,9 @@ function drawClip(
   context.beginPath();
   context.roundRect(bodyLeft, bodyTop, bodyWidth, bodyHeight, radius);
 
-  context.fillStyle = TRACK_TYPE_COLORS[track.type];
+  // A title wears the title colour on whichever picture track it sits, as
+  // Final Cut's titles are purple wherever they are connected.
+  context.fillStyle = clip.title ? TRACK_TYPE_COLORS.text : TRACK_TYPE_COLORS[track.type];
   context.globalAlpha = track.visible ? 1 : 0.4;
   context.fill();
 
@@ -697,6 +705,8 @@ function drawClip(
     let noteX = labelX;
     const speed = speedLabel(clip);
     if (speed) noteX = note(speed, noteX, '#fcd34d');
+    // amber-200: 4.7:1 on the title colour, where the speed note's amber-300 is 4.0.
+    if (content.fontMissing) noteX = note(labels.fontMissing, noteX, '#fde68a');
     if (keyframeCount > 0) note(labels.keyframes(keyframeCount), noteX, '#cbd5f5');
     context.restore();
   }
@@ -1014,6 +1024,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
             peaks: waveforms[clip.sourceUri],
             filmstrip: filmstrips?.[clip.sourceUri],
             offline: offlineUris?.has(clip.sourceUri) ?? false,
+            fontMissing: clip.title ? isFamilyMissing(clip.title.style.fontFamily) : false,
           },
           appearance,
           project.fps,

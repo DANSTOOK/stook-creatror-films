@@ -209,6 +209,16 @@ export function useEditorShortcuts(): void {
         return;
       }
 
+      // A title at the playhead: Ctrl+Alt+T, and a lower third with Shift -
+      // Final Cut's Control-T and Control-Shift-T, with Ctrl+T left for
+      // transitions as Final Cut and Resolve have it. By physical key, since
+      // Ctrl+Alt is AltGr on many layouts.
+      if (modifier && event.altKey && event.code === 'KeyT') {
+        event.preventDefault();
+        store.addTitle(event.shiftKey ? 'lowerThird' : 'title');
+        return;
+      }
+
       // Copy, cut and paste clips (point 10). Handled here, before the single
       // letters below: Ctrl+C used to fall through to "C" and pick the razor.
       // Clearing the marks, before Ctrl+X is read as cut.

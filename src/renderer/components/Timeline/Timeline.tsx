@@ -54,6 +54,7 @@ import { canMoveTrack, timelineRows } from './trackRows';
 import { useIndicator } from '@renderer/motion/useIndicator';
 import { wheelZoomFactor } from './zoomMotion';
 import type { ClipAppearance } from '@renderer/media/clipContent';
+import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
@@ -149,9 +150,16 @@ export function Timeline(): JSX.Element {
     () => new Set(assets.filter((asset) => asset.missing).map((asset) => asset.uri)),
     [assets],
   );
+  // The installed fonts arriving is a change to what the canvas says: a
+  // title whose font is missing gets its note then.
+  const localFamilies = useLocalFamilies();
   const canvasLabels = useMemo(
-    () => ({ offline: tr('timeline.mediaOffline'), keyframes: (count: number) => tr('timeline.keyframes', { count }) }),
-    [tr],
+    () => ({
+      offline: tr('timeline.mediaOffline'),
+      keyframes: (count: number) => tr('timeline.keyframes', { count }),
+      fontMissing: tr('title.fontMissingShort'),
+    }),
+    [tr, localFamilies],
   );
   const appearanceButtonRef = useRef<HTMLButtonElement>(null);
 

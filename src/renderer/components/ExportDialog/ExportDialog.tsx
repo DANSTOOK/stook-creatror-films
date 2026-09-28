@@ -34,6 +34,9 @@ import { exportEndFrame } from './exportRange';
 import { defaultFileName } from './exportName';
 import { YouTubePanel } from './YouTubePanel';
 import { setExporting } from '@renderer/motion/environment';
+import { missingFamilies } from '@renderer/text/fonts';
+import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
+import { FALLBACK_FAMILY } from '@renderer/text/titleStyle';
 
 /**
  * Export dialog, including the game-asset mode.
@@ -135,6 +138,10 @@ export interface ExportDialogProps {
 export function ExportDialog({ onClose, closing = false }: ExportDialogProps): JSX.Element {
   const t = useT();
   const project = useProjectStore((state) => state.project);
+  // Titles whose font this computer lacks are drawn in the fallback: said
+  // before the render, not discovered in the file afterwards.
+  useLocalFamilies();
+  const fontsMissing = missingFamilies(Object.values(project.clips).flatMap((clip) => (clip.title ? [clip.title] : [])));
   const assets = useProjectStore((state) => state.assets);
   const settings = useProjectStore((state) => state.exportSettings);
   const setExportSettings = useProjectStore((state) => state.setExportSettings);
@@ -907,6 +914,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   {settings.width * settings.height > project.width * project.height * 1.01 && (
                     <p className="text-2xs text-amber-300">
                       {t('export.upscaled', { width: project.width, height: project.height })}
+                    </p>
+                  )}
+                  {fontsMissing.length > 0 && (
+                    <p role="status" data-testid="export-fonts-missing" className="text-2xs text-amber-300">
+                      {t('export.missingFonts', { fonts: fontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
                     </p>
                   )}
                   <p className="text-2xs text-slate-400">

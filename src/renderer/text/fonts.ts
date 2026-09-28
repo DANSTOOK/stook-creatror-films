@@ -75,7 +75,9 @@ export const knownLocalFamilies = (): ReadonlySet<string> | null => localFamilie
 /** Called once the installed families are known. */
 export function onLocalFamilies(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /**

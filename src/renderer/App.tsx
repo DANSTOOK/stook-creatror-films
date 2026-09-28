@@ -8,6 +8,8 @@ import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { FontLicensesDialog } from './components/FontLicensesDialog';
+import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
@@ -113,6 +115,14 @@ export default function App(): JSX.Element {
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [licensesOpen, setLicensesOpen] = useState(false);
+
+  // Which fonts this computer has, asked once, so a title whose font is
+  // missing is flagged on the timeline and in the export without waiting
+  // for its inspector to open.
+  useEffect(() => {
+    void loadLocalFamilies();
+  }, []);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   /**
    * Areas that are put away.
@@ -376,7 +386,7 @@ export default function App(): JSX.Element {
     if (session.unsavedPrompt) return;
     // The start screen offers a new project and opening one; everything else
     // is about the project in the editor.
-    if (session.view !== 'editor' && command !== 'new' && command !== 'open' && command !== 'preferences') return;
+    if (session.view !== 'editor' && command !== 'new' && command !== 'open' && command !== 'preferences' && command !== 'fontLicenses') return;
     const store = useProjectStore.getState();
     const target = document.activeElement as HTMLElement | null;
     const typing = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
@@ -445,6 +455,18 @@ export default function App(): JSX.Element {
         return;
       case 'preferences':
         setPreferencesOpen(true);
+        return;
+      case 'addTitle':
+        store.addTitle('title');
+        return;
+      case 'addLowerThird':
+        store.addTitle('lowerThird');
+        return;
+      case 'addCredits':
+        store.addTitle('credits');
+        return;
+      case 'fontLicenses':
+        setLicensesOpen(true);
         return;
       default:
         return;
@@ -569,6 +591,8 @@ export default function App(): JSX.Element {
       </div>
 
       <UnsavedChangesDialog />
+      {/* Outside the editor, which is inert behind the start screen: About works from there too. */}
+      {licensesOpen && <FontLicensesDialog onClose={() => setLicensesOpen(false)} />}
       <RelinkDialog />
       <Toaster />
       <TooltipLayer />
