@@ -161,7 +161,8 @@ async function main() {
       try {
         const project = window.__scfStore.getState().project;
         // The same task that made the title: no viewer frame has run yet.
-        const rgba = await renderer.renderExact(project, project.currentFrame, false);
+        // Twenty frames in, past its half-second fade.
+        const rgba = await renderer.renderExact(project, project.currentFrame + 20, false);
         let alpha = 0;
         for (let i = 3; i < rgba.length; i += 4) alpha += rgba[i];
         let binary = '';
@@ -171,6 +172,7 @@ async function main() {
         renderer.endExclusive();
       }
     });
+    await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(window.__scfStore.getState().project.currentFrame + 20));
     await sleep(800);
     const settled = await exactFrame(window);
     const firstFrame = Buffer.from(first.b64, 'base64');
@@ -213,8 +215,8 @@ async function main() {
         && (await window.getByRole('tab').allInnerTexts()).join('|') === 'Title|Video|Info',
       (await window.getByRole('tab').allInnerTexts()).join(' / '));
     const sections = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
-    check('its groups: Text, Font, Paragraph, Outline, Shadow, Background, Position',
-      sections.join('|') === 'Text|Font|Paragraph|Outline|Shadow|Background|Position', sections.join(' / '));
+    check('its groups: Text, Font, Paragraph, Outline, Shadow, Background, Animation, Position',
+      sections.join('|') === 'Text|Font|Paragraph|Outline|Shadow|Background|Animation|Position', sections.join(' / '));
 
     await window.keyboard.press('Control+Alt+Shift+T');
     await sleep(300);
@@ -500,7 +502,7 @@ async function main() {
     check('Edición > Añadir título writes the template text in Spanish', spanish === 'Título', String(spanish));
     const tabsEs = await window.getByRole('tab').allInnerTexts();
     const sectionsEs = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
-    check('the tab and its groups in Spanish', tabsEs[0] === 'Título' && sectionsEs.join('|') === 'Texto|Fuente|Párrafo|Contorno|Sombra|Fondo|Posición',
+    check('the tab and its groups in Spanish', tabsEs[0] === 'Título' && sectionsEs.join('|') === 'Texto|Fuente|Párrafo|Contorno|Sombra|Fondo|Animación|Posición',
       `${tabsEs.join(' / ')} - ${sectionsEs.join(' / ')}`);
     await window.keyboard.press('Control+Alt+Shift+T');
     await sleep(300);
