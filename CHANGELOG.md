@@ -16,6 +16,114 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Color, fase 3: curvas, viñeta y tramado
+En `main`, sin instalador todavía.
+
+### Añadido
+- **Curvas** en la pestaña Color, como las «Custom» de Resolve y las RGB de
+  Lumetri. Hay Maestra, Rojo, Verde y Azul, y cada una tiene su propio botón
+  de restablecer.
+  - La interpolación es monótona (Fritsch–Carlson): entre dos puntos la
+    curva nunca se pasa de ellos, así que no hay rebotes inesperados.
+- **Curvas de tono**: Tono vs tono, Tono vs saturación, Tono vs luminancia
+  y Luminancia vs saturación.
+  - Las de tono dan la vuelta completa, del rojo al rojo.
+  - Se apagan poco a poco cerca del gris, que no tiene un tono estable.
+  - El primer punto que se pone en una curva de tono vacía llega con dos
+    vecinos planos a un sexto de vuelta, como el cuentagotas de Resolve.
+    Así, tirar del rojo mueve solo el rojo.
+- **El editor de curvas:**
+  - un clic añade un punto, y en el mismo gesto se arrastra;
+  - un punto no puede adelantar a sus vecinos, y los extremos de una curva
+    de niveles solo suben y bajan;
+  - doble clic o Supr lo quita;
+  - con el teclado: Tab lleva a un punto, las flechas lo mueven (Mayús para
+    pasos grandes) e Intro sobre la curva añade uno en el hueco más grande;
+  - como en la fase 2, las teclas del editor no llegan a los atajos globales.
+- **Viñeta** centrada: cantidad (oscurece o aclara), tamaño, redondez y
+  suavizado.
+- **Orden de aplicación:**
+  1. exposición y balance de blancos;
+  2. ruedas;
+  3. contraste y saturación;
+  4. curvas de niveles;
+  5. curvas de tono;
+  6. LUT;
+  7. viñeta (después de la LUT, como en Lumetri);
+  8. recorte;
+  9. tramado.
+- **Tramado (dither) al pasar a 8 bits:** ruido triangular (TPDF) de ±1
+  nivel, solo en los píxeles corregidos que caen entre dos niveles.
+  - Depende del píxel y del número de fotograma, así que el mismo render da
+    siempre el mismo resultado.
+  - Una imagen sin tocar, una corrección neutra y los clips de pixel art no
+    se tocan.
+  - Va en la vista previa y en la exportación a la vez, para que el visor y
+    los visores de vídeo muestren lo mismo que se exporta.
+- Copiar/pegar la corrección de color y el antes/después incluyen las curvas
+  y la viñeta.
+- Los proyectos anteriores se abren con las curvas neutras y sin viñeta.
+
+### Arreglado (durante el desarrollo, antes de entrar en `main`)
+- La primera vez que se subía una textura de curvas, esta sustituía a la
+  imagen de entrada del paso de color. Ahora se sube en su propia unidad de
+  textura.
+- El doble clic sobre un punto no llegaba al punto, por la captura del
+  puntero al arrastrar. Ahora lo recoge el editor y quita el punto más
+  cercano.
+
+### Cómo se comprobó
+- **Idéntico píxel a píxel con las curvas neutras y sin viñeta**
+  (`npm run test:grade`, en la GPU real y en segundo plano, **23/23**):
+  - los 16.777.216 colores pasaron por el shader de la fase 2 y por el
+    nuevo, en cuatro ajustes (todo neutro con el tramado puesto,
+    deslizadores movidos, ruedas con LUT al 60 % y todo menos curvas con
+    LUT al 100 %);
+  - resultado: **0 valores distintos**.
+- **Contra la referencia en JavaScript**, con un error máximo de
+  **0,124/255** (se pedía 1/255):
+  - curva invertida, curva en S, rojo y azul por separado y las cuatro
+    curvas de tono;
+  - curvas, ruedas y deslizadores a la vez;
+  - tres viñetas comprobadas en cada píxel.
+- **Rojo puro girado un tercio de vuelta en Tono vs tono:** 255,0,0 → 0,255,0.
+- **Sin rebotes entre puntos:** pruebas unitarias de `Curves.test.ts`,
+  **16/16**. Incluyen un escalón brusco que una spline normal haría
+  rebotar, la monotonía, la curva invertida y la vuelta completa de las de
+  tono.
+- **Tramado sobre un degradado 4K**, leído tal como lo lee la exportación:
+
+  | | Sin tramado | Con tramado |
+  |---|---|---|
+  | Tramo plano más largo | 93 px | 21 px |
+  | Error de banda frente al degradado real | 0,209 niveles | 0,084 niveles |
+
+  - El mismo fotograma sale siempre igual y el siguiente cambia de patrón.
+  - Una imagen sin corregir no cambia en ningún píxel.
+- **Tiempo de un pase en 4K:** entre 1,4 y 2,1 ms por pase con todo puesto,
+  dentro del ruido de la GPU, que estaba compartida con el vídeo del usuario.
+  Las curvas neutras no añaden nada medible, y todo puesto añade menos de
+  1 ms.
+- **Interfaz** (`npm run test:curves:ui`, nuevo, en segundo plano),
+  **21/21**:
+  - punto añadido y arrastrado en un solo gesto y un solo paso de deshacer
+    (un gris de 96 pasa a 163);
+  - doble clic, extremos fijos, y teclado sin mover el cursor de
+    reproducción ni borrar el clip;
+  - restablecer por curva y por grupo, y los vecinos planos de las curvas de
+    tono;
+  - la viñeta oscurece las esquinas (95 → 38);
+  - pegar la corrección y el antes/después;
+  - guardado, y un proyecto sin curvas que se abre neutro;
+  - todo lo anterior también en español.
+- **Sin romper lo demás**, todo en segundo plano: unitarias **838/838**,
+  ruedas **32/32**, visores **16/16**, color al exportar **8/8**, interfaz
+  **127/127**, movimiento **26/26** y extremo a extremo **21/21**.
+- Capturas en inglés y en español en el scratchpad de la sesión
+  (`color-phase3\`).
+
+---
+
 ## v1.30.0-beta.1 — Color, fase 2: ruedas, antes/después y copiar la corrección
 
 Instalador de prueba. Antes de publicarla pasó la batería completa en segundo
