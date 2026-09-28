@@ -155,6 +155,26 @@ export function CurveEditor({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
+  /**
+   * Double-click takes away the point under the pointer. Handled here, not on
+   * the point: the press that starts a drag captures the pointer to this box,
+   * so the double-click arrives here whatever it was over.
+   */
+  const onDoubleClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    const box = boxRef.current?.getBoundingClientRect();
+    if (!box) return;
+    let nearest = -1;
+    let best = 10;
+    latest.current.forEach((point, index) => {
+      const distance = Math.hypot(box.left + point.x * box.width - event.clientX, box.top + toTop(point.y) * box.height - event.clientY);
+      if (distance < best) {
+        best = distance;
+        nearest = index;
+      }
+    });
+    if (nearest >= 0) onChange(removed(latest.current, nearest));
+  };
+
   /* Keyboard -------------------------------------------------------------- */
 
   const onPointKey = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -226,6 +246,7 @@ export function CurveEditor({
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
       onKeyDown={onBoxKey}
+      onDoubleClick={onDoubleClick}
       {...tip(t('curves.editorHint'), { named: false })}
     >
       {/* The grid, and what the curve does nothing along. */}
@@ -259,10 +280,6 @@ export function CurveEditor({
           aria-label={t('curves.point', { n: index + 1, value: describe(point) })}
           className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-panel-950 outline-none transition-transform duration-[var(--dur-micro)] hover:scale-125 focus-visible:ring-2 focus-visible:ring-accent-hover motion-reduce:transition-none"
           style={{ left: `${point.x * 100}%`, top: `${toTop(point.y) * 100}%` }}
-          onDoubleClick={(event) => {
-            event.stopPropagation();
-            onChange(removed(latest.current, index));
-          }}
           onKeyDown={(event) => onPointKey(event, index)}
         />
       ))}
