@@ -6,6 +6,7 @@ import { ScrubDecoder } from './ScrubDecoder';
 import { keepScrubbers } from './scrubHandover';
 import { SequentialVideoReader } from './SequentialVideoReader';
 import { TextureManager } from './TextureManager';
+import { TitleLayers } from './TitleLayers';
 import { sourceFrameFor } from '@renderer/timing/clipSpeed';
 
 /**
@@ -62,6 +63,18 @@ export class FrameRenderer {
     this.lutLoader = new LUTLoader(this.compositor.context);
     this.compositor.lutLoader = this.lutLoader;
     this.textures = new TextureManager(this.compositor.context);
+    this.titles = new TitleLayers(this.textures);
+  }
+
+  /** Title clips, drawn as text into textures of their own. */
+  readonly titles: TitleLayers;
+  /** The clips the titles were last tidied against, to drop a deleted title's texture once. */
+  private titlesTidiedFor: ProjectState['clips'] | null = null;
+
+  private tidyTitles(project: ProjectState): void {
+    if (this.titlesTidiedFor === project.clips) return;
+    this.titlesTidiedFor = project.clips;
+    this.titles.retain(new Set(Object.keys(project.clips)));
   }
 
   get options(): CompositorOptions {
@@ -246,12 +259,15 @@ export class FrameRenderer {
     // paused playhead, and hold a hardware decoder each, so they go.
     const scrubbing = !playing && !(window as { __scfNoScrubDecoder?: boolean }).__scfNoScrubDecoder;
     if (!scrubbing) this.closeScrubbers();
-    else this.closeScrubbers(Compositor.visibleClips(project, project.currentFrame));
+    else this.closeScrubbers(Compositor.visibleClips(project, project.currentFrame).filter((clip) => !clip.title));
+    this.tidyTitles(project);
 
     this.compositor.renderFrame(
       project,
       project.currentFrame,
       (clip, sourceFrame) => {
+        // A title has no file: its picture is drawn from its text.
+        if (clip.title) return this.titles.sourceFor(clip, project.width, project.height);
         // The preview - and only the preview - draws the proxy when there
         // is one and proxies are on.
         const uri = this.media.previewUriFor(clip.sourceUri);
@@ -341,6 +357,12 @@ export class FrameRenderer {
 
     await Promise.all(
       clips.map(async (clip) => {
+        // A title waits for its fonts instead of a decoder: a frame drawn
+        // before they load would go out in a fallback face.
+        if (clip.title) {
+          await this.titles.prepare(clip);
+          return;
+        }
         const sourceFrame = sourceFrameFor(clip, frame);
         if (this.sequential && this.media.get(clip.sourceUri) instanceof HTMLVideoElement) {
           let reader = this.sequential.get(clip.id);
@@ -371,7 +393,8 @@ export class FrameRenderer {
   }
 
   /** The texture for a clip in an exact render: its decoded frame, or the element. */
-  private exactUploadFor(clip: Clip, fps: number): ClipSource | null {
+  private exactUploadFor(clip: Clip, fps: number, project: ProjectState): ClipSource | null {
+    if (clip.title) return this.titles.sourceFor(clip, project.width, project.height);
     const frame = this.decodedFrames.get(clip.id);
     if (!frame) return this.uploadFor(clip, fps, false);
 
@@ -394,7 +417,7 @@ export class FrameRenderer {
     this.compositor.renderFrame(
       project,
       frame,
-      (clip) => this.exactUploadFor(clip, project.fps),
+      (clip) => this.exactUploadFor(clip, project.fps, project),
       false,
     );
 
@@ -417,7 +440,7 @@ export class FrameRenderer {
       this.compositor.renderFrame(
         project,
         frame,
-        (clip) => this.exactUploadFor(clip, project.fps),
+        (clip) => this.exactUploadFor(clip, project.fps, project),
         true,
       );
     } finally {

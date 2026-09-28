@@ -141,6 +141,43 @@ export interface ClipSource {
   texture: WebGLTexture;
   /** Video and canvas sources arrive top-down and need a flipped V axis. */
   flipY: boolean;
+  /**
+   * The part of the frame the texture covers, in project pixels (top-left
+   * origin), when it is not the whole frame: a title's picture covers only
+   * its text. The clip's transform then moves it exactly as it would move a
+   * full-frame layer with the text drawn at that place.
+   */
+  rect?: { x: number; y: number; width: number; height: number };
+}
+
+/**
+ * Narrow a layer's quad to a part of the frame: `matrix` maps the unit quad
+ * onto the whole (transformed) frame; the result maps it onto `rect` of it.
+ * Columns are the x basis, the y basis and the translation.
+ */
+export function subRectMatrix(
+  matrix: Float32Array,
+  rect: { x: number; y: number; width: number; height: number },
+  frameWidth: number,
+  frameHeight: number,
+): Float32Array {
+  const u0 = rect.x / frameWidth;
+  const du = rect.width / frameWidth;
+  // The unit quad's v runs up the frame; the rect is measured down from the top.
+  const v0 = 1 - (rect.y + rect.height) / frameHeight;
+  const dv = rect.height / frameHeight;
+  const [ax, ay, az, bx, by, bz, cx, cy, cz] = matrix;
+  return new Float32Array([
+    ax * du,
+    ay * du,
+    az * du,
+    bx * dv,
+    by * dv,
+    bz * dv,
+    cx + ax * u0 + bx * v0,
+    cy + ay * u0 + by * v0,
+    cz + az * u0 + bz * v0,
+  ]);
 }
 
 /** Supplies the decoded texture for a clip at a given source frame. */
@@ -422,7 +459,7 @@ export class Compositor {
     const centerX = (transform.position.x / this.width) * 2;
     const centerY = -(transform.position.y / this.height) * 2;
 
-    const matrix = makeQuadMatrix(
+    const frameMatrix = makeQuadMatrix(
       centerX,
       centerY,
       transform.scale.x,
@@ -431,6 +468,7 @@ export class Compositor {
       transform.anchorPoint.x,
       transform.anchorPoint.y,
     );
+    const matrix = source.rect ? subRectMatrix(frameMatrix, source.rect, this.width, this.height) : frameMatrix;
 
     this.transferProgram.use();
     this.transferProgram.set('u_transform', matrix);

@@ -214,6 +214,66 @@ export interface Marker {
 
 export const DEFAULT_MARKER_COLOR = '#facc15';
 
+/* -------------------------------------------------------------------------- */
+/* Titles                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** The three templates a title starts from. */
+export type TitlePreset = 'title' | 'lowerThird' | 'credits';
+
+export type TitleAlign = 'left' | 'center' | 'right';
+
+/** Which point of the title-safe area the block of text is pinned to. */
+export type TitleAnchor =
+  | 'topLeft'
+  | 'top'
+  | 'topRight'
+  | 'left'
+  | 'center'
+  | 'right'
+  | 'bottomLeft'
+  | 'bottom'
+  | 'bottomRight';
+
+/**
+ * How a title looks. Every length is in pixels of a 1080-line frame, so a
+ * title keeps its composition when the project changes resolution: on a 4K
+ * project the renderer doubles them. Colours are sRGB `#rrggbb`.
+ */
+export interface TitleStyle {
+  fontFamily: string;
+  /** 100 (thin) to 900 (black). */
+  fontWeight: number;
+  fontSize: number;
+  color: string;
+  align: TitleAlign;
+  /** Distance from one baseline to the next, as a multiple of the size. */
+  lineHeight: number;
+  /** Extra space between letters, in percent of the size. */
+  letterSpacing: number;
+  /**
+   * Size of every line after the first, as a share of the first: a lower
+   * third's role under the name. 1 keeps them all the same.
+   */
+  secondaryScale: number;
+  /** Longest a line may be before it wraps, as a share of the title-safe width. */
+  maxWidth: number;
+  anchor: TitleAnchor;
+  stroke: { enabled: boolean; color: string; width: number };
+  shadow: { enabled: boolean; color: string; opacity: number; distance: number; angle: number; blur: number };
+  box: { enabled: boolean; color: string; opacity: number; padding: number; radius: number };
+}
+
+/**
+ * What makes a clip a title: generated text instead of a file. A title clip
+ * has no media asset; its `sourceUri` only names it (see isTitleUri).
+ */
+export interface TitleContent {
+  preset: TitlePreset;
+  text: string;
+  style: TitleStyle;
+}
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -255,6 +315,11 @@ export interface Clip {
    * alone, which is nearly all of them.
    */
   linkGroup?: string;
+  /**
+   * Present on a title: the text and how it looks. Absent on every clip that
+   * comes from a file, which is every clip made before titles existed.
+   */
+  title?: TitleContent;
 }
 
 export interface Track {

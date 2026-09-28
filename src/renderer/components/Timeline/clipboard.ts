@@ -68,7 +68,8 @@ export function pasteClips(
   let endFrame = atFrame;
 
   for (const original of content.clips) {
-    const kind = assets.find((asset) => asset.uri === original.sourceUri)?.kind;
+    // A title has no asset, but it is a picture: it is pasted on a picture track.
+    const kind = original.title ? 'image' : assets.find((asset) => asset.uri === original.sourceUri)?.kind;
     const usable = (track: Track): boolean => !track.locked && trackAccepts(track, kind);
 
     const home = ordered.find((track) => track.id === original.trackId);

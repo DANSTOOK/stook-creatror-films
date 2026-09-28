@@ -8,10 +8,15 @@ import type {
   Marker,
   MediaAsset,
   ProjectState,
+  TitlePreset,
+  TitleStyle,
   Track,
   TrackType,
   Vector2D,
 } from '@shared/types';
+import { createTitleClip, planTitlePlacement, TITLE_NAME, TITLE_SECONDS, TITLE_TEXT } from '@renderer/text/titleClip';
+import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
+import { t as translateNow } from '@renderer/i18n';
 import { createId } from '@shared/utils/id';
 import { clamp } from '@shared/utils/math';
 import {
@@ -235,6 +240,19 @@ interface ProjectStore {
   /** Put the asset at the playhead on a brand new track of its own. */
   addAssetOnNewTrack(asset: MediaAsset): string | null;
   updateClip(clipId: string, patch: Partial<Clip>, mergeKey?: string): void;
+
+  /* Titles --------------------------------------------------------------- */
+  /**
+   * A new title from a template, at the playhead, above the picture there
+   * (see text/titleClip). Selected and shown. Returns its id.
+   */
+  addTitle(preset: TitlePreset): string;
+  /**
+   * Change a title's text or look. The clip's name follows its first line.
+   * A typing run or a drag with one `mergeKey` is one undo step.
+   */
+  updateTitle(clipId: string, patch: { text?: string; preset?: TitlePreset; style?: Partial<TitleStyle> }, mergeKey?: string): void;
+
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
@@ -999,6 +1017,51 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
+  addTitle(preset) {
+    const { project } = get();
+    const duration = Math.max(1, Math.round(TITLE_SECONDS * project.fps));
+    const placement = planTitlePlacement(project, project.currentFrame, duration);
+    // Written in the language on screen; from then on it is the user's text.
+    const text = translateNow(TITLE_TEXT[preset]);
+    const fallbackName = translateNow(TITLE_NAME[preset]);
+    let createdId = '';
+
+    get().transact('Add title', (current) => {
+      let rows = timelineRows(current.tracks);
+      let trackId = placement.trackId;
+      if (!trackId) {
+        const track = createTrack('video', 0, nextTrackName(rows, 'video'));
+        rows = [...rows];
+        rows.splice(insertionRow(rows, 'video'), 0, track);
+        trackId = track.id;
+      }
+      const clip = createTitleClip(preset, text, trackId, placement.startFrame, placement.durationFrames, fallbackName);
+      createdId = clip.id;
+      return { ...current, tracks: withRowOrders(rows), clips: { ...current.clips, [clip.id]: clip } };
+    });
+
+    set({ ui: { ...get().ui, selectedClipIds: [createdId], selectedTrackId: get().project.clips[createdId]?.trackId ?? null } });
+    get().revealFrames(placement.startFrame, placement.startFrame + placement.durationFrames);
+    return createdId;
+  },
+
+  updateTitle(clipId, patch, mergeKey) {
+    get().transact(
+      'Edit title',
+      (project) => {
+        const clip = project.clips[clipId];
+        if (!clip?.title) return project;
+        const preset = patch.preset ?? clip.title.preset;
+        const text = patch.text ?? clip.title.text;
+        const style = normalizeTitleStyle({ ...clip.title.style, ...patch.style }, preset);
+        const title = { preset, text, style };
+        const name = titleName(text, translateNow(TITLE_NAME[preset]));
+        return { ...project, clips: { ...project.clips, [clipId]: { ...clip, name, title } } };
+      },
+      mergeKey,
+    );
+  },
+
   removeClips(clipIds) {
     if (clipIds.length === 0) return;
     const doomed = new Set(clipIds);
@@ -1118,7 +1181,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Sound stays on audio tracks and pictures on picture tracks; a drag onto
     // the wrong kind keeps the clip on its own track and only moves it in time.
     const target = project.tracks.find((track) => track.id === trackId);
-    const kind = assets.find((asset) => asset.uri === clip.sourceUri)?.kind;
+    // A title has no asset, but it is a picture: it stays off audio tracks.
+    const kind = clip.title ? 'image' : assets.find((asset) => asset.uri === clip.sourceUri)?.kind;
     if (!target || target.locked || !trackAccepts(target, kind)) trackId = clip.trackId;
 
     // Everything is worked out from the clips as they were when the drag
@@ -1867,7 +1931,7 @@ function groupMoveOptions(
   return {
     ripple: state.ui.rippleEnabled,
     tracks: timelineRows(state.project.tracks),
-    accepts: (track, clip) => trackAccepts(track, kinds.get(clip.sourceUri)),
+    accepts: (track, clip) => trackAccepts(track, clip.title ? 'image' : kinds.get(clip.sourceUri)),
     anchorId,
   };
 }

@@ -24,6 +24,7 @@ import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
 import { markerName, trackName } from '@renderer/i18n/defaultNames';
 import { DEFAULT_PIVOT, neutralVignette, neutralWheel, normalizeGrading } from '@renderer/color/grade';
 import { neutralCurves } from '@renderer/color/curves';
+import { normalizeTitle } from '@renderer/text/titleStyle';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -410,6 +411,8 @@ export function normalizeProject(project: ProjectState): ProjectState {
             // A grade saved before the wheels opens with them neutral, so it
             // looks exactly as it did.
             colorGrading: normalizeGrading(clip.colorGrading),
+            // A title with a setting missing or out of range still draws.
+            ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
           },
         ]),
       ),
