@@ -77,12 +77,28 @@ export function readLines(root: HTMLElement): string[] {
 
 export function TitleTextEditor({ clip, layout, frame, matrix, onDone }: TitleTextEditorProps): JSX.Element | null {
   const t = useT();
-  const updateTitle = useProjectStore((state) => state.updateTitle);
+  const setTitleTextLive = useProjectStore((state) => state.setTitleTextLive);
   const rootRef = useRef<HTMLDivElement>(null);
+  /** The text as the edit began: the whole edit becomes one undo step from it. */
+  const startText = useRef(clip.title?.text ?? '');
+  const finished = useRef(false);
   const doneRef = useRef(onDone);
-  doneRef.current = onDone;
-  /** One undo step for the whole edit, however many keys. */
-  const mergeKey = useRef(`title:${clip.id}:viewer-edit:${Date.now()}`);
+  doneRef.current = () => {
+    if (finished.current) return;
+    finished.current = true;
+    useProjectStore.getState().commitTitleText(clip.id, startText.current);
+    onDone();
+  };
+
+  // However the edit ends - a key, a click away, the title deleted - it is kept.
+  useEffect(
+    () => () => {
+      if (finished.current) return;
+      finished.current = true;
+      useProjectStore.getState().commitTitleText(clip.id, startText.current);
+    },
+    [clip.id],
+  );
 
   const title = clip.title;
   const style = title?.style;
@@ -198,7 +214,7 @@ export function TitleTextEditor({ clip, layout, frame, matrix, onDone }: TitleTe
           onInput={(event) => {
             const root = event.currentTarget;
             restyle(root);
-            updateTitle(clip.id, { text: readLines(root).join('\n') }, mergeKey.current);
+            setTitleTextLive(clip.id, readLines(root).join('\n'));
           }}
           onBlur={() => doneRef.current()}
           style={{

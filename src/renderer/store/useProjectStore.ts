@@ -260,6 +260,14 @@ interface ProjectStore {
     patch: { text?: string; preset?: TitlePreset; style?: Partial<TitleStyle>; animation?: Partial<TitleAnimation>; origin?: TitleOrigin },
     mergeKey?: string,
   ): void;
+  /**
+   * Typing into a title in the viewer: the text changes on screen at once,
+   * and stays out of the history until `commitTitleText` - so however long
+   * the typing pauses, the whole edit is one undo step.
+   */
+  setTitleTextLive(clipId: string, text: string): void;
+  /** The typing is over: one undo step, from `fromText` to what is there now. */
+  commitTitleText(clipId: string, fromText: string): void;
 
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
@@ -1070,6 +1078,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       },
       mergeKey,
     );
+  },
+
+  setTitleTextLive(clipId, text) {
+    const { project } = get();
+    const clip = project.clips[clipId];
+    if (!clip?.title || clip.title.text === text) return;
+    const name = titleName(text, translateNow(TITLE_NAME[clip.title.preset]));
+    set({ project: { ...project, clips: { ...project.clips, [clipId]: { ...clip, name, title: { ...clip.title, text } } } } });
+  },
+
+  commitTitleText(clipId, fromText) {
+    const clip = get().project.clips[clipId];
+    if (!clip?.title || clip.title.text === fromText) return;
+    const typed = clip.title.text;
+    // Back to where the typing began, quietly, then the whole of it as one edit.
+    get().setTitleTextLive(clipId, fromText);
+    get().updateTitle(clipId, { text: typed });
   },
 
   removeClips(clipIds) {
