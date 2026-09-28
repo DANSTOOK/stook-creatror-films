@@ -16,12 +16,135 @@ fotogramas exportados correctos).
 
 ---
 
-## Sin publicar — Títulos, fase 1
+## Sin publicar — Títulos, fases 1 y 2
 
-Primera parte de títulos y transiciones: títulos básicos. Todavía no se
-animan (fase 2) y los créditos finales aún no se desplazan.
+Las dos primeras partes de títulos y transiciones: los títulos básicos y,
+sobre ellos, sus animaciones, los créditos que suben y la edición en el visor.
 
-### Añadido
+### Títulos, fase 2
+
+#### Añadido
+- **Animaciones de entrada y salida**, en un grupo nuevo, *Animación*, de la
+  pestaña Título:
+  - **Entradas**: Ninguna, Fundido, Subir, Aparecer (con el rebote de 0,25
+    de la interfaz) y Barrido.
+  - **Salidas**: Ninguna, Fundido, Bajar y Desaparecer. Son más cortas y no
+    rebotan.
+  - **Duraciones por defecto**: 0,5 s para entrar y 0,33 s para salir. Cada
+    una se puede cambiar.
+  - **Cómo se mueven**: con las curvas del sistema de movimiento. Una
+    entrada frena al llegar y una salida acelera al irse. En Aparecer solo
+    rebota el tamaño, nunca la opacidad.
+  - **Dónde se calculan**: fotograma a fotograma dentro del compositor,
+    nunca con CSS. Así el visor, los visores de señal y la exportación ven
+    el mismo número en el mismo fotograma.
+  - **Se suman a los fotogramas clave del clip**: la opacidad y la escala se
+    multiplican, el movimiento se suma.
+  - **Se cuentan desde los extremos del clip**, como los fundidos: si se
+    recorta el clip, la salida sigue al final.
+  - **Plantillas**: el título entra y sale con fundido; el rótulo inferior
+    sube al entrar y sale con fundido.
+- **Créditos que suben**: el texto entra con su borde de arriba en el borde
+  de abajo del cuadro y sale con su borde de abajo en el de arriba. Avanza
+  siempre los mismos píxeles por fotograma, y la pestaña Título dice
+  cuántos. Es lo que hace ahora la plantilla de créditos.
+- **Editar el texto en el visor**:
+  - Un clic sobre el texto elige el título y arrastrar lo mueve, aunque el
+    modo de transformación esté apagado, como en Final Cut.
+  - Mientras se arrastra se dibuja la zona segura de títulos, y el texto se
+    pega a sus bordes y al centro del cuadro.
+  - Con doble clic se escribe en el título donde está. El texto que se
+    escribe se coloca encima del dibujado con la misma fuente, tamaños,
+    espaciado, alineación y largo de línea (la segunda línea de un rótulo
+    va más pequeña). Sus letras son transparentes: lo que se ve es el título
+    real, redibujado a cada tecla.
+  - Mientras se escribe, el título se muestra en reposo, sin su animación,
+    para poder leerlo aunque esté a mitad de un fundido.
+  - Las teclas se quedan en el texto: Espacio no reproduce y Supr no borra
+    el clip.
+  - Esc, Ctrl+Intro o un clic fuera terminan. Toda la edición es un solo
+    paso de deshacer, aunque haya pausas al escribir.
+
+#### Arreglado
+- **La caja de un título en el visor era el cuadro entero.** Ahora es su
+  texto:
+  - para elegirlo;
+  - para su contorno;
+  - para los tiradores del modo de transformación.
+
+  Un clic al lado del texto elige la imagen de debajo.
+- **Un título se escalaba y giraba respecto al centro del cuadro.** Ahora lo
+  hace respecto al centro de su texto (con su caja).
+  - Un título guardado antes de este cambio pasa al centro del texto al
+    abrirse solo si nunca se escala ni se gira, porque entonces se ve
+    exactamente igual.
+  - Si se escala o se gira, conserva el centro del cuadro, y la pestaña
+    Título ofrece cambiarlo con un botón.
+- **Las notas de los clips** (velocidad, fuente que falta y fotogramas clave)
+  no llegaban a 4,5:1: se quedaban entre 3,5 y 4,0:1. Ahora usan el ámbar
+  y el pizarra más claros de la paleta (amber-100 y slate-100). Dan entre
+  4,5 y 5,3:1 sobre todos los colores de clip.
+
+#### Cómo se comprobó
+- **`npm run test:titles:motion`: 30/30**, medido sobre fotogramas
+  renderizados:
+  - **Fundido**: la opacidad en los fotogramas 0, 3, 5 y 10 de 15 es la de
+    la curva estándar, con un margen de 1/95.
+  - **Subir**: recorre 43,2 px con la misma curva, con un margen de 1 px.
+  - **Aparecer**: sigue creciendo en su cuarto fotograma, se pasa hasta
+    1,011 con el rebote y se asienta.
+  - **Barrido**: dibuja la izquierda antes que la derecha.
+  - **Salida tras recortar**: con el clip 30 fotogramas más corto, los
+    últimos fotogramas se desvanecen igual.
+  - **Créditos**: suben 14,9 px por fotograma, lo mismo que dice la pestaña
+    Título.
+  - **Centro de escala**: un título escalado 1,5 veces conserva el centro de
+    su texto al píxel.
+  - **Caja en el visor**: el contorno y los tiradores caen en los bordes de
+    la banda del rótulo.
+  - **Clic y arrastre**: un clic al lado elige la imagen de debajo. Un
+    arrastre mueve el título con la zona segura visible, en un paso de
+    deshacer.
+  - **Edición en el visor**: con doble clic, Espacio, B y Retroceso se quedan
+    en el texto. Las líneas escritas caen sobre las dibujadas. Esc, tras una
+    pausa de 0,9 s, o Ctrl+Intro terminan en un solo paso.
+  - **Cadencia**: reproducir con tres títulos animados da el mismo p95 y los
+    mismos fotogramas perdidos que sin títulos. El dibujo tarda 0,30 ms en
+    el p95.
+  - **Español**: la edición y el grupo Animación.
+- **Antes y después con la versión real de la fase 1:**
+  - Se compiló el commit `0770cfb`. Con esa versión se guardó un proyecto
+    con cuatro títulos: uno quieto, uno escalado, uno girando y unos
+    créditos movidos.
+  - Esta versión lo abrió. Los fotogramas 10, 40 y 80 salen **idénticos
+    byte a byte**.
+  - El quieto y los créditos pasaron al centro del texto. El escalado y el
+    que gira conservaron el del cuadro.
+- **Cadencia frente a la fase 1**, 5 s de reproducción de vídeo 1080p:
+  - Fase 1, con tres títulos quietos: p95 de 5,7 ms, 2 fotogramas perdidos,
+    dibujo en 0,30 ms (p95).
+  - Esta versión, con tres títulos animados: p95 de 5,7 ms, 0 perdidos,
+    dibujo en 0,40 ms (p95).
+- **891 pruebas unitarias** (21 nuevas en `TitlesMotion.test.ts`):
+  - cada animación fotograma a fotograma frente a su curva;
+  - la salida anclada al final;
+  - la velocidad de los créditos;
+  - la migración del centro de escala;
+  - la geometría del visor para un título (caja, tiradores, giro, matriz
+    del editor y ajuste a la zona segura);
+  - el contraste de las notas de clip en los cuatro colores.
+- **Siguen pasando**:
+  - los 33/33 de la fase 1;
+  - 127/127 de interfaz;
+  - 21/21 de curvas;
+  - 16/16 de visores;
+  - 32/32 de ruedas;
+  - 23/23 de corrección en la GPU (el sombreador que copia cada capa
+    cambió).
+
+### Títulos, fase 1
+
+#### Añadido
 - **Títulos**: un tipo de clip nuevo, hecho de texto en lugar de un archivo.
   - Se añaden desde Edición: *Añadir título* (Ctrl+Alt+T), *Añadir rótulo
     inferior* (Ctrl+Alt+Mayús+T) y *Añadir créditos finales*. Ctrl+T queda
@@ -98,7 +221,7 @@ animan (fase 2) y los créditos finales aún no se desplazan.
   archivo con un ajuste roto o fuera de rango, ese ajuste vuelve al valor de
   su plantilla y el título se sigue dibujando.
 
-### Cómo se comprobó
+#### Cómo se comprobó
 - `npm run test:titles:ui`: **33/33** en la aplicación real, con la ventana
   siempre oculta.
   - Con un perfil nuevo, Inter no está cargada hasta que un título la pide.
@@ -136,7 +259,7 @@ animan (fase 2) y los créditos finales aún no se desplazan.
   - 16/16 de visores;
   - 32/32 de ruedas.
 
-### Problemas conocidos
+#### Problemas conocidos (los dos, arreglados en la fase 2)
 - En el modo de transformación del visor, un clic en cualquier punto del
   cuadro selecciona el título, porque su caja es el cuadro entero. Hacer
   clic solo sobre el texto llegará con la edición en el visor (fase 2).
