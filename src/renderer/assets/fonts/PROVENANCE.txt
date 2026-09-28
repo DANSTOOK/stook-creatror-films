@@ -1,0 +1,36 @@
+Fonts bundled for titles
+========================
+
+Three families, each under the SIL Open Font License 1.1, shipped exactly as
+their authors publish them: no subsetting, no conversion, no renaming inside
+the files (only the file names below differ). Source Serif carries the
+Reserved Font Name "Source", which is why it must stay unmodified. Their
+licences are shown in the app under Help > About > Font licences.
+
+Downloaded on 2026-09-27 from the official repositories only.
+
+Inter 4.1 (rsms/inter, GitHub release v4.1)
+  https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
+    SHA-256 of the zip  9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e
+  InterVariable.woff2      <- web/InterVariable.woff2
+    SHA-256 693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3
+  Inter-LICENSE.txt        <- LICENSE.txt
+    SHA-256 262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a
+
+Source Serif 4, version 4.005 (adobe-fonts/source-serif, GitHub release 4.005R)
+  https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_WOFF2.zip
+    SHA-256 of the zip  af10e80dcd2296748b04cb9917db9f7ba0ae65101165fd2f0c16b9812d9abd28
+  SourceSerif4Variable-Roman.ttf.woff2  <- source-serif-4.005_WOFF2/VAR/SourceSerif4Variable-Roman.ttf.woff2
+    SHA-256 940a76eda1388de39d38c8e7a79bf6ea058a387faee0a9f33c8d25c6ba05e1be
+  SourceSerif4-LICENSE.md  <- https://raw.githubusercontent.com/adobe-fonts/source-serif/4.005R/LICENSE.md
+    SHA-256 75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7
+
+Oswald (googlefonts/OswaldFont, commit 89795261ac9eeb9aa8cd99f43982c4e4b0e53261)
+  Oswald-wght.ttf          <- https://raw.githubusercontent.com/googlefonts/OswaldFont/89795261ac9eeb9aa8cd99f43982c4e4b0e53261/fonts/variable/Oswald%5Bwght%5D.ttf
+    SHA-256 5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817
+  Oswald-OFL.txt           <- https://raw.githubusercontent.com/googlefonts/OswaldFont/89795261ac9eeb9aa8cd99f43982c4e4b0e53261/OFL.txt
+    SHA-256 0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652
+
+The licence texts are text files, so git may rewrite their line endings on
+checkout; the hashes above are of the files as downloaded. The font files are
+binary and are checked by tests/TitleFonts.test.ts.
