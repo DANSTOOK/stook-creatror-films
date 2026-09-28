@@ -16,6 +16,135 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Títulos, fase 1
+
+Primera parte de títulos y transiciones: títulos básicos. Todavía no se
+animan (fase 2) y los créditos finales aún no se desplazan.
+
+### Añadido
+- **Títulos**: un tipo de clip nuevo, hecho de texto en lugar de un archivo.
+  - Se añaden desde Edición: *Añadir título* (Ctrl+Alt+T), *Añadir rótulo
+    inferior* (Ctrl+Alt+Mayús+T) y *Añadir créditos finales*. Ctrl+T queda
+    libre para las transiciones, como en Final Cut y Resolve.
+  - Van en pistas de vídeo normales, en el cursor y por encima de la imagen
+    que haya ahí, como los títulos conectados de Final Cut. Si esa pista
+    está ocupada o bloqueada, se crea una nueva arriba.
+  - Duran 5 segundos y quedan seleccionados.
+  - En la línea de tiempo son morados y llevan el nombre de su primera línea.
+  - El texto de cada plantilla sale en el idioma de la interfaz («Título»,
+    «Nombre / Cargo»). Desde ahí el texto es tuyo.
+- **Tres plantillas**:
+  - **Título**: grande, en negrita, centrado y con una sombra suave.
+  - **Rótulo inferior**: nombre y cargo sobre una banda oscura, abajo a la
+    izquierda de la zona segura.
+  - **Créditos finales**: una lista centrada, quieta de momento.
+- **Pestaña Título** en el Inspector, la primera para un título (Título,
+  Vídeo, Info). Agrupada como el inspector de texto de Final Cut y el panel
+  Propiedades de Premiere:
+  - **Texto**: la plantilla y el texto;
+  - **Fuente**: familia (las incluidas y las instaladas en el equipo), peso,
+    tamaño y color;
+  - **Párrafo**: alineación, interlineado, espaciado entre letras y tamaño
+    de las líneas después de la primera;
+  - **Contorno**, **Sombra** y **Fondo**, cada uno con su interruptor;
+  - **Posición**: nueve puntos de la zona segura de títulos (el 90% del
+    cuadro), el largo de línea y el desplazamiento X/Y.
+  - Los tamaños se leen en píxeles de un cuadro de 1080 líneas; en un
+    proyecto 4K se dibujan al doble.
+  - Escribir de corrido o arrastrar un control es un solo paso de deshacer.
+- **Texto nítido a la resolución del proyecto**: cada título se dibuja con
+  Canvas2D al tamaño en que se va a ver (y más grande si el clip se escala
+  con fotogramas clave), no como una imagen de 1080p ampliada. El visor, los
+  visores de señal y la exportación usan el mismo dibujo.
+  - Chromium da forma a las letras, aplica el interletraje y recurre a las
+    fuentes del sistema para lo que la elegida no tiene: japonés, hindi,
+    árabe, emoji.
+- **Fuentes incluidas**, bajo la SIL Open Font License 1.1 y sin
+  modificar (Source Serif lleva el nombre reservado «Source»). Se cargan
+  desde archivos de la aplicación, nunca desde internet. Se bajaron el
+  2026-09-27 solo de sus repositorios oficiales:
+  - **Inter 4.1**:
+    `https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip`
+    (zip `9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e`).
+    De él, `InterVariable.woff2`
+    (`693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3`) y
+    `LICENSE.txt`
+    (`262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a`).
+  - **Source Serif 4.005**:
+    `https://github.com/adobe-fonts/source-serif/releases/download/4.005R/source-serif-4.005_WOFF2.zip`
+    (zip `af10e80dcd2296748b04cb9917db9f7ba0ae65101165fd2f0c16b9812d9abd28`).
+    De él, `SourceSerif4Variable-Roman.ttf.woff2`
+    (`940a76eda1388de39d38c8e7a79bf6ea058a387faee0a9f33c8d25c6ba05e1be`).
+    La licencia, de
+    `https://raw.githubusercontent.com/adobe-fonts/source-serif/4.005R/LICENSE.md`
+    (`75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7`).
+  - **Oswald**, de googlefonts/OswaldFont en el commit
+    `89795261ac9eeb9aa8cd99f43982c4e4b0e53261`:
+    `fonts/variable/Oswald[wght].ttf`
+    (`5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817`) y
+    `OFL.txt`
+    (`0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652`).
+  - La misma lista está en `src/renderer/assets/fonts/PROVENANCE.txt`.
+- **Licencias de las fuentes**, en Ayuda y en un botón de *Acerca de*: el
+  texto completo de la OFL de cada familia, como pide la licencia.
+- **Una fuente que falta en este equipo**: el título se dibuja con Inter y
+  se avisa en tres sitios:
+  - en el grupo Fuente, con una nota (11,7:1 de contraste);
+  - en el clip, con la marca «Falta la fuente» (4,7:1 sobre el morado);
+  - en la ventana de exportación, antes de renderizar.
+- **Exportación**: no dibuja un título hasta que su fuente está cargada, así
+  que ningún fotograma sale con una fuente de repuesto.
+- **Guardar y abrir**: el título se guarda con el proyecto. Si se abre un
+  archivo con un ajuste roto o fuera de rango, ese ajuste vuelve al valor de
+  su plantilla y el título se sigue dibujando.
+
+### Cómo se comprobó
+- `npm run test:titles:ui`: **33/33** en la aplicación real, con la ventana
+  siempre oculta.
+  - Con un perfil nuevo, Inter no está cargada hasta que un título la pide.
+    El primer render exacto, hecho antes de que el visor dibuje nada, ya sale
+    en Inter: es idéntico byte a byte al de después.
+  - Los menús y los atajos ponen cada título donde deben, con la pestaña
+    Título delante y sus siete grupos. Escribir de corrido es un solo paso
+    de deshacer.
+  - Colores conocidos exactos: 291 px de rojo puro (255,0,0) bajando por una
+    «I» gruesa y 150 px del verde puro (0,255,0) de su caja. Fuera del título
+    el cuadro queda intacto.
+  - Una línea de Inter frente a una referencia hecha aparte con Canvas2D
+    sobre la misma imagen: como mucho 1 nivel de diferencia, media 0,0001.
+  - El visor y el render exacto son idénticos. Un PNG exportado por la
+    ventana de exportación es idéntico a los dos.
+  - A 4K el borde de una letra tiene 0 px de rampa (1 px a 1080p). Una
+    imagen de 1080p ampliada tendría el doble.
+  - Una fuente que falta se dibuja exactamente igual que Inter, y el aviso
+    sale en el inspector y en la exportación.
+  - Guardado y reabierto, el título es el mismo y dibuja los mismos bytes.
+  - La ventana de licencias muestra las tres OFL.
+  - En español: «Añadir título» escribe «Título», y la pestaña y los grupos
+    salen traducidos.
+  - Ninguna petición sale a la red. Las fuentes se leen de los archivos de
+    la aplicación.
+- **870 pruebas unitarias** (32 nuevas):
+  - `Titles.test.ts`: modelo, cortes de línea, maquetación, colocación,
+    deshacer, pegar y contraste;
+  - `TitleFonts.test.ts`: los SHA-256 de las fuentes, la OFL en cada una,
+    `@font-face` sin URL ni `local()`, y los rangos de peso.
+- Las comprobaciones que tocan lo mismo siguen pasando, contra la
+  compilación de desarrollo:
+  - 127/127 de interfaz;
+  - 21/21 de curvas;
+  - 16/16 de visores;
+  - 32/32 de ruedas.
+
+### Problemas conocidos
+- En el modo de transformación del visor, un clic en cualquier punto del
+  cuadro selecciona el título, porque su caja es el cuadro entero. Hacer
+  clic solo sobre el texto llegará con la edición en el visor (fase 2).
+- Escalar o girar un título lo hace alrededor del centro del cuadro, no del
+  centro del texto.
+
+---
+
 ## v1.31.0-beta.1 — Color, fase 3: curvas, viñeta y tramado
 
 Instalador de prueba que cierra el color profesional. Antes de publicarla pasó
