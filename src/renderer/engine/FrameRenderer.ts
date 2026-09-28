@@ -251,9 +251,17 @@ export class FrameRenderer {
   }
 
   /** Non-blocking viewport draw. */
-  drawViewport(project: ProjectState, playing: boolean, pixelArtViewport: boolean, compare?: ViewerCompare): void {
+  drawViewport(
+    project: ProjectState,
+    playing: boolean,
+    pixelArtViewport: boolean,
+    compare?: ViewerCompare,
+    /** The title being typed into in the viewer, drawn at rest. */
+    restingTitleId: string | null = null,
+  ): void {
     // An export owns the video elements and the canvas right now.
     if (this.isExclusive) return;
+    this.compositor.restingTitleId = restingTitleId;
 
     // Playback runs on the elements; the forward decoders are only for a
     // paused playhead, and hold a hardware decoder each, so they go.
@@ -413,6 +421,8 @@ export class FrameRenderer {
    */
   async renderExact(project: ProjectState, frame: number, premultiply = false): Promise<Uint8Array> {
     await this.seekSources(project, frame);
+    // An exact render is the export's: every title animates, none is at rest.
+    this.compositor.restingTitleId = null;
 
     this.compositor.renderFrame(
       project,
@@ -432,6 +442,7 @@ export class FrameRenderer {
    */
   async renderExactToCanvas(project: ProjectState, frame: number): Promise<void> {
     await this.seekSources(project, frame);
+    this.compositor.restingTitleId = null;
 
     const previousOptions = this.compositor.options;
     this.compositor.options = { ...previousOptions, showTransparencyGrid: false };

@@ -68,10 +68,49 @@ interface Quad {
   height: number;
 }
 
-/** The clip's quad, built exactly as Compositor.renderLayer builds it. */
-function quadOf(transform: ResolvedTransform, frame: FrameSize): Quad {
-  const centerX = (transform.position.x / frame.width) * 2;
-  const centerY = -(transform.position.y / frame.height) * 2;
+/**
+ * A layer that covers only part of the frame and turns about a point of its
+ * own: a title, whose picture is its text and whose pivot is the text's
+ * centre (text/geometry). Both in project pixels, before any transform.
+ */
+export interface LayerShape {
+  rect: { x: number; y: number; width: number; height: number };
+  pivot: Point;
+}
+
+/** Where the layer's anchor sits in its full-frame quad, 0..1 with y up. */
+const anchorOf = (transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Point =>
+  layer ? { x: layer.pivot.x / frame.width, y: 1 - layer.pivot.y / frame.height } : transform.anchorPoint;
+
+/**
+ * The clip's quad, built exactly as Compositor.renderLayer builds it: the
+ * whole frame, or with a layer shape, the part of it the layer covers.
+ */
+function quadOf(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Quad {
+  const full = frameQuadOf(transform, frame, layer);
+  if (!layer) return full;
+  const u0 = layer.rect.x / frame.width;
+  const v0 = 1 - (layer.rect.y + layer.rect.height) / frame.height;
+  return {
+    origin: cornerOf(full, u0, v0),
+    u: full.u,
+    width: (full.width * layer.rect.width) / frame.width,
+    v: full.v,
+    height: (full.height * layer.rect.height) / frame.height,
+  };
+}
+
+/** The pivot, in normalised space: where the anchor lands. */
+function pivotOf(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Point {
+  const anchor = anchorOf(transform, frame, layer);
+  return cornerOf(frameQuadOf(transform, frame, layer), anchor.x, anchor.y);
+}
+
+function frameQuadOf(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Quad {
+  const anchorPoint = anchorOf(transform, frame, layer);
+  // A titled layer's pivot is where the frame's centre is for any other.
+  const centerX = (layer ? anchorPoint.x * 2 - 1 : 0) + (transform.position.x / frame.width) * 2;
+  const centerY = (layer ? anchorPoint.y * 2 - 1 : 0) - (transform.position.y / frame.height) * 2;
 
   const radians = -(transform.rotation * Math.PI) / 180;
   const cos = Math.cos(radians);
@@ -79,8 +118,8 @@ function quadOf(transform: ResolvedTransform, frame: FrameSize): Quad {
 
   const sx = transform.scale.x * 2;
   const sy = transform.scale.y * 2;
-  const ax = -transform.anchorPoint.x * sx;
-  const ay = -transform.anchorPoint.y * sy;
+  const ax = -anchorPoint.x * sx;
+  const ay = -anchorPoint.y * sy;
 
   return {
     origin: {
@@ -101,8 +140,8 @@ const cornerOf = (quad: Quad, u: number, v: number): Point =>
  * The clip's four corners in project pixels: bottom-left, bottom-right,
  * top-right, top-left of the clip's own frame, wherever they now appear.
  */
-export function quadCorners(transform: ResolvedTransform, frame: FrameSize): Point[] {
-  const quad = quadOf(transform, frame);
+export function quadCorners(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Point[] {
+  const quad = quadOf(transform, frame, layer);
   return [
     [0, 0],
     [1, 0],
@@ -112,8 +151,8 @@ export function quadCorners(transform: ResolvedTransform, frame: FrameSize): Poi
 }
 
 /** Screen positions of every grip, for drawing them. */
-export function handlePositions(transform: ResolvedTransform, frame: FrameSize): Record<Handle, Point> {
-  const quad = quadOf(transform, frame);
+export function handlePositions(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Record<Handle, Point> {
+  const quad = quadOf(transform, frame, layer);
   const at = (u: number, v: number): Point => toPixels(cornerOf(quad, u, v), frame);
   return {
     bottomLeft: at(0, 0),
@@ -128,9 +167,8 @@ export function handlePositions(transform: ResolvedTransform, frame: FrameSize):
 }
 
 /** Where the anchor sits, in project pixels: the pivot the clip turns about. */
-export function anchorPosition(transform: ResolvedTransform, frame: FrameSize): Point {
-  const quad = quadOf(transform, frame);
-  return toPixels(cornerOf(quad, transform.anchorPoint.x, transform.anchorPoint.y), frame);
+export function anchorPosition(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): Point {
+  return toPixels(pivotOf(transform, frame, layer), frame);
 }
 
 /** Dragging the picture itself: the whole clip follows the pointer. */
@@ -195,8 +233,8 @@ export function snappedPosition(
 }
 
 /** Is `pointerPx` on the clip? What decides whether a drag starts. */
-export function containsPoint(transform: ResolvedTransform, pointerPx: Point, frame: FrameSize): boolean {
-  const quad = quadOf(transform, frame);
+export function containsPoint(transform: ResolvedTransform, pointerPx: Point, frame: FrameSize, layer?: LayerShape): boolean {
+  const quad = quadOf(transform, frame, layer);
   const relative = subtract(toNormalised(pointerPx, frame), quad.origin);
   const along = dot(relative, quad.u);
   const across = dot(relative, quad.v);
@@ -244,8 +282,9 @@ export function scaleFromHandle(
   pointerPx: Point,
   frame: FrameSize,
   options: { free?: boolean } = {},
+  layer?: LayerShape,
 ): ScaleResult {
-  const quad = quadOf(start, frame);
+  const quad = quadOf(start, frame, layer);
   const fixed = fixedCorner(handle, quad);
   const toPointer = subtract(toNormalised(pointerPx, frame), fixed);
 
@@ -277,6 +316,27 @@ export function scaleFromHandle(
 
   const centre = add(fixed, add(times(quad.u, (alongU * width) / 2), times(quad.v, (alongV * height) / 2)));
   const origin = subtract(centre, add(times(quad.u, width / 2), times(quad.v, height / 2)));
+
+  if (layer) {
+    // The pivot keeps its place in the text's box, and the position is where
+    // the pivot now is, measured from where it sits unmoved.
+    const anchorPoint = anchorOf(start, frame, layer);
+    const u0 = layer.rect.x / frame.width;
+    const v0 = 1 - (layer.rect.y + layer.rect.height) / frame.height;
+    const du = layer.rect.width / frame.width;
+    const dv = layer.rect.height / frame.height;
+    const inBoxU = (anchorPoint.x - u0) / du;
+    const inBoxV = (anchorPoint.y - v0) / dv;
+    const pivot = add(origin, add(times(quad.u, width * inBoxU), times(quad.v, height * inBoxV)));
+    return {
+      scale: { x: width / 2 / du, y: height / 2 / dv },
+      position: {
+        x: ((pivot.x - (anchorPoint.x * 2 - 1)) * frame.width) / 2,
+        y: -((pivot.y - (anchorPoint.y * 2 - 1)) * frame.height) / 2,
+      },
+    };
+  }
+
   const anchor = add(
     origin,
     add(times(quad.u, width * start.anchorPoint.x), times(quad.v, height * start.anchorPoint.y)),
@@ -292,9 +352,8 @@ export function scaleFromHandle(
 }
 
 /** The pointer's angle around the anchor, in degrees, for starting a rotation. */
-export function angleAround(start: ResolvedTransform, pointerPx: Point, frame: FrameSize): number {
-  const quad = quadOf(start, frame);
-  const pivot = cornerOf(quad, start.anchorPoint.x, start.anchorPoint.y);
+export function angleAround(start: ResolvedTransform, pointerPx: Point, frame: FrameSize, layer?: LayerShape): number {
+  const pivot = pivotOf(start, frame, layer);
   const toPointer = subtract(toNormalised(pointerPx, frame), pivot);
   // Negated y: the result is read as a clockwise screen angle, which is the
   // direction the rotation field counts in.
@@ -312,13 +371,13 @@ export function rotationFromPointer(
   pointerPx: Point,
   frame: FrameSize,
   options: { grabAngle: number; snapDegrees?: number },
+  layer?: LayerShape,
 ): number {
-  const quad = quadOf(start, frame);
-  const pivot = cornerOf(quad, start.anchorPoint.x, start.anchorPoint.y);
+  const pivot = pivotOf(start, frame, layer);
   const toPointer = subtract(toNormalised(pointerPx, frame), pivot);
   if (length(toPointer) < 1e-9) return start.rotation;
 
-  const rotation = start.rotation + (angleAround(start, pointerPx, frame) - options.grabAngle);
+  const rotation = start.rotation + (angleAround(start, pointerPx, frame, layer) - options.grabAngle);
   if (!options.snapDegrees) return rotation;
   return Math.round(rotation / options.snapDegrees) * options.snapDegrees;
 }
@@ -327,4 +386,74 @@ export function rotationFromPointer(
 export function widthAxis(transform: ResolvedTransform, frame: FrameSize): Point {
   const [bottomLeft, bottomRight] = quadCorners(transform, frame);
   return normalise(subtract(bottomRight, bottomLeft));
+}
+
+/**
+ * Untransformed project pixels of a layer to where they are drawn, as an
+ * affine map [a, b, c, d, e, f] (x' = a x + c y + e, y' = b x + d y + f) -
+ * the CSS matrix() order. The viewer's text editor sits on a title with it,
+ * so its letters land on the drawn ones.
+ */
+export function layerToPixels(transform: ResolvedTransform, frame: FrameSize, layer?: LayerShape): [number, number, number, number, number, number] {
+  const full = frameQuadOf(transform, frame, layer);
+  const at = (x: number, y: number): Point => toPixels(cornerOf(full, x / frame.width, 1 - y / frame.height), frame);
+  const origin = at(0, 0);
+  const xAxis = at(1, 0);
+  const yAxis = at(0, 1);
+  return [xAxis.x - origin.x, xAxis.y - origin.y, yAxis.x - origin.x, yAxis.y - origin.y, origin.x, origin.y];
+}
+
+/** Where a dragged title was pulled into line, for drawing the guides. */
+export interface TitleSnapResult extends SnapResult {
+  /** An edge landed on the title-safe area's. */
+  safe: boolean;
+}
+
+/**
+ * Pull a moved title onto the lines a title lives by: its centre onto the
+ * frame's centre lines, and its edges onto the title-safe area's (TITLE_SAFE
+ * of the frame each way, the guide Final Cut and Premiere draw).
+ */
+export function snappedTitlePosition(
+  position: Vector2D,
+  start: ResolvedTransform,
+  frame: FrameSize,
+  layer: LayerShape,
+  tolerancePx: number,
+  titleSafe: number,
+): TitleSnapResult {
+  if (tolerancePx <= 0) return { position, vertical: false, horizontal: false, safe: false };
+  const corners = quadCorners(start, frame, layer);
+  const xs = corners.map((corner) => corner.x);
+  const ys = corners.map((corner) => corner.y);
+  const dx = position.x - start.position.x;
+  const dy = position.y - start.position.y;
+  const box = { left: Math.min(...xs) + dx, right: Math.max(...xs) + dx, top: Math.min(...ys) + dy, bottom: Math.max(...ys) + dy };
+  const marginX = (frame.width * (1 - titleSafe)) / 2;
+  const marginY = (frame.height * (1 - titleSafe)) / 2;
+
+  // Each candidate is how far the title has to move to sit on a line.
+  const pick = (candidates: Array<{ shift: number; centre: boolean }>): { shift: number; centre: boolean } | null => {
+    let best: { shift: number; centre: boolean } | null = null;
+    for (const candidate of candidates) {
+      if (Math.abs(candidate.shift) <= tolerancePx && (!best || Math.abs(candidate.shift) < Math.abs(best.shift))) best = candidate;
+    }
+    return best;
+  };
+  const x = pick([
+    { shift: frame.width / 2 - (box.left + box.right) / 2, centre: true },
+    { shift: marginX - box.left, centre: false },
+    { shift: frame.width - marginX - box.right, centre: false },
+  ]);
+  const y = pick([
+    { shift: frame.height / 2 - (box.top + box.bottom) / 2, centre: true },
+    { shift: marginY - box.top, centre: false },
+    { shift: frame.height - marginY - box.bottom, centre: false },
+  ]);
+  return {
+    position: { x: position.x + (x?.shift ?? 0), y: position.y + (y?.shift ?? 0) },
+    vertical: x?.centre === true,
+    horizontal: y?.centre === true,
+    safe: (x !== null && !x.centre) || (y !== null && !y.centre),
+  };
 }

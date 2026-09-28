@@ -1,12 +1,14 @@
 import { useId, type ReactNode } from 'react';
 import { AlignCenter, AlignLeft, AlignRight } from 'lucide-react';
-import type { Clip, TitleAlign, TitleAnchor, TitlePreset, TitleStyle, Vector2D } from '@shared/types';
+import type { Clip, TitleAlign, TitleAnchor, TitleAnimation, TitleEntrance, TitleExit, TitlePreset, TitleStyle, Vector2D } from '@shared/types';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { useT, type MessageKey } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { BUNDLED_FONTS, isBundledFamily, isFamilyMissing } from '@renderer/text/fonts';
 import { FALLBACK_FAMILY, presetStyle, TITLE_ANCHORS, TITLE_PRESETS } from '@renderer/text/titleStyle';
 import { TITLE_NAME } from '@renderer/text/titleClip';
+import { NO_ANIMATION, presetAnimation, TITLE_ENTRANCES, TITLE_EXITS } from '@renderer/text/animation';
+import { titleGeometry } from '@renderer/text/geometry';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { PairRow, Section, SliderRow, type SectionProps } from './rows';
 
@@ -45,6 +47,23 @@ const ALIGNS: Array<{ id: TitleAlign; label: MessageKey; icon: typeof AlignLeft 
 
 const px = (value: number): string => `${Math.round(value)} px`;
 
+const ENTRANCE_NAME: Record<TitleEntrance, MessageKey> = {
+  none: 'title.inNone',
+  fade: 'title.inFade',
+  rise: 'title.inRise',
+  pop: 'title.inPop',
+  wipe: 'title.inWipe',
+};
+
+const EXIT_NAME: Record<TitleExit, MessageKey> = {
+  none: 'title.outNone',
+  fade: 'title.outFade',
+  drop: 'title.outDrop',
+  vanish: 'title.outVanish',
+};
+
+const seconds = (value: number): string => `${value.toFixed(2)} s`;
+
 /** A label on the left and anything on the right, as the other rows are laid out. */
 function FieldRow({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
   return (
@@ -82,13 +101,15 @@ function ColorRow({ label, name, value, testId, onChange }: { label: string; nam
 
 export interface TitleTabProps {
   clip: Clip;
+  /** Frame size and rate of the project, for the roll's speed. */
+  frame: { width: number; height: number; fps: number };
   sectionProps(id: string): Pick<SectionProps, 'id' | 'open' | 'onOpenChange'>;
   /** The clip's position at the playhead, and how to change it: the Video tab's own. */
   position: Vector2D;
   onPosition(axis: 'x' | 'y', value: number): void;
 }
 
-export function TitleTab({ clip, sectionProps, position, onPosition }: TitleTabProps): JSX.Element | null {
+export function TitleTab({ clip, frame, sectionProps, position, onPosition }: TitleTabProps): JSX.Element | null {
   const t = useT();
   const updateTitle = useProjectStore((state) => state.updateTitle);
   const families = useLocalFamilies();
@@ -96,11 +117,22 @@ export function TitleTab({ clip, sectionProps, position, onPosition }: TitleTabP
   const familyId = useId();
   const weightId = useId();
   const templateId = useId();
+  const entranceId = useId();
+  const exitId = useId();
 
   const title = clip.title;
   if (!title) return null;
   const { style } = title;
   const defaults = presetStyle(title.preset);
+
+  const animation: TitleAnimation = title.animation ?? NO_ANIMATION;
+  const setAnimation = (patch: Partial<TitleAnimation>, control: string | false): void =>
+    updateTitle(clip.id, { animation: patch }, control ? `title:${clip.id}:${control}` : undefined);
+  // The roll's speed, in project pixels a frame: the frame's height and the
+  // text's, travelled once over the clip.
+  const rollSpeed = animation.roll
+    ? (frame.height + titleGeometry(title, frame).block.height) / Math.max(1, clip.durationFrames)
+    : 0;
 
   /** One control's changes, one undo step per drag or typing run. */
   const setStyle = (patch: Partial<TitleStyle>, control: string | false): void =>
@@ -124,7 +156,7 @@ export function TitleTab({ clip, sectionProps, position, onPosition }: TitleTabP
             {...tip(t('title.templateHint'))}
             onChange={(event) => {
               const preset = event.target.value as TitlePreset;
-              updateTitle(clip.id, { preset, style: presetStyle(preset) });
+              updateTitle(clip.id, { preset, style: presetStyle(preset), animation: presetAnimation(preset) });
             }}
           >
             {TITLE_PRESETS.map((preset) => (
@@ -389,6 +421,80 @@ export function TitleTab({ clip, sectionProps, position, onPosition }: TitleTabP
       </Section>
 
       <Section
+        {...sectionProps('titleAnimation')}
+        title={t('title.sectionAnimation')}
+        onReset={() => updateTitle(clip.id, { animation: presetAnimation(title.preset) })}
+      >
+        <FieldRow label={t('title.entrance')} htmlFor={entranceId}>
+          <select
+            id={entranceId}
+            data-testid="title-entrance"
+            className="numeric-input h-control-dense min-w-0 flex-1"
+            value={animation.in}
+            disabled={animation.roll}
+            onChange={(event) => setAnimation({ in: event.target.value as TitleEntrance }, false)}
+          >
+            {TITLE_ENTRANCES.map((entrance) => (
+              <option key={entrance} value={entrance}>
+                {t(ENTRANCE_NAME[entrance])}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
+        {animation.in !== 'none' && !animation.roll && (
+          <SliderRow
+            label={t('title.duration')}
+            value={animation.inSeconds}
+            min={0.1}
+            max={2}
+            step={0.05}
+            format={seconds}
+            onChange={(inSeconds) => setAnimation({ inSeconds }, 'inSeconds')}
+          />
+        )}
+        <FieldRow label={t('title.exit')} htmlFor={exitId}>
+          <select
+            id={exitId}
+            data-testid="title-exit"
+            className="numeric-input h-control-dense min-w-0 flex-1"
+            value={animation.out}
+            disabled={animation.roll}
+            onChange={(event) => setAnimation({ out: event.target.value as TitleExit }, false)}
+          >
+            {TITLE_EXITS.map((exit) => (
+              <option key={exit} value={exit}>
+                {t(EXIT_NAME[exit])}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
+        {animation.out !== 'none' && !animation.roll && (
+          <SliderRow
+            label={t('title.duration')}
+            value={animation.outSeconds}
+            min={0.1}
+            max={2}
+            step={0.05}
+            format={seconds}
+            onChange={(outSeconds) => setAnimation({ outSeconds }, 'outSeconds')}
+          />
+        )}
+        <label className="grid grid-cols-[76px_1fr] items-center gap-2 text-xs text-slate-300">
+          <span className="field-label truncate">{t('title.roll')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            data-testid="title-roll"
+            checked={animation.roll}
+            onChange={(event) => setAnimation({ roll: event.target.checked }, false)}
+          />
+        </label>
+        <p className="text-2xs leading-relaxed text-slate-400">
+          {animation.roll ? t('title.rollHint', { speed: rollSpeed.toFixed(1) }) : t('title.animationHint')}
+        </p>
+      </Section>
+
+      <Section
         {...sectionProps('titlePosition')}
         title={t('title.sectionPosition')}
         onReset={() => setStyle({ anchor: defaults.anchor, maxWidth: defaults.maxWidth }, false)}
@@ -431,6 +537,21 @@ export function TitleTab({ clip, sectionProps, position, onPosition }: TitleTabP
           onChange={onPosition}
         />
         <p className="text-2xs leading-relaxed text-slate-400">{t('title.safeHint')}</p>
+        {title.origin !== 'text' && (
+          // A title from before titles turned about their text, kept as it was
+          // made because it is scaled or turned (text/titleStyle).
+          <div className="flex flex-col gap-1.5 rounded-control bg-panel-800 p-2" data-testid="title-origin-frame">
+            <p className="text-2xs leading-relaxed text-slate-300">{t('title.originFrame')}</p>
+            <button
+              type="button"
+              data-testid="title-use-text-origin"
+              className="tool-button h-control-dense self-start border border-panel-600 text-2xs"
+              onClick={() => updateTitle(clip.id, { origin: 'text' })}
+            >
+              {t('title.useTextOrigin')}
+            </button>
+          </div>
+        )}
       </Section>
     </>
   );

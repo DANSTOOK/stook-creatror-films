@@ -4,6 +4,7 @@ import { createId } from '@shared/utils/id';
 import { createClip } from '@renderer/store/types';
 import { isVisualTrack } from '@renderer/components/Timeline/trackRows';
 import { presetStyle, TITLE_URI_PREFIX, titleName } from './titleStyle';
+import { presetAnimation } from './animation';
 
 /**
  * Making a title clip, and choosing where it goes.
@@ -66,7 +67,9 @@ export function createTitleClip(
   durationFrames: number,
   fallbackName: string,
 ): Clip {
-  const title: TitleContent = { preset, text, style: presetStyle(preset) };
+  // A new title comes on and goes off as its template does, and scales and
+  // turns about its own text.
+  const title: TitleContent = { preset, text, style: presetStyle(preset), animation: presetAnimation(preset), origin: 'text' };
   const clip = createClip({
     trackId,
     name: titleName(text, fallbackName),

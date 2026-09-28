@@ -547,6 +547,16 @@ export const WAVE_FILL: Record<Track['type'], string> = {
 /** The darker strip a video clip's sound is drawn on, under its pictures. */
 export const SOUND_STRIP = 'rgba(8, 10, 14, 0.35)';
 
+/**
+ * The notes under a clip's name - speed, a missing font, keyframes - in the
+ * palette's lightest amber and slate, the lightest that keep their hue. On
+ * every clip colour they clear 4.5:1 (tests/Titles.test.ts measures them):
+ * amber-100 is 4.5 to 5.2, slate-100 4.6 to 5.3. amber-300 and indigo-200,
+ * which they were, came to 3.5-4.0.
+ */
+export const NOTE_WARM = '#fef3c7';
+export const NOTE_COOL = '#f1f5f9';
+
 /** Behind a clip name drawn over pictures: dark enough for 4.5:1 over a white frame. */
 export const NAME_BAND = 'rgba(10, 11, 14, 0.66)';
 /** The height of that band, from the top of the clip body. */
@@ -704,10 +714,9 @@ function drawClip(
     };
     let noteX = labelX;
     const speed = speedLabel(clip);
-    if (speed) noteX = note(speed, noteX, '#fcd34d');
-    // amber-200: 4.7:1 on the title colour, where the speed note's amber-300 is 4.0.
-    if (content.fontMissing) noteX = note(labels.fontMissing, noteX, '#fde68a');
-    if (keyframeCount > 0) note(labels.keyframes(keyframeCount), noteX, '#cbd5f5');
+    if (speed) noteX = note(speed, noteX, NOTE_WARM);
+    if (content.fontMissing) noteX = note(labels.fontMissing, noteX, NOTE_WARM);
+    if (keyframeCount > 0) note(labels.keyframes(keyframeCount), noteX, NOTE_COOL);
     context.restore();
   }
 

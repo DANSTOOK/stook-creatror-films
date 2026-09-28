@@ -264,6 +264,38 @@ export interface TitleStyle {
   box: { enabled: boolean; color: string; opacity: number; padding: number; radius: number };
 }
 
+/** How a title comes on. */
+export type TitleEntrance = 'none' | 'fade' | 'rise' | 'pop' | 'wipe';
+/** How it goes off: shorter than coming on, and never with a bounce. */
+export type TitleExit = 'none' | 'fade' | 'drop' | 'vanish';
+
+/**
+ * A title's own animation, worked out per frame by the compositor (see
+ * renderer/text/animation.ts). It rides on top of the clip's keyframes -
+ * opacity and scale multiply, movement adds - and is counted from the clip's
+ * ends, so trimming the clip keeps the exit at the end.
+ */
+export interface TitleAnimation {
+  in: TitleEntrance;
+  inSeconds: number;
+  out: TitleExit;
+  outSeconds: number;
+  /**
+   * End credits: the text rolls up through the frame at one speed over the
+   * whole clip, from just below it to just above it. The entrance and exit
+   * are not used while it rolls.
+   */
+  roll: boolean;
+}
+
+/**
+ * What a title scales and turns about. `text`: the centre of its text (and
+ * box). `frame`: the centre of the frame, which is how titles made before
+ * this choice existed were drawn; a saved title keeps it only where moving
+ * to the text's centre would change the picture (see normalizeProject).
+ */
+export type TitleOrigin = 'text' | 'frame';
+
 /**
  * What makes a clip a title: generated text instead of a file. A title clip
  * has no media asset; its `sourceUri` only names it (see isTitleUri).
@@ -272,6 +304,10 @@ export interface TitleContent {
   preset: TitlePreset;
   text: string;
   style: TitleStyle;
+  /** Absent on titles made before animations: none. */
+  animation?: TitleAnimation;
+  /** Absent on titles made before it existed: see TitleOrigin. */
+  origin?: TitleOrigin;
 }
 
 export interface Clip {

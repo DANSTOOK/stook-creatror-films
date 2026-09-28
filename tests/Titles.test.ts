@@ -8,7 +8,7 @@ import { subRectMatrix } from '@renderer/engine/Compositor';
 import { makeQuadMatrix } from '@renderer/engine/GLProgram';
 import { pasteClips } from '@renderer/components/Timeline/clipboard';
 import { timelineRows } from '@renderer/components/Timeline/trackRows';
-import { TRACK_TYPE_COLORS } from '@renderer/components/Timeline/TimelineCanvas';
+import { NOTE_COOL, NOTE_WARM, TRACK_TYPE_COLORS } from '@renderer/components/Timeline/TimelineCanvas';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useHistoryStore } from '@renderer/store/useHistoryStore';
 import { createClip, normalizeProject } from '@renderer/store/types';
@@ -54,7 +54,7 @@ describe('a title read from a file', () => {
   });
 
   it('survives a save and reopen unchanged', () => {
-    const clip: Clip = { ...createClip({ trackId: 'v', name: 'T', sourceUri: 'scf-title:x', startFrame: 0, durationFrames: 30 }), title: title('Hola') };
+    const clip: Clip = { ...createClip({ trackId: 'v', name: 'T', sourceUri: 'scf-title:x', startFrame: 0, durationFrames: 30 }), title: { ...title('Hola'), origin: 'text' } };
     const project = { ...useProjectStore.getState().project, clips: { [clip.id]: clip } };
     const reopened = normalizeProject(JSON.parse(JSON.stringify(project)));
     expect(reopened.clips[clip.id].title).toEqual(clip.title);
@@ -259,9 +259,15 @@ describe('where a new title goes', () => {
   });
 });
 
-describe('the title colour on the timeline', () => {
-  it('keeps the clip name and the missing-font mark readable (4.5:1)', () => {
+describe('the notes on a clip', () => {
+  it('keep the title clip name readable (4.5:1)', () => {
     expect(contrastOf('#e2e8f0', TRACK_TYPE_COLORS.text)).toBeGreaterThanOrEqual(TEXT_CONTRAST);
-    expect(contrastOf('#fde68a', TRACK_TYPE_COLORS.text)).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+  });
+
+  it('keep speed, missing font and keyframes readable on every clip colour (4.5:1)', () => {
+    for (const colour of Object.values(TRACK_TYPE_COLORS)) {
+      expect(contrastOf(NOTE_WARM, colour)).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+      expect(contrastOf(NOTE_COOL, colour)).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+    }
   });
 });

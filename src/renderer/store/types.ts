@@ -24,7 +24,7 @@ import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
 import { markerName, trackName } from '@renderer/i18n/defaultNames';
 import { DEFAULT_PIVOT, neutralVignette, neutralWheel, normalizeGrading } from '@renderer/color/grade';
 import { neutralCurves } from '@renderer/color/curves';
-import { normalizeTitle } from '@renderer/text/titleStyle';
+import { migrateTitleOrigin, normalizeTitle } from '@renderer/text/titleStyle';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -115,6 +115,11 @@ export interface EditorUiState {
    * times, -2 is running backwards. Only meaningful while playing.
    */
   playbackRate: number;
+  /**
+   * The title whose text is being typed into in the viewer, or null. While it
+   * is, the viewer draws that title at rest - not mid-fade - under the text.
+   */
+  editingTitleId: string | null;
 }
 
 export const DEFAULT_UI_STATE: EditorUiState = {
@@ -141,6 +146,7 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   outFrame: null,
   selectedAssetId: null,
   playbackRate: 1,
+  editingTitleId: null,
 };
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -403,7 +409,8 @@ export function normalizeProject(project: ProjectState): ProjectState {
       Object.fromEntries(
         Object.entries(project.clips).map(([id, clip]) => [
           id,
-          {
+          // A title from before origins keeps drawing as it did (text/titleStyle).
+          migrateTitleOrigin({
             ...clip,
             volume: finite(clip.volume, 1),
             pan: finite(clip.pan, 0),
@@ -413,7 +420,7 @@ export function normalizeProject(project: ProjectState): ProjectState {
             colorGrading: normalizeGrading(clip.colorGrading),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
-          },
+          }),
         ]),
       ),
     ),

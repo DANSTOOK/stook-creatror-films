@@ -8,6 +8,9 @@ import type {
   Marker,
   MediaAsset,
   ProjectState,
+  TitleAnimation,
+  TitleContent,
+  TitleOrigin,
   TitlePreset,
   TitleStyle,
   Track,
@@ -16,6 +19,7 @@ import type {
 } from '@shared/types';
 import { createTitleClip, planTitlePlacement, TITLE_NAME, TITLE_SECONDS, TITLE_TEXT } from '@renderer/text/titleClip';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
+import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
 import { t as translateNow } from '@renderer/i18n';
 import { createId } from '@shared/utils/id';
 import { clamp } from '@shared/utils/math';
@@ -251,7 +255,11 @@ interface ProjectStore {
    * Change a title's text or look. The clip's name follows its first line.
    * A typing run or a drag with one `mergeKey` is one undo step.
    */
-  updateTitle(clipId: string, patch: { text?: string; preset?: TitlePreset; style?: Partial<TitleStyle> }, mergeKey?: string): void;
+  updateTitle(
+    clipId: string,
+    patch: { text?: string; preset?: TitlePreset; style?: Partial<TitleStyle>; animation?: Partial<TitleAnimation>; origin?: TitleOrigin },
+    mergeKey?: string,
+  ): void;
 
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
@@ -1054,7 +1062,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const preset = patch.preset ?? clip.title.preset;
         const text = patch.text ?? clip.title.text;
         const style = normalizeTitleStyle({ ...clip.title.style, ...patch.style }, preset);
-        const title = { preset, text, style };
+        const animation = patch.animation ? normalizeAnimation({ ...(clip.title.animation ?? NO_ANIMATION), ...patch.animation }) : clip.title.animation;
+        const origin = patch.origin ?? clip.title.origin;
+        const title: TitleContent = { preset, text, style, ...(animation ? { animation } : {}), ...(origin ? { origin } : {}) };
         const name = titleName(text, translateNow(TITLE_NAME[preset]));
         return { ...project, clips: { ...project.clips, [clipId]: { ...clip, name, title } } };
       },

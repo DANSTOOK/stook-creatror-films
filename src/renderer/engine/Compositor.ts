@@ -3,6 +3,8 @@ import { sourceFrameFor } from '@renderer/timing/clipSpeed';
 import { fadeGainAt } from '@renderer/timing/clipFades';
 import { degToRad } from '@shared/utils/math';
 import { evaluateTransform } from './KeyframeEvaluator';
+import { titleTransformAt, type TitleGeometry } from '@renderer/text/geometry';
+import { REVEAL_ALL, WIPE_SOFTNESS } from '@renderer/text/animation';
 import { cdlOf, DEFAULT_PIVOT } from '@renderer/color/grade';
 import { bakeCurves, CURVE_ROWS, CURVE_SIZE, type BakedCurves } from '@renderer/color/curves';
 import type { GradeCurves } from '@shared/types';
@@ -39,6 +41,11 @@ in vec2 v_texCoord;
 out vec4 fragColor;
 
 uniform sampler2D u_inputTexture;
+// A title's Wipe: the layer shows left of u_reveal (across the texture, 0..1)
+// and fades out over u_revealSoftness after it. Every other layer is drawn
+// with u_reveal far past the right edge, where this multiplies by exactly 1.
+uniform float u_reveal;
+uniform float u_revealSoftness;
 
 void main() {
     // Sampling outside the quad must not smear edge texels across the frame.
@@ -46,7 +53,9 @@ void main() {
         fragColor = vec4(0.0);
         return;
     }
-    fragColor = texture(u_inputTexture, v_texCoord);
+    vec4 texColor = texture(u_inputTexture, v_texCoord);
+    float shown = clamp((u_reveal - v_texCoord.x) / u_revealSoftness, 0.0, 1.0);
+    fragColor = vec4(texColor.rgb, texColor.a * shown);
 }
 `;
 
@@ -148,6 +157,11 @@ export interface ClipSource {
    * full-frame layer with the text drawn at that place.
    */
   rect?: { x: number; y: number; width: number; height: number };
+  /**
+   * A title's text box and pivot (text/geometry): the compositor scales and
+   * turns it about the pivot and plays its animation on top of its keyframes.
+   */
+  title?: TitleGeometry;
 }
 
 /**
@@ -448,16 +462,31 @@ export class Compositor {
   /** Rasterize one clip into `ping` with its resolved transform applied. */
   private renderLayer(clip: Clip, frame: number, source: ClipSource): number {
     const { gl } = this;
-    const transform = evaluateTransform(clip.transform, frame);
+    let transform = evaluateTransform(clip.transform, frame);
+    let reveal = REVEAL_ALL;
+    // A title: its own animation on top of its keyframes, about its pivot.
+    // The one being typed into in the viewer is shown at rest.
+    const title = clip.title && source.title ? source.title : null;
+    if (title) {
+      const resting = clip.id === this.restingTitleId;
+      const effective = titleTransformAt(clip, frame, this.fps, { width: this.width, height: this.height }, title, resting);
+      transform = effective.transform;
+      reveal = effective.reveal;
+    }
 
     this.ping.bind();
     this.ping.clearTransparent();
     gl.disable(gl.BLEND);
 
     // Position is in project pixels relative to the frame centre, y pointing
-    // down; scale 1.0 means "fills the project frame".
-    const centerX = (transform.position.x / this.width) * 2;
-    const centerY = -(transform.position.y / this.height) * 2;
+    // down; scale 1.0 means "fills the project frame". A title turns about its
+    // pivot instead of the frame's centre: the same sum with the anchor moved
+    // there, which for a pivot at the centre is exactly the sum above.
+    const anchor = title
+      ? { x: title.pivot.x / this.width, y: 1 - title.pivot.y / this.height }
+      : transform.anchorPoint;
+    const centerX = (title ? anchor.x * 2 - 1 : 0) + (transform.position.x / this.width) * 2;
+    const centerY = (title ? anchor.y * 2 - 1 : 0) - (transform.position.y / this.height) * 2;
 
     const frameMatrix = makeQuadMatrix(
       centerX,
@@ -465,8 +494,8 @@ export class Compositor {
       transform.scale.x,
       transform.scale.y,
       -degToRad(transform.rotation),
-      transform.anchorPoint.x,
-      transform.anchorPoint.y,
+      anchor.x,
+      anchor.y,
     );
     const matrix = source.rect ? subRectMatrix(frameMatrix, source.rect, this.width, this.height) : frameMatrix;
 
@@ -474,6 +503,8 @@ export class Compositor {
     this.transferProgram.set('u_transform', matrix);
     this.transferProgram.set('u_flipY', source.flipY);
     this.transferProgram.setTexture('u_inputTexture', source.texture, 0);
+    this.transferProgram.set('u_reveal', reveal);
+    this.transferProgram.set('u_revealSoftness', WIPE_SOFTNESS);
     this.drawQuad(this.transferProgram);
 
     // A fade at either end of the clip rides on top of whatever opacity the
@@ -552,6 +583,14 @@ export class Compositor {
 
   /** Dither graded pixels on the way to 8 bits (see ColorGrading.glsl). On unless a test turns it off. */
   dither = true;
+
+  /** Frames per second of the timeline being drawn, for titles' animations. */
+  private fps = 30;
+  /**
+   * The title being typed into in the viewer: drawn at rest, so text that is
+   * fading in can be read while it is edited. Never set for an export.
+   */
+  restingTitleId: string | null = null;
 
   private applyEffectChain(clip: Clip, skipGrade = false, frame = 0): void {
     if (clip.chromaKey.enabled) {
@@ -678,6 +717,7 @@ export class Compositor {
 
     this.stats.clipsDrawn = 0;
     this.stats.passes = 0;
+    this.fps = project.fps;
 
     this.scene.bind();
     // Transparent clear: the project frame keeps its alpha so pixel-art and

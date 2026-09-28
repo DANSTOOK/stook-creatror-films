@@ -96,10 +96,13 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
       const { project, ui } = useProjectStore.getState();
 
       try {
-        renderer.drawViewport(project, ui.isPlaying, ui.pixelArtViewport, {
-          bypass: ui.gradeBypass,
-          split: ui.compareSplit,
-        });
+        renderer.drawViewport(
+          project,
+          ui.isPlaying,
+          ui.pixelArtViewport,
+          { bypass: ui.gradeBypass, split: ui.compareSplit },
+          ui.editingTitleId,
+        );
         // The video scopes read what was just drawn, when they are open.
         tickScopes(renderer, project, ui.isPlaying, now);
       } catch (renderError) {

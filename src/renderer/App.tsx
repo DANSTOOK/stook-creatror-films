@@ -235,6 +235,8 @@ export default function App(): JSX.Element {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // Typing into a title in the viewer: only saving reaches the project.
+      if ((event.target as HTMLElement | null)?.isContentEditable && key !== 's') return;
       let run: (() => void) | null = null;
       // With a dialog open, only saving still reaches the project: a new
       // project or a second dialog under a modal one would be lost behind it.

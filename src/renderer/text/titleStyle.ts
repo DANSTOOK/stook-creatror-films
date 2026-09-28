@@ -1,4 +1,5 @@
-import type { TitleAlign, TitleAnchor, TitleContent, TitlePreset, TitleStyle } from '@shared/types';
+import type { Clip, TitleAlign, TitleAnchor, TitleContent, TitlePreset, TitleStyle } from '@shared/types';
+import { normalizeAnimation } from './animation';
 
 /**
  * The three title templates, and the rules that keep a title's settings
@@ -180,8 +181,30 @@ export function normalizeTitle(raw: unknown): TitleContent {
     preset,
     text: typeof source.text === 'string' ? source.text : '',
     style: normalizeTitleStyle(source.style, preset),
+    // Titles from before animations have none, and keep none.
+    ...(source.animation ? { animation: normalizeAnimation(source.animation) } : {}),
+    ...(source.origin === 'text' || source.origin === 'frame' ? { origin: source.origin } : {}),
   };
 }
+
+/**
+ * Titles scale and turn about their text's centre; the first ones scaled and
+ * turned about the frame's. The two only draw differently while a title is
+ * scaled or turned, so a title that never is - every one made so far but a
+ * few - moves to the text's centre on opening and looks exactly the same.
+ * One that is keeps the frame's centre, so an opened project never looks
+ * different from when it was saved; the Title tab offers the change.
+ */
+export function migrateTitleOrigin(clip: Clip): Clip {
+  if (!clip.title || clip.title.origin === 'text' || clip.title.origin === 'frame') return clip;
+  const identity =
+    clip.transform.scale.every((keyframe) => keyframe.value.x === 1 && keyframe.value.y === 1) &&
+    clip.transform.rotation.every((keyframe) => keyframe.value === 0);
+  return { ...clip, title: { ...clip.title, origin: identity ? 'text' : 'frame' } };
+}
+
+/** What a title scales and turns about: see TitleOrigin. Absent means the frame's centre. */
+export const originOf = (title: TitleContent): 'text' | 'frame' => title.origin ?? 'frame';
 
 /* Naming the source ------------------------------------------------------------ */
 

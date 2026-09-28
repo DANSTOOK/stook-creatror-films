@@ -791,6 +791,7 @@ export function Inspector(): JSX.Element {
         {current === 'title' && (
           <TitleTab
             clip={clip}
+            frame={{ width: project.width, height: project.height, fps: project.fps }}
             sectionProps={sectionProps}
             position={resolved.position}
             onPosition={(axis, value) => setVectorKeyframe(clip.id, 'position', frame, { ...resolved.position, [axis]: value })}

@@ -952,6 +952,29 @@ export const en = {
   'licenses.intro': 'Titles can use these fonts, which come with the app. Each is under the SIL Open Font License 1.1. Videos you make with them are yours, with no conditions attached.',
   'keys.titleKeys': 'Ctrl+Alt+T / Ctrl+Alt+Shift+T',
   'keys.titles': 'Add a title / a lower third at the playhead',
+
+  /* Titles, phase 2 --------------------------------------------------------- */
+  'title.editInViewer': 'Title text',
+  'title.sectionAnimation': 'Animation',
+  'title.entrance': 'In',
+  'title.exit': 'Out',
+  'title.duration': 'Length',
+  'title.inNone': 'None',
+  'title.inFade': 'Fade',
+  'title.inRise': 'Rise',
+  'title.inPop': 'Pop',
+  'title.inWipe': 'Wipe',
+  'title.outNone': 'None',
+  'title.outFade': 'Fade',
+  'title.outDrop': 'Drop',
+  'title.outVanish': 'Vanish',
+  'title.roll': 'Roll',
+  'title.rollHint': 'The text rolls up through the frame at one speed over the whole clip: {speed} px a frame.',
+  'title.animationHint': 'Counted from the clip’s ends: trim the clip and the exit stays at its end.',
+  'title.originFrame': 'This title scales and turns about the centre of the frame, as it was made.',
+  'title.useTextOrigin': 'Use the text’s centre',
+  'keys.editTitleKeys': 'Double-click a title',
+  'keys.editTitle': 'Type into it in the viewer; Esc or Ctrl+Enter to finish',
 };
 
 export type Messages = typeof en;

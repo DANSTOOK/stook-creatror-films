@@ -2,6 +2,7 @@ import type { Clip, TitleContent } from '@shared/types';
 import { loadTitleFonts, titleFontsReady } from '@renderer/text/fonts';
 import { rasterizeTitle } from '@renderer/text/render';
 import type { Rect } from '@renderer/text/layout';
+import { titleGeometry, type TitleGeometry } from '@renderer/text/geometry';
 import type { ClipSource } from './Compositor';
 import type { TextureManager } from './TextureManager';
 
@@ -22,6 +23,7 @@ import type { TextureManager } from './TextureManager';
 interface Resident {
   key: string;
   rect: Rect;
+  geometry: TitleGeometry;
 }
 
 /** Largest scale a clip reaches in any of its keyframes, so the text is drawn sharp for it. */
@@ -70,20 +72,22 @@ export class TitleLayers {
 
     if (resident?.key === key) {
       const texture = this.textures.get(textureKey);
-      if (texture) return { texture, flipY: true, rect: resident.rect };
+      if (texture) return { texture, flipY: true, rect: resident.rect, title: resident.geometry };
     }
 
     if (!titleFontsReady(title)) {
       void loadTitleFonts(title);
       // The last picture until the new one can be drawn, like a video seeking.
       const held = resident ? this.textures.get(textureKey) : undefined;
-      return held && resident ? { texture: held, flipY: true, rect: resident.rect } : null;
+      return held && resident ? { texture: held, flipY: true, rect: resident.rect, title: resident.geometry } : null;
     }
 
     const raster = rasterizeTitle(title, { width, height }, scale);
     const texture = this.textures.upload(textureKey, raster.canvas, key);
-    this.resident.set(clip.id, { key, rect: raster.rect });
-    return { texture, flipY: true, rect: raster.rect };
+    // Where the text is and what it turns about, as the viewer measures it too.
+    const geometry = titleGeometry(title, { width, height });
+    this.resident.set(clip.id, { key, rect: raster.rect, geometry });
+    return { texture, flipY: true, rect: raster.rect, title: geometry };
   }
 
   /** Where a title's picture sits on the frame, as last drawn. */
