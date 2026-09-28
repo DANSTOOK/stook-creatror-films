@@ -16,6 +16,9 @@ import { useFlip } from '@renderer/motion/useFlip';
 import { createClip } from '@renderer/store/types';
 import { useProjectStore, type NumberProperty, type VectorProperty } from '@renderer/store/useProjectStore';
 import { ColorWheels, neutralWheels, type WheelMode } from './ColorWheels';
+import { CurveEditor } from './CurveEditor';
+import { LEVEL_CURVES, OFFSET_CURVES, neutralCurve, type LevelCurve, type OffsetCurve } from '@renderer/color/curves';
+import { neutralVignette } from '@renderer/color/grade';
 
 /**
  * Property inspector for the selected clip.
@@ -54,6 +57,19 @@ const TAB_LABELS: Record<Tab, MessageKey> = {
 
 /** The settings a new clip starts with, to reset a section to. */
 const WHEEL_MODE_KEY = 'scf.wheelMode';
+
+const CURVE_NAME: Record<LevelCurve | OffsetCurve, MessageKey> = {
+  master: 'curves.master',
+  red: 'curves.red',
+  green: 'curves.green',
+  blue: 'curves.blue',
+  hueVsHue: 'curves.hueVsHue',
+  hueVsSat: 'curves.hueVsSat',
+  hueVsLuma: 'curves.hueVsLuma',
+  lumaVsSat: 'curves.lumaVsSat',
+};
+/** The dot beside each level curve's name, in its channel's colour. */
+const CURVE_DOT: Record<LevelCurve, string> = { master: 'bg-slate-200', red: 'bg-red-400', green: 'bg-green-400', blue: 'bg-blue-400' };
 
 const DEFAULTS = createClip({ trackId: '', name: '', sourceUri: '', startFrame: 0, durationFrames: 1 });
 
@@ -440,6 +456,10 @@ export function Inspector(): JSX.Element {
   const [lutError, setLutError] = useState<string | null>(null);
 
   /** Wheels or numbers for the primaries: a preference, kept across sessions. */
+  /** Which curve each curves group shows: a choice about the inspector, kept across clips. */
+  const [levelCurve, setLevelCurve] = useState<LevelCurve>('master');
+  const [versusCurve, setVersusCurve] = useState<OffsetCurve>('hueVsHue');
+
   const [wheelMode, setWheelModeState] = useState<WheelMode>(() => {
     try {
       return window.localStorage.getItem(WHEEL_MODE_KEY) === 'numbers' ? 'numbers' : 'wheels';
@@ -851,6 +871,94 @@ export function Inspector(): JSX.Element {
         />
       </Section>
 
+      {/* Curves: after the wheels, contrast and saturation; before the look. */}
+      <Section
+        {...sectionProps('curves')}
+        title={t('curves.title')}
+        onReset={() =>
+          updateClip(clip.id, {
+            colorGrading: { ...grading, curves: { ...grading.curves, ...Object.fromEntries(LEVEL_CURVES.map((id) => [id, neutralCurve(id)])) } },
+          })
+        }
+      >
+        <div className="flex items-center gap-1">
+          <span role="group" aria-label={t('curves.choose')} className="flex min-w-0 flex-1 gap-0.5">
+            {LEVEL_CURVES.map((id) => (
+              <button
+                key={id}
+                type="button"
+                data-testid={`curve-pick-${id}`}
+                aria-pressed={levelCurve === id}
+                className={`tool-button tool-button-dense min-w-0 flex-1 gap-1 px-1 text-2xs ${levelCurve === id ? 'tool-button-active' : ''}`}
+                onClick={() => setLevelCurve(id)}
+              >
+                <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${CURVE_DOT[id]}`} />
+                <span className="truncate">{t(CURVE_NAME[id])}</span>
+              </button>
+            ))}
+          </span>
+          <button
+            type="button"
+            data-testid="curve-reset-level"
+            className="tool-button tool-button-dense w-6 px-0"
+            onClick={() => setGrading({ curves: { ...grading.curves, [levelCurve]: neutralCurve(levelCurve) } }, false)}
+            {...tip(t('curves.reset', { name: t(CURVE_NAME[levelCurve]) }))}
+          >
+            <RotateCcw size={12} />
+          </button>
+        </div>
+        <CurveEditor
+          curve={levelCurve}
+          points={grading.curves[levelCurve]}
+          label={t(CURVE_NAME[levelCurve])}
+          onChange={(points) => setGrading({ curves: { ...grading.curves, [levelCurve]: points } }, `curve-${levelCurve}`)}
+        />
+      </Section>
+
+      <Section
+        {...sectionProps('versusCurves')}
+        title={t('curves.versusTitle')}
+        onReset={() =>
+          updateClip(clip.id, {
+            colorGrading: { ...grading, curves: { ...grading.curves, ...Object.fromEntries(OFFSET_CURVES.map((id) => [id, neutralCurve(id)])) } },
+          })
+        }
+      >
+        <div className="flex items-center gap-1">
+          <label className="sr-only" htmlFor="versus-curve">
+            {t('curves.choose')}
+          </label>
+          <select
+            id="versus-curve"
+            data-testid="curve-pick-versus"
+            className="numeric-input h-control-dense min-w-0 flex-1 text-2xs"
+            value={versusCurve}
+            onChange={(event) => setVersusCurve(event.target.value as OffsetCurve)}
+          >
+            {OFFSET_CURVES.map((id) => (
+              <option key={id} value={id}>
+                {t(CURVE_NAME[id])}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            data-testid="curve-reset-versus"
+            className="tool-button tool-button-dense w-6 px-0"
+            onClick={() => setGrading({ curves: { ...grading.curves, [versusCurve]: neutralCurve(versusCurve) } }, false)}
+            {...tip(t('curves.reset', { name: t(CURVE_NAME[versusCurve]) }))}
+          >
+            <RotateCcw size={12} />
+          </button>
+        </div>
+        <CurveEditor
+          curve={versusCurve}
+          points={grading.curves[versusCurve]}
+          label={t(CURVE_NAME[versusCurve])}
+          onChange={(points) => setGrading({ curves: { ...grading.curves, [versusCurve]: points } }, `curve-${versusCurve}`)}
+        />
+      </Section>
+
       <Section {...sectionProps('lut')} title={t('inspector.lut')}>
         <div className="flex items-center gap-2">
           <button type="button" className="tool-button h-control flex-1 justify-start border border-panel-600" onClick={() => void pickLut(clip.id)}>
@@ -892,6 +1000,18 @@ export function Inspector(): JSX.Element {
         {grading.lutUri && (
           <SliderRow label={t('inspector.lutIntensity')} value={grading.lutIntensity} format={percent} onChange={(lutIntensity) => setGrading({ lutIntensity })} />
         )}
+      </Section>
+
+      {/* The vignette, after the look, as Lumetri orders them. */}
+      <Section
+        {...sectionProps('vignette')}
+        title={t('vignette.title')}
+        onReset={() => updateClip(clip.id, { colorGrading: { ...grading, vignette: neutralVignette() } })}
+      >
+        <SliderRow label={t('vignette.amount')} value={grading.vignette.amount} min={-1} max={1} onChange={(amount) => setGrading({ vignette: { ...grading.vignette, amount } }, 'vignette-amount')} />
+        <SliderRow label={t('vignette.size')} value={grading.vignette.size} onChange={(size) => setGrading({ vignette: { ...grading.vignette, size } }, 'vignette-size')} />
+        <SliderRow label={t('vignette.roundness')} value={grading.vignette.roundness} min={-1} max={1} onChange={(roundness) => setGrading({ vignette: { ...grading.vignette, roundness } }, 'vignette-roundness')} />
+        <SliderRow label={t('vignette.feather')} value={grading.vignette.feather} onChange={(feather) => setGrading({ vignette: { ...grading.vignette, feather } }, 'vignette-feather')} />
       </Section>
     </>
   );
