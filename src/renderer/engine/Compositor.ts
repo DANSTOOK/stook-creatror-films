@@ -4,6 +4,8 @@ import { fadeGainAt } from '@renderer/timing/clipFades';
 import { degToRad } from '@shared/utils/math';
 import { evaluateTransform } from './KeyframeEvaluator';
 import { cdlOf, DEFAULT_PIVOT } from '@renderer/color/grade';
+import { bakeCurves, CURVE_ROWS, CURVE_SIZE, type BakedCurves } from '@renderer/color/curves';
+import type { GradeCurves } from '@shared/types';
 import { FULLSCREEN_MATRIX, GLProgram, RenderTarget, makeQuadMatrix } from './GLProgram';
 import type { LUTLoader } from './LUTLoader';
 
@@ -460,7 +462,60 @@ export class Compositor {
     this.swap();
   }
 
-  private applyEffectChain(clip: Clip, skipGrade = false): void {
+  /* Curves ------------------------------------------------------------------ */
+
+  /** Baked curves by the curves object: the store replaces it when they change. */
+  private readonly bakedCurves = new WeakMap<GradeCurves, BakedCurves>();
+  /** Uploaded curve textures by content, the most recently used last. */
+  private readonly curveTextures = new Map<string, WebGLTexture>();
+
+  private bakedFor(curves: GradeCurves): BakedCurves {
+    let baked = this.bakedCurves.get(curves);
+    if (!baked) {
+      baked = bakeCurves(curves);
+      this.bakedCurves.set(curves, baked);
+    }
+    return baked;
+  }
+
+  /** The texture holding these curves, uploaded once and kept for reuse. */
+  private curveTextureFor(baked: BakedCurves): WebGLTexture {
+    const { gl } = this;
+    const cached = this.curveTextures.get(baked.key);
+    if (cached) {
+      this.curveTextures.delete(baked.key);
+      this.curveTextures.set(baked.key, cached);
+      return cached;
+    }
+    const texture = gl.createTexture();
+    if (!texture) throw new Error('Failed to allocate a curve texture');
+    // On the curves' own unit: this runs in the middle of setting up the
+    // pass, and binding on the active unit would replace the pass's input.
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, CURVE_SIZE, CURVE_ROWS.length, 0, gl.RED, gl.FLOAT, baked.data);
+    // Read with texelFetch and interpolated in the shader: float textures
+    // need not be filterable.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    this.curveTextures.set(baked.key, texture);
+    // A handful of distinct gradings in one edit at most; keep the recent ones.
+    while (this.curveTextures.size > 32) {
+      const [oldest, doomed] = this.curveTextures.entries().next().value as [string, WebGLTexture];
+      gl.deleteTexture(doomed);
+      this.curveTextures.delete(oldest);
+    }
+    return texture;
+  }
+
+  /** Dither graded pixels on the way to 8 bits (see ColorGrading.glsl). On unless a test turns it off. */
+  dither = true;
+
+  private applyEffectChain(clip: Clip, skipGrade = false, frame = 0): void {
     if (clip.chromaKey.enabled) {
       this.runPass(this.chromaKeyProgram, (program) => {
         program.set('u_keyColor', new Float32Array(clip.chromaKey.keyColor));
@@ -486,6 +541,26 @@ export class Compositor {
         program.set('u_cdlSlope', new Float32Array(cdl.slope));
         program.set('u_cdlOffset', new Float32Array(cdl.offset));
         program.set('u_cdlPower', new Float32Array(cdl.power));
+
+        const baked = grading.curves ? this.bakedFor(grading.curves) : null;
+        program.set('u_levelCurvesActive', baked?.levelsActive === true);
+        program.set('u_versusCurvesActive', baked?.versusActive === true);
+        if (baked && (baked.levelsActive || baked.versusActive)) {
+          program.setTexture('u_curveTexture', this.curveTextureFor(baked), 2);
+        }
+
+        const vignette = grading.vignette;
+        program.set('u_vignetteActive', Boolean(vignette && vignette.amount !== 0));
+        if (vignette) {
+          program.set('u_vignetteAmount', vignette.amount);
+          program.set('u_vignetteSize', vignette.size);
+          program.set('u_vignetteRoundness', vignette.roundness);
+          program.set('u_vignetteFeather', vignette.feather);
+        }
+
+        // Pixel art keeps its exact palette: no noise between its levels.
+        program.set('u_dither', this.dither && !clip.pixelArt.enabled);
+        program.setInt('u_frame', frame);
         program.set('u_lutEnabled', loaded !== undefined);
         program.set('u_lutIntensity', grading.lutIntensity);
 
@@ -581,7 +656,7 @@ export class Compositor {
       const opacity = this.renderLayer(clip, frame, source);
       if (opacity <= 0) continue;
 
-      this.applyEffectChain(clip);
+      this.applyEffectChain(clip, false, frame);
       this.compositeLayer(opacity);
       this.stats.clipsDrawn += 1;
     }
@@ -801,6 +876,8 @@ export class Compositor {
 
     gl.deleteBuffer(this.vertexBuffer);
     gl.deleteTexture(this.defaultLutTexture);
+    for (const texture of this.curveTextures.values()) gl.deleteTexture(texture);
+    this.curveTextures.clear();
 
     for (const program of [
       this.transferProgram,
