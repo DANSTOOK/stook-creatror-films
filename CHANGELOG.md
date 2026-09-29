@@ -16,6 +16,110 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Transiciones, fase 4
+
+Barrido, deslizar y empujar; el sonido que se funde con la imagen; el panel
+de Títulos y Transiciones; y la duración por defecto en Preferencias.
+
+### Añadido
+- **Tres transiciones nuevas**, con sus controles en el Inspector:
+  - **Barrido**: un borde que cruza la imagen en una de cuatro direcciones,
+    con **suavidad** ajustable (al 100 %, un borde de una quinta parte del
+    cuadro).
+  - **Deslizar**: la imagen que entra llega desde un lado y se coloca
+    encima de la que sale, que no se mueve.
+  - **Empujar**: la que entra empuja fuera a la que sale.
+  - En la línea de tiempo, la caja de cada una lleva su flecha.
+- **El sonido se funde con la imagen**, como en Final Cut. En una
+  transición, el sonido de los dos clips, y los clips de sonido enlazados
+  que se encuentran en el mismo corte, se funden **a potencia constante**:
+  cada lado queda a -3 dB en el centro y el volumen total no baja.
+  - Se oye igual al reproducir y en la exportación.
+  - El interruptor **Sonido** del Inspector lo apaga; entonces el sonido
+    corta en el corte.
+- **Pestañas Medios | Títulos | Transiciones** en el panel de la izquierda,
+  que ahora se llama **Biblioteca**:
+  - Cada plantilla tiene su miniatura. Está quieta hasta que se le pasa el
+    ratón por encima o se enfoca con el teclado, y entonces se mueve como lo
+    hará en la línea de tiempo.
+  - Con «reducir movimiento» de Windows, o mientras se reproduce el visor,
+    no se mueve.
+  - **Arrastrar una transición a un corte**: mientras se arrastra se marcan
+    todos los cortes donde puede ir, y el corte donde caerá muestra su
+    duración. Si el corte ya tiene una transición, la sustituye (un paso de
+    deshacer). Si falta metraje, pregunta como Ctrl+T.
+  - **Arrastrar un título a una pista**: va a esa pista, en el fotograma
+    donde se suelta, si está libre. Si no, va encima, como «Añadir título».
+  - **Intro** sobre una plantilla la añade en el cursor. Si una transición
+    no tiene dónde ir, lo dice.
+- **Preferencias > Duración de las transiciones**: 0,5, 1, 1,5 o 2 segundos,
+  o una personalizada (de 0,1 a 10 s). Es la que dan Ctrl+T, Ctrl+D y el
+  panel. Se recuerda en este equipo.
+
+### Cómo se comprobó
+- **`npm run test:transitions-f4:ui`: 35/35** en la aplicación real, con la
+  ventana oculta:
+  - **Barrido duro**: el borde está donde dice su progreso, medido en
+    píxeles, en las cuatro direcciones. Por ejemplo, 149 px frente a 149,3
+    esperados y 491 frente a 490,7; nunca más de 1 px de diferencia.
+  - **Barrido suave**: una franja mezclada de 79 px centrada en el píxel
+    319,5 de 640.
+  - **Deslizar**: la imagen B entra desde x = 491 (se esperaban 490,7) y la
+    franja verde de A sigue en 300. **Empujar**: la franja se desplaza a 151
+    (se esperaban 150,7). Deslizar hacia arriba entra desde la fila 276 (se
+    esperaba 276).
+  - **Sonido**, con un tono de 440 Hz fundiéndose en uno de 1000 Hz:
+    - al reproducir, cada lado está en el corte a -3,14 y -2,89 dB, y el
+      nivel total no cambia (-0,02 dB);
+    - en un archivo exportado y decodificado con ffmpeg, -3,03 y -3,01 dB;
+      el primer tono sigue entero justo antes de la transición y ya no se
+      oye justo después;
+    - con el interruptor apagado, el sonido corta en el corte.
+  - **Panel**:
+    - las miniaturas están dibujadas y quietas;
+    - con el ratón encima cambian (7 imágenes distintas en 1 s) y vuelven a
+      la misma imagen fija al salir;
+    - con movimiento reducido no se mueven.
+  - **Arrastres**:
+    - los dos cortes se marcan mientras se arrastra;
+    - un barrido cae en el corte de 90;
+    - empujar sobre el mismo corte lo sustituye en un solo paso;
+    - un fundido a negro cae en el corte de 180;
+    - un rótulo inferior cae en Vídeo 2, en el fotograma 60.
+  - **Intro**: un título se añade en el cursor. Una transición sin corte
+    cerca no añade nada y lo dice.
+  - **Preferencias**: 0,5 s dan 15 fotogramas con Ctrl+T, 2,5 s
+    personalizados dan 75, y se recuerda.
+  - **Cadencia**: con la pestaña Transiciones abierta y el ratón sobre una
+    miniatura, no se pierde ningún fotograma de vídeo, el p95 es de 5,7 ms y
+    la miniatura se queda quieta mientras se reproduce.
+  - **En español**: las pestañas, los nombres, y arrastrar «Deslizar» y
+    «Créditos finales».
+- **926 pruebas unitarias**, 14 de ellas nuevas:
+  - los tipos y su lectura;
+  - la ley de potencia constante;
+  - qué clips se funden y cuánto;
+  - las curvas de ganancia;
+  - la duración por defecto;
+  - dónde cae lo que se suelta.
+- **Siguen pasando:**
+  - 127/127 de interfaz;
+  - 24/24 de transiciones (fase 3);
+  - 33/33 y 30/30 de títulos;
+  - 21/21 de extremo a extremo.
+- Las pruebas de títulos buscaban la pestaña «Title» en toda la ventana y
+  ahora la buscan dentro del Inspector, porque la Biblioteca tiene su propia
+  pestaña «Titles».
+
+### Problemas conocidos
+- En la medición de cadencia, la ventana oculta de referencia (pestaña
+  Medios) iba a veces a unos 45 Hz en lugar de a la frecuencia de la
+  pantalla. La comparación sigue siendo válida (0 fotogramas de vídeo
+  perdidos en los dos casos), pero el p95 de referencia de esa pasada no
+  sirve como cifra absoluta.
+
+---
+
 ## Sin publicar — Transiciones, fase 3
 
 Las transiciones esenciales: fundido encadenado, fundido a negro y fundido a
