@@ -274,3 +274,34 @@ describe('Ctrl+T in the store', () => {
     expect(state().project.clips.b.sourceOffsetFrames).toBe(15);
   });
 });
+
+describe('on the timeline', () => {
+  it('draws the box across the window of the cut, and at least 12 px wide', async () => {
+    const { transitionBoxes, transitionAt, durationFromEdge } = await import('@renderer/components/Timeline/transitionBoxes');
+    const a = clip({ id: 'a', startFrame: 0, durationFrames: 90 });
+    const b = clip({ id: 'b', startFrame: 90, durationFrames: 90 });
+    const dissolve = createTransition(a, b, 'crossDissolve', 30, 'center');
+    const tracks = [{ id: 'v1' } as never];
+    const rows = { rowTop: (index: number) => 24 + index * 58, rowHeight: 56 };
+    const [box] = transitionBoxes({ clips: { a, b }, transitions: { [dissolve.id]: dissolve } }, tracks, { pixelsPerFrame: 2, scrollLeftPx: 0 }, rows);
+    expect(box).toMatchObject({ cutX: 180, left: 150, right: 210 });
+    expect(transitionAt([box], 180, box.top + 5)?.edge).toBeNull();
+    expect(transitionAt([box], 151, box.top + 5)?.edge).toBe('start');
+    expect(transitionAt([box], 180, box.top - 5)).toBeNull();
+    const [tiny] = transitionBoxes({ clips: { a, b }, transitions: { [dissolve.id]: dissolve } }, tracks, { pixelsPerFrame: 0.1, scrollLeftPx: 0 }, rows);
+    expect(tiny.right - tiny.left).toBe(12);
+    // A centred one grows both ways from the cut; one starting at the cut grows away from it.
+    expect(durationFromEdge({ alignment: 'center' }, 90, 110)).toBe(40);
+    expect(durationFromEdge({ alignment: 'center' }, 90, 75)).toBe(30);
+    expect(durationFromEdge({ alignment: 'start' }, 90, 110)).toBe(20);
+    expect(durationFromEdge({ alignment: 'end' }, 90, 70)).toBe(20);
+  });
+
+  it('keeps clip names and the red edge readable', async () => {
+    const { CLIP_NAME, TRACK_TYPE_COLORS, TRANSITION_SHORT } = await import('@renderer/components/Timeline/TimelineCanvas');
+    const { contrastOf, SHAPE_CONTRAST, TEXT_CONTRAST } = await import('@shared/utils/contrast');
+    for (const colour of Object.values(TRACK_TYPE_COLORS)) expect(contrastOf(CLIP_NAME, colour)).toBeGreaterThanOrEqual(TEXT_CONTRAST);
+    // The red edge on its dark box, and against the clip colours beside it.
+    expect(contrastOf(TRANSITION_SHORT, '#0c0e12')).toBeGreaterThanOrEqual(SHAPE_CONTRAST);
+  });
+});
