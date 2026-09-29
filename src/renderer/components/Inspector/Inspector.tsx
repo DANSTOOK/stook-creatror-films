@@ -21,6 +21,7 @@ import { LEVEL_CURVES, OFFSET_CURVES, neutralCurve, type LevelCurve, type Offset
 import { neutralVignette } from '@renderer/color/grade';
 import { NumberRow, PairRow, Section, SliderRow, SwitchRow, type SectionProps } from './rows';
 import { TitleTab } from './TitleTab';
+import { TransitionPanel } from './TransitionPanel';
 
 /**
  * Property inspector for the selected clip.
@@ -146,6 +147,9 @@ export function Inspector(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const assets = useProjectStore((state) => state.assets);
   const selectedIds = useProjectStore((state) => state.ui.selectedClipIds);
+  const selectedTransition = useProjectStore((state) =>
+    state.ui.selectedTransitionId ? state.project.transitions?.[state.ui.selectedTransitionId] ?? null : null,
+  );
   const updateClip = useProjectStore((state) => state.updateClip);
   const setVectorKeyframe = useProjectStore((state) => state.setVectorKeyframe);
   const setNumberKeyframe = useProjectStore((state) => state.setNumberKeyframe);
@@ -250,6 +254,18 @@ export function Inspector(): JSX.Element {
       opacity: evaluateNumber(clip.transform.opacity, frame, 1),
     };
   }, [clip, frame]);
+
+  // A transition picked on the timeline, and no clip: the transition's own settings.
+  if (!clip && selectedTransition) {
+    return (
+      <aside data-testid="inspector-panel" className="panel w-full">
+        <header className="panel-header">{t('transition.name')}</header>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <TransitionPanel transition={selectedTransition} />
+        </div>
+      </aside>
+    );
+  }
 
   if (!clip || !resolved) {
     return (

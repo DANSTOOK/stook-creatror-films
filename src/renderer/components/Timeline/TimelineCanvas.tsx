@@ -9,6 +9,7 @@ import { isReversed, sourceFramesUsed, speedLabel } from '@renderer/timing/clipS
 import type { ClipAppearance, Filmstrip } from '@renderer/media/clipContent';
 import { fadeLengths } from '@renderer/timing/clipFades';
 import { isFamilyMissing } from '@renderer/text/fonts';
+import { transitionBoxes, type TransitionBox } from './transitionBoxes';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { stepZoomView, type DisplayedView } from './zoomMotion';
 
@@ -65,6 +66,8 @@ export interface TimelineCanvasProps {
   filmstrips?: Record<string, Filmstrip>;
   /** Source URIs whose files are missing: drawn as offline. */
   offlineUris?: ReadonlySet<string>;
+  /** Transitions whose clips run out of footage under them, by id: drawn with a red edge on that side. */
+  transitionShortfalls?: ReadonlyMap<string, { tail: number; head: number }>;
   /** What clips show inside: see ClipAppearance. */
   appearance?: ClipAppearance;
   /** Changes when a filmstrip frame has been decoded, to paint it. */
@@ -90,6 +93,7 @@ export interface TimelineCanvasProps {
   onPointerUp(event: React.PointerEvent<HTMLCanvasElement>): void;
   onPointerLeave?(): void;
   onContextMenu(event: React.MouseEvent<HTMLCanvasElement>): void;
+  onDoubleClick?(event: React.MouseEvent<HTMLCanvasElement>): void;
 }
 
 export interface ClipHover {
@@ -509,6 +513,69 @@ function drawFades(
   grip(x + fadeIn * pixelsPerFrame);
   grip(x + clipWidth - fadeOut * pixelsPerFrame);
 }
+/**
+ * A transition: a dark rounded box across its cut, with the mark of its kind
+ * - a bowtie for a dissolve, a dip for a dip, over a dot of its colour - in
+ * the yellow of a selected clip when picked, and a red edge on the side
+ * where a clip runs out of footage under it (Final Cut marks that edge red).
+ */
+function drawTransitionBox(
+  context: CanvasRenderingContext2D,
+  box: TransitionBox,
+  selected: boolean,
+  short: { tail: number; head: number } | undefined,
+): void {
+  const width = box.right - box.left;
+  const height = box.bottom - box.top;
+  context.save();
+  context.beginPath();
+  context.roundRect(box.left, box.top, width, height, Math.min(5, width / 2));
+  context.fillStyle = 'rgba(12, 14, 18, 0.9)';
+  context.fill();
+  context.lineWidth = selected ? 2 : 1;
+  context.strokeStyle = selected ? SELECTED_OUTLINE : '#cbd5e1';
+  context.stroke();
+
+  // Red where footage runs out: the head side is before the cut, the tail after.
+  context.fillStyle = TRANSITION_SHORT;
+  if (short && short.head > 0) context.fillRect(box.left, box.top + 1, 3, height - 2);
+  if (short && short.tail > 0) context.fillRect(box.right - 3, box.top + 1, 3, height - 2);
+
+  const size = Math.min(7, height / 3, width / 3);
+  if (size >= 3) {
+    const cx = Math.min(Math.max(box.cutX, box.left + size + 2), box.right - size - 2);
+    const cy = (box.top + box.bottom) / 2;
+    context.strokeStyle = '#e2e8f0';
+    context.lineWidth = 1.25;
+    context.beginPath();
+    if (box.transition.kind === 'crossDissolve') {
+      context.moveTo(cx - size, cy - size);
+      context.lineTo(cx + size, cy + size);
+      context.lineTo(cx + size, cy - size);
+      context.lineTo(cx - size, cy + size);
+      context.closePath();
+    } else {
+      context.moveTo(cx - size, cy - size);
+      context.lineTo(cx, cy + size * 0.6);
+      context.lineTo(cx + size, cy - size);
+    }
+    context.stroke();
+    if (box.transition.kind === 'dip') {
+      context.beginPath();
+      context.arc(cx, cy + size * 0.6, 2.2, 0, Math.PI * 2);
+      context.fillStyle = box.transition.color;
+      context.fill();
+      context.strokeStyle = '#e2e8f0';
+      context.lineWidth = 1;
+      context.stroke();
+    }
+  }
+  context.restore();
+}
+
+/** The red of a transition's edge where footage runs out: 5.6:1 on its dark box. */
+export const TRANSITION_SHORT = '#f87171';
+
 /** Words the canvas writes, in the interface language. */
 export interface CanvasLabels {
   offline: string;
@@ -555,6 +622,8 @@ export const SOUND_STRIP = 'rgba(8, 10, 14, 0.35)';
  * which they were, came to 3.5-4.0.
  */
 export const NOTE_WARM = '#fef3c7';
+/** A clip's name on the clip: slate-100, as NOTE_COOL. */
+export const CLIP_NAME = '#f1f5f9';
 export const NOTE_COOL = '#f1f5f9';
 
 /** Behind a clip name drawn over pictures: dark enough for 4.5:1 over a white frame. */
@@ -691,7 +760,8 @@ function drawClip(
     }
     if (clip.linkGroup) drawLinkMark(context, labelX, top + 6);
 
-    context.fillStyle = '#e2e8f0';
+    // slate-100: 4.6:1 or better on every clip colour (slate-200 came to 4.1).
+    context.fillStyle = CLIP_NAME;
     context.fillText(clip.name, nameX, top + 4);
 
     const keyframeCount =
@@ -886,6 +956,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   const { project, ui: storeUi, tracks, activeSnap, waveforms, width, height } = props;
   const filmstrips = props.filmstrips;
   const offlineUris = props.offlineUris;
+  const transitionShortfalls = props.transitionShortfalls;
   const appearance = props.appearance ?? 'both';
   const contentVersion = props.contentVersion ?? 0;
   const labels = props.labels ?? DEFAULT_LABELS;
@@ -1057,6 +1128,13 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       }
     });
 
+    // Transitions over their cuts, above the clips they join.
+    const boxes = transitionBoxes(project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT });
+    for (const box of boxes) {
+      if (box.right < 0 || box.left > width) continue;
+      drawTransitionBox(context, box, box.transition.id === ui.selectedTransitionId, transitionShortfalls?.get(box.transition.id));
+    }
+
     if (marquee) {
       const left = Math.min(marquee.x0, marquee.x1);
       const topY = Math.max(RULER_HEIGHT, Math.min(marquee.y0, marquee.y1));
@@ -1128,7 +1206,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     // contentVersion is not read in the paint: it changes when a filmstrip
     // frame has been decoded, and that is exactly when to paint again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, storeUi, tracks, activeSnap, waveforms, filmstrips, offlineUris, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
+  }, [project, storeUi, tracks, activeSnap, waveforms, filmstrips, offlineUris, transitionShortfalls, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
     if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
@@ -1152,6 +1230,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       onPointerUp={props.onPointerUp}
       onPointerLeave={props.onPointerLeave}
       onContextMenu={props.onContextMenu}
+      onDoubleClick={props.onDoubleClick}
     />
   );
 }

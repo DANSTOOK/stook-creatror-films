@@ -9,6 +9,8 @@ import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { FontLicensesDialog } from './components/FontLicensesDialog';
+import { TransitionDialog } from './components/TransitionDialog';
+import { SHOW_INSPECTOR_EVENT } from './components/Timeline/Timeline';
 import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { PreviewViewport } from './components/PreviewViewport';
@@ -169,6 +171,16 @@ export default function App(): JSX.Element {
     }
     setHidden((current) => ({ ...current, [panel]: !current[panel] }));
   };
+
+  // A transition double-clicked on the timeline opens in the inspector, shown if it was put away.
+  useEffect(() => {
+    const show = (): void => {
+      setHidden((current) => (current.inspector ? { ...current, inspector: false } : current));
+      if (compact) setRevealed((current) => ({ ...current, inspector: true }));
+    };
+    window.addEventListener(SHOW_INSPECTOR_EVENT, show);
+    return () => window.removeEventListener(SHOW_INSPECTOR_EVENT, show);
+  }, [compact]);
   // Panels shown from here on slide in; the first layout is simply there.
   useEffect(() => {
     const frame = requestAnimationFrame(() => markEditorShown());
@@ -467,6 +479,9 @@ export default function App(): JSX.Element {
       case 'addCredits':
         store.addTitle('credits');
         return;
+      case 'addTransition':
+        store.addTransitions();
+        return;
       case 'fontLicenses':
         setLicensesOpen(true);
         return;
@@ -593,6 +608,8 @@ export default function App(): JSX.Element {
       </div>
 
       <UnsavedChangesDialog />
+      {/* Asked when a transition lacks footage: overlap, freeze or cancel. */}
+      <TransitionDialog />
       {/* Outside the editor, which is inert behind the start screen: About works from there too. */}
       {licensesOpen && <FontLicensesDialog onClose={() => setLicensesOpen(false)} />}
       <RelinkDialog />

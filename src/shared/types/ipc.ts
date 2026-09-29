@@ -145,6 +145,7 @@ export type MenuCommand =
   | 'addTitle'
   | 'addLowerThird'
   | 'addCredits'
+  | 'addTransition'
   | 'fontLicenses';
 
 /** What the page tells the menu, so it can label, tick and grey its items. */

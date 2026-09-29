@@ -55,6 +55,9 @@ import { useIndicator } from '@renderer/motion/useIndicator';
 import { wheelZoomFactor } from './zoomMotion';
 import type { ClipAppearance } from '@renderer/media/clipContent';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
+import { durationFromEdge, transitionAt, transitionBoxes } from './transitionBoxes';
+import { MIN_TRANSITION_FRAMES, shortfall, transitionWindow, transitionsOf, type TransitionPreset } from '@renderer/timing/transitions';
+import { assetLengthFrames } from '@renderer/media/assetLength';
 import TimelineCanvas, {
   type ClipHover,
   RULER_HEIGHT,
@@ -74,6 +77,9 @@ const FADE_GRIP_PX = 7;
 /** The strip along the top of a clip where the fade grips live. */
 const FADE_GRIP_ZONE_PX = 12;
 const HEADER_WIDTH = 168;
+
+/** Asks the app to show the inspector: a double-clicked transition opens there. */
+export const SHOW_INSPECTOR_EVENT = 'scf:show-inspector';
 
 type DragMode =
   | { kind: 'none' }
@@ -97,6 +103,8 @@ type DragMode =
    */
   | { kind: 'smartTrim'; target: TrimTarget; startFrame: number; base: Record<string, Clip> }
   | { kind: 'pan'; startClientX: number; startScrollLeft: number }
+  /** An edge of a transition: its length follows, both sides together when centred. */
+  | { kind: 'transitionEdge'; transitionId: string; cut: number }
   | {
       /** Rubber band from an empty spot; a plain click still moves the playhead. */
       kind: 'marquee';
@@ -150,6 +158,21 @@ export function Timeline(): JSX.Element {
     () => new Set(assets.filter((asset) => asset.missing).map((asset) => asset.uri)),
     [assets],
   );
+  // Where a clip runs out of footage under a transition: drawn as a red edge.
+  const transitionShortfalls = useMemo(() => {
+    const lengthOf = (clip: Clip): number | undefined => {
+      const asset = assets.find((candidate) => candidate.uri === clip.sourceUri);
+      return !asset || asset.kind === 'image' || clip.title ? undefined : assetLengthFrames(asset, project.fps);
+    };
+    const result = new Map<string, { tail: number; head: number }>();
+    for (const transition of transitionsOf(project)) {
+      const from = project.clips[transition.fromClipId];
+      const to = project.clips[transition.toClipId];
+      if (from && to) result.set(transition.id, shortfall(transition, from, to, lengthOf));
+    }
+    return result;
+  }, [assets, project]);
+
   // The installed fonts arriving is a change to what the canvas says: a
   // title whose font is missing gets its note then.
   const localFamilies = useLocalFamilies();
@@ -190,6 +213,8 @@ export function Timeline(): JSX.Element {
   const [marquee, setMarquee] = useState<MarqueeRect | null>(null);
   const [hover, setHover] = useState<ClipHover | null>(null);
   const [overScissors, setOverScissors] = useState(false);
+  /** The pointer is on a transition's edge: the cursor says it can be dragged. */
+  const [overTransitionEdge, setOverTransitionEdge] = useState(false);
 
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
@@ -588,11 +613,54 @@ export function Timeline(): JSX.Element {
     [store],
   );
 
+  /** The three a transition can be, as menu items that apply `choose`. */
+  const transitionChoices = useCallback(
+    (choose: (preset: TransitionPreset) => void, current?: TransitionPreset): ContextMenuItem[] =>
+      (['crossDissolve', 'dipToBlack', 'dipToWhite'] as const).map((preset) => ({
+        label: t(`transition.${preset}`),
+        ...(current ? { checked: current === preset, radio: true } : {}),
+        onSelect: () => choose(preset),
+      })),
+    [],
+  );
+
+  const transitionMenuItems = useCallback(
+    (transitionId: string): ContextMenuItem[] => {
+      const state = store.getState();
+      const transition = state.project.transitions?.[transitionId];
+      if (!transition) return [];
+      const current: TransitionPreset = transition.kind === 'crossDissolve' ? 'crossDissolve' : transition.color === '#ffffff' ? 'dipToWhite' : 'dipToBlack';
+      return [
+        ...transitionChoices(
+          (preset) =>
+            state.updateTransition(
+              transitionId,
+              preset === 'crossDissolve' ? { kind: 'crossDissolve' } : { kind: 'dip', color: preset === 'dipToWhite' ? '#ffffff' : '#000000' },
+            ),
+          current,
+        ),
+        { separator: true },
+        { label: t('transition.delete'), icon: Trash2, shortcut: keyLabel('Del'), danger: true, onSelect: () => state.removeTransition(transitionId) },
+      ];
+    },
+    [store, transitionChoices],
+  );
+
   const onCanvasContextMenu = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
       const y = event.clientY - bounds.top;
+
+      // A transition: its kind, and deleting it.
+      const onTransition = y >= RULER_HEIGHT
+        ? transitionAt(transitionBoxes(project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }), x, y)
+        : null;
+      if (onTransition) {
+        store.getState().selectTransition(onTransition.box.transition.id);
+        openMenu(event, transitionMenuItems(onTransition.box.transition.id));
+        return;
+      }
 
       if (y < RULER_HEIGHT) {
         openMenu(
@@ -612,7 +680,21 @@ export function Timeline(): JSX.Element {
         if (!ui.selectedClipIds.includes(hit.clip.id)) {
           store.getState().selectClips([hit.clip.id]);
         }
-        openMenu(event, clipMenuItems(hit.clip, project.currentFrame));
+        // On a cut - an edge another clip touches - a transition can go on it.
+        const clips = Object.values(project.clips);
+        const touching = hit.edge === 'start'
+          ? clips.find((other) => other.trackId === hit.clip.trackId && other.id !== hit.clip.id && clipEndFrame(other) === hit.clip.startFrame)
+          : hit.edge === 'end'
+            ? clips.find((other) => other.trackId === hit.clip.trackId && other.id !== hit.clip.id && other.startFrame === clipEndFrame(hit.clip))
+            : undefined;
+        const cut = touching ? (hit.edge === 'start' ? { fromId: touching.id, toId: hit.clip.id } : { fromId: hit.clip.id, toId: touching.id }) : null;
+        const onPicture = tracks.find((track) => track.id === hit.clip.trackId)?.type !== 'audio';
+        const transitionItems: ContextMenuItem[] = !onPicture
+          ? []
+          : cut
+            ? [{ label: t('transition.add'), submenu: transitionChoices((preset) => store.getState().addTransitions(preset, [cut])) }, { separator: true }]
+            : [{ label: t('transition.addBothEnds'), shortcut: keyLabel('Ctrl+T'), onSelect: () => store.getState().addTransitions() }, { separator: true }];
+        openMenu(event, [...transitionItems, ...clipMenuItems(hit.clip, project.currentFrame)]);
         return;
       }
 
@@ -626,8 +708,27 @@ export function Timeline(): JSX.Element {
       project,
       rulerMenuItems,
       store,
+      tracks,
+      transitionChoices,
+      transitionMenuItems,
       ui,
     ],
+  );
+
+  /** A double-click on a transition opens it in the inspector. */
+  const onCanvasDoubleClick = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      const on = transitionAt(
+        transitionBoxes(store.getState().project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }),
+        event.clientX - bounds.left,
+        event.clientY - bounds.top,
+      );
+      if (!on) return;
+      store.getState().selectTransition(on.box.transition.id);
+      window.dispatchEvent(new Event(SHOW_INSPECTOR_EVENT));
+    },
+    [store, tracks, ui],
   );
 
   /* Pointer interaction -------------------------------------------------- */
@@ -681,6 +782,24 @@ export function Timeline(): JSX.Element {
         state.setCurrentFrame(pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx));
         emitScrub(store.getState().project.currentFrame);
         return;
+      }
+
+      // A transition sits over its cut, above the clips: it is picked first.
+      if (state.ui.tool === 'select' || state.ui.tool === 'trim') {
+        const onTransition = transitionAt(
+          transitionBoxes(state.project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }),
+          x,
+          y,
+        );
+        if (onTransition) {
+          const { transition } = onTransition.box;
+          state.selectTransition(transition.id);
+          const from = state.project.clips[transition.fromClipId];
+          if (onTransition.edge && from) {
+            dragRef.current = { kind: 'transitionEdge', transitionId: transition.id, cut: transitionWindow(transition, from).cut };
+          }
+          return;
+        }
       }
 
       const hit = clipAtPoint(x, y);
@@ -811,7 +930,7 @@ export function Timeline(): JSX.Element {
         base: store.getState().project.clips,
       };
     },
-    [clipAtPoint, store, ui.pixelsPerFrame, ui.scrollLeftPx],
+    [clipAtPoint, store, tracks, ui],
   );
 
   const onPointerMove = useCallback(
@@ -832,6 +951,20 @@ export function Timeline(): JSX.Element {
         );
         const current = store.getState();
         setOverScissors(y < RULER_HEIGHT && hitsPlayheadScissors(current.project, current.ui, x, y));
+        const onTransition = y >= RULER_HEIGHT
+          ? transitionAt(transitionBoxes(current.project, tracks, current.ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }), x, y)
+          : null;
+        setOverTransitionEdge(Boolean(onTransition?.edge));
+        return;
+      }
+
+      if (drag.kind === 'transitionEdge') {
+        const transition = store.getState().project.transitions?.[drag.transitionId];
+        if (!transition) return;
+        const pointerFrame = (x + ui.scrollLeftPx) / ui.pixelsPerFrame;
+        const durationFrames = Math.max(MIN_TRANSITION_FRAMES, durationFromEdge(transition, drag.cut, pointerFrame));
+        // One drag, one undo step.
+        store.getState().updateTransition(drag.transitionId, { durationFrames }, `transition:${drag.transitionId}:edge`);
         return;
       }
 
@@ -1110,7 +1243,9 @@ export function Timeline(): JSX.Element {
   const drag = dragRef.current;
   const activeTrim = drag.kind === 'trim' ? { clipId: drag.clipId, edge: drag.edge } : null;
   const cursor =
-    overScissors && ui.tool !== 'hand' && drag.kind === 'none'
+    drag.kind === 'transitionEdge' || (overTransitionEdge && drag.kind === 'none' && ui.tool !== 'hand')
+      ? 'ew-resize'
+      : overScissors && ui.tool !== 'hand' && drag.kind === 'none'
       ? 'pointer'
       : ui.tool === 'hand'
       ? drag.kind === 'pan'
@@ -1501,6 +1636,8 @@ export function Timeline(): JSX.Element {
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onContextMenu={onCanvasContextMenu}
+                onDoubleClick={onCanvasDoubleClick}
+                transitionShortfalls={transitionShortfalls}
               />
             </div>
 

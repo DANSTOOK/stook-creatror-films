@@ -98,6 +98,8 @@ export function buildMenuTemplate(
       command('menu.addTitle', 'addTitle', { accelerator: 'CmdOrCtrl+Alt+T', enabled: inEditor }),
       command('menu.addLowerThird', 'addLowerThird', { accelerator: 'CmdOrCtrl+Alt+Shift+T', enabled: inEditor }),
       command('menu.addCredits', 'addCredits', { enabled: inEditor }),
+      // The default transition, on the selected clips or the cut at the playhead.
+      command('menu.addTransition', 'addTransition', { accelerator: 'CmdOrCtrl+T', enabled: inEditor }),
       { type: 'separator' },
       // Where Windows editors keep them (Premiere: Edit > Preferences).
       command('menu.preferences', 'preferences'),

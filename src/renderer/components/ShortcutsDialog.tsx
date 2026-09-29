@@ -63,6 +63,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: 'keys.speedKeys', what: 'keys.speed' },
       { keys: 'keys.titleKeys', what: 'keys.titles' },
       { keys: 'keys.editTitleKeys', what: 'keys.editTitle' },
+      { keys: 'keys.transitionKeys', what: 'keys.transition' },
     ],
   },
   {
