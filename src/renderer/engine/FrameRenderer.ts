@@ -7,7 +7,8 @@ import { keepScrubbers } from './scrubHandover';
 import { SequentialVideoReader } from './SequentialVideoReader';
 import { TextureManager } from './TextureManager';
 import { TitleLayers } from './TitleLayers';
-import { sourceFrameFor } from '@renderer/timing/clipSpeed';
+import { activeTransitionsAt } from '@renderer/timing/transitions';
+import { assetLengthFrames } from '@renderer/media/assetLength';
 
 /**
  * Bundles the compositor with the caches it needs, and offers the two ways a
@@ -60,6 +61,13 @@ export class FrameRenderer {
     options: CompositorOptions = {},
   ) {
     this.compositor = Compositor.fromCanvas(canvas, width, height, undefined, options);
+    // A transition past the end of a file holds its last frame: the
+    // compositor needs to know where each file ends.
+    this.compositor.sourceLengthOf = (clip, fps) => {
+      if (clip.title) return undefined;
+      const asset = this.assets.get(clip.sourceUri);
+      return asset && asset.kind !== 'image' ? assetLengthFrames(asset, fps) : undefined;
+    };
     this.lutLoader = new LUTLoader(this.compositor.context);
     this.compositor.lutLoader = this.lutLoader;
     this.textures = new TextureManager(this.compositor.context);
@@ -89,8 +97,55 @@ export class FrameRenderer {
     this.compositor.resize(width, height);
   }
 
+  /** The media by URI, for the lengths of files. */
+  private readonly assets = new Map<string, MediaAsset>();
+
   registerAssets(assets: readonly MediaAsset[]): void {
-    for (const asset of assets) this.media.register(asset);
+    for (const asset of assets) {
+      this.media.register(asset);
+      this.assets.set(asset.uri, asset);
+    }
+  }
+
+  /**
+   * The preview's second decoders: the incoming side of a transition whose
+   * two sides are cut from one file gets an element (and a texture) of its
+   * own, from a second before the transition to just after it, so both
+   * pictures move. The export needs none: it decodes per clip already.
+   */
+  private readonly lanes = new Map<string, string>();
+
+  private laneFor(clipId: string): string | undefined {
+    return this.lanes.get(clipId);
+  }
+
+  private updateLanes(project: ProjectState): void {
+    const wanted = new Map<string, string>();
+    const reach = Math.max(1, Math.round(project.fps));
+    for (const transition of Object.values(project.transitions ?? {})) {
+      const from = project.clips[transition.fromClipId];
+      const to = project.clips[transition.toClipId];
+      if (!from || !to || from.title || to.title) continue;
+      const uri = this.media.previewUriFor(to.sourceUri);
+      if (this.media.previewUriFor(from.sourceUri) !== uri) continue;
+      const cut = from.startFrame + from.durationFrames;
+      const near = activeTransitionsAt({ ...project, transitions: { [transition.id]: transition } }, project.currentFrame).length > 0
+        || Math.abs(project.currentFrame - cut) <= reach + transition.durationFrames;
+      if (!near) continue;
+      wanted.set(to.id, `${uri}#scf-lane=${to.id}`);
+    }
+    for (const [clipId, lane] of this.lanes) {
+      if (wanted.get(clipId) === lane) continue;
+      this.media.release(lane);
+      this.textures.release(lane);
+      this.lanes.delete(clipId);
+    }
+    for (const [clipId, lane] of wanted) {
+      if (this.lanes.has(clipId)) continue;
+      const to = project.clips[clipId];
+      this.media.ensureLane(lane, this.media.previewUriFor(to.sourceUri));
+      this.lanes.set(clipId, lane);
+    }
   }
 
   /** Draw the preview from proxies where they exist. Exports are unaffected. */
@@ -180,7 +235,7 @@ export class FrameRenderer {
     keepScrubbers(
       this.scrubbers,
       new Map(keep.map((clip) => {
-        const uri = this.media.previewUriFor(clip.sourceUri);
+        const uri = this.laneFor(clip.id) ?? this.media.previewUriFor(clip.sourceUri);
         return [FrameRenderer.scrubKey(clip, uri), uri];
       })),
     );
@@ -266,8 +321,13 @@ export class FrameRenderer {
     // Playback runs on the elements; the forward decoders are only for a
     // paused playhead, and hold a hardware decoder each, so they go.
     const scrubbing = !playing && !(window as { __scfNoScrubDecoder?: boolean }).__scfNoScrubDecoder;
+    this.updateLanes(project);
     if (!scrubbing) this.closeScrubbers();
-    else this.closeScrubbers(Compositor.visibleClips(project, project.currentFrame).filter((clip) => !clip.title));
+    else {
+      // Every clip drawn now - the two sides of a transition included.
+      const drawn = Compositor.drawList(project, project.currentFrame).flatMap((entry) => (entry.kind === 'clip' ? [entry.clip] : [entry.from, entry.to]));
+      this.closeScrubbers(drawn.filter((clip) => !clip.title));
+    }
     this.tidyTitles(project);
 
     this.compositor.renderFrame(
@@ -278,7 +338,9 @@ export class FrameRenderer {
         if (clip.title) return this.titles.sourceFor(clip, project.width, project.height);
         // The preview - and only the preview - draws the proxy when there
         // is one and proxies are on.
-        const uri = this.media.previewUriFor(clip.sourceUri);
+        // A transition's incoming side, cut from the same file as its
+        // outgoing side, reads from a decoder of its own.
+        const uri = this.laneFor(clip.id) ?? this.media.previewUriFor(clip.sourceUri);
         const isVideo = this.media.get(uri) instanceof HTMLVideoElement;
         let source: ClipSource | null;
         if (scrubbing && isVideo) {
@@ -360,18 +422,43 @@ export class FrameRenderer {
   /** Seek every source contributing to `frame` and wait for all of them. */
   private async seekSources(project: ProjectState, frame: number): Promise<void> {
     this.decodedFrames.clear();
-    const clips = Compositor.visibleClips(project, frame);
-    this.retireReaders(new Set(clips.map((clip) => clip.id)));
+    // Every clip drawn at this frame, at the frame of footage it shows - a
+    // transition's sides past their ends included.
+    const drawn = Compositor.drawList(project, frame, this.compositor.sourceLengthOf).flatMap((entry) =>
+      entry.kind === 'clip'
+        ? [{ clip: entry.clip, sourceFrame: entry.sourceFrame }]
+        : [
+            { clip: entry.from, sourceFrame: entry.fromFrame },
+            { clip: entry.to, sourceFrame: entry.toFrame },
+          ],
+    );
+    this.retireReaders(new Set(drawn.map(({ clip }) => clip.id)));
+
+    // Seeking, rather than decoding forwards: the incoming side of a
+    // transition cut from the same file as the outgoing one needs an element
+    // of its own, or both sides would show whichever seek landed last.
+    const lanes = new Map<string, string>();
+    for (const entry of Compositor.drawList(project, frame)) {
+      if (entry.kind !== 'transition' || entry.from.sourceUri !== entry.to.sourceUri || entry.to.title) continue;
+      const lane = `${entry.to.sourceUri}#scf-exact-lane=${entry.to.id}`;
+      this.media.ensureLane(lane, entry.to.sourceUri);
+      lanes.set(entry.to.id, lane);
+    }
+    for (const [clipId, lane] of this.exactLanes) {
+      if (lanes.get(clipId) === lane) continue;
+      this.media.release(lane);
+      this.textures.release(lane);
+    }
+    this.exactLanes = lanes;
 
     await Promise.all(
-      clips.map(async (clip) => {
+      drawn.map(async ({ clip, sourceFrame }) => {
         // A title waits for its fonts instead of a decoder: a frame drawn
         // before they load would go out in a fallback face.
         if (clip.title) {
           await this.titles.prepare(clip);
           return;
         }
-        const sourceFrame = sourceFrameFor(clip, frame);
         if (this.sequential && this.media.get(clip.sourceUri) instanceof HTMLVideoElement) {
           let reader = this.sequential.get(clip.id);
           if (!reader) {
@@ -395,16 +482,21 @@ export class FrameRenderer {
             }
           }
         }
-        await this.media.seekExact(clip.sourceUri, sourceFrame, project.fps);
+        const lane = this.exactLanes.get(clip.id);
+        if (lane) await this.media.whenLoaded(lane);
+        await this.media.seekExact(lane ?? clip.sourceUri, sourceFrame, project.fps);
       }),
     );
   }
+
+  /** Second elements for the seek path of an exact render: see seekSources. */
+  private exactLanes = new Map<string, string>();
 
   /** The texture for a clip in an exact render: its decoded frame, or the element. */
   private exactUploadFor(clip: Clip, fps: number, project: ProjectState): ClipSource | null {
     if (clip.title) return this.titles.sourceFor(clip, project.width, project.height);
     const frame = this.decodedFrames.get(clip.id);
-    if (!frame) return this.uploadFor(clip, fps, false);
+    if (!frame) return this.uploadFor(clip, fps, false, this.exactLanes.get(clip.id) ?? clip.sourceUri);
 
     const key = `clip:${clip.id}`;
     const texture = this.textures.upload(key, frame, `${frame.timestamp}`);

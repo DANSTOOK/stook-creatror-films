@@ -1,4 +1,6 @@
-﻿import type { Clip, ProjectState, Track } from '@shared/types';
+﻿import type { Clip, ProjectState, Track, Transition } from '@shared/types';
+import { activeTransitionsAt, extendedSourceFrame } from '@renderer/timing/transitions';
+import { parseColor } from '@shared/utils/contrast';
 import { sourceFrameFor } from '@renderer/timing/clipSpeed';
 import { fadeGainAt } from '@renderer/timing/clipFades';
 import { degToRad } from '@shared/utils/math';
@@ -73,6 +75,40 @@ void main() {
     vec4 texColor = texture(u_inputTexture, v_texCoord);
     float alpha = texColor.a * u_opacity;
     fragColor = vec4(texColor.rgb * alpha, alpha);
+}
+`;
+
+/**
+ * A transition: its two sides, each already drawn with its own transform
+ * and effects into a buffer of its own (premultiplied), blended here and
+ * drawn onto the scene as one layer. A cross dissolve is the straight mix;
+ * a dip goes through an opaque colour at the half-way point. Premultiplied
+ * mixing is what keeps a dissolve over a lower track honest: half of one
+ * picture plus half of another covers the track below fully, not 75%.
+ */
+const TRANSITION_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+
+in vec2 v_texCoord;
+out vec4 fragColor;
+
+uniform sampler2D u_from;
+uniform sampler2D u_to;
+uniform float u_progress;
+uniform int u_kind;       // 0 cross dissolve, 1 dip through u_color
+uniform vec3 u_color;
+
+void main() {
+    vec4 from = texture(u_from, v_texCoord);
+    vec4 to = texture(u_to, v_texCoord);
+    if (u_kind == 0) {
+        fragColor = mix(from, to, u_progress);
+        return;
+    }
+    vec4 colour = vec4(u_color, 1.0);
+    fragColor = u_progress < 0.5
+        ? mix(from, colour, u_progress * 2.0)
+        : mix(colour, to, u_progress * 2.0 - 1.0);
 }
 `;
 
@@ -197,6 +233,31 @@ export function subRectMatrix(
 /** Supplies the decoded texture for a clip at a given source frame. */
 export type ClipSourceResolver = (clip: Clip, sourceFrame: number) => ClipSource | null;
 
+/** A file's length in frames at the timeline's rate; undefined for stills and titles. */
+export type SourceLength = (clip: Clip, fps: number) => number | undefined;
+
+/**
+ * One thing to draw at a frame, bottom first: a clip, or a transition with
+ * the two clips it joins - each at the frame of footage it shows there,
+ * past its end or before its start if need be.
+ */
+export type DrawEntry =
+  | { kind: 'clip'; clip: Clip; sourceFrame: number }
+  | {
+      kind: 'transition';
+      transition: Transition;
+      from: Clip;
+      to: Clip;
+      fromFrame: number;
+      toFrame: number;
+      progress: number;
+    };
+
+/** A draw entry with its sources resolved: what drawLayers draws. */
+type Resolved =
+  | { kind: 'clip'; clip: Clip; source: ClipSource }
+  | { kind: 'transition'; entry: Extract<DrawEntry, { kind: 'transition' }>; from: ClipSource | null; to: ClipSource | null };
+
 export interface CompositorStats {
   clipsDrawn: number;
   passes: number;
@@ -233,6 +294,16 @@ export class Compositor {
   private readonly pixelArtProgram: GLProgram;
   private readonly compositeProgram: GLProgram;
   private readonly resolveProgram: GLProgram;
+  private readonly transitionProgram: GLProgram;
+  /** A transition's two sides, while one is on screen; given back otherwise. */
+  private transitionFrom: RenderTarget | null = null;
+  private transitionTo: RenderTarget | null = null;
+  /**
+   * How long each clip's file is, so a transition past the end of one holds
+   * its last frame instead of asking for footage that is not there. Set by
+   * the renderer, which knows the media.
+   */
+  sourceLengthOf: SourceLength = () => undefined;
 
   /** Ping-pong pair used by the per-clip effect chain. */
   private ping: RenderTarget;
@@ -300,6 +371,7 @@ export class Compositor {
     this.pixelArtProgram = program(pixelArtFragmentSource, 'pixel-art');
     this.compositeProgram = program(COMPOSITE_FRAGMENT_SOURCE, 'composite');
     this.resolveProgram = program(RESOLVE_FRAGMENT_SOURCE, 'resolve');
+    this.transitionProgram = program(TRANSITION_FRAGMENT_SOURCE, 'transition');
 
     // Half-float intermediates keep grading headroom; 8-bit is the fallback for
     // drivers without float render targets.
@@ -432,6 +504,8 @@ export class Compositor {
       target.resize(w, h);
     }
     this.before?.resize(w, h);
+    this.transitionFrom?.resize(w, h);
+    this.transitionTo?.resize(w, h);
   }
 
   /** Swap the ping-pong pair after a pass has written into `pong`. */
@@ -439,6 +513,40 @@ export class Compositor {
     const previous = this.ping;
     this.ping = this.pong;
     this.pong = previous;
+  }
+
+  /**
+   * What to draw at `frame`, bottom first: the clips live there, except
+   * that the two sides of a transition on screen are drawn together, at
+   * their track's place, as one entry.
+   */
+  static drawList(project: ProjectState, frame: number, sourceLengthOf: SourceLength = () => undefined): DrawEntry[] {
+    const order = new Map(project.tracks.map((track) => [track.id, track.order]));
+    const active = activeTransitionsAt(project, frame);
+    const inTransition = new Set<string>();
+    for (const { from, to } of active) {
+      inTransition.add(from.id);
+      inTransition.add(to.id);
+    }
+    const entries: Array<DrawEntry & { order: number; start: number }> = [];
+    for (const clip of Compositor.visibleClips(project, frame)) {
+      if (inTransition.has(clip.id)) continue;
+      entries.push({ kind: 'clip', clip, sourceFrame: sourceFrameFor(clip, frame), order: order.get(clip.trackId) ?? 0, start: clip.startFrame });
+    }
+    for (const { transition, from, to, progress } of active) {
+      entries.push({
+        kind: 'transition',
+        transition,
+        from,
+        to,
+        fromFrame: extendedSourceFrame(from, frame, sourceLengthOf(from, project.fps)),
+        toFrame: extendedSourceFrame(to, frame, sourceLengthOf(to, project.fps)),
+        progress,
+        order: order.get(from.trackId) ?? 0,
+        start: from.startFrame,
+      });
+    }
+    return entries.sort((a, b) => a.order - b.order || a.start - b.start);
   }
 
   /** Clips that are live at `frame`, ordered bottom track first. */
@@ -678,6 +786,71 @@ export class Compositor {
     }
   }
 
+  /** Draw resolved layers, bottom first, onto `into`. `skipGrade` is the viewer's "before". */
+  private drawLayers(layers: readonly Resolved[], frame: number, into: RenderTarget, skipGrade: boolean): void {
+    for (const layer of layers) {
+      if (layer.kind === 'clip') {
+        const opacity = this.renderLayer(layer.clip, frame, layer.source);
+        if (opacity <= 0) continue;
+        this.applyEffectChain(layer.clip, skipGrade, frame);
+        this.compositeLayer(opacity, into);
+        if (!skipGrade) this.stats.clipsDrawn += 1;
+        continue;
+      }
+      this.drawTransition(layer, frame, into, skipGrade);
+    }
+  }
+
+  /**
+   * A transition: A and B each through their own transform, fades and
+   * effects into a buffer of their own, then mixed - premultiplied - and
+   * drawn onto `into` as one layer.
+   */
+  private drawTransition(layer: Extract<Resolved, { kind: 'transition' }>, frame: number, into: RenderTarget, skipGrade: boolean): void {
+    const { gl } = this;
+    const format = this.scene.internalFormat;
+    this.transitionFrom ??= new RenderTarget(gl, this.width, this.height, format, 'transition-from');
+    this.transitionTo ??= new RenderTarget(gl, this.width, this.height, format, 'transition-to');
+
+    const side = (clip: Clip, source: ClipSource | null, target: RenderTarget): void => {
+      target.bind();
+      target.clearTransparent();
+      if (!source) return;
+      const opacity = this.renderLayer(clip, frame, source);
+      if (opacity <= 0) return;
+      this.applyEffectChain(clip, skipGrade, frame);
+      this.compositeLayer(opacity, target);
+      if (!skipGrade) this.stats.clipsDrawn += 1;
+    };
+    side(layer.entry.from, layer.from, this.transitionFrom);
+    side(layer.entry.to, layer.to, this.transitionTo);
+
+    into.bind();
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    const { transition } = layer.entry;
+    const colour = parseColor(transition.color)?.rgb ?? [0, 0, 0];
+    this.transitionProgram.use();
+    this.transitionProgram.set('u_transform', FULLSCREEN_MATRIX);
+    this.transitionProgram.set('u_flipY', false);
+    this.transitionProgram.setTexture('u_from', this.transitionFrom.texture, 0);
+    this.transitionProgram.setTexture('u_to', this.transitionTo.texture, 1);
+    this.transitionProgram.set('u_progress', layer.entry.progress);
+    this.transitionProgram.setInt('u_kind', transition.kind === 'dip' ? 1 : 0);
+    this.transitionProgram.set('u_color', new Float32Array(colour.map((channel) => channel / 255)));
+    this.drawQuad(this.transitionProgram);
+    gl.disable(gl.BLEND);
+    this.stats.passes += 1;
+  }
+
+  private releaseTransitionTargets(): void {
+    this.transitionFrom?.dispose();
+    this.transitionTo?.dispose();
+    this.transitionFrom = null;
+    this.transitionTo = null;
+  }
+
   /** Blend the finished layer in `ping` onto the premultiplied scene buffer. */
   private compositeLayer(opacity: number, into: RenderTarget = this.scene): void {
     const { gl } = this;
@@ -724,20 +897,22 @@ export class Compositor {
     // video layers can be exported straight to a sprite sheet.
     this.scene.clearTransparent();
 
-    const layers: Array<{ clip: Clip; source: ClipSource }> = [];
-    for (const clip of Compositor.visibleClips(project, frame)) {
-      const sourceFrame = sourceFrameFor(clip, frame);
-      const source = resolveSource(clip, sourceFrame);
-      if (!source) continue;
-      layers.push({ clip, source });
-
-      const opacity = this.renderLayer(clip, frame, source);
-      if (opacity <= 0) continue;
-
-      this.applyEffectChain(clip, false, frame);
-      this.compositeLayer(opacity);
-      this.stats.clipsDrawn += 1;
+    // Each source is asked for once, and drawn twice when comparing.
+    const layers: Resolved[] = [];
+    for (const entry of Compositor.drawList(project, frame, this.sourceLengthOf)) {
+      if (entry.kind === 'clip') {
+        const source = resolveSource(entry.clip, entry.sourceFrame);
+        if (source) layers.push({ kind: 'clip', clip: entry.clip, source });
+      } else {
+        layers.push({
+          kind: 'transition',
+          entry,
+          from: resolveSource(entry.from, entry.fromFrame),
+          to: resolveSource(entry.to, entry.toFrame),
+        });
+      }
     }
+    this.drawLayers(layers, frame, this.scene, false);
 
     /*
       The viewer's "before": the same layers again with every grade left
@@ -751,17 +926,14 @@ export class Compositor {
       if (!this.before) this.before = new RenderTarget(gl, this.width, this.height, this.scene.internalFormat, 'before');
       this.before.bind();
       this.before.clearTransparent();
-      for (const { clip, source } of layers) {
-        const opacity = this.renderLayer(clip, frame, source);
-        if (opacity <= 0) continue;
-        this.applyEffectChain(clip, true);
-        this.compositeLayer(opacity, this.before);
-      }
+      this.drawLayers(layers, frame, this.before, true);
     } else if (this.before) {
       // Not comparing: the second scene is given back.
       this.before.dispose();
       this.before = null;
     }
+    // No transition on screen: its two buffers are given back too.
+    if (!layers.some((layer) => layer.kind === 'transition')) this.releaseTransitionTargets();
 
     // Resolve premultiplied scene -> straight alpha output.
     this.output.setFilter(this.options.pixelArtViewport ? gl.NEAREST : gl.LINEAR);
@@ -954,6 +1126,8 @@ export class Compositor {
 
     gl.deleteBuffer(this.vertexBuffer);
     gl.deleteTexture(this.defaultLutTexture);
+    this.releaseTransitionTargets();
+    this.transitionProgram.dispose();
     for (const texture of this.curveTextures.values()) gl.deleteTexture(texture);
     this.curveTextures.clear();
 

@@ -109,6 +109,36 @@ export class MediaSourceRegistry {
   }
 
   /**
+   * A second video element for a file that already has one, under a URI of
+   * its own (the file's, with a fragment that changes nothing about what is
+   * loaded). Two parts of one file on screen at once - either side of a
+   * transition - each need a decoder, since one element can only be at one
+   * time. Released with `release` when the transition has passed.
+   */
+  ensureLane(laneUri: string, uri: string): void {
+    if (this.elements.has(laneUri) || !(this.elements.get(uri) instanceof HTMLVideoElement)) return;
+    this.registerVideo(laneUri);
+  }
+
+  /**
+   * Resolves once an element has decoded its first frame (or after the seek
+   * timeout): an exact render must not seek an element still opening, whose
+   * position is not yet the one it will show.
+   */
+  whenLoaded(uri: string): Promise<void> {
+    const element = this.elements.get(uri);
+    if (!(element instanceof HTMLVideoElement) || this.ready.has(uri)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(done, SEEK_TIMEOUT_MS);
+      element.addEventListener('loadeddata', done, { once: true });
+    });
+  }
+
+  /**
    * Small stand-ins for heavy footage, by the original URI.
    *
    * The preview asks for these through `previewUriFor`; nothing else does,
