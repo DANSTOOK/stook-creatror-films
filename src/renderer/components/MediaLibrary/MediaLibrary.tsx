@@ -40,6 +40,9 @@ import { canRelink, relinkMissing } from '@renderer/media/relink';
 import { errorText } from '@renderer/errorText';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { useIndicator } from '@renderer/motion/useIndicator';
+import { TitlesBrowser, TransitionsBrowser } from './LibraryBrowsers';
+import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
 
@@ -67,6 +70,26 @@ import { keyLabel, t, useT } from '@renderer/i18n';
 const BIN_INDENT_PX = 12;
 
 const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
+
+/**
+ * The panel's three tabs: the project's files, and the title and transition
+ * templates - side by side, as Final Cut's browser keeps its Titles and
+ * Transitions and Premiere its Effects beside the Project panel. Which one is
+ * open is a convenience of this machine.
+ */
+type LibraryTab = 'media' | 'titles' | 'transitions';
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions'];
+const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = { media: 'library.media', titles: 'library.titles', transitions: 'library.transitions' };
+const LIBRARY_TAB_KEY = 'scf.libraryTab';
+
+function loadLibraryTab(): LibraryTab {
+  try {
+    const stored = window.localStorage.getItem(LIBRARY_TAB_KEY);
+    return LIBRARY_TABS.includes(stored as LibraryTab) ? (stored as LibraryTab) : 'media';
+  } catch {
+    return 'media';
+  }
+}
 
 /** File > Import media: the application menu asks the panel to run its Import. */
 export const MENU_IMPORT_EVENT = 'scf:menu-import';
@@ -102,6 +125,16 @@ export function MediaLibrary(): JSX.Element {
     setViewState(next);
   };
   const waveforms = useMediaStore((state) => state.waveforms);
+  const [tab, setTabState] = useState<LibraryTab>(loadLibraryTab);
+  const setTab = useCallback((next: LibraryTab) => {
+    try {
+      window.localStorage.setItem(LIBRARY_TAB_KEY, next);
+    } catch {
+      // Remembered for this session only.
+    }
+    setTabState(next);
+  }, []);
+  const tabIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(tab);
 
   const visibleAssets = useMemo(() => assetsInBin(assets, bins, currentBinId), [assets, bins, currentBinId]);
 
@@ -176,12 +209,14 @@ export function MediaLibrary(): JSX.Element {
 
   /** Native dialog under Electron, file picker everywhere else. */
   const handleImportClick = useCallback(() => {
+    // What is imported lands in Media: show it there.
+    setTab('media');
     if (hasNativeBridge()) {
       void runImport(() => importFromDialog(project.fps));
       return;
     }
     fileInputRef.current?.click();
-  }, [project.fps, runImport]);
+  }, [project.fps, runImport, setTab]);
 
   useEffect(() => {
     window.addEventListener(MENU_IMPORT_EVENT, handleImportClick);
@@ -205,8 +240,12 @@ export function MediaLibrary(): JSX.Element {
   const onDragEnter = useCallback((event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     dragDepth.current += 1;
-    if (event.dataTransfer.types.includes('Files')) setDragActive(true);
-  }, []);
+    if (event.dataTransfer.types.includes('Files')) {
+      setDragActive(true);
+      // Files are dropped into Media, whichever tab was open.
+      setTab('media');
+    }
+  }, [setTab]);
 
   const onDragLeave = useCallback((event: DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -422,7 +461,10 @@ export function MediaLibrary(): JSX.Element {
       onDrop={onDrop}
     >
       <header className="panel-header">
-        <span className="min-w-0 flex-1 truncate">{tr('media.title')}</span>
+        {/* The panel's name; which of its three is open, the tabs below say. */}
+        <span className="min-w-0 flex-1 truncate">{tr('library.tabs')}</span>
+        {/* Import and the + menu add files: only where the files are. */}
+        {tab === 'media' && (
         <div className="flex shrink-0 items-center gap-1 font-normal">
           <ProxyBar />
           {/*
@@ -467,7 +509,44 @@ export function MediaLibrary(): JSX.Element {
             <Plus size={15} />
           </button>
         </div>
+        )}
       </header>
+
+      {/* The tabs, as the Inspector's: a segmented row, arrow keys between them. */}
+      <div
+        ref={tabIndicator.containerRef}
+        role="tablist"
+        aria-label={tr('library.tabs')}
+        className="relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
+      >
+        <span ref={tabIndicator.indicatorRef} aria-hidden className="scf-indicator rounded-control bg-panel-700" />
+        {LIBRARY_TABS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`library-tab-${id}`}
+            data-testid={`library-tab-${id}`}
+            aria-selected={tab === id}
+            aria-controls="library-tabpanel"
+            tabIndex={tab === id ? 0 : -1}
+            className={`relative h-control-dense min-w-0 flex-1 truncate rounded-control px-1 text-xs transition-colors ${
+              tab === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
+            }`}
+            onClick={() => setTab(id)}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+              event.preventDefault();
+              event.stopPropagation();
+              const next = LIBRARY_TABS[(LIBRARY_TABS.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : LIBRARY_TABS.length - 1)) % LIBRARY_TABS.length];
+              setTab(next);
+              document.getElementById(`library-tab-${next}`)?.focus();
+            }}
+          >
+            {tr(LIBRARY_TAB_LABEL[id])}
+          </button>
+        ))}
+      </div>
 
       <input
         ref={fileInputRef}
@@ -482,7 +561,10 @@ export function MediaLibrary(): JSX.Element {
         }}
       />
 
-      {!libraryEmpty && (
+      <div id="library-tabpanel" role="tabpanel" aria-labelledby={`library-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
+      {tab === 'titles' && <TitlesBrowser />}
+      {tab === 'transitions' && <TransitionsBrowser />}
+      {tab === 'media' && !libraryEmpty && (
         <nav
           role="tree"
           aria-label={tr('media.bins')}
@@ -493,6 +575,7 @@ export function MediaLibrary(): JSX.Element {
         </nav>
       )}
 
+      {tab === 'media' && (
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {libraryEmpty ? (
           <button
@@ -607,6 +690,8 @@ export function MediaLibrary(): JSX.Element {
             </ul>
           </>
         )}
+      </div>
+      )}
       </div>
 
       {dragActive && (

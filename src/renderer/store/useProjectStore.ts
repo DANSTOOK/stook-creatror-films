@@ -18,7 +18,7 @@ import type {
   Transition,
   Vector2D,
 } from '@shared/types';
-import { createTitleClip, planTitlePlacement, TITLE_NAME, TITLE_SECONDS, TITLE_TEXT } from '@renderer/text/titleClip';
+import { createTitleClip, planTitlePlacement, titleDropPlacement, TITLE_NAME, TITLE_SECONDS, TITLE_TEXT } from '@renderer/text/titleClip';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
 import {
@@ -31,6 +31,7 @@ import {
   tidyTransitions,
   transitionsOf,
   type TransitionPreset,
+  presetKind,
 } from '@renderer/timing/transitions';
 import { t as translateNow } from '@renderer/i18n';
 import { newTransitionFrames } from '@renderer/timing/transitionLength';
@@ -262,9 +263,10 @@ interface ProjectStore {
   /* Titles --------------------------------------------------------------- */
   /**
    * A new title from a template, at the playhead, above the picture there
-   * (see text/titleClip). Selected and shown. Returns its id.
+   * (see text/titleClip). Selected and shown. Returns its id. `at` is a
+   * drop from the Titles panel: that track and frame when they are free.
    */
-  addTitle(preset: TitlePreset): string;
+  addTitle(preset: TitlePreset, at?: { trackId: string | null; startFrame: number }): string;
   /**
    * Change a title's text or look. The clip's name follows its first line.
    * A typing run or a drag with one `mergeKey` is one undo step.
@@ -290,6 +292,12 @@ interface ProjectStore {
    * yet: `ui.pendingTransition` asks the editor (see resolvePendingTransition).
    */
   addTransitions(preset?: TransitionPreset, cuts?: Array<{ fromId: string; toId: string }>): void;
+  /**
+   * A transition dropped from the panel on a cut: added there (asking when
+   * footage is short), or, where the cut has one already, that one becomes
+   * the dropped kind - as Final Cut replaces it - keeping its length.
+   */
+  dropTransition(preset: TransitionPreset, cut: { fromId: string; toId: string }): void;
   /** The editor's answer: overlap the clips, freeze frames, or leave it. One undo step. */
   resolvePendingTransition(choice: 'overlap' | 'freeze' | 'cancel'): void;
   updateTransition(transitionId: string, patch: Partial<Omit<Transition, 'id' | 'fromClipId' | 'toClipId'>>, mergeKey?: string): void;
@@ -1063,10 +1071,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
-  addTitle(preset) {
+  addTitle(preset, at) {
     const { project } = get();
     const duration = Math.max(1, Math.round(TITLE_SECONDS * project.fps));
-    const placement = planTitlePlacement(project, project.currentFrame, duration);
+    const placement = at
+      ? titleDropPlacement(project, at.trackId, at.startFrame, duration)
+      : planTitlePlacement(project, project.currentFrame, duration);
     // Written in the language on screen; from then on it is the user's text.
     const text = translateNow(TITLE_TEXT[preset]);
     const fallbackName = translateNow(TITLE_NAME[preset]);
@@ -1186,6 +1196,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return;
     }
     applyTransitions(request, 'freeze');
+  },
+
+  dropTransition(preset, cut) {
+    const existing = Object.values(get().project.transitions ?? {}).find(
+      (transition) => transition.fromClipId === cut.fromId && transition.toClipId === cut.toId,
+    );
+    if (!existing) {
+      get().addTransitions(preset, [cut]);
+      return;
+    }
+    const { kind, color, direction } = presetKind(preset);
+    get().updateTransition(existing.id, { kind, color, direction });
+    get().selectTransition(existing.id);
   },
 
   resolvePendingTransition(choice) {

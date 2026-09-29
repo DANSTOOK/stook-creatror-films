@@ -57,6 +57,8 @@ import type { ClipAppearance } from '@renderer/media/clipContent';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { durationFromEdge, transitionAt, transitionBoxes } from './transitionBoxes';
 import {
+  cutNear,
+  cutsOf,
   MIN_TRANSITION_FRAMES,
   presetKind,
   presetOf,
@@ -64,11 +66,23 @@ import {
   TRANSITION_PRESETS,
   transitionWindow,
   transitionsOf,
+  type TimelineCut,
   type TransitionPreset,
 } from '@renderer/timing/transitions';
+import { newTransitionFrames } from '@renderer/timing/transitionLength';
+import { TITLE_SECONDS, titleDropPlacement } from '@renderer/text/titleClip';
+import { TITLE_PRESETS } from '@renderer/text/titleStyle';
+import type { TitlePreset } from '@shared/types';
+import {
+  TITLE_DRAG_TYPE,
+  TRANSITION_DRAG_TYPE,
+  libraryDragKind,
+  useLibraryDragStore,
+} from '@renderer/components/MediaLibrary/libraryDrag';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import TimelineCanvas, {
   type ClipHover,
+  type LibraryDropHint,
   RULER_HEIGHT,
   TRACK_TYPE_COLORS,
   TRACK_GAP,
@@ -198,6 +212,14 @@ export function Timeline(): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragMode>({ kind: 'none' });
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
+  // A title or transition being dragged from the library, and where it would land.
+  const libraryDragging = useLibraryDragStore((state) => state.dragging);
+  const [libraryTarget, setLibraryTarget] = useState<
+    { kind: 'title'; trackId: string | null; start: number; end: number } | { kind: 'transition'; cut: TimelineCut | null } | null
+  >(null);
+  useEffect(() => {
+    if (!libraryDragging) setLibraryTarget(null);
+  }, [libraryDragging]);
   /** The clip whose Speed/Duration dialog is open, if any. */
   const [speedFor, setSpeedFor] = useState<string | null>(null);
   /** The chosen tool's highlight, which slides from tool to tool. */
@@ -1147,23 +1169,78 @@ export function Timeline(): JSX.Element {
   const acceptsDrag = (event: React.DragEvent): boolean =>
     event.dataTransfer.types.includes('Files') || event.dataTransfer.types.includes(ASSET_DRAG_TYPE);
 
+  /**
+   * A title from the library lands on the track under the pointer from the
+   * (snapped) frame when it is free there, else above; a transition on the
+   * nearest cut of the clip under the pointer. Worked out on every dragover
+   * so the timeline shows it before the drop.
+   */
+  const libraryTargetAt = useCallback(
+    (event: React.DragEvent<HTMLDivElement>, kind: 'title' | 'transition') => {
+      const target = dropTargetAt(event);
+      const { project } = store.getState();
+      if (kind === 'title') {
+        const placement = titleDropPlacement(project, target.trackId, target.frame, Math.max(1, Math.round(TITLE_SECONDS * project.fps)));
+        return {
+          target: { kind, trackId: placement.trackId, start: placement.startFrame, end: placement.startFrame + placement.durationFrames } as const,
+          snap: target.snap,
+          frame: target.frame,
+          trackId: target.trackId,
+        };
+      }
+      const cut = cutNear(project, cutsOf(project), target.trackId, target.frame);
+      return { target: { kind, cut } as const, snap: null, frame: target.frame, trackId: target.trackId };
+    },
+    [dropTargetAt, store],
+  );
+
   const onDragOver = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
+      const library = libraryDragKind(event.dataTransfer.types);
+      if (library) {
+        event.preventDefault();
+        const { target, snap } = libraryTargetAt(event, library);
+        // A transition off every cut is refused at the pointer, not dropped.
+        event.dataTransfer.dropEffect = target.kind === 'transition' && !target.cut ? 'none' : 'copy';
+        setLibraryTarget((previous) => (JSON.stringify(previous) === JSON.stringify(target) ? previous : target));
+        setActiveSnap(snap);
+        return;
+      }
       if (!acceptsDrag(event)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
       setActiveSnap(dropTargetAt(event).snap);
     },
-    [dropTargetAt],
+    [dropTargetAt, libraryTargetAt],
   );
 
   const onDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     // dragleave also fires when moving onto a child; only clear on a real exit.
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setActiveSnap(null);
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setActiveSnap(null);
+      setLibraryTarget(null);
+    }
   }, []);
 
   const onDrop = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
+      const library = libraryDragKind(event.dataTransfer.types);
+      if (library) {
+        event.preventDefault();
+        setActiveSnap(null);
+        setLibraryTarget(null);
+        useLibraryDragStore.getState().setDragging(null);
+        const { target, frame, trackId } = libraryTargetAt(event, library);
+        const state = store.getState();
+        if (target.kind === 'title') {
+          const preset = event.dataTransfer.getData(TITLE_DRAG_TYPE) as TitlePreset;
+          if (TITLE_PRESETS.includes(preset)) state.addTitle(preset, { trackId, startFrame: frame });
+        } else if (target.cut) {
+          const preset = event.dataTransfer.getData(TRANSITION_DRAG_TYPE) as TransitionPreset;
+          if (TRANSITION_PRESETS.includes(preset)) state.dropTransition(preset, target.cut);
+        }
+        return;
+      }
       if (!acceptsDrag(event)) return;
       event.preventDefault();
       setActiveSnap(null);
@@ -1203,8 +1280,33 @@ export function Timeline(): JSX.Element {
       const current = store.getState();
       current.placeAssets(assets, planDrop(current.project, assets, trackId, frame));
     },
-    [dropTargetAt, store],
+    [dropTargetAt, libraryTargetAt, store],
   );
+
+  /** What the canvas marks while a library item is dragged. */
+  const libraryHint = useMemo((): LibraryDropHint | null => {
+    if (!libraryDragging) return null;
+    if (libraryDragging === 'title') {
+      return { cuts: [], title: libraryTarget?.kind === 'title' ? libraryTarget : null, transition: null };
+    }
+    const cuts = cutsOf(project);
+    const cut = libraryTarget?.kind === 'transition' ? libraryTarget.cut : null;
+    let transition: LibraryDropHint['transition'] = null;
+    if (cut) {
+      // The one it would replace, or a new one of the default length, centred.
+      const existing = cut.transitionId ? project.transitions?.[cut.transitionId] : undefined;
+      const from = project.clips[cut.fromId];
+      if (existing && from) {
+        const span = transitionWindow(existing, from);
+        transition = { trackId: cut.trackId, start: span.start, end: span.end };
+      } else {
+        const length = newTransitionFrames(project.fps, MIN_TRANSITION_FRAMES);
+        const start = cut.frame - Math.floor(length / 2);
+        transition = { trackId: cut.trackId, start, end: start + length };
+      }
+    }
+    return { cuts, title: null, transition };
+  }, [libraryDragging, libraryTarget, project]);
 
   const onPointerUp = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1624,6 +1726,7 @@ export function Timeline(): JSX.Element {
                 ui={ui}
                 tracks={tracks}
                 activeSnap={activeSnap}
+                libraryDrop={libraryHint}
                 marquee={marquee}
                 hover={hover}
                 activeTrim={activeTrim}

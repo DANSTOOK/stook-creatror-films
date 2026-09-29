@@ -81,3 +81,23 @@ export function createTitleClip(
   });
   return { ...clip, title };
 }
+
+/**
+ * Where a title dragged from the Titles panel lands: on the track it was
+ * dropped on, from the drop frame, when that track takes pictures and is
+ * free for the title's length; otherwise where Add title would put it at that
+ * frame - above whatever is there, on a new track if need be.
+ */
+export function titleDropPlacement(project: ProjectState, trackId: string | null, startFrame: number, durationFrames: number): TitlePlacement {
+  const start = Math.max(0, Math.round(startFrame));
+  const end = start + durationFrames;
+  const track = project.tracks.find((candidate) => candidate.id === trackId);
+  const free =
+    track &&
+    isVisualTrack(track) &&
+    !track.locked &&
+    !Object.values(project.clips).some(
+      (clip) => clip.trackId === track.id && clip.startFrame < end && clip.startFrame + clip.durationFrames > start,
+    );
+  return free ? { trackId: track.id, startFrame: start, durationFrames } : planTitlePlacement(project, start, durationFrames);
+}

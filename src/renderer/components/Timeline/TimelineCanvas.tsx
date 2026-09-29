@@ -54,12 +54,27 @@ export const TRACK_TYPE_COLORS: Record<Track['type'], string> = {
   adjustment: '#8a6a2f',
 };
 
+/**
+ * Where a title or transition dragged from the library can go, and would.
+ * Frames are timeline frames; a title's null track is a new one on top.
+ */
+export interface LibraryDropHint {
+  /** Every cut a transition can go on, marked as soon as one is picked up. */
+  cuts: ReadonlyArray<{ trackId: string; frame: number }>;
+  /** The transition the drop would make (or replace), on its cut. */
+  transition: { trackId: string; start: number; end: number } | null;
+  /** The title the drop would make. */
+  title: { trackId: string | null; start: number; end: number } | null;
+}
+
 export interface TimelineCanvasProps {
   project: ProjectState;
   ui: EditorUiState;
   tracks: Track[];
   /** Live snap indicator drawn during a drag. */
   activeSnap: SnapTarget | null;
+  /** A library drag's targets. */
+  libraryDrop?: LibraryDropHint | null;
   /** Decoded peaks per source URI, for audio-bearing clips. */
   waveforms: Record<string, WaveformPeaks>;
   /** Filmstrips per source URI, for clips with pictures. */
@@ -519,6 +534,61 @@ function drawFades(
  * the yellow of a selected clip when picked, and a red edge on the side
  * where a clip runs out of footage under it (Final Cut marks that edge red).
  */
+/*
+ * A library drag's marks. Light blue (#93c5fd) on a near-black keyline, so
+ * they stand out on every clip colour and on the empty track alike: the
+ * keyline carries the 3:1 against the clips, the blue against the keyline.
+ */
+const DROP_MARK = '#93c5fd';
+const DROP_KEYLINE = 'rgba(2, 6, 23, 0.9)';
+
+function drawLibraryDrop(
+  context: CanvasRenderingContext2D,
+  hint: LibraryDropHint,
+  tracks: readonly Track[],
+  ui: EditorUiState,
+  width: number,
+): void {
+  const rowOf = (trackId: string | null): number => (trackId === null ? -1 : tracks.findIndex((track) => track.id === trackId));
+  const x = (frame: number): number => frameToPixel(frame, ui.pixelsPerFrame, ui.scrollLeftPx);
+  context.save();
+  const ghost = (row: number, start: number, end: number, fill: string): void => {
+    const left = Math.round(x(start)) + 0.5;
+    const right = Math.round(x(end)) - 0.5;
+    const top = row < 0 ? RULER_HEIGHT + 1.5 : trackRowTop(row) + 2.5;
+    const height = row < 0 ? 4 : TRACK_HEIGHT - 5;
+    context.fillStyle = fill;
+    context.fillRect(left, top, Math.max(1, right - left), height);
+    context.lineWidth = 3;
+    context.strokeStyle = DROP_KEYLINE;
+    context.strokeRect(left, top, Math.max(1, right - left), height);
+    context.lineWidth = 1.5;
+    context.strokeStyle = DROP_MARK;
+    context.setLineDash(row < 0 ? [] : [5, 3]);
+    context.strokeRect(left, top, Math.max(1, right - left), height);
+    context.setLineDash([]);
+  };
+  if (hint.transition) {
+    const row = rowOf(hint.transition.trackId);
+    if (row >= 0) ghost(row, hint.transition.start, hint.transition.end, 'rgba(37, 99, 235, 0.45)');
+  }
+  // A title that needs a new track: a bar along the top, where it will open.
+  if (hint.title) ghost(rowOf(hint.title.trackId), hint.title.start, hint.title.end, 'rgba(130, 84, 142, 0.55)');
+  // The cuts over the ghost, so the one it lands on still shows.
+  for (const cut of hint.cuts) {
+    const row = rowOf(cut.trackId);
+    const cx = Math.round(x(cut.frame));
+    if (row < 0 || cx < -4 || cx > width + 4) continue;
+    const top = trackRowTop(row) + 6;
+    const bottom = trackRowTop(row) + TRACK_HEIGHT - 6;
+    context.fillStyle = DROP_KEYLINE;
+    context.fillRect(cx - 3, top - 1, 6, bottom - top + 2);
+    context.fillStyle = DROP_MARK;
+    context.fillRect(cx - 1, top, 2, bottom - top);
+  }
+  context.restore();
+}
+
 function drawTransitionBox(
   context: CanvasRenderingContext2D,
   box: TransitionBox,
@@ -971,6 +1041,7 @@ function drawPlayhead(
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   const { project, ui: storeUi, tracks, activeSnap, waveforms, width, height } = props;
+  const libraryDrop = props.libraryDrop ?? null;
   const filmstrips = props.filmstrips;
   const offlineUris = props.offlineUris;
   const transitionShortfalls = props.transitionShortfalls;
@@ -1152,6 +1223,8 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       drawTransitionBox(context, box, box.transition.id === ui.selectedTransitionId, transitionShortfalls?.get(box.transition.id));
     }
 
+    if (libraryDrop) drawLibraryDrop(context, libraryDrop, tracks, ui, width);
+
     if (marquee) {
       const left = Math.min(marquee.x0, marquee.x1);
       const topY = Math.max(RULER_HEIGHT, Math.min(marquee.y0, marquee.y1));
@@ -1223,7 +1296,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     // contentVersion is not read in the paint: it changes when a filmstrip
     // frame has been decoded, and that is exactly when to paint again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, storeUi, tracks, activeSnap, waveforms, filmstrips, offlineUris, transitionShortfalls, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
+  }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
     if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
@@ -1240,6 +1313,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   return (
     <canvas
       ref={canvasRef}
+      data-testid="timeline-canvas"
       style={{ width, height, cursor }}
       className="block"
       onPointerDown={props.onPointerDown}

@@ -419,3 +419,53 @@ export function withAudioCrossfades(project: ProjectState, sourceLength: (clip: 
 /** Equal-power gains across a crossfade: out at cos, in at sin. */
 export const crossfadeOut = (progress: number): number => Math.cos((Math.min(1, Math.max(0, progress)) * Math.PI) / 2);
 export const crossfadeIn = (progress: number): number => Math.sin((Math.min(1, Math.max(0, progress)) * Math.PI) / 2);
+
+/** A cut a transition can go on: two clips touching on a picture track. */
+export interface TimelineCut {
+  fromId: string;
+  toId: string;
+  trackId: string;
+  /** Where they touch. */
+  frame: number;
+  /** The transition already on it, if any. */
+  transitionId: string | null;
+}
+
+/** Every cut on the picture tracks, for showing where a dragged transition can land. */
+export function cutsOf(project: Pick<ProjectState, 'clips' | 'tracks' | 'transitions'>): TimelineCut[] {
+  const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
+  const onCut = new Map(transitionsOf(project).map((transition) => [`${transition.fromClipId}>${transition.toClipId}`, transition.id]));
+  const byStart = new Map<string, Clip>();
+  for (const clip of Object.values(project.clips)) if (visual.has(clip.trackId)) byStart.set(`${clip.trackId}@${clip.startFrame}`, clip);
+  const cuts: TimelineCut[] = [];
+  for (const from of Object.values(project.clips)) {
+    if (!visual.has(from.trackId)) continue;
+    const frame = from.startFrame + from.durationFrames;
+    const to = byStart.get(`${from.trackId}@${frame}`);
+    if (!to || to.id === from.id) continue;
+    cuts.push({ fromId: from.id, toId: to.id, trackId: from.trackId, frame, transitionId: onCut.get(`${from.id}>${to.id}`) ?? null });
+  }
+  return cuts;
+}
+
+/**
+ * The cut a transition dropped at `frame` on `trackId` goes on: the nearest
+ * one on that track, as long as the pointer is over one of the two clips it
+ * joins - over a clip, the nearer of its two ends.
+ */
+export function cutNear(
+  project: Pick<ProjectState, 'clips'>,
+  cuts: readonly TimelineCut[],
+  trackId: string | null,
+  frame: number,
+): TimelineCut | null {
+  let best: TimelineCut | null = null;
+  for (const cut of cuts) {
+    if (cut.trackId !== trackId) continue;
+    const from = project.clips[cut.fromId];
+    const to = project.clips[cut.toId];
+    if (!from || !to || frame < from.startFrame || frame > to.startFrame + to.durationFrames) continue;
+    if (!best || Math.abs(cut.frame - frame) < Math.abs(best.frame - frame)) best = cut;
+  }
+  return best;
+}

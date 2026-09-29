@@ -87,6 +87,11 @@ function TransitionLengthSelect(): JSX.Element {
             }}
           />
         )}
+        {custom && (
+          <span aria-hidden className="text-xs text-slate-400">
+            s
+          </span>
+        )}
       </div>
       <p id={hintId} className="text-2xs leading-relaxed text-slate-400">
         {t('prefs.transitionLengthHint')}
