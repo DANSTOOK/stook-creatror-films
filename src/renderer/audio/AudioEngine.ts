@@ -3,6 +3,7 @@ import { clamp } from '@shared/utils/math';
 import { clipGain, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
 import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
 import { applyFadeEnvelope } from './fadeEnvelope';
+import { withAudioCrossfades } from '@renderer/timing/transitions';
 import type { ScrubGrain } from './scrubAudio';
 import type { AudioStream } from './AudioStream';
 import {
@@ -446,9 +447,15 @@ export class AudioEngine {
    * Clips already past the playhead are started with an offset so a mid-clip
    * seek stays sample-accurate against the video clock.
    */
-  play(project: ProjectState, fromFrame: number): void {
+  play(edited: ProjectState, fromFrame: number): void {
     void this.context.resume();
     this.stop();
+    // Heard with its transitions' crossfades: the clips across a cut run on
+    // into each other (see timing/transitions withAudioCrossfades).
+    const project = withAudioCrossfades(edited, (clip) => {
+      const seconds = this.streams.get(clip.sourceUri)?.duration ?? this.buffers.get(clip.sourceUri)?.duration;
+      return seconds === undefined ? undefined : Math.floor(seconds * edited.fps);
+    });
 
     const fps = project.fps;
     const startSeconds = fromFrame / fps;

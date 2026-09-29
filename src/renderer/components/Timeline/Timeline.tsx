@@ -56,7 +56,16 @@ import { wheelZoomFactor } from './zoomMotion';
 import type { ClipAppearance } from '@renderer/media/clipContent';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { durationFromEdge, transitionAt, transitionBoxes } from './transitionBoxes';
-import { MIN_TRANSITION_FRAMES, shortfall, transitionWindow, transitionsOf, type TransitionPreset } from '@renderer/timing/transitions';
+import {
+  MIN_TRANSITION_FRAMES,
+  presetKind,
+  presetOf,
+  shortfall,
+  TRANSITION_PRESETS,
+  transitionWindow,
+  transitionsOf,
+  type TransitionPreset,
+} from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import TimelineCanvas, {
   type ClipHover,
@@ -616,7 +625,7 @@ export function Timeline(): JSX.Element {
   /** The three a transition can be, as menu items that apply `choose`. */
   const transitionChoices = useCallback(
     (choose: (preset: TransitionPreset) => void, current?: TransitionPreset): ContextMenuItem[] =>
-      (['crossDissolve', 'dipToBlack', 'dipToWhite'] as const).map((preset) => ({
+      TRANSITION_PRESETS.map((preset) => ({
         label: t(`transition.${preset}`),
         ...(current ? { checked: current === preset, radio: true } : {}),
         onSelect: () => choose(preset),
@@ -629,14 +638,11 @@ export function Timeline(): JSX.Element {
       const state = store.getState();
       const transition = state.project.transitions?.[transitionId];
       if (!transition) return [];
-      const current: TransitionPreset = transition.kind === 'crossDissolve' ? 'crossDissolve' : transition.color === '#ffffff' ? 'dipToWhite' : 'dipToBlack';
+      const current = presetOf(transition);
       return [
         ...transitionChoices(
           (preset) =>
-            state.updateTransition(
-              transitionId,
-              preset === 'crossDissolve' ? { kind: 'crossDissolve' } : { kind: 'dip', color: preset === 'dipToWhite' ? '#ffffff' : '#000000' },
-            ),
+            state.updateTransition(transitionId, presetKind(preset)),
           current,
         ),
         { separator: true },

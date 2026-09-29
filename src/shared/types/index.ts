@@ -346,6 +346,13 @@ export interface Clip {
   fadeInFrames?: number;
   fadeOutFrames?: number;
   /**
+   * Derived for the sound only, never saved: an equal-power crossfade at
+   * this end, in frames, where a transition's crossfade takes the place of
+   * the fade (see timing/transitions withAudioCrossfades).
+   */
+  crossfadeInFrames?: number;
+  crossfadeOutFrames?: number;
+  /**
    * Clips sharing this id are linked: selecting one selects them all, so
    * they move, trim and are deleted as one. Absent on a clip that stands
    * alone, which is nearly all of them.
@@ -384,8 +391,16 @@ export interface Track {
 /* Transitions                                                                */
 /* -------------------------------------------------------------------------- */
 
-/** A cross dissolve, or a dip through a colour (black, white, any). */
-export type TransitionKind = 'crossDissolve' | 'dip';
+/**
+ * A cross dissolve; a dip through a colour (black, white, any); a wipe (an
+ * edge crossing the picture); a slide (the incoming picture moving in over
+ * the outgoing one); or a push (the incoming picture pushing the outgoing
+ * one out).
+ */
+export type TransitionKind = 'crossDissolve' | 'dip' | 'wipe' | 'slide' | 'push';
+
+/** Which way a wipe's edge, a slide or a push travels across the frame. */
+export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 
 /**
  * Where a transition sits on its cut: across it (half each side), all after
@@ -414,6 +429,16 @@ export interface Transition {
   alignment: TransitionAlignment;
   /** A dip's colour, sRGB `#rrggbb`. */
   color: string;
+  /** Which way a wipe, slide or push travels. */
+  direction: TransitionDirection;
+  /** A wipe's edge: 0 hard, 1 as soft as a fifth of the frame. */
+  softness: number;
+  /**
+   * The sound crossfades with the picture, as Final Cut does: the two clips'
+   * own sound, and their linked sound clips that meet at the same cut, at
+   * equal power. On unless switched off in the inspector.
+   */
+  audioCrossfade: boolean;
 }
 
 /** Frame rates offered in the project settings UI. */

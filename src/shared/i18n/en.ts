@@ -1009,6 +1009,31 @@ export const en = {
   'transition.freezeHint': 'Nothing moves. The missing part holds the last frame of the first clip and the first frame of the second.',
   'keys.transitionKeys': 'Ctrl+T / Ctrl+D',
   'keys.transition': 'Add the default transition (a fade where a clip has no neighbour)',
+
+  /* Transitions, phase 4 -------------------------------------------------------- */
+  'transition.wipe': 'Wipe',
+  'transition.slide': 'Slide',
+  'transition.push': 'Push',
+  'transition.direction': 'Direction',
+  'transition.directionLeft': 'To the left',
+  'transition.directionRight': 'To the right',
+  'transition.directionUp': 'Upward',
+  'transition.directionDown': 'Downward',
+  'transition.softness': 'Softness',
+  'transition.audio': 'Crossfade sound',
+  'transition.audioOn': 'The two clips’ sound, and linked sound clips that meet at this cut, crossfade at equal power.',
+  'transition.audioOff': 'Only the picture transitions; the sound cuts at the cut.',
+  'library.tabs': 'Library',
+  'library.media': 'Media',
+  'library.titles': 'Titles',
+  'library.transitions': 'Transitions',
+  'library.titlesHint': 'Drag a title onto a track, or press Enter to add it at the playhead.',
+  'library.transitionsHint': 'Drag a transition onto a cut, or press Enter to put it on the selected clips or the cut at the playhead.',
+  'prefs.transitionLength': 'Default transition length',
+  'prefs.transitionLengthHint': 'What Ctrl+T, Ctrl+D and the Transitions panel give a new transition.',
+  'prefs.custom': 'Custom',
+  'prefs.seconds': '{n} s',
+  'prefs.customSeconds': 'Length in seconds',
 };
 
 export type Messages = typeof en;

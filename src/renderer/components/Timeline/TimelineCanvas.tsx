@@ -548,12 +548,29 @@ function drawTransitionBox(
     context.strokeStyle = '#e2e8f0';
     context.lineWidth = 1.25;
     context.beginPath();
-    if (box.transition.kind === 'crossDissolve') {
+    const kind = box.transition.kind;
+    if (kind === 'crossDissolve') {
       context.moveTo(cx - size, cy - size);
       context.lineTo(cx + size, cy + size);
       context.lineTo(cx + size, cy - size);
       context.lineTo(cx - size, cy + size);
       context.closePath();
+    } else if (kind === 'wipe' || kind === 'slide' || kind === 'push') {
+      // An arrow the way it travels; a wipe has its edge, a push a second arrow behind.
+      const [dx, dy] = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[box.transition.direction ?? 'left'];
+      const arrow = (ox: number, oy: number): void => {
+        context.moveTo(cx + ox - dx * size, cy + oy - dy * size);
+        context.lineTo(cx + ox + dx * size, cy + oy + dy * size);
+        context.moveTo(cx + ox + dx * size - (dx + dy) * size * 0.5, cy + oy + dy * size - (dy - dx) * size * 0.5);
+        context.lineTo(cx + ox + dx * size, cy + oy + dy * size);
+        context.lineTo(cx + ox + dx * size - (dx - dy) * size * 0.5, cy + oy + dy * size - (dy + dx) * size * 0.5);
+      };
+      arrow(0, 0);
+      if (kind === 'wipe') {
+        context.moveTo(cx + dy * size, cy - dx * size);
+        context.lineTo(cx - dy * size, cy + dx * size);
+      }
+      if (kind === 'push') arrow(-dx * size * 0.9, -dy * size * 0.9);
     } else {
       context.moveTo(cx - size, cy - size);
       context.lineTo(cx, cy + size * 0.6);

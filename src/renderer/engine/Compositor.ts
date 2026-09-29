@@ -95,22 +95,54 @@ out vec4 fragColor;
 uniform sampler2D u_from;
 uniform sampler2D u_to;
 uniform float u_progress;
-uniform int u_kind;       // 0 cross dissolve, 1 dip through u_color
+uniform int u_kind;       // 0 cross dissolve, 1 dip through u_color, 2 wipe, 3 slide, 4 push
 uniform vec3 u_color;
+uniform vec2 u_direction; // which way a wipe, slide or push travels, in texture space (y up)
+uniform float u_softness; // a wipe's edge width, in frames across
+
+// A side sampled where it has been moved to; nothing outside the frame.
+vec4 moved(sampler2D side, vec2 at) {
+    if (any(lessThan(at, vec2(0.0))) || any(greaterThan(at, vec2(1.0)))) return vec4(0.0);
+    return texture(side, at);
+}
 
 void main() {
-    vec4 from = texture(u_from, v_texCoord);
-    vec4 to = texture(u_to, v_texCoord);
+    vec2 uv = v_texCoord;
     if (u_kind == 0) {
-        fragColor = mix(from, to, u_progress);
+        fragColor = mix(texture(u_from, uv), texture(u_to, uv), u_progress);
         return;
     }
-    vec4 colour = vec4(u_color, 1.0);
-    fragColor = u_progress < 0.5
-        ? mix(from, colour, u_progress * 2.0)
-        : mix(colour, to, u_progress * 2.0 - 1.0);
+    if (u_kind == 1) {
+        vec4 colour = vec4(u_color, 1.0);
+        fragColor = u_progress < 0.5
+            ? mix(texture(u_from, uv), colour, u_progress * 2.0)
+            : mix(colour, texture(u_to, uv), u_progress * 2.0 - 1.0);
+        return;
+    }
+    if (u_kind == 2) {
+        // Where along its travel this pixel is, 0 where the edge starts, 1
+        // where it ends; the incoming picture is behind the edge.
+        float along = dot(uv - 0.5, u_direction) + 0.5;
+        float edge = -u_softness * 0.5 + u_progress * (1.0 + u_softness);
+        float incoming = u_softness > 0.0
+            ? 1.0 - smoothstep(edge - u_softness * 0.5, edge + u_softness * 0.5, along)
+            : step(along, edge);
+        fragColor = mix(texture(u_from, uv), texture(u_to, uv), incoming);
+        return;
+    }
+    // Slide and push: the incoming picture travels in from the far side and
+    // lands in place; in a push the outgoing one travels out ahead of it.
+    vec4 to = moved(u_to, uv + u_direction * (1.0 - u_progress));
+    vec4 from = u_kind == 4 ? moved(u_from, uv - u_direction * u_progress) : texture(u_from, uv);
+    fragColor = to + from * (1.0 - to.a);
 }
 `;
+
+/** The shader's number for each kind. */
+const TRANSITION_KIND: Record<Transition['kind'], number> = { crossDissolve: 0, dip: 1, wipe: 2, slide: 3, push: 4 };
+
+/** Which way each direction travels, in texture space (y up). */
+const DIRECTION: Record<Transition['direction'], [number, number]> = { left: [-1, 0], right: [1, 0], up: [0, 1], down: [0, -1] };
 
 /** Premultiplied in, straight out. */
 const RESOLVE_FRAGMENT_SOURCE = `#version 300 es
@@ -837,8 +869,11 @@ export class Compositor {
     this.transitionProgram.setTexture('u_from', this.transitionFrom.texture, 0);
     this.transitionProgram.setTexture('u_to', this.transitionTo.texture, 1);
     this.transitionProgram.set('u_progress', layer.entry.progress);
-    this.transitionProgram.setInt('u_kind', transition.kind === 'dip' ? 1 : 0);
+    this.transitionProgram.setInt('u_kind', TRANSITION_KIND[transition.kind]);
     this.transitionProgram.set('u_color', new Float32Array(colour.map((channel) => channel / 255)));
+    this.transitionProgram.set('u_direction', new Float32Array(DIRECTION[transition.direction ?? 'left']));
+    // Softness 1 is an edge a fifth of the frame wide.
+    this.transitionProgram.set('u_softness', Math.min(1, Math.max(0, transition.softness ?? 0)) * 0.2);
     this.drawQuad(this.transitionProgram);
     gl.disable(gl.BLEND);
     this.stats.passes += 1;

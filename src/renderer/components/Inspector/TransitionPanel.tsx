@@ -1,11 +1,11 @@
 import { useId, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import type { Clip, Transition, TransitionAlignment } from '@shared/types';
+import type { Clip, Transition, TransitionAlignment, TransitionDirection } from '@shared/types';
 import { useT, type MessageKey } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { assetLengthFrames } from '@renderer/media/assetLength';
-import { DIP_BLACK, DIP_WHITE, MIN_TRANSITION_FRAMES, headHandle, neededHandles, tailHandle } from '@renderer/timing/transitions';
-import { Section, SliderRow } from './rows';
+import { DIP_BLACK, DIP_WHITE, MIN_TRANSITION_FRAMES, headHandle, neededHandles, presetKind, tailHandle } from '@renderer/timing/transitions';
+import { Section, SliderRow, SwitchRow } from './rows';
 
 /**
  * The inspector for a transition picked on the timeline: its type, its
@@ -13,13 +13,23 @@ import { Section, SliderRow } from './rows';
  * clip runs out of footage under it, which one and by how much, in words.
  */
 
-type Choice = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'dipToColor';
+type Choice = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'dipToColor' | 'wipe' | 'slide' | 'push';
 
 const CHOICES: Array<{ id: Choice; label: MessageKey }> = [
   { id: 'crossDissolve', label: 'transition.crossDissolve' },
   { id: 'dipToBlack', label: 'transition.dipToBlack' },
   { id: 'dipToWhite', label: 'transition.dipToWhite' },
   { id: 'dipToColor', label: 'transition.dip' },
+  { id: 'wipe', label: 'transition.wipe' },
+  { id: 'slide', label: 'transition.slide' },
+  { id: 'push', label: 'transition.push' },
+];
+
+const DIRECTIONS: Array<{ id: TransitionDirection; label: MessageKey }> = [
+  { id: 'left', label: 'transition.directionLeft' },
+  { id: 'right', label: 'transition.directionRight' },
+  { id: 'up', label: 'transition.directionUp' },
+  { id: 'down', label: 'transition.directionDown' },
 ];
 
 const ALIGNMENTS: Array<{ id: TransitionAlignment; label: MessageKey }> = [
@@ -29,7 +39,7 @@ const ALIGNMENTS: Array<{ id: TransitionAlignment; label: MessageKey }> = [
 ];
 
 const choiceOf = (transition: Transition): Choice => {
-  if (transition.kind === 'crossDissolve') return 'crossDissolve';
+  if (transition.kind !== 'dip') return transition.kind;
   if (transition.color === DIP_BLACK) return 'dipToBlack';
   if (transition.color === DIP_WHITE) return 'dipToWhite';
   return 'dipToColor';
@@ -44,6 +54,7 @@ export function TransitionPanel({ transition }: { transition: Transition }): JSX
   const typeId = useId();
   const alignId = useId();
   const colourId = useId();
+  const directionId = useId();
   const [open, setOpen] = useState(true);
 
   const from = project.clips[transition.fromClipId];
@@ -77,7 +88,9 @@ export function TransitionPanel({ transition }: { transition: Transition }): JSX
               if (next === 'crossDissolve') set({ kind: 'crossDissolve' });
               else if (next === 'dipToBlack') set({ kind: 'dip', color: DIP_BLACK });
               else if (next === 'dipToWhite') set({ kind: 'dip', color: DIP_WHITE });
-              else set({ kind: 'dip', color: transition.color === DIP_BLACK || transition.color === DIP_WHITE ? '#2563eb' : transition.color });
+              else if (next === 'dipToColor') set({ kind: 'dip', color: transition.color === DIP_BLACK || transition.color === DIP_WHITE ? '#2563eb' : transition.color });
+              // A wipe, slide or push starts the way its preset travels.
+              else set({ kind: next, direction: presetKind(next).direction });
             }}
           >
             {CHOICES.map((option) => (
@@ -103,6 +116,32 @@ export function TransitionPanel({ transition }: { transition: Transition }): JSX
               <span className="timecode text-2xs text-slate-300">{transition.color.toUpperCase()}</span>
             </span>
           </label>
+        )}
+        {(transition.kind === 'wipe' || transition.kind === 'slide' || transition.kind === 'push') && (
+          <label htmlFor={directionId} className="grid grid-cols-[76px_1fr] items-center gap-2">
+            <span className="field-label">{t('transition.direction')}</span>
+            <select
+              id={directionId}
+              data-testid="transition-direction"
+              className="numeric-input h-control-dense"
+              value={transition.direction}
+              onChange={(event) => set({ direction: event.target.value as TransitionDirection })}
+            >
+              {DIRECTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {t(option.label)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {transition.kind === 'wipe' && (
+          <SliderRow
+            label={t('transition.softness')}
+            value={transition.softness}
+            typed={{ factor: 100, unit: '%', step: 1 }}
+            onChange={(softness) => set({ softness }, 'softness')}
+          />
         )}
         <SliderRow
           label={t('transition.duration')}
@@ -139,6 +178,9 @@ export function TransitionPanel({ transition }: { transition: Transition }): JSX
             {t('transition.runsOutHead', { clip: to.name, have: frames(head), need: frames(needed.head) })}
           </p>
         )}
+        {/* The sound goes across the cut with the picture, as Final Cut's does. */}
+        <SwitchRow label={t('transition.audio')} checked={transition.audioCrossfade} onChange={(audioCrossfade) => set({ audioCrossfade })} />
+        <p className="text-2xs leading-relaxed text-slate-400">{t(transition.audioCrossfade ? 'transition.audioOn' : 'transition.audioOff')}</p>
         <p className="text-2xs leading-relaxed text-slate-400">{t('transition.hint')}</p>
         <button
           type="button"

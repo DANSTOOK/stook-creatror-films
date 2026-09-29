@@ -4,6 +4,16 @@ import { encodeWavFloat32 } from '@shared/utils/wav';
 import { clipGain, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
 import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
 import { applyFadeEnvelope } from './fadeEnvelope';
+import { withAudioCrossfades } from '@renderer/timing/transitions';
+import { assetLengthFrames } from '@renderer/media/assetLength';
+
+/** The project as the mix hears it: with its transitions' audio crossfades. */
+function heard(project: ProjectState, assets: readonly MediaAsset[]): ProjectState {
+  return withAudioCrossfades(project, (clip) => {
+    const asset = assets.find((candidate) => candidate.uri === clip.sourceUri);
+    return !asset || asset.kind === 'image' ? undefined : assetLengthFrames(asset, project.fps);
+  });
+}
 import { duckOffline } from './DynamicDucking';
 import { AudioStream } from './AudioStream';
 
@@ -260,12 +270,13 @@ async function renderClips(
  * mux a video-only file rather than a file with a silent track.
  */
 export async function renderTimelineAudio(
-  project: ProjectState,
+  edited: ProjectState,
   assets: readonly MediaAsset[],
   startFrame: number,
   endFrame: number,
   options: { sampleRate?: number; channels?: number; padFrames?: number } = {},
 ): Promise<RenderedMix | null> {
+  const project = heard(edited, assets);
   const sampleRate = options.sampleRate ?? EXPORT_SAMPLE_RATE;
   const channels = options.channels ?? EXPORT_CHANNELS;
 
@@ -414,7 +425,7 @@ export interface StreamedMix {
  * Returns null, having written nothing, when nothing in the range is audible.
  */
 export async function streamTimelineAudio(
-  project: ProjectState,
+  edited: ProjectState,
   assets: readonly MediaAsset[],
   startFrame: number,
   endFrame: number,
@@ -427,6 +438,7 @@ export async function streamTimelineAudio(
     onProgress?: (doneSeconds: number, totalSeconds: number) => void;
   } = {},
 ): Promise<StreamedMix | null> {
+  const project = heard(edited, assets);
   const sampleRate = options.sampleRate ?? EXPORT_SAMPLE_RATE;
   const channels = options.channels ?? EXPORT_CHANNELS;
   const { fps } = project;

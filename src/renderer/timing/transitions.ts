@@ -1,4 +1,4 @@
-import type { Clip, ProjectState, Track, Transition, TransitionAlignment, TransitionKind } from '@shared/types';
+import type { Clip, ProjectState, Track, Transition, TransitionAlignment, TransitionDirection, TransitionKind } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { isReversed, sourceFramesUsed, speedOf } from './clipSpeed';
 import { moveClip } from '@renderer/components/Timeline/timelineOps';
@@ -35,12 +35,38 @@ export const DIP_BLACK = '#000000';
 export const DIP_WHITE = '#ffffff';
 
 /** The three a menu offers: a dissolve, and a dip to black or white. */
-export type TransitionPreset = 'crossDissolve' | 'dipToBlack' | 'dipToWhite';
+export type TransitionPreset = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'wipe' | 'slide' | 'push';
 
-export function presetKind(preset: TransitionPreset): { kind: TransitionKind; color: string } {
-  if (preset === 'dipToBlack') return { kind: 'dip', color: DIP_BLACK };
-  if (preset === 'dipToWhite') return { kind: 'dip', color: DIP_WHITE };
-  return { kind: 'crossDissolve', color: DIP_BLACK };
+export const TRANSITION_PRESETS: readonly TransitionPreset[] = ['crossDissolve', 'dipToBlack', 'dipToWhite', 'wipe', 'slide', 'push'];
+export const TRANSITION_DIRECTIONS: readonly TransitionDirection[] = ['left', 'right', 'up', 'down'];
+
+/** A wipe's edge by default: soft enough not to look like a cut, 10% of the frame. */
+export const DEFAULT_SOFTNESS = 0.5;
+
+export function presetKind(preset: TransitionPreset): { kind: TransitionKind; color: string; direction: TransitionDirection } {
+  switch (preset) {
+    case 'dipToBlack':
+      return { kind: 'dip', color: DIP_BLACK, direction: 'left' };
+    case 'dipToWhite':
+      return { kind: 'dip', color: DIP_WHITE, direction: 'left' };
+    // A wipe reads left to right, as text does; a slide or push comes in
+    // from the right and travels left, the way a page turns.
+    case 'wipe':
+      return { kind: 'wipe', color: DIP_BLACK, direction: 'right' };
+    case 'slide':
+      return { kind: 'slide', color: DIP_BLACK, direction: 'left' };
+    case 'push':
+      return { kind: 'push', color: DIP_BLACK, direction: 'left' };
+    case 'crossDissolve':
+    default:
+      return { kind: 'crossDissolve', color: DIP_BLACK, direction: 'left' };
+  }
+}
+
+/** The preset a transition is, for menus and the panel. */
+export function presetOf(transition: Pick<Transition, 'kind' | 'color'>): TransitionPreset {
+  if (transition.kind === 'dip') return transition.color === DIP_WHITE ? 'dipToWhite' : 'dipToBlack';
+  return transition.kind;
 }
 
 export const transitionsOf = (project: Pick<ProjectState, 'transitions'>): Transition[] => Object.values(project.transitions ?? {});
@@ -219,7 +245,7 @@ export function tidyTransitions(project: ProjectState): ProjectState {
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
-const KINDS: readonly TransitionKind[] = ['crossDissolve', 'dip'];
+const KINDS: readonly TransitionKind[] = ['crossDissolve', 'dip', 'wipe', 'slide', 'push'];
 const ALIGNMENTS: readonly TransitionAlignment[] = ['center', 'start', 'end'];
 
 /** Transitions read from a file: every field present and valid, anything broken dropped. */
@@ -239,6 +265,10 @@ export function normalizeTransitions(raw: unknown): Record<string, Transition> {
       durationFrames: Math.max(MIN_TRANSITION_FRAMES, Math.round(duration)),
       alignment: ALIGNMENTS.includes(source.alignment as TransitionAlignment) ? (source.alignment as TransitionAlignment) : 'center',
       color: typeof source.color === 'string' && HEX.test(source.color) ? source.color.toLowerCase() : DIP_BLACK,
+      direction: TRANSITION_DIRECTIONS.includes(source.direction as TransitionDirection) ? (source.direction as TransitionDirection) : 'left',
+      softness: typeof source.softness === 'number' && Number.isFinite(source.softness) ? Math.min(1, Math.max(0, source.softness)) : DEFAULT_SOFTNESS,
+      // Transitions made before the crossfade had it, as every new one does.
+      audioCrossfade: source.audioCrossfade !== false,
     };
   }
   return result;
@@ -319,7 +349,73 @@ export function createTransition(from: Clip, to: Clip, preset: TransitionPreset,
     fromClipId: from.id,
     toClipId: to.id,
     ...presetKind(preset),
+    softness: DEFAULT_SOFTNESS,
+    audioCrossfade: true,
     durationFrames: Math.max(MIN_TRANSITION_FRAMES, Math.round(durationFrames)),
     alignment,
   };
 }
+
+/* The sound ---------------------------------------------------------------------- */
+
+/**
+ * The project as the sound paths hear it: where a transition crossfades its
+ * sound, the two clips across its cut - their own sound, and their linked
+ * sound clips that meet at the same cut on one track - run on into each
+ * other (as far as their footage goes) and carry an equal-power crossfade
+ * over the transition's window, which the fade envelope writes onto their
+ * gain (audio/fadeEnvelope). Final Cut does the same with Command-T.
+ *
+ * Equal power: the outgoing side at cos, the incoming at sin, so at the
+ * midpoint each is at 0.707 (-3 dB) and the loudness holds steady through
+ * the cut. The picture is untouched; this is only ever handed to the audio
+ * engine and the export mix. Returns the same object when nothing changes.
+ */
+export function withAudioCrossfades(project: ProjectState, sourceLength: (clip: Clip) => number | undefined): ProjectState {
+  const crossfading = transitionsOf(project).filter((transition) => transition.audioCrossfade !== false);
+  if (crossfading.length === 0) return project;
+  const clips = { ...project.clips };
+  let changed = false;
+
+  for (const transition of crossfading) {
+    const from = project.clips[transition.fromClipId];
+    const to = project.clips[transition.toClipId];
+    if (!from || !to || from.title || to.title) continue;
+    const cut = from.startFrame + from.durationFrames;
+    const { before, after } = sides(transition.durationFrames, transition.alignment);
+
+    // The picture clips, and linked sound meeting at the same cut.
+    const pairs: Array<[Clip, Clip]> = [[from, to]];
+    const incoming = partnersOf(project.clips, to.id).map((id) => project.clips[id]).filter(Boolean);
+    for (const id of partnersOf(project.clips, from.id)) {
+      const outgoing = project.clips[id];
+      if (!outgoing || outgoing.id === from.id || outgoing.startFrame + outgoing.durationFrames !== cut) continue;
+      const partner = incoming.find((clip) => clip.id !== to.id && clip.trackId === outgoing.trackId && clip.startFrame === cut);
+      if (partner) pairs.push([outgoing, partner]);
+    }
+
+    for (const [out, into] of pairs) {
+      if (isReversed(out) || isReversed(into)) continue;
+      const tail = tailHandle(out, sourceLength(out));
+      const head = headHandle(into, sourceLength(into));
+      const runOn = Math.min(after, Number.isFinite(tail) ? tail : after);
+      const runIn = Math.min(before, Number.isFinite(head) ? head : before);
+      const current = clips[out.id];
+      clips[out.id] = { ...current, durationFrames: current.durationFrames + runOn, crossfadeOutFrames: before + runOn };
+      const incomingNow = clips[into.id];
+      clips[into.id] = {
+        ...incomingNow,
+        startFrame: incomingNow.startFrame - runIn,
+        durationFrames: incomingNow.durationFrames + runIn,
+        sourceOffsetFrames: Math.max(0, incomingNow.sourceOffsetFrames - Math.round(runIn * speedOf(incomingNow))),
+        crossfadeInFrames: runIn + after,
+      };
+      changed = true;
+    }
+  }
+  return changed ? { ...project, clips } : project;
+}
+
+/** Equal-power gains across a crossfade: out at cos, in at sin. */
+export const crossfadeOut = (progress: number): number => Math.cos((Math.min(1, Math.max(0, progress)) * Math.PI) / 2);
+export const crossfadeIn = (progress: number): number => Math.sin((Math.min(1, Math.max(0, progress)) * Math.PI) / 2);

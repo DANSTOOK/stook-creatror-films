@@ -190,7 +190,9 @@ describe('transitions follow their cuts', () => {
 
   it('reads from a file with anything broken put right or dropped', () => {
     const read = normalizeTransitions({ x: { id: 'x', fromClipId: 'a', toClipId: 'b', kind: 'spin', durationFrames: 1, alignment: 'sideways', color: 'red' }, y: { id: 'y' } });
-    expect(read).toEqual({ x: { id: 'x', fromClipId: 'a', toClipId: 'b', kind: 'crossDissolve', durationFrames: 2, alignment: 'center', color: '#000000' } });
+    expect(read).toEqual({
+      x: { id: 'x', fromClipId: 'a', toClipId: 'b', kind: 'crossDissolve', durationFrames: 2, alignment: 'center', color: '#000000', direction: 'left', softness: 0.5, audioCrossfade: true },
+    });
     // A project from before transitions has none, and no field.
     expect(normalizeProject(project([a, b], undefined)).transitions).toBeUndefined();
   });
@@ -303,5 +305,89 @@ describe('on the timeline', () => {
     for (const colour of Object.values(TRACK_TYPE_COLORS)) expect(contrastOf(CLIP_NAME, colour)).toBeGreaterThanOrEqual(TEXT_CONTRAST);
     // The red edge on its dark box, and against the clip colours beside it.
     expect(contrastOf(TRANSITION_SHORT, '#0c0e12')).toBeGreaterThanOrEqual(SHAPE_CONTRAST);
+  });
+});
+
+describe('phase 4: wipe, slide, push and the sound', () => {
+  it('names each preset and reads it back', async () => {
+    const { presetKind, presetOf, TRANSITION_PRESETS } = await import('@renderer/timing/transitions');
+    for (const preset of TRANSITION_PRESETS) expect(presetOf(presetKind(preset))).toBe(preset);
+    expect(presetKind('wipe').direction).toBe('right');
+    expect(presetKind('push').direction).toBe('left');
+  });
+
+  it('crossfades at equal power: each side at 0.707 (-3 dB) half-way, the power constant throughout', async () => {
+    const { crossfadeIn, crossfadeOut } = await import('@renderer/timing/transitions');
+    expect(crossfadeOut(0.5)).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(crossfadeIn(0.5)).toBeCloseTo(Math.SQRT1_2, 12);
+    expect(20 * Math.log10(crossfadeIn(0.5))).toBeCloseTo(-3.01, 2);
+    for (const p of [0, 0.1, 0.37, 0.8, 1]) expect(crossfadeIn(p) ** 2 + crossfadeOut(p) ** 2).toBeCloseTo(1, 12);
+  });
+
+  const base = (patch: Partial<Clip>): Clip => clip({ sourceUri: 'media://take', ...patch });
+  const a = base({ id: 'a', startFrame: 0, durationFrames: 90, sourceOffsetFrames: 100 });
+  const b = base({ id: 'b', startFrame: 90, durationFrames: 90, sourceOffsetFrames: 300 });
+  const project = (clips: Clip[], transition: ReturnType<typeof createTransition>): ProjectState => ({
+    ...useProjectStore.getState().project,
+    clips: Object.fromEntries(clips.map((one) => [one.id, one])),
+    transitions: { [transition.id]: transition },
+  });
+
+  it('runs the two clips\' sound into each other across the window, as the picture does', async () => {
+    const { withAudioCrossfades } = await import('@renderer/timing/transitions');
+    const dissolve = createTransition(a, b, 'crossDissolve', 30, 'center');
+    const heard = withAudioCrossfades(project([a, b], dissolve), () => 600);
+    expect(heard.clips.a).toMatchObject({ startFrame: 0, durationFrames: 105, sourceOffsetFrames: 100, crossfadeOutFrames: 30 });
+    expect(heard.clips.b).toMatchObject({ startFrame: 75, durationFrames: 105, sourceOffsetFrames: 285, crossfadeInFrames: 30 });
+    // The same instant of footage at every frame they share with the picture.
+    expect(sourceFrameFor(heard.clips.b, 100)).toBe(sourceFrameFor(b, 100));
+  });
+
+  it('takes linked sound that meets at the same cut, and leaves sound that does not', async () => {
+    const { withAudioCrossfades } = await import('@renderer/timing/transitions');
+    const la = { ...a, linkGroup: 'g1' };
+    const lb = { ...b, linkGroup: 'g2' };
+    const sa = base({ id: 'sa', trackId: 'a1', startFrame: 0, durationFrames: 90, sourceOffsetFrames: 100, linkGroup: 'g1' });
+    const sb = base({ id: 'sb', trackId: 'a1', startFrame: 90, durationFrames: 90, sourceOffsetFrames: 300, linkGroup: 'g2' });
+    const music = base({ id: 'm', trackId: 'a2', startFrame: 0, durationFrames: 300 });
+    const dissolve = createTransition(la, lb, 'crossDissolve', 30, 'center');
+    const heard = withAudioCrossfades(project([la, lb, sa, sb, music], dissolve), () => 600);
+    expect(heard.clips.sa.crossfadeOutFrames).toBe(30);
+    expect(heard.clips.sb.crossfadeInFrames).toBe(30);
+    expect(heard.clips.m).toBe(music);
+  });
+
+  it('runs on only as far as the footage goes, and not at all when switched off', async () => {
+    const { withAudioCrossfades } = await import('@renderer/timing/transitions');
+    const whole = base({ id: 'a', startFrame: 0, durationFrames: 90, sourceOffsetFrames: 510 });
+    const dissolve = createTransition(whole, b, 'crossDissolve', 30, 'center');
+    const heard = withAudioCrossfades(project([whole, b], dissolve), () => 600);
+    expect(heard.clips.a.durationFrames).toBe(90);
+    expect(heard.clips.a.crossfadeOutFrames).toBe(15);
+    const off = project([a, b], { ...dissolve, fromClipId: 'a', audioCrossfade: false });
+    expect(withAudioCrossfades(off, () => 600)).toBe(off);
+  });
+
+  it('is written onto the gain as sine and cosine curves, half-way at 0.707 of the level', async () => {
+    const { applyFadeEnvelope } = await import('@renderer/audio/fadeEnvelope');
+    const curves: Array<{ values: Float32Array; at: number; seconds: number }> = [];
+    const gain = {
+      value: 0,
+      setValueAtTime: () => gain,
+      linearRampToValueAtTime: () => gain,
+      setValueCurveAtTime: (values: Float32Array, at: number, seconds: number) => {
+        curves.push({ values: Float32Array.from(values), at, seconds });
+        return gain;
+      },
+    };
+    const outgoing = { ...a, durationFrames: 105, crossfadeOutFrames: 30 };
+    applyFadeEnvelope(gain as never, outgoing, 1, 10, 0, 30);
+    expect(curves).toHaveLength(1);
+    // From the transition's first frame - 15 before the cut, frame 75 of the clip - for one second.
+    expect(curves[0].at).toBeCloseTo(10 + 75 / 30, 9);
+    expect(curves[0].seconds).toBeCloseTo(1, 9);
+    const middle = curves[0].values[Math.round((curves[0].values.length - 1) / 2)];
+    expect(middle).toBeCloseTo(Math.SQRT1_2, 2);
+    expect(curves[0].values[curves[0].values.length - 1]).toBeCloseTo(0, 6);
   });
 });
