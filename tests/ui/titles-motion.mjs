@@ -235,7 +235,7 @@ async function main() {
     check('the credits roll at one speed: the frame\'s height and the text\'s over the clip, per frame (within 1 px)',
       perFrame.every((value) => Math.abs(-value - speed) <= 1), `${perFrame.map((v) => (-v).toFixed(2)).join(', ')} px a frame; ${speed.toFixed(2)} wanted`);
     await window.evaluate((id) => window.__scfStore.getState().selectClips([id]), rollId);
-    await window.getByRole('tab', { name: 'Title' }).click();
+    await window.getByTestId('inspector-panel').getByRole('tab', { name: 'Title' }).click();
     await window.locator('section[data-section="titleAnimation"]').scrollIntoViewIfNeeded();
     const rollNote = await window.locator('section[data-section="titleAnimation"] p').last().innerText();
     const shownSpeed = Number(/([\d.]+) px/.exec(rollNote)?.[1]);
@@ -301,7 +301,7 @@ async function main() {
     check('(the scaled one would have moved had it changed: which is why it keeps the frame\'s centre)', !moved.equals(oldWay));
     await window.evaluate(() => { window.__scfStore.getState().undo(); window.__scfStore.getState().undo(); });
     await window.evaluate((id) => window.__scfStore.getState().selectClips([id]), scaledId);
-    await window.getByRole('tab', { name: 'Title' }).click();
+    await window.getByTestId('inspector-panel').getByRole('tab', { name: 'Title' }).click();
     const note = window.getByTestId('title-origin-frame');
     check('its Title tab says so, with the change a click away', await note.isVisible().catch(() => false) && await window.getByTestId('title-use-text-origin').isVisible());
     await window.evaluate(([a, b]) => window.__scfStore.getState().removeClips([a, b]), [plainId, scaledId]);
@@ -574,7 +574,7 @@ async function main() {
     }), spanishId);
     check('Esc termina: el texto queda, en un solo paso de deshacer, y Espacio no reproduce',
       spanish.text === 'Créditos ñ ' && !spanish.playing && spanish.depth === depth + 1, JSON.stringify(spanish));
-    await window.getByRole('tab', { name: 'Título' }).click();
+    await window.getByTestId('inspector-panel').getByRole('tab', { name: 'Título' }).click();
     const labels = await window.locator('section[data-section="titleAnimation"] .field-label').allInnerTexts();
     check('la animación en español: Entrada, Duración, Salida, Duración, Desplazar',
       labels.join('|') === 'Entrada|Duración|Salida|Duración|Desplazar', labels.join(' / '));

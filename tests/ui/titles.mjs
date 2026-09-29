@@ -209,11 +209,13 @@ async function main() {
     check('Edit > Add title puts a 5 s title at the playhead, on the track above the picture, selected',
       ids.length === 1 && added.start === 30 && added.length === 150 && added.order === 1 && added.selected[0] === ids[0] && added.text === 'Title',
       JSON.stringify(added));
-    const titleTab = window.getByRole('tab', { name: 'Title' });
+    // The inspector's tabs; the library panel has a tab list of its own.
+    const inspectorTabs = window.getByTestId('inspector-panel').getByRole('tab');
+    const titleTab = window.getByTestId('inspector-panel').getByRole('tab', { name: 'Title' });
     check('the inspector opens on the Title tab: Title, Video, Info',
       (await titleTab.getAttribute('aria-selected')) === 'true'
-        && (await window.getByRole('tab').allInnerTexts()).join('|') === 'Title|Video|Info',
-      (await window.getByRole('tab').allInnerTexts()).join(' / '));
+        && (await inspectorTabs.allInnerTexts()).join('|') === 'Title|Video|Info',
+      (await inspectorTabs.allInnerTexts()).join(' / '));
     const sections = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
     check('its groups: Text, Font, Paragraph, Outline, Shadow, Background, Animation, Position',
       sections.join('|') === 'Text|Font|Paragraph|Outline|Shadow|Background|Animation|Position', sections.join(' / '));
@@ -500,7 +502,7 @@ async function main() {
     const spanishId = (await titleIds(window)).find((id) => id !== titleId);
     const spanish = await window.evaluate((id) => window.__scfStore.getState().project.clips[id]?.title?.text, spanishId);
     check('Edición > Añadir título writes the template text in Spanish', spanish === 'Título', String(spanish));
-    const tabsEs = await window.getByRole('tab').allInnerTexts();
+    const tabsEs = await window.getByTestId('inspector-panel').getByRole('tab').allInnerTexts();
     const sectionsEs = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
     check('the tab and its groups in Spanish', tabsEs[0] === 'Título' && sectionsEs.join('|') === 'Texto|Fuente|Párrafo|Contorno|Sombra|Fondo|Animación|Posición',
       `${tabsEs.join(' / ')} - ${sectionsEs.join(' / ')}`);
