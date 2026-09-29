@@ -380,6 +380,42 @@ export interface Track {
   bus: AudioBus;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Transitions                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** A cross dissolve, or a dip through a colour (black, white, any). */
+export type TransitionKind = 'crossDissolve' | 'dip';
+
+/**
+ * Where a transition sits on its cut: across it (half each side), all after
+ * it (starts at the cut: the outgoing clip runs on), or all before it (ends
+ * at the cut: the incoming clip starts early). Premiere's Center at Cut,
+ * Start at Cut and End at Cut.
+ */
+export type TransitionAlignment = 'center' | 'start' | 'end';
+
+/**
+ * A transition, on the cut between two clips that touch on one track.
+ *
+ * The clips themselves never overlap: the outgoing clip is drawn past its
+ * end and the incoming one before its start, from the footage beyond them
+ * (their handles) - or holding their last and first frames where there is
+ * none, if the editor chose that. See renderer/timing/transitions.ts.
+ */
+export interface Transition {
+  id: string;
+  /** The clip that ends at the cut. */
+  fromClipId: string;
+  /** The clip that starts at it. */
+  toClipId: string;
+  kind: TransitionKind;
+  durationFrames: number;
+  alignment: TransitionAlignment;
+  /** A dip's colour, sRGB `#rrggbb`. */
+  color: string;
+}
+
 /** Frame rates offered in the project settings UI. */
 export const COMMON_FPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60] as const;
 
@@ -404,6 +440,11 @@ export interface ProjectState {
   markers: Marker[];
   /** Master bus and auto-ducking, i.e. everything the mixer owns. */
   audio: ProjectAudioState;
+  /**
+   * Transitions, by id, each on a cut between two touching clips. Absent in
+   * projects saved before transitions existed, which means none.
+   */
+  transitions?: Record<string, Transition>;
 }
 
 /* -------------------------------------------------------------------------- */

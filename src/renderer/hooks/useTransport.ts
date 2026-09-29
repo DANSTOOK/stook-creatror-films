@@ -279,6 +279,14 @@ export function useEditorShortcuts(): void {
             event.preventDefault();
             store.linkSelection();
             return;
+          case 't':
+          case 'd':
+            // The default transition: Ctrl+T as in Final Cut and Resolve,
+            // Ctrl+D as in Premiere.
+            if (event.shiftKey) return;
+            event.preventDefault();
+            store.addTransitions();
+            return;
           default:
             // Any other Ctrl combination belongs to the app or the system, not
             // to the single-letter tool keys.
@@ -337,6 +345,12 @@ export function useEditorShortcuts(): void {
           return;
         case 'Delete':
         case 'Backspace':
+          // A picked transition goes on its own; the clips it joins stay.
+          if (store.ui.selectedTransitionId) {
+            event.preventDefault();
+            store.removeTransition(store.ui.selectedTransitionId);
+            return;
+          }
           if (store.ui.selectedClipIds.length > 0) {
             event.preventDefault();
             store.removeClips(store.ui.selectedClipIds);

@@ -25,6 +25,7 @@ import { markerName, trackName } from '@renderer/i18n/defaultNames';
 import { DEFAULT_PIVOT, neutralVignette, neutralWheel, normalizeGrading } from '@renderer/color/grade';
 import { neutralCurves } from '@renderer/color/curves';
 import { migrateTitleOrigin, normalizeTitle } from '@renderer/text/titleStyle';
+import { normalizeTransitions, tidyTransitions, type TransitionPreset } from '@renderer/timing/transitions';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -120,6 +121,27 @@ export interface EditorUiState {
    * is, the viewer draws that title at rest - not mid-fade - under the text.
    */
   editingTitleId: string | null;
+  /** The transition picked on the timeline, for the inspector and Delete. */
+  selectedTransitionId: string | null;
+  /**
+   * Transitions asked for on cuts without enough footage: the question the
+   * editor is being asked (overlap, freeze frames or cancel), or null.
+   */
+  pendingTransition: PendingTransition | null;
+}
+
+/** A request for transitions that is waiting on the editor's answer. */
+export interface PendingTransition {
+  preset: TransitionPreset;
+  durationFrames: number;
+  cuts: Array<{ fromId: string; toId: string }>;
+  fades: Array<{ clipId: string; edge: 'in' | 'out' }>;
+  /** The cuts that are short, and by how much on each side, in frames. */
+  short: Array<{ fromName: string; toName: string; tail: number; head: number; shortTail: number; shortHead: number }>;
+  /** How much shorter the overlap would make the edit. */
+  overlapFrames: number;
+  /** Clips on other tracks after the cut that the overlap would leave out of step. */
+  leftBehind: string[];
 }
 
 export const DEFAULT_UI_STATE: EditorUiState = {
@@ -147,6 +169,8 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   selectedAssetId: null,
   playbackRate: 1,
   editingTitleId: null,
+  selectedTransitionId: null,
+  pendingTransition: null,
 };
 
 export const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
@@ -364,6 +388,23 @@ function normalizeAudio(audio: unknown): ProjectAudioState {
  * when it was saved, or the mixer has quietly re-mixed somebody's edit.
  */
 export function normalizeProject(project: ProjectState): ProjectState {
+  return withTransitions(normalizeClipsAndTracks(project), project.transitions);
+}
+
+/**
+ * Transitions read from a file, kept only where their cut still is. A project
+ * with none carries no field at all, as projects from before transitions do.
+ */
+function withTransitions(project: ProjectState, raw: unknown): ProjectState {
+  const { transitions: _dropped, ...rest } = project;
+  void _dropped;
+  const transitions = normalizeTransitions(raw);
+  if (Object.keys(transitions).length === 0) return rest;
+  const tidy = tidyTransitions({ ...rest, transitions });
+  return Object.keys(tidy.transitions ?? {}).length > 0 ? tidy : rest;
+}
+
+function normalizeClipsAndTracks(project: ProjectState): ProjectState {
   const markers = (Array.isArray(project.markers) ? project.markers : [])
     .map((marker, index) => ({
       id: marker?.id ?? createId('marker'),

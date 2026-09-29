@@ -15,11 +15,24 @@ import type {
   TitleStyle,
   Track,
   TrackType,
+  Transition,
   Vector2D,
 } from '@shared/types';
 import { createTitleClip, planTitlePlacement, TITLE_NAME, TITLE_SECONDS, TITLE_TEXT } from '@renderer/text/titleClip';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
+import {
+  createTransition,
+  DEFAULT_TRANSITION_SECONDS,
+  headHandle,
+  MIN_TRANSITION_FRAMES,
+  overlapClips,
+  planTransition,
+  tailHandle,
+  tidyTransitions,
+  transitionsOf,
+  type TransitionPreset,
+} from '@renderer/timing/transitions';
 import { t as translateNow } from '@renderer/i18n';
 import { createId } from '@shared/utils/id';
 import { clamp } from '@shared/utils/math';
@@ -87,6 +100,7 @@ import {
   normalizeProject,
   type CreateClipInput,
   type EditorUiState,
+  type PendingTransition,
   type ProjectDocument,
   type TimelineTool,
 } from './types';
@@ -266,6 +280,22 @@ interface ProjectStore {
    * the typing pauses, the whole edit is one undo step.
    */
   setTitleTextLive(clipId: string, text: string): void;
+
+  /* Transitions ---------------------------------------------------------- */
+  /**
+   * Ctrl+T (and Ctrl+D): a transition on each cut at the ends of the
+   * selected clips - a fade where an end has no neighbour - or, with nothing
+   * selected, on the cut nearest the playhead. `cuts` names cuts outright
+   * (the timeline's menu). Where a cut lacks the footage, nothing happens
+   * yet: `ui.pendingTransition` asks the editor (see resolvePendingTransition).
+   */
+  addTransitions(preset?: TransitionPreset, cuts?: Array<{ fromId: string; toId: string }>): void;
+  /** The editor's answer: overlap the clips, freeze frames, or leave it. One undo step. */
+  resolvePendingTransition(choice: 'overlap' | 'freeze' | 'cancel'): void;
+  updateTransition(transitionId: string, patch: Partial<Omit<Transition, 'id' | 'fromClipId' | 'toClipId'>>, mergeKey?: string): void;
+  removeTransition(transitionId: string): void;
+  /** Pick a transition on the timeline; the clip selection is cleared. */
+  selectTransition(transitionId: string | null): void;
   /** The typing is over: one undo step, from `fromText` to what is there now. */
   commitTitleText(clipId: string, fromText: string): void;
 
@@ -512,7 +542,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   transact(label, mutate, mergeKey) {
     const before = get().project;
-    const after = withContentLength(mutate(before));
+    const after = withContentLength(tidyTransitions(mutate(before)));
     if (after === before) return;
 
     useHistoryStore.getState().push(createSnapshotCommand(label, before, after, mergeKey));
@@ -805,7 +835,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const current = get().ui.selectedClipIds;
     const asked = exact ? clipIds : expandSelection(get().project.clips, clipIds);
     const next = additive ? [...new Set([...current, ...asked])] : asked;
-    set({ ui: { ...get().ui, selectedClipIds: next } });
+    set({ ui: { ...get().ui, selectedClipIds: next, selectedTransitionId: next.length > 0 ? null : get().ui.selectedTransitionId } });
   },
 
   linkSelection() {
@@ -1086,6 +1116,110 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (!clip?.title || clip.title.text === text) return;
     const name = titleName(text, translateNow(TITLE_NAME[clip.title.preset]));
     set({ project: { ...project, clips: { ...project.clips, [clipId]: { ...clip, name, title: { ...clip.title, text } } } } });
+  },
+
+  addTransitions(preset = 'crossDissolve', explicit) {
+    const state = get();
+    const { project, ui } = state;
+    const durationFrames = Math.max(MIN_TRANSITION_FRAMES, Math.round(DEFAULT_TRANSITION_SECONDS * project.fps));
+    const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
+    let cuts: Array<{ fromId: string; toId: string }> = [];
+    const fades: PendingTransition['fades'] = [];
+
+    if (explicit) {
+      cuts = explicit;
+    } else {
+      const selected = ui.selectedClipIds.map((id) => project.clips[id]).filter((clip): clip is Clip => Boolean(clip) && visual.has(clip.trackId));
+      if (selected.length > 0) {
+        // Both ends of each clip, as Final Cut's Command-T does: a cut where
+        // there is a neighbour, a fade where there is not.
+        for (const clip of selected) {
+          const before = neighbourBefore(project.clips, clip);
+          const after = neighbourAfter(project.clips, clip);
+          if (before) cuts.push({ fromId: before.id, toId: clip.id });
+          else fades.push({ clipId: clip.id, edge: 'in' });
+          if (after) cuts.push({ fromId: clip.id, toId: after.id });
+          else fades.push({ clipId: clip.id, edge: 'out' });
+        }
+      } else {
+        const cut = cutNearPlayhead(project, ui.selectedTrackId);
+        if (cut) cuts.push(cut);
+      }
+    }
+
+    // Once each, and never on a cut that already has one.
+    const taken = new Set(transitionsOf(project).map((transition) => `${transition.fromClipId}>${transition.toClipId}`));
+    cuts = cuts.filter((cut) => {
+      const key = `${cut.fromId}>${cut.toId}`;
+      if (taken.has(key)) return false;
+      taken.add(key);
+      return true;
+    });
+    if (cuts.length === 0 && fades.length === 0) return;
+
+    // What is short, and what an overlap would do - worked out on a copy.
+    const lengthOf = (clip: Clip): number | undefined => sourceFramesFor(get(), clip);
+    const short: PendingTransition['short'] = [];
+    const leftBehind = new Set<string>();
+    let overlapFrames = 0;
+    let clips = project.clips;
+    for (const cut of cuts) {
+      const from = clips[cut.fromId];
+      const to = clips[cut.toId];
+      if (!from || !to) continue;
+      const tail = tailHandle(from, lengthOf(from));
+      const head = headHandle(to, lengthOf(to));
+      const plan = planTransition(tail, head, durationFrames);
+      if (plan.shortTail === 0 && plan.shortHead === 0) continue;
+      short.push({ fromName: from.name, toName: to.name, tail, head, shortTail: plan.shortTail, shortHead: plan.shortHead });
+      const overlap = overlapClips(clips, from, to, plan.shortTail, plan.shortHead);
+      overlapFrames += overlap.shift;
+      for (const clip of overlap.leftBehind) leftBehind.add(clip.name);
+      clips = overlap.clips;
+    }
+
+    const request: PendingTransition = { preset, durationFrames, cuts, fades, short, overlapFrames, leftBehind: [...leftBehind] };
+    // Not enough footage: ask, every time, as Final Cut and Resolve do.
+    if (short.length > 0) {
+      set({ ui: { ...get().ui, pendingTransition: request } });
+      return;
+    }
+    applyTransitions(request, 'freeze');
+  },
+
+  resolvePendingTransition(choice) {
+    const request = get().ui.pendingTransition;
+    set({ ui: { ...get().ui, pendingTransition: null } });
+    if (!request || choice === 'cancel') return;
+    applyTransitions(request, choice);
+  },
+
+  updateTransition(transitionId, patch, mergeKey) {
+    get().transact(
+      'Edit transition',
+      (project) => {
+        const transition = project.transitions?.[transitionId];
+        if (!transition) return project;
+        const next = { ...transition, ...patch };
+        next.durationFrames = Math.max(MIN_TRANSITION_FRAMES, Math.round(next.durationFrames));
+        return { ...project, transitions: { ...project.transitions, [transitionId]: next } };
+      },
+      mergeKey,
+    );
+  },
+
+  removeTransition(transitionId) {
+    get().transact('Delete transition', (project) => {
+      if (!project.transitions?.[transitionId]) return project;
+      const { [transitionId]: _gone, ...rest } = project.transitions;
+      void _gone;
+      return { ...project, transitions: rest };
+    });
+    if (get().ui.selectedTransitionId === transitionId) set({ ui: { ...get().ui, selectedTransitionId: null } });
+  },
+
+  selectTransition(transitionId) {
+    set({ ui: { ...get().ui, selectedTransitionId: transitionId, selectedClipIds: transitionId ? [] : get().ui.selectedClipIds } });
   },
 
   commitTitleText(clipId, fromText) {
@@ -1926,6 +2060,79 @@ function timelineFramesFor(state: ProjectStore, clip: Clip | null | undefined): 
   const frames = sourceFramesFor(state, clip);
   if (frames === undefined || !clip) return undefined;
   return Math.max(1, Math.floor(frames / speedOf(clip)));
+}
+
+/**
+ * Put a request's transitions (and fades) in, as one undo step. Where a cut
+ * is short, `overlap` shortens the clips and closes the track up first;
+ * `freeze` leaves them as they are, and the renderer holds their last and
+ * first frames for what is missing.
+ */
+function applyTransitions(request: PendingTransition, choice: 'overlap' | 'freeze'): void {
+  const store = useProjectStore.getState();
+  const lengthOf = (clip: Clip): number | undefined => sourceFramesFor(useProjectStore.getState(), clip);
+  let added: string | null = null;
+  store.transact('Add transition', (project) => {
+    let clips = project.clips;
+    const transitions = { ...(project.transitions ?? {}) };
+    for (const cut of request.cuts) {
+      let from = clips[cut.fromId];
+      let to = clips[cut.toId];
+      // Still a cut: the same track, one ending where the other begins.
+      if (!from || !to || from.trackId !== to.trackId || from.startFrame + from.durationFrames !== to.startFrame) continue;
+      let plan = planTransition(tailHandle(from, lengthOf(from)), headHandle(to, lengthOf(to)), request.durationFrames);
+      if ((plan.shortTail > 0 || plan.shortHead > 0) && choice === 'overlap') {
+        clips = overlapClips(clips, from, to, plan.shortTail, plan.shortHead).clips;
+        from = clips[cut.fromId];
+        to = clips[cut.toId];
+        plan = { alignment: 'center', shortTail: 0, shortHead: 0 };
+      }
+      const transition = createTransition(from, to, request.preset, request.durationFrames, plan.alignment);
+      transitions[transition.id] = transition;
+      added = transition.id;
+    }
+    if (request.fades.length > 0) {
+      clips = { ...clips };
+      for (const fade of request.fades) {
+        const clip = clips[fade.clipId];
+        if (!clip) continue;
+        const length = fadeFromDrag(clip, fade.edge, request.durationFrames);
+        clips[clip.id] = fade.edge === 'in' ? { ...clip, fadeInFrames: length } : { ...clip, fadeOutFrames: length };
+      }
+    }
+    return { ...project, clips, transitions };
+  });
+  // One new transition is shown picked, ready for the inspector.
+  if (added && request.cuts.length === 1 && request.fades.length === 0) useProjectStore.getState().selectTransition(added);
+}
+
+/** The clip that begins where `clip` ends, if one does. */
+function neighbourAfter(clips: Record<string, Clip>, clip: Clip): Clip | null {
+  const end = clip.startFrame + clip.durationFrames;
+  return Object.values(clips).find((candidate) => candidate.trackId === clip.trackId && candidate.id !== clip.id && candidate.startFrame === end) ?? null;
+}
+
+/**
+ * With nothing selected, Ctrl+T acts on the cut nearest the playhead - on the
+ * selected track when there is one, else on any picture track - within a
+ * second of it.
+ */
+function cutNearPlayhead(project: ProjectState, trackId: string | null): { fromId: string; toId: string } | null {
+  const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
+  let best: { fromId: string; toId: string; distance: number; preferred: boolean } | null = null;
+  const reach = Math.max(1, Math.round(project.fps));
+  for (const to of Object.values(project.clips)) {
+    if (!visual.has(to.trackId)) continue;
+    const from = neighbourBefore(project.clips, to);
+    if (!from) continue;
+    const distance = Math.abs(to.startFrame - project.currentFrame);
+    if (distance > reach) continue;
+    const preferred = to.trackId === trackId;
+    if (!best || (preferred && !best.preferred) || (preferred === best.preferred && distance < best.distance)) {
+      best = { fromId: from.id, toId: to.id, distance, preferred };
+    }
+  }
+  return best ? { fromId: best.fromId, toId: best.toId } : null;
 }
 
 /** The clip that ends where `clip` begins, if one does. */
