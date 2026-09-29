@@ -16,6 +16,141 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Transiciones, fase 3
+
+Las transiciones esenciales: fundido encadenado, fundido a negro y fundido a
+blanco, sobre el corte entre dos clips.
+
+### Añadido
+- **Transiciones sobre el corte.** Una transición se guarda en el corte
+  entre dos clips que se tocan en la misma pista; los clips nunca se solapan
+  en el proyecto.
+  - Durante la transición, el clip que sale se sigue viendo después de su
+    final y el que entra se ve antes de su principio, con el metraje que
+    tienen más allá del corte.
+  - Tipos: **fundido encadenado** (el de por defecto), **fundido a negro** y
+    **fundido a blanco**. En el Inspector, además, **fundido a un color**
+    cualquiera.
+  - Duración por defecto: **1 segundo**, como en Final Cut, Premiere y
+    Resolve.
+- **Cómo se añaden:**
+  - **Ctrl+T** (Final Cut, Resolve) o **Ctrl+D** (Premiere) ponen la
+    transición en los dos extremos de los clips seleccionados. Donde un
+    extremo no tiene vecino, ponen el **fundido** de clip que ya existía.
+  - Sin nada seleccionado, van al corte más cercano al cursor, a menos de
+    un segundo.
+  - Clic derecho en un corte: **Añadir transición ▸**, con los tres tipos.
+  - Edición > **Añadir transición**.
+- **Dónde se coloca:**
+  - **Centrada** en el corte cuando los dos clips tienen metraje de sobra.
+  - **Entera a un lado** cuando solo uno lo tiene.
+  - El metraje sobrante se cuenta a la velocidad de cada clip, y al revés en
+    un clip invertido.
+- **Cuando falta metraje, se pregunta cada vez**, como hacen Final Cut y
+  Resolve. La ventana dice qué cortes se quedan cortos y cuánto falta a
+  cada lado, y ofrece:
+  - **Solapar (recortar los clips)**: acorta los clips en lo que falta y
+    adelanta todo lo que va detrás en esa pista (con lo que tenga
+    enlazado). Dice cuánto más corta queda la edición, y nombra la música o
+    los clips de otras pistas que no se moverían y quedarían desfasados.
+  - **Congelar fotogramas**: no se mueve nada. Lo que falta repite el
+    último fotograma del primer clip y el primero del segundo.
+  - **Cancelar**: no se añade nada.
+  - Cualquiera de las dos respuestas es **un solo paso de deshacer**.
+- **En la línea de tiempo:** una caja redondeada sobre el corte, tan ancha
+  como dura la transición, con el dibujo de su tipo.
+  - Seleccionada, lleva el contorno amarillo de los clips seleccionados.
+  - Si un clip se queda sin metraje, ese borde se pinta de **rojo**.
+  - Un clic la selecciona. Arrastrar un borde cambia la duración (en una
+    centrada, por los dos lados a la vez), en un paso de deshacer.
+  - **Supr** la elimina; los clips se quedan.
+  - **Doble clic** la abre en el Inspector.
+- **Inspector de la transición:**
+  - tipo;
+  - color (en un fundido a color);
+  - duración;
+  - posición sobre el corte (centrada, empieza en el corte o termina en el
+    corte);
+  - y, dicho con palabras, qué clip se queda sin metraje y cuánto le falta.
+- **Las transiciones siguen a su corte.** Si el clip de la izquierda se
+  corta en dos, la transición pasa al trozo que ahora toca el corte. Si un
+  clip se aparta o se borra, la transición desaparece.
+- **Cómo se dibuja:**
+  - Los dos lados pasan cada uno por su transformación, fundidos y efectos,
+    en un búfer propio.
+  - Se mezclan con alfa premultiplicado y se componen como una sola capa.
+  - Los dos búferes solo existen mientras hay una transición en pantalla.
+
+### Arreglado
+- **Dos partes del mismo archivo a cada lado de un corte** (una toma cortada
+  en dos con una transición en medio).
+  - La vista previa tenía un solo elemento de vídeo y una sola textura por
+    archivo, así que los dos lados habrían mostrado el mismo fotograma.
+  - Ahora el lado que entra tiene su propio decodificador desde un segundo
+    antes de la transición hasta que termina.
+  - La ruta de exportación que salta a cada fotograma, en vez de decodificar
+    en orden, recibe lo mismo.
+- **Nombres de los clips** en la línea de tiempo: estaban en slate-200, con
+  4,07:1 sobre los clips de ajuste y 4,27:1 sobre los de audio. Ahora van en
+  slate-100, con 4,6:1 o más sobre todos los colores de clip.
+
+### Cómo se comprobó
+- **`npm run test:transitions:ui`: 24/24** en la aplicación real, con la
+  ventana oculta:
+  - **Fundido encadenado**: de rojo a azul, en el fotograma del corte da la
+    mezcla exacta al 50 % de sus dos lados (126,0,127 a partir de 253 y 254).
+    A un cuarto del camino va un cuarto pasado.
+  - **Fundido a negro**: 0,0,0 en su fotograma central.
+  - **Con metraje de sobra**: Ctrl+D y Ctrl+T la ponen centrada sin
+    preguntar, en un paso. Una exportación real mide lo mismo que sin ella
+    (180 fotogramas).
+  - **Clips enteros**: siempre se pregunta, y se nombra la música que
+    quedaría desfasada.
+    - Cancelar no deja nada ni ningún paso de deshacer.
+    - Congelar no mueve nada y se deshace en un paso.
+    - Solapar quita 15 fotogramas a cada clip, en un paso, y la exportación
+      queda **exactamente 30 fotogramas más corta** (de 600 a 570).
+  - **Línea de tiempo**:
+    - el clic selecciona la transición;
+    - el Inspector dice qué clip se queda sin metraje;
+    - arrastrar un borde 5 fotogramas la alarga 10 (los dos lados);
+    - el doble clic la abre;
+    - Supr la quita y deja los clips;
+    - el menú de un corte añade un fundido a negro.
+  - **Un mismo archivo a los dos lados, reproduciéndose**: rojo y azul
+    mezclados fotograma a fotograma en el corte (de 146/108 a 108/147,
+    pasando por 127/127).
+  - **Cadencia**: reproducir a través de un fundido de 2 s entre dos vídeos
+    no pierde ningún fotograma de vídeo y da el mismo p95 que un solo vídeo
+    (5,9 frente a 5,8 ms; el peor, 11,2 ms).
+  - **Español**: «Solapar (recortar los clips)», «Congelar fotogramas» y
+    «Cancelar».
+- **912 pruebas unitarias** (21 nuevas en `Transitions.test.ts`):
+  - el metraje sobrante, a otras velocidades y en clips invertidos;
+  - la imagen más allá de los extremos de un clip, y los fotogramas
+    congelados;
+  - dónde se coloca una transición;
+  - lo que hace el solapado: N fotogramas más corta, sonido enlazado
+    incluido, y qué deja atrás;
+  - cómo sigue a su corte cuando el clip se divide, se aparta o se borra;
+  - la lectura desde archivo;
+  - la caja en la línea de tiempo y el arrastre de sus bordes;
+  - el contraste de los nombres de clip y del borde rojo.
+- **Siguen pasando:**
+  - 127/127 de interfaz;
+  - 21/21 de extremo a extremo;
+  - 23/23 de corrección en la GPU;
+  - 33/33 y 30/30 de títulos;
+  - 21/21 de curvas;
+  - 16/16 de visores;
+  - 32/32 de ruedas.
+
+### Problemas conocidos
+- El sonido todavía no se funde con la transición: el fundido cruzado de
+  audio llega en la fase 4.
+
+---
+
 ## v1.32.0-beta.1 — Títulos: plantillas, animaciones y edición en el visor
 
 Instalador de prueba. Antes de publicarla pasó la batería completa en segundo
