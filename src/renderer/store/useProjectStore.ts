@@ -23,7 +23,6 @@ import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
 import {
   createTransition,
-  DEFAULT_TRANSITION_SECONDS,
   headHandle,
   MIN_TRANSITION_FRAMES,
   overlapClips,
@@ -34,6 +33,7 @@ import {
   type TransitionPreset,
 } from '@renderer/timing/transitions';
 import { t as translateNow } from '@renderer/i18n';
+import { newTransitionFrames } from '@renderer/timing/transitionLength';
 import { createId } from '@shared/utils/id';
 import { clamp } from '@shared/utils/math';
 import {
@@ -1121,7 +1121,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   addTransitions(preset = 'crossDissolve', explicit) {
     const state = get();
     const { project, ui } = state;
-    const durationFrames = Math.max(MIN_TRANSITION_FRAMES, Math.round(DEFAULT_TRANSITION_SECONDS * project.fps));
+    // The length chosen in Preferences (one second unless changed).
+    const durationFrames = newTransitionFrames(project.fps, MIN_TRANSITION_FRAMES);
     const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
     let cuts: Array<{ fromId: string; toId: string }> = [];
     const fades: PendingTransition['fades'] = [];
