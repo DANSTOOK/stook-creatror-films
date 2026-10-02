@@ -429,6 +429,57 @@ the rest of the track by exactly the change (a ripple trim). Only the hole
 the edit made closes; gaps left elsewhere and other tracks are untouched.
 Off, deletes leave the hole and trims stop at the neighbour.
 
+Captions are the exception: each is tied to a moment of the sound, so on a
+captions track nothing closes up and nothing is pushed along
+(`planCaptionMove`). A deleted caption leaves its hole, a moved one stops at
+the captions beside it, and trimming one never ripples.
+
+## Captions
+
+Speech to text on this computer, nothing uploaded. `Timeline > Generate
+captions` mixes the timeline's sound (the export's mix, of everything or of
+one track), the main process has the bundled ffmpeg make a 16 kHz mono WAV of
+it in a temporary folder of its own, and
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp)'s `whisper-cli` (MIT)
+transcribes it as a child process - `src/main/subtitles/`. Cancelling kills
+the processes; the temporary folder is deleted however the job ends, and
+swept at start-up.
+
+- **The engine** is not in the repository. The release workflow compiles
+  whisper.cpp at a pinned commit with Vulkan and dynamic backends into
+  `build/whisper`, and electron-builder ships that as `resources/whisper`
+  (`extraResources`). `engine.ts` looks in `SCF_WHISPER_DIR`, then
+  `resources/whisper`, then `build/whisper`; without it the dialog says
+  captions cannot be generated in this build (importing an .srt still works).
+- **The GPU** is chosen by name from what the Vulkan backend lists: the
+  dedicated one, NVIDIA first, never the integrated one. With no usable GPU,
+  or if a GPU run fails, the same program runs on the processor, at below
+  normal priority and on half the cores (eight at most).
+- **The models** are not bundled either (190 MB and 574 MB). They are
+  downloaded only after the permission prompt, from
+  `huggingface.co/ggerganov/whisper.cpp`, hashed as they arrive, and kept in
+  `userData/whisper-models` (`SCF_WHISPER_MODELS_DIR` for tests) only if the
+  SHA-256 matches the one fixed in `catalog.ts`. A model can also be imported
+  from a file; which one it is, is told by its hash.
+- **Word times** come from whisper.cpp's DTW alignment, not from the
+  decoder's timestamps: a word starts where the token before it ended
+  (`shared/captions/whisperOutput.ts`). Segments Whisper invents over silence
+  (the "Amara.org" credit, `[MÚSICA]`) are dropped.
+- **The rules** (`renderer/captions/rules.ts`) are Netflix's for Spanish: 42
+  characters a line, two lines, 17 characters a second, 5/6 s to 7 s, 2-frame
+  gaps, and no line ending on an article or preposition.
+- **On the timeline** a caption is a clip with `caption` (its text, and its
+  words with their times) on a track of type `captions`. The compositor
+  draws it as a title (`captionRender.ts`), so the viewer and the export
+  cannot differ. The razor shares the words out by when they were spoken.
+- **Files**: `.srt` and `.vtt` in and out (`subtitleFiles.ts`); the export
+  dialog can burn the captions in, write the file beside the video, or both.
+
+`npm run test:captions:ui` transcribes a recording with a known text in the
+running app; it needs the engine and both models in `.stress-tmp` (see its
+header). `npm run test:bench:captions` times ten minutes of speech and
+measures the preview's cadence meanwhile.
+
 ## Copy, cut and paste
 
 `components/Timeline/clipboard.ts`. Ctrl+C takes a deep snapshot of the

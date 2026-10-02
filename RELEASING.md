@@ -39,6 +39,19 @@ GitHub, pero no como la última versión.
    npm run test:ui
    ```
 
+   Si la release toca los subtítulos (o cambia `WHISPER_COMMIT` en
+   `.github/workflows/release.yml`), también:
+
+   ```bash
+   npm run test:captions:ui
+   ```
+
+   Necesita el motor y los dos modelos en `.stress-tmp` (lo dice su
+   cabecera). El instalador lleva el motor que compila el propio workflow
+   (whisper.cpp con Vulkan, en `resources/whisper`); la primera release tras
+   cambiar de versión tarda más, porque lo compila, y las siguientes lo
+   toman de la caché.
+
 3. Crea la release y súbela:
 
    ```bash
