@@ -1073,6 +1073,7 @@ export const en = {
   'captions.doneGpu': '{count} captions added in {seconds} s, on the {gpu}. Ctrl+Z removes them.',
   'captions.doneCpu': '{count} captions added in {seconds} s, on the processor. Ctrl+Z removes them.',
   'captions.doneNone': 'Nobody was heard speaking, so no captions were added.',
+  'captions.otherProject': 'The captions were for the project that was open when they were started; they were not added to this one.',
   'captions.failed': 'The captions could not be generated. {detail}',
   'captions.downloadTitle': 'Download the speech model?',
   'captions.downloadBody': 'To write captions the app needs the “{name}” model, which is not on this computer yet. It is one file of {size}, downloaded once from {source} - its official source - checked, and kept on this computer.',

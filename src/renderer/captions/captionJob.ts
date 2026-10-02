@@ -83,6 +83,8 @@ export const useCaptionJob = create<JobState>((set, get) => ({
     const startedAt = performance.now();
     const { project, assets } = useProjectStore.getState();
     const endFrame = projectContentLength(project);
+    // To know, at the end, that the project on screen is still this one.
+    const tracksAtStart = new Set(project.tracks.map((track) => track.id));
     const job = { jobId: null as string | null, cancelled: false };
     current = job;
     set({ phase: 'mixing', fraction: 0 });
@@ -127,6 +129,11 @@ export const useCaptionJob = create<JobState>((set, get) => ({
 
       // On the project as it is now: its size and rate decide lines and frames.
       const now = useProjectStore.getState().project;
+      // Another project was opened meanwhile: these captions are not its.
+      if (!now.tracks.some((track) => tracksAtStart.has(track.id))) {
+        notify(t('captions.otherProject'), 'warning');
+        return null;
+      }
       const cues = wordsToCues(result.words, rulesFor(options.preset, now), options.language, now.fps);
       if (cues.length === 0) {
         notify(t('captions.doneNone'), 'warning');

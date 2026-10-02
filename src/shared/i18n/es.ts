@@ -1073,6 +1073,7 @@ export const es: Messages = {
   'captions.doneGpu': '{count} subtítulos añadidos en {seconds} s, con la {gpu}. Ctrl+Z los quita.',
   'captions.doneCpu': '{count} subtítulos añadidos en {seconds} s, con el procesador. Ctrl+Z los quita.',
   'captions.doneNone': 'No se oyó hablar a nadie, así que no se añadieron subtítulos.',
+  'captions.otherProject': 'Los subtítulos eran para el proyecto que estaba abierto cuando se pidieron; no se añadieron a este.',
   'captions.failed': 'No se pudieron generar los subtítulos. {detail}',
   'captions.downloadTitle': '¿Descargar el modelo de voz?',
   'captions.downloadBody': 'Para escribir subtítulos la app necesita el modelo «{name}», que todavía no está en este equipo. Es un archivo de {size} que se descarga una sola vez de {source} - su fuente oficial -, se comprueba y se guarda en este equipo.',
