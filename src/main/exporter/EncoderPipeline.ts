@@ -3,6 +3,7 @@ import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ExportProgress, ExportSettings } from '@shared/types';
+import { subtitleCodecFor } from '@shared/utils/subtitleStream';
 import { lastLines, mt } from '../language';
 import {
   FORMAT_SUPPORTS_ALPHA,
@@ -85,7 +86,7 @@ export class EncoderPipeline {
      * The mix is instead rendered to exactly the picture duration, so both
      * inputs end together and no truncation flag is needed.
      */
-    const audioArgs = withAudio
+    const audioInput = withAudio
       ? [
           // A streamed mix is headerless float32: ffmpeg has to be told what it is.
           ...(settings.audioRawFormat
@@ -93,18 +94,38 @@ export class EncoderPipeline {
             : []),
           '-i',
           settings.audioPath as string,
-          '-map',
-          '0:v:0',
-          '-map',
-          '1:a:0',
-          '-c:a',
-          'aac',
-          '-b:a',
-          `${settings.audioBitrateKbps ?? 256}k`,
-          '-ar',
-          '48000',
         ]
       : [];
+
+    /**
+     * Captions as a track the viewer can switch on (shared/utils/subtitleStream):
+     * a third input, an .srt whose times already count from the start of the
+     * range rendered, written into the container as timed text with its
+     * language. Its input goes with the other inputs - an `-i` after output
+     * options would take them for its own - and it is left switched off by
+     * default, so a file that also has them burnt in does not show them twice
+     * unasked.
+     */
+    const subtitleCodec = settings.subtitles ? subtitleCodecFor(settings.format) : null;
+    const subtitleInput = settings.subtitles && subtitleCodec ? ['-i', settings.subtitles.path] : [];
+    const subtitleOutput =
+      settings.subtitles && subtitleCodec
+        ? ['-c:s', subtitleCodec, '-metadata:s:s:0', `language=${settings.subtitles.language}`, '-disposition:s:0', '0']
+        : [];
+
+    const audioArgs =
+      withAudio || subtitleInput.length > 0
+        ? [
+            ...audioInput,
+            ...subtitleInput,
+            '-map',
+            '0:v:0',
+            ...(withAudio ? ['-map', '1:a:0'] : []),
+            ...(subtitleInput.length > 0 ? ['-map', `${withAudio ? 2 : 1}:0`] : []),
+            ...(withAudio ? ['-c:a', 'aac', '-b:a', `${settings.audioBitrateKbps ?? 256}k`, '-ar', '48000'] : []),
+            ...subtitleOutput,
+          ]
+        : [];
 
     if (settings.pipeMode === 'annexb-h264' || settings.pipeMode === 'annexb-hevc') {
       const streamFormat = settings.pipeMode === 'annexb-h264' ? 'h264' : 'hevc';
@@ -235,6 +256,7 @@ export class EncoderPipeline {
         this.jobs.delete(id);
         // The mix was written to temp purely to be an ffmpeg input.
         if (settings.audioPath) void rm(settings.audioPath, { force: true });
+        if (settings.subtitles) void rm(settings.subtitles.path, { force: true });
         // A cancelled or failed encode leaves a half-written sidecar. It is
         // never the destination, so removing it loses nothing.
         const discardPartial = (): void => {

@@ -101,6 +101,7 @@ export const IPC = {
   captionsOpenFile: 'captions:open-file',
   captionsSaveFile: 'captions:save-file',
   captionsWriteSidecar: 'captions:write-sidecar',
+  captionsWriteTemp: 'captions:write-temp',
 } as const;
 
 /* Captions ------------------------------------------------------------------ */
@@ -573,6 +574,12 @@ export interface FilmoraApi {
   captionsSaveFile?(suggestedName: string, srt: string, vtt: string): Promise<string | null>;
   /** Write the subtitle file that goes with a video this session exported; returns its path. */
   captionsWriteSidecar?(videoPath: string, format: 'srt' | 'vtt', contents: string): Promise<string>;
+  /**
+   * Stash an .srt as a temporary file and return its path, to be passed as
+   * `ExportSettings.subtitles.path`: ffmpeg takes the subtitle track as a
+   * file input. The export deletes it when it ends.
+   */
+  captionsWriteTemp?(srt: string): Promise<string>;
 }
 
 declare global {

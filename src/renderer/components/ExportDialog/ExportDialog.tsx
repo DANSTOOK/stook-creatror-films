@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type {
   ExportFormat,
+  ExportSettings,
   ExportProgress,
   GpuPreference,
   GpuReport,
@@ -35,10 +36,13 @@ import { exportEndFrame } from './exportRange';
 import { defaultFileName } from './exportName';
 import { YouTubePanel } from './YouTubePanel';
 import { setExporting } from '@renderer/motion/environment';
-import { missingFamilies } from '@renderer/text/fonts';
+import { isFamilyMissing, missingFamilies } from '@renderer/text/fonts';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { FALLBACK_FAMILY } from '@renderer/text/titleStyle';
-import { captionCues } from '@renderer/captions/captionClips';
+import { captionCues, captionSettingsOf } from '@renderer/captions/captionClips';
+import { subtitleCodecFor, subtitleLanguageCode } from '@shared/utils/subtitleStream';
+import { writeSrt } from '@renderer/captions/subtitleFiles';
+import { lookOf } from '@renderer/captions/look';
 import { withoutCaptions } from '@renderer/captions/captionRender';
 import { writeSubtitles, type SubtitleFormat } from '@renderer/captions/subtitleFiles';
 
@@ -126,6 +130,8 @@ interface FinishedExport {
   fps: number;
   /** The subtitle file written beside it, when one was asked for. */
   captionsFile?: string;
+  /** The language of the subtitle track put inside it, when one was. */
+  captionsEmbedded?: string;
 }
 
 /** Split a path at its last separator, either kind. */
@@ -311,7 +317,15 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   // as a file beside the video, which is what YouTube and players take.
   const [burnCaptions, setBurnCaptions] = useState(true);
   const [captionFile, setCaptionFile] = useState<SubtitleFormat | 'none'>('none');
+  // And as a track inside the file, which the viewer switches on in the player.
+  const [embedCaptions, setEmbedCaptions] = useState(false);
   const captionCount = captionCues(project).length;
+  // The language the track is tagged with: that of the topmost captions track on show.
+  const captionTrack = [...project.tracks].filter((track) => track.type === 'captions' && track.visible).sort((a, b) => b.order - a.order)[0];
+  const captionLanguage = subtitleLanguageCode(captionSettingsOf(captionTrack).language);
+  const canEmbed = subtitleCodecFor(settings.format) !== null;
+  // A captions font this computer lacks is drawn in the fallback, as a title's is: said before the render.
+  const captionFontsMissing = [...new Set(project.tracks.filter((track) => track.type === 'captions' && track.visible).map((track) => lookOf(captionSettingsOf(track)).fontFamily))].filter(isFamilyMissing);
   const [thumbnailPath, setThumbnailPath] = useState<string | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const coverArt = COVER_ART_FORMATS.has(settings.format);
@@ -479,6 +493,19 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       // The audio is done by now; leaving "Rendering audio..." up for the whole
       // picture render made a slow export look stuck on the sound.
       setMessage(t('export.renderingWith', { encoder: jobPlan.label }));
+      // The track inside the file: the captions of the range, as an .srt
+      // ffmpeg reads beside the picture and the sound.
+      let subtitles: ExportSettings['subtitles'];
+      if (embedCaptions && subtitleCodecFor(settings.format) !== null && window.filmora.captionsWriteTemp) {
+        const cues = captionCues(project, { fromFrame: settings.startFrame, toFrame: settings.endFrame });
+        if (cues.length > 0) {
+          try {
+            subtitles = { path: await window.filmora.captionsWriteTemp(writeSrt(cues)), language: captionLanguage };
+          } catch (error) {
+            notify(t('export.captionsEmbedFailed', { detail: errorText(error) }), 'error');
+          }
+        }
+      }
       const jobSettings = {
         ...settings,
         pipeMode: jobPlan.pipeMode,
@@ -486,6 +513,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         ...(streamColour ? { streamColour } : {}),
         ...(audioPath ? { audioPath, audioBitrateKbps, audioRawFormat } : {}),
         ...(thumbnailPath && coverArt ? { thumbnailPath } : {}),
+        ...(subtitles ? { subtitles } : {}),
       };
 
       const started = await window.filmora.exportStart(jobSettings);
@@ -558,6 +586,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         encoder: jobPlan.label,
         fps,
         ...(captionsFile ? { captionsFile } : {}),
+        ...(subtitles ? { captionsEmbedded: subtitles.language } : {}),
       });
       // The result card says all of it; a status line repeating it is noise.
       setMessage(null);
@@ -573,7 +602,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, t]);
+  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, embedCaptions, captionLanguage, t]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const renderFps = settings.fps || project.fps;
@@ -1120,6 +1149,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
                 {captionCount > 0 && (
                   <Section title={t('export.captions')}>
+                    {/* Three ways out, each said for what it is: in the picture, in
+                        the file as a track, or beside it as a file. Any or all. */}
+                    <p className="text-2xs text-slate-400" data-testid="export-captions-intro">
+                      {t('export.captionsCount', { count: captionCount })} {t('export.captionsIntro')}
+                    </p>
                     <label className="flex items-start gap-2 text-xs text-slate-200">
                       <input
                         type="checkbox"
@@ -1130,11 +1164,27 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       />
                       <span>
                         {t('export.captionsBurn')}
-                        <span className="block text-2xs text-slate-400">{t('export.captionsBurnHint')}</span>
+                        <span className="block text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnHint2')}</span>
+                      </span>
+                    </label>
+                    <label className={`flex items-start gap-2 text-xs ${canEmbed ? 'text-slate-200' : 'text-slate-400'}`}>
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        data-testid="export-captions-embed"
+                        disabled={!canEmbed}
+                        checked={embedCaptions && canEmbed}
+                        onChange={(event) => setEmbedCaptions(event.target.checked)}
+                      />
+                      <span>
+                        {t('export.captionsEmbed')}
+                        <span className="block text-2xs leading-relaxed text-slate-400">
+                          {canEmbed ? t('export.captionsEmbedHint') : t('export.captionsEmbedUnsupported', { format: formatLabel(selectedFormat?.value) })}
+                        </span>
                       </span>
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="text-2xs text-slate-400">{t('export.captionsFile')}</span>
+                      <span className="text-xs text-slate-200">{t('export.captionsFile')}</span>
                       <select
                         className="numeric-input"
                         data-testid="export-captions-file"
@@ -1145,8 +1195,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         <option value="srt">{t('export.captionsFileSrt')}</option>
                         <option value="vtt">{t('export.captionsFileVtt')}</option>
                       </select>
+                      <span className="text-2xs leading-relaxed text-slate-400">{t('export.captionsFileHint')}</span>
                     </label>
-                    <p className="text-2xs text-slate-400">{t('export.captionsCount', { count: captionCount })}</p>
+                    {burnCaptions && embedCaptions && canEmbed && (
+                      <p role="status" className="text-2xs leading-relaxed text-amber-200" data-testid="export-captions-twice">
+                        {t('export.captionsTwice')}
+                      </p>
+                    )}
+                    {captionFontsMissing.length > 0 && burnCaptions && (
+                      <p role="status" data-testid="export-caption-fonts-missing" className="text-2xs text-amber-300">
+                        {t('export.missingFonts', { fonts: captionFontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
+                      </p>
+                    )}
                   </Section>
                 )}
 
@@ -1269,7 +1329,15 @@ function ExportResult({
     { label: t('export.statRenderTime'), value: formatClock(result.renderSeconds) },
     { label: t('export.statFrameRate'), value: `${Number(result.fps.toFixed(3))} fps` },
     { label: t('export.statEncoder'), value: result.encoder, wide: true },
-    ...(result.captionsFile ? [{ label: t('export.statCaptions'), value: result.captionsFile, wide: true }] : []),
+    ...(result.captionsFile || result.captionsEmbedded
+      ? [
+          {
+            label: t('export.statCaptions'),
+            value: [result.captionsEmbedded ? t('export.captionsEmbedded', { language: result.captionsEmbedded }) : '', result.captionsFile ?? ''].filter(Boolean).join(' · '),
+            wide: true,
+          },
+        ]
+      : []),
   ];
   return (
     <section

@@ -1,5 +1,7 @@
 import { app, dialog, ipcMain, net, type BrowserWindow } from 'electron';
 import { readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import {
   IPC,
@@ -11,7 +13,7 @@ import {
   type CaptionTranscribeResult,
 } from '@shared/types/ipc';
 import { resolveFfmpegPath } from '../exporter/HardwareAccel';
-import { isFinishedExport } from '../ipc/fileSystem';
+import { allowPath, isFinishedExport } from '../ipc/fileSystem';
 import { lastLines, mt } from '../language';
 import { CAPTION_MODELS, MODEL_SOURCE, modelById } from './catalog';
 import { findEngine, type WhisperEngine } from './engine';
@@ -224,6 +226,19 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
     const target = extname(videoPath) === '' ? join(videoPath, `captions${extension}`) : `${base}${extension}`;
     await writeFile(target, contents, 'utf8');
     return target;
+  });
+
+  /**
+   * The subtitles that go INSIDE an export, as a file for ffmpeg to read: a
+   * temporary .srt the export deletes when it ends (EncoderPipeline), as it
+   * does the audio mix.
+   */
+  ipcMain.handle(IPC.captionsWriteTemp, async (_event, srt: unknown): Promise<string> => {
+    if (typeof srt !== 'string') throw new Error(mt('main.nothingToWrite'));
+    const path = join(tmpdir(), `scf-captions-${randomUUID()}.srt`);
+    await writeFile(path, srt, 'utf8');
+    allowPath(path);
+    return path;
   });
 
   return transcriber;
