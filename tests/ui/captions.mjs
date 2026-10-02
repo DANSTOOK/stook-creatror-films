@@ -40,6 +40,10 @@ import { _electron as electron } from 'playwright';
  * Needs the engine and both models where the bench keeps them:
  *   .stress-tmp/whisper-bin/b5130-cpu/Release   (CAPTIONS_WHISPER_DIR)
  *   .stress-tmp/whisper-models                  (CAPTIONS_MODELS_DIR)
+ * CAPTIONS_PACKAGED=1 runs the packaged app (release/win-unpacked) with the
+ * engine it carries in resources/whisper, as an installed copy would; there
+ * the download step is left out, since an installed app only downloads from
+ * Hugging Face.
  * The window is never shown (SCF_BACKGROUND). Screenshots go to CAPTIONS_SHOTS.
  */
 
@@ -53,6 +57,7 @@ const workDir = join(projectRoot, '.ui-tmp', 'captions');
 const shotsDir = process.env.CAPTIONS_SHOTS ?? '';
 const whisperDir = process.env.CAPTIONS_WHISPER_DIR ?? join(projectRoot, '.stress-tmp', 'whisper-bin', 'b5130-cpu', 'Release');
 const modelsDir = process.env.CAPTIONS_MODELS_DIR ?? join(projectRoot, '.stress-tmp', 'whisper-models');
+const packagedExe = process.env.CAPTIONS_PACKAGED === '1' ? join(projectRoot, 'release/win-unpacked/STOOK CREATOR FILMS.exe') : null;
 const FAST = 'ggml-small-q5_1.bin';
 const PRECISE = 'ggml-large-v3-turbo-q5_0.bin';
 
@@ -130,8 +135,9 @@ function wordErrors(reference, hypothesis) {
 }
 
 async function launch(profile, models, extraEnv = {}) {
+  const profileArg = `--user-data-dir=${join(workDir, profile)}`;
   const app = await electron.launch({
-    args: [`--user-data-dir=${join(workDir, profile)}`, join(projectRoot, 'dist-electron/main/index.js')],
+    ...(packagedExe ? { executablePath: packagedExe, args: [profileArg] } : { args: [profileArg, join(projectRoot, 'dist-electron/main/index.js')] }),
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -140,7 +146,8 @@ async function launch(profile, models, extraEnv = {}) {
       SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1',
       SCF_SKIP_HOME: '1',
       SCF_NO_CLOSE_PROMPT: '1',
-      SCF_WHISPER_DIR: whisperDir,
+      // Packaged, the engine is the one inside the app.
+      SCF_WHISPER_DIR: packagedExe ? undefined : whisperDir,
       SCF_WHISPER_MODELS_DIR: models,
       ...extraEnv,
     },
@@ -250,7 +257,8 @@ async function generate(window, { language = 'es', model = 'fast', preset = 'cla
 const waitIdle = (window, timeout = 600_000) => window.waitForFunction(() => window.__scfCaptions.job.getState().phase === 'idle', null, { timeout });
 
 async function main() {
-  for (const needed of [join(whisperDir, 'whisper-cli.exe'), join(modelsDir, FAST), join(modelsDir, PRECISE)]) {
+  const engineCli = packagedExe ? join(projectRoot, 'release/win-unpacked/resources/whisper/whisper-cli.exe') : join(whisperDir, 'whisper-cli.exe');
+  for (const needed of [engineCli, join(modelsDir, FAST), join(modelsDir, PRECISE)]) {
     if (!existsSync(needed)) {
       console.error(`Missing ${needed}. This test needs the speech engine and both models: see the header of tests/ui/captions.mjs.`);
       process.exit(2);
@@ -823,7 +831,7 @@ async function main() {
     check('Delete removes it from the disk', (await listModels()).length === 0, (await listModels()).join(', '));
     check('none of this used the network', (await second.mainRequests()).length === 0);
 
-    {
+    if (real || !packagedExe) {
       console.log(real ? '14. a real download of the Fast model (190 MB), from Hugging Face' : '14. downloading: the Fast model, from a server on this computer');
       await window2.getByTestId('speech-model-download-fast').click();
       await prompt.waitFor({ state: 'visible', timeout: 5_000 });
