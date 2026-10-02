@@ -71,7 +71,10 @@ export function moveTrackRow(rows: readonly Track[], trackId: string, delta: -1 
 export function insertionRow(rows: readonly Track[], type: TrackType, row?: number): number {
   const visual = type !== 'audio';
   const { first, last } = groupBounds(rows, visual);
-  if (row === undefined) return visual ? 0 : rows.length;
+  // Captions stay on top of the picture: a new picture track goes under the
+  // captions tracks that head the list, a new captions track above everything.
+  const captionsOnTop = type === 'captions' ? 0 : rows.findIndex((track) => track.type !== 'captions');
+  if (row === undefined) return visual ? Math.max(0, captionsOnTop === -1 ? rows.filter(isVisualTrack).length : captionsOnTop) : rows.length;
   // An empty group has first > last; any position in it is `first`.
   return Math.min(Math.max(row, first), Math.max(first, last + 1));
 }
@@ -95,7 +98,20 @@ export function nextTrackName(tracks: readonly Track[], type: TrackType): string
  * tracks, pictures (video, stills) on picture tracks. A video's own sound
  * plays from its video clip. Unknown kinds (text) follow their track.
  */
-export function trackAccepts(track: Pick<Track, 'type'>, kind: MediaAsset['kind'] | undefined): boolean {
+export function trackAccepts(track: Pick<Track, 'type'>, kind: MediaAsset['kind'] | 'caption' | undefined): boolean {
+  // A captions track holds captions and nothing else, and captions go nowhere else.
+  if (kind === 'caption') return track.type === 'captions';
+  if (track.type === 'captions') return false;
   if (kind === undefined) return true;
   return kind === 'audio' ? track.type === 'audio' : isVisualTrack(track);
+}
+
+/** Picture tracks that take pictures: every visual track but captions. */
+export const isPictureTrack = (track: Pick<Track, 'type'>): boolean => isVisualTrack(track) && track.type !== 'captions';
+
+/** What kind of thing a clip is, for `trackAccepts`. */
+export function clipKind(clip: { caption?: unknown; title?: unknown; sourceUri: string }, kindOf: (uri: string) => MediaAsset['kind'] | undefined): MediaAsset['kind'] | 'caption' | undefined {
+  if (clip.caption) return 'caption';
+  if (clip.title) return 'image';
+  return kindOf(clip.sourceUri);
 }

@@ -541,6 +541,7 @@ export const en = {
   'name.audioTrack': 'Audio {n}',
   'name.textTrack': 'Text {n}',
   'name.adjustmentTrack': 'Adjustment {n}',
+  'name.captionsTrack': 'Captions {n}',
   'name.bin': 'Bin {n}',
   'name.marker': 'Marker {n}',
   'home.resolution': 'Resolution',

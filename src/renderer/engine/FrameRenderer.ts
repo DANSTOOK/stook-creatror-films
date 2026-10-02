@@ -9,6 +9,7 @@ import { TextureManager } from './TextureManager';
 import { TitleLayers } from './TitleLayers';
 import { activeTransitionsAt } from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
+import { withCaptionTitles } from '@renderer/captions/captionRender';
 
 /**
  * Bundles the compositor with the caches it needs, and offers the two ways a
@@ -314,6 +315,8 @@ export class FrameRenderer {
     /** The title being typed into in the viewer, drawn at rest. */
     restingTitleId: string | null = null,
   ): void {
+    // Captions are drawn as titles: see captions/captionRender.
+    project = withCaptionTitles(project);
     // An export owns the video elements and the canvas right now.
     if (this.isExclusive) return;
     this.compositor.restingTitleId = restingTitleId;
@@ -512,6 +515,7 @@ export class FrameRenderer {
    * pipe expects.
    */
   async renderExact(project: ProjectState, frame: number, premultiply = false): Promise<Uint8Array> {
+    project = withCaptionTitles(project);
     await this.seekSources(project, frame);
     // An exact render is the export's: every title animates, none is at rest.
     this.compositor.restingTitleId = null;
@@ -533,6 +537,7 @@ export class FrameRenderer {
    * a render, so it is forced off for the duration of the draw.
    */
   async renderExactToCanvas(project: ProjectState, frame: number): Promise<void> {
+    project = withCaptionTitles(project);
     await this.seekSources(project, frame);
     this.compositor.restingTitleId = null;
 

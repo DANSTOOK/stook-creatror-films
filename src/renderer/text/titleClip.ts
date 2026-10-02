@@ -2,7 +2,7 @@ import type { Clip, ProjectState, TitleContent, TitlePreset } from '@shared/type
 import type { MessageKey } from '@shared/i18n';
 import { createId } from '@shared/utils/id';
 import { createClip } from '@renderer/store/types';
-import { isVisualTrack } from '@renderer/components/Timeline/trackRows';
+import { isPictureTrack } from '@renderer/components/Timeline/trackRows';
 import { presetStyle, TITLE_URI_PREFIX, titleName } from './titleStyle';
 import { presetAnimation } from './animation';
 
@@ -44,7 +44,7 @@ export function planTitlePlacement(project: ProjectState, startFrame: number, du
   const end = start + durationFrames;
   const overlaps = (clip: Clip): boolean => clip.startFrame < end && clip.startFrame + clip.durationFrames > start;
   const clips = Object.values(project.clips);
-  const visual = project.tracks.filter(isVisualTrack).sort((a, b) => a.order - b.order);
+  const visual = project.tracks.filter(isPictureTrack).sort((a, b) => a.order - b.order);
 
   // The highest layer that has something under the title.
   let covered = -Infinity;
@@ -94,7 +94,7 @@ export function titleDropPlacement(project: ProjectState, trackId: string | null
   const track = project.tracks.find((candidate) => candidate.id === trackId);
   const free =
     track &&
-    isVisualTrack(track) &&
+    isPictureTrack(track) &&
     !track.locked &&
     !Object.values(project.clips).some(
       (clip) => clip.trackId === track.id && clip.startFrame < end && clip.startFrame + clip.durationFrames > start,

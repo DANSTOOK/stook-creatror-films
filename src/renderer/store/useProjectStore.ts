@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  CaptionTrackSettings,
   Clip,
   ColorGradingConfig,
   DuckingSettings,
@@ -34,6 +35,9 @@ import {
   presetKind,
 } from '@renderer/timing/transitions';
 import { t as translateNow } from '@renderer/i18n';
+import { captionName, captionSettingsOf, captionTrack, cuesToClips, splitCaption, subtitleCuesToClips } from '@renderer/captions/captionClips';
+import type { Cue } from '@renderer/captions/rules';
+import type { SubtitleCue } from '@renderer/captions/subtitleFiles';
 import { newTransitionFrames } from '@renderer/timing/transitionLength';
 import { createId } from '@shared/utils/id';
 import { clamp } from '@shared/utils/math';
@@ -72,6 +76,7 @@ import {
   moveTrackRow,
   nextTrackName,
   timelineRows,
+  clipKind,
   trackAccepts,
   withRowOrders,
 } from '@renderer/components/Timeline/trackRows';
@@ -306,6 +311,19 @@ interface ProjectStore {
   selectTransition(transitionId: string | null): void;
   /** The typing is over: one undo step, from `fromText` to what is there now. */
   commitTitleText(clipId: string, fromText: string): void;
+  /* Captions ------------------------------------------------------------- */
+  /**
+   * A new captions track on top of the picture, holding these captions:
+   * cues from a transcription (seconds from `offsetFrame`) or from a
+   * subtitle file (milliseconds). One undo step; returns the track's id.
+   */
+  addCaptionTrack(
+    source: { cues: Cue[]; offsetFrame: number } | { subtitles: SubtitleCue[] },
+    settings: CaptionTrackSettings,
+  ): string;
+  /** A caption's text; a typing run with the same `mergeKey` is one undo step. */
+  setCaptionText(clipId: string, text: string, mergeKey?: string): void;
+
 
   removeClips(clipIds: string[]): void;
   /** Copy a clip and drop the copy immediately after the original. */
@@ -1133,7 +1151,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { project, ui } = state;
     // The length chosen in Preferences (one second unless changed).
     const durationFrames = newTransitionFrames(project.fps, MIN_TRANSITION_FRAMES);
-    const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
+    const visual = new Set(project.tracks.filter((track) => track.type !== 'audio' && track.type !== 'captions').map((track) => track.id));
     let cuts: Array<{ fromId: string; toId: string }> = [];
     const fades: PendingTransition['fades'] = [];
 
@@ -1253,6 +1271,37 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Back to where the typing began, quietly, then the whole of it as one edit.
     get().setTitleTextLive(clipId, fromText);
     get().updateTitle(clipId, { text: typed });
+  },
+
+  addCaptionTrack(source, settings) {
+    let trackId = '';
+    get().transact('Add captions', (current) => {
+      const rows = timelineRows(current.tracks);
+      const track = captionTrack(createTrack('captions', 0, nextTrackName(current.tracks, 'captions')), settings.preset, settings.language);
+      trackId = track.id;
+      rows.splice(insertionRow(rows, 'captions'), 0, track);
+      const made =
+        'cues' in source
+          ? cuesToClips(source.cues, track.id, current.fps, source.offsetFrame)
+          : subtitleCuesToClips(source.subtitles, track.id, current.fps);
+      const clips = { ...current.clips };
+      for (const clip of made) clips[clip.id] = clip;
+      return { ...current, tracks: withRowOrders(rows), clips };
+    });
+    set({ ui: { ...get().ui, selectedTrackId: trackId } });
+    return trackId;
+  },
+
+  setCaptionText(clipId, text, mergeKey) {
+    get().transact(
+      'Edit caption',
+      (project) => {
+        const clip = project.clips[clipId];
+        if (!clip?.caption || clip.caption.text === text) return project;
+        return { ...project, clips: { ...project.clips, [clipId]: { ...clip, name: captionName(text), caption: { ...clip.caption, text } } } };
+      },
+      mergeKey,
+    );
   },
 
   removeClips(clipIds) {
@@ -1375,7 +1424,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // the wrong kind keeps the clip on its own track and only moves it in time.
     const target = project.tracks.find((track) => track.id === trackId);
     // A title has no asset, but it is a picture: it stays off audio tracks.
-    const kind = clip.title ? 'image' : assets.find((asset) => asset.uri === clip.sourceUri)?.kind;
+    const kind = clipKind(clip, (uri) => assets.find((asset) => asset.uri === uri)?.kind);
     if (!target || target.locked || !trackAccepts(target, kind)) trackId = clip.trackId;
 
     // Everything is worked out from the clips as they were when the drag
@@ -1600,7 +1649,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
     const splits = candidates
       .map((clip) => splitClip(clip, cutFrame))
-      .filter((pair): pair is [Clip, Clip] => pair !== null);
+      .filter((pair): pair is [Clip, Clip] => pair !== null)
+      // A caption's words go to the side of the cut they were spoken on.
+      .map(([left, right]): [Clip, Clip] =>
+        left.caption
+          ? splitCaption(left, right, cutFrame, project.fps, captionSettingsOf(project.tracks.find((track) => track.id === left.trackId)), project)
+          : [left, right],
+      );
 
     if (splits.length === 0) return;
 
@@ -2142,7 +2197,7 @@ function neighbourAfter(clips: Record<string, Clip>, clip: Clip): Clip | null {
  * second of it.
  */
 function cutNearPlayhead(project: ProjectState, trackId: string | null): { fromId: string; toId: string } | null {
-  const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
+  const visual = new Set(project.tracks.filter((track) => track.type !== 'audio' && track.type !== 'captions').map((track) => track.id));
   let best: { fromId: string; toId: string; distance: number; preferred: boolean } | null = null;
   const reach = Math.max(1, Math.round(project.fps));
   for (const to of Object.values(project.clips)) {
@@ -2197,7 +2252,7 @@ function groupMoveOptions(
   return {
     ripple: state.ui.rippleEnabled,
     tracks: timelineRows(state.project.tracks),
-    accepts: (track, clip) => trackAccepts(track, clip.title ? 'image' : kinds.get(clip.sourceUri)),
+    accepts: (track, clip) => trackAccepts(track, clipKind(clip, (uri) => kinds.get(uri))),
     anchorId,
   };
 }

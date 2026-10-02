@@ -52,6 +52,8 @@ export const TRACK_TYPE_COLORS: Record<Track['type'], string> = {
   audio: '#33785f',
   text: '#82548e',
   adjustment: '#8a6a2f',
+  // Rose, for captions: a colour of their own, as Premiere's caption track has.
+  captions: '#8a4a5c',
 };
 
 /**
@@ -696,6 +698,7 @@ export const WAVE_FILL: Record<Track['type'], string> = {
   audio: '#a7f3d0',
   text: '#e9d5ff',
   adjustment: '#fde68a',
+  captions: '#fecdd3',
 };
 
 /** The darker strip a video clip's sound is drawn on, under its pictures. */

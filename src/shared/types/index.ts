@@ -6,7 +6,11 @@
  * the export pipeline all move these structures across process boundaries.
  */
 
-export type TrackType = 'video' | 'audio' | 'text' | 'adjustment';
+/**
+ * `captions` holds subtitles: timed text drawn over everything, made by
+ * transcribing the sound (renderer/captions) or read from an .srt / .vtt.
+ */
+export type TrackType = 'video' | 'audio' | 'text' | 'adjustment' | 'captions';
 
 export interface Vector2D {
   x: number;
@@ -310,6 +314,48 @@ export interface TitleContent {
   origin?: TitleOrigin;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Captions                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** The languages captions are made in: the two the interface speaks. */
+export type CaptionLanguage = 'es' | 'en';
+
+/**
+ * How captions are cut: `classic`, up to two lines of 42 characters (the
+ * Netflix Spanish guide's numbers); `social`, one short line, as captions on
+ * phone video are.
+ */
+export type CaptionPreset = 'classic' | 'social';
+
+/** What a captions track says about all of its captions. */
+export interface CaptionTrackSettings {
+  preset: CaptionPreset;
+  language: CaptionLanguage;
+}
+
+/**
+ * One recognised word. Times are seconds of the caption's content, counted
+ * like a file's: the word shows at timeline frame
+ * `startFrame + (start * fps - sourceOffsetFrames)`. So a caption keeps its
+ * words when it is moved, trimmed or cut, as a clip keeps its footage.
+ */
+export interface CaptionWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/**
+ * What makes a clip a caption: its text, lines separated by `\n`. `words`
+ * are there when the caption was transcribed, and let a cut fall between
+ * words; an imported or retyped caption may have none.
+ */
+export interface CaptionContent {
+  text: string;
+  words?: CaptionWord[];
+}
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -363,6 +409,8 @@ export interface Clip {
    * comes from a file, which is every clip made before titles existed.
    */
   title?: TitleContent;
+  /** Present on a caption, which lives on a captions track. */
+  caption?: CaptionContent;
 }
 
 export interface Track {
@@ -385,6 +433,8 @@ export interface Track {
   solo: boolean;
   /** Sub-bus this track feeds, which is what the ducking sidechain keys off. */
   bus: AudioBus;
+  /** On a captions track: how its captions are cut and in what language. */
+  captions?: CaptionTrackSettings;
 }
 
 /* -------------------------------------------------------------------------- */

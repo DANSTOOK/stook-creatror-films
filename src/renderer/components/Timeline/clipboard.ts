@@ -3,7 +3,7 @@ import { createId } from '@shared/utils/id';
 import { clipEndFrame, moveClip } from './timelineOps';
 import { regroupCopies } from './linkGroups';
 import { insertIntoTrack } from './trackPacking';
-import { trackAccepts } from './trackRows';
+import { clipKind, trackAccepts } from './trackRows';
 
 /**
  * Point 10: Ctrl+C, Ctrl+X, Ctrl+V for clips.
@@ -69,7 +69,7 @@ export function pasteClips(
 
   for (const original of content.clips) {
     // A title has no asset, but it is a picture: it is pasted on a picture track.
-    const kind = original.title ? 'image' : assets.find((asset) => asset.uri === original.sourceUri)?.kind;
+    const kind = clipKind(original, (uri) => assets.find((asset) => asset.uri === uri)?.kind);
     const usable = (track: Track): boolean => !track.locked && trackAccepts(track, kind);
 
     const home = ordered.find((track) => track.id === original.trackId);

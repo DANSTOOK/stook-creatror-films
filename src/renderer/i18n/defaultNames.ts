@@ -17,6 +17,7 @@ const TRACK_KEYS: Record<TrackType, MessageKey> = {
   audio: 'name.audioTrack',
   text: 'name.textTrack',
   adjustment: 'name.adjustmentTrack',
+  captions: 'name.captionsTrack',
 };
 
 export const trackName = (type: TrackType, n: number): string => t(TRACK_KEYS[type], { n });

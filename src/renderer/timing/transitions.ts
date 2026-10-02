@@ -197,7 +197,7 @@ export function activeTransitionsAt(project: Pick<ProjectState, 'clips' | 'track
     const to = project.clips[transition.toClipId];
     if (!from || !to) continue;
     const track = tracks.get(from.trackId);
-    if (!track || !track.visible || track.type === 'audio') continue;
+    if (!track || !track.visible || track.type === 'audio' || track.type === 'captions') continue;
     const window = transitionWindow(transition, from);
     if (frame < window.start || frame >= window.end) continue;
     active.push({ transition, from, to, progress: transitionProgress(frame, window), window });
@@ -433,7 +433,7 @@ export interface TimelineCut {
 
 /** Every cut on the picture tracks, for showing where a dragged transition can land. */
 export function cutsOf(project: Pick<ProjectState, 'clips' | 'tracks' | 'transitions'>): TimelineCut[] {
-  const visual = new Set(project.tracks.filter((track) => track.type !== 'audio').map((track) => track.id));
+  const visual = new Set(project.tracks.filter((track) => track.type !== 'audio' && track.type !== 'captions').map((track) => track.id));
   const onCut = new Map(transitionsOf(project).map((transition) => [`${transition.fromClipId}>${transition.toClipId}`, transition.id]));
   const byStart = new Map<string, Clip>();
   for (const clip of Object.values(project.clips)) if (visual.has(clip.trackId)) byStart.set(`${clip.trackId}@${clip.startFrame}`, clip);

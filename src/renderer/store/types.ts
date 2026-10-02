@@ -26,6 +26,7 @@ import { DEFAULT_PIVOT, neutralVignette, neutralWheel, normalizeGrading } from '
 import { neutralCurves } from '@renderer/color/curves';
 import { migrateTitleOrigin, normalizeTitle } from '@renderer/text/titleStyle';
 import { normalizeTransitions, tidyTransitions, type TransitionPreset } from '@renderer/timing/transitions';
+import { normalizeCaption, normalizeCaptionSettings } from '@renderer/captions/normalize';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -443,6 +444,7 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
       // A project from before buses were saved routes as version 1 did, by
       // name alone, so an old mix sounds the same.
       bus: track.bus === 'dialogue' || track.bus === 'music' ? track.bus : defaultBusForName(track.name),
+      ...(track.type === 'captions' ? { captions: normalizeCaptionSettings(track.captions) } : {}),
     })),
     // A link group whose other members are gone means nothing, and a clip that
     // says it is linked but moves alone is worse than one that never said it.
@@ -461,6 +463,7 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             colorGrading: normalizeGrading(clip.colorGrading),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
+            ...(clip.caption ? { caption: normalizeCaption(clip.caption) } : {}),
           }),
         ]),
       ),

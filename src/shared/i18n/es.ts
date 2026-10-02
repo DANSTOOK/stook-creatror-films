@@ -541,6 +541,7 @@ export const es: Messages = {
   'name.audioTrack': 'Audio {n}',
   'name.textTrack': 'Texto {n}',
   'name.adjustmentTrack': 'Ajuste {n}',
+  'name.captionsTrack': 'Subtítulos {n}',
   'name.bin': 'Carpeta {n}',
   'name.marker': 'Marcador {n}',
   'home.resolution': 'Resolución',
