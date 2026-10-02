@@ -294,9 +294,14 @@ export function timeCues(input: readonly Cue[], rules: CaptionRules, fps: number
     const nextStart = i + 1 < cues.length ? cues[i + 1].start : Infinity;
     const latest = Math.min(nextStart - gap, cue.start + rules.maxSeconds);
     // Wanted: half a second after the words, at least the minimum, and
-    // long enough to read at 17 characters a second.
+    // long enough to read at 17 characters a second. The last two are
+    // counted in whole frames from the frame the caption starts on: put on
+    // the timeline, a caption given exactly its reading time lost a frame
+    // to rounding now and then, and was marked as too fast at 17.008.
     const chars = cue.lines.join('').length;
-    const wanted = Math.max(cue.end + rules.lagOut, cue.start + rules.minSeconds, cue.start + chars / rules.maxCps);
+    const startFrame = Math.round(cue.start * fps);
+    const framesFor = (seconds: number): number => (startFrame + Math.ceil(seconds * fps - 1e-6)) / fps;
+    const wanted = Math.max(cue.end + rules.lagOut, framesFor(rules.minSeconds), framesFor(chars / rules.maxCps));
     cue.end = Math.max(cue.end, Math.min(wanted, latest));
     // A caption never swallows the start of the next one.
     if (cue.end > nextStart - gap) cue.end = Math.max(cue.start + 1 / fps, nextStart - gap);

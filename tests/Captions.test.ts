@@ -166,8 +166,8 @@ describe('caption rules', () => {
       30,
     );
     expect(timed[0].end).toBeCloseTo(5 / 6, 5);
-    // 41 characters at 17 a second need 2.41 s.
-    expect(timed[1].end).toBeCloseTo(5 + 41 / 17, 5);
+    // 41 characters at 17 a second need 2.41 s: 73 whole frames.
+    expect(timed[1].end).toBeCloseTo(5 + 73 / 30, 5);
     expect(readingSpeed(timed[1].lines, timed[1].end - timed[1].start)).toBeLessThanOrEqual(17 + 1e-9);
     // 0.3 s to the next one is neither 2 frames nor half a second: closed to 2 frames.
     expect(timed[2].end).toBeCloseTo(10.3 - 2 / 30, 5);
@@ -176,6 +176,25 @@ describe('caption rules', () => {
     // Never longer than seven seconds, however slow the reading.
     const long = timeCues([cue(0, 6.9, 'x'.repeat(84))], rulesFor('classic'), 30);
     expect(long[0].end).toBeLessThanOrEqual(7 + 1e-9);
+  });
+
+  it('gives a caption its reading time in whole frames: on the timeline it is not a frame short', () => {
+    // 72 characters need 4.235 s. Starting at 52.87 s that ended on frame
+    // 1713 of a caption begun on 1586: 127 frames, 4.233 s, 17.008 a second -
+    // and the caption was marked as too fast the moment it was generated.
+    const rules = rulesFor('classic');
+    for (const fps of [24, 25, 30, 60, 30000 / 1001]) {
+      for (const start of [52.87, 0.016, 10.49, 3.333, 7.0166]) {
+        for (const chars of [20, 41, 72, 84]) {
+          const cue: Cue = { start, end: start + 0.4, lines: ['x'.repeat(chars)], words: [] };
+          const [clip] = cuesToClips(timeCues([cue], rules, fps), 'track', fps);
+          const seconds = clip.durationFrames / fps;
+          const check = checkCue({ start: 0, end: seconds, lines: cue.lines }, rules);
+          expect(check.readingSpeed, `${chars} characters from ${start} s at ${fps} fps: ${clip.durationFrames} frames`).toBe(true);
+          expect(check.minDuration, `${start} s at ${fps} fps: ${clip.durationFrames} frames`).toBe(true);
+        }
+      }
+    }
   });
 });
 
