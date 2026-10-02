@@ -6,6 +6,8 @@ import { BACKGROUND, OFF_SCREEN, applyBackgroundSwitches, keepOffScreen } from '
 import { translate } from '@shared/i18n';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
+import { registerSubtitleHandlers } from './subtitles/subtitlesIpc';
+import type { Transcriber } from './subtitles/transcriber';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
 import { registerMediaProtocolHandler, registerMediaSchemeAsPrivileged } from './ipc/mediaProtocol';
 import type { EncoderPipeline } from './exporter/EncoderPipeline';
@@ -32,6 +34,7 @@ const TITLE_BAR_HEIGHT = 40;
 const TITLE_BAR_COLOR = '#0e0f11';
 const TITLE_BAR_SYMBOLS = '#cbd5e1';
 let pipeline: EncoderPipeline | null = null;
+let transcriber: Transcriber | null = null;
 
 /** What the renderer last said about the open project, for the close prompt. */
 let documentState = { dirty: false, name: 'Untitled project' };
@@ -206,6 +209,7 @@ app.whenReady().then(() => {
   registerMediaProtocolHandler();
   pipeline = registerFileSystemHandlers(() => mainWindow);
   registerYouTubeHandlers(() => mainWindow);
+  transcriber = registerSubtitleHandlers(() => mainWindow);
 
   ipcMain.on(IPC.documentState, (_event, state: unknown) => {
     if (!state || typeof state !== 'object') return;
@@ -246,11 +250,14 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async (event) => {
   // A running encoder holds a child process; kill it before the app exits.
-  if (pipeline) {
+  // So does a transcription: its process goes, and its temporary sound with it.
+  if (pipeline || transcriber) {
     event.preventDefault();
     const current = pipeline;
+    const jobs = transcriber;
     pipeline = null;
-    await current.disposeAll();
+    transcriber = null;
+    await Promise.all([current?.disposeAll(), jobs?.cancelAll()]);
     app.quit();
   }
 });

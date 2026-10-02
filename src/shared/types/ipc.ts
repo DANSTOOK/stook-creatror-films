@@ -218,6 +218,9 @@ export type MenuCommand =
   | 'addLowerThird'
   | 'addCredits'
   | 'addTransition'
+  | 'generateCaptions'
+  | 'importCaptions'
+  | 'exportCaptions'
   | 'fontLicenses';
 
 /** What the page tells the menu, so it can label, tick and grey its items. */
@@ -541,6 +544,35 @@ export interface FilmoraApi {
   onYouTubeProgress(listener: (progress: YouTubeProgressEvent) => void): () => void;
   /** Show the file in Explorer and open YouTube's upload page in the browser. */
   youtubeOpenStudio(path: string): Promise<void>;
+
+  /* Captions: speech to text on this computer. Optional, so a browser shim without them still fits. */
+  /** Whether the engine is there, which GPU it will use, and which models are on disk. */
+  captionsStatus?(): Promise<CaptionEngineStatus>;
+  /**
+   * Download a model from its official source and verify it. The ONLY call
+   * here that uses the network: ask the person first. Resolves with the new
+   * status - the model absent if the download was cancelled.
+   */
+  captionsModelDownload?(id: CaptionModelId): Promise<CaptionEngineStatus>;
+  captionsModelCancel?(id: CaptionModelId): Promise<void>;
+  /** Pick a model file already on this computer; null if the dialog was cancelled. */
+  captionsModelImport?(): Promise<CaptionEngineStatus | null>;
+  captionsModelDelete?(id: CaptionModelId): Promise<CaptionEngineStatus>;
+  onCaptionModelProgress?(listener: (progress: CaptionModelProgress) => void): () => void;
+  /** Start a transcription job; returns its id. The mix follows, a piece at a time. */
+  captionsAudioOpen?(): Promise<string>;
+  /** Interleaved float32, 48 kHz stereo: the mix an export makes. */
+  captionsAudioAppend?(jobId: string, samples: ArrayBuffer): Promise<void>;
+  captionsAudioClose?(jobId: string): Promise<void>;
+  captionsTranscribe?(jobId: string, request: CaptionTranscribeRequest): Promise<CaptionTranscribeResult>;
+  captionsCancel?(jobId: string): Promise<void>;
+  onCaptionProgress?(listener: (progress: CaptionProgressEvent) => void): () => void;
+  /** Pick an .srt or .vtt and read it. */
+  captionsOpenFile?(): Promise<{ path: string; contents: string } | null>;
+  /** Ask where to save a subtitle file; the extension chosen picks which of the two is written. */
+  captionsSaveFile?(suggestedName: string, srt: string, vtt: string): Promise<string | null>;
+  /** Write the subtitle file that goes with a video this session exported; returns its path. */
+  captionsWriteSidecar?(videoPath: string, format: 'srt' | 'vtt', contents: string): Promise<string>;
 }
 
 declare global {

@@ -106,6 +106,17 @@ export function buildMenuTemplate(
     ],
   };
 
+  // The timeline's own menu, as Resolve has one: what is made from, or for, the whole edit.
+  const timeline: MenuItemConstructorOptions = {
+    label: t('menu.timeline'),
+    submenu: [
+      command('menu.generateCaptions', 'generateCaptions', { enabled: inEditor }),
+      { type: 'separator' },
+      command('menu.importCaptions', 'importCaptions', { enabled: inEditor }),
+      command('menu.exportCaptions', 'exportCaptions', { enabled: inEditor }),
+    ],
+  };
+
   // Show and hide belong in View, as the HIG puts them; the ticks say what is showing.
   const view: MenuItemConstructorOptions = {
     label: t('menu.view'),
@@ -182,7 +193,7 @@ export function buildMenuTemplate(
     ],
   };
 
-  return [file, edit, view, window, help];
+  return [file, edit, timeline, view, window, help];
 }
 
 /**

@@ -10,6 +10,10 @@ import {
   type FilmoraApi,
   type MediaProbe,
   type AppMenuEntry,
+  type CaptionEngineStatus,
+  type CaptionModelProgress,
+  type CaptionProgressEvent,
+  type CaptionTranscribeResult,
   type MenuCommand,
   type PickedFile,
   type ProjectBackup,
@@ -170,6 +174,34 @@ const api: FilmoraApi = {
     };
   },
   youtubeOpenStudio: (path) => ipcRenderer.invoke(IPC.youtubeOpenStudio, path) as Promise<void>,
+
+  captionsStatus: () => ipcRenderer.invoke(IPC.captionsStatus) as Promise<CaptionEngineStatus>,
+  captionsModelDownload: (id) => ipcRenderer.invoke(IPC.captionsModelDownload, id) as Promise<CaptionEngineStatus>,
+  captionsModelCancel: (id) => ipcRenderer.invoke(IPC.captionsModelCancel, id) as Promise<void>,
+  captionsModelImport: () => ipcRenderer.invoke(IPC.captionsModelImport) as Promise<CaptionEngineStatus | null>,
+  captionsModelDelete: (id) => ipcRenderer.invoke(IPC.captionsModelDelete, id) as Promise<CaptionEngineStatus>,
+  onCaptionModelProgress(listener) {
+    const handler = (_event: unknown, progress: CaptionModelProgress): void => listener(progress);
+    ipcRenderer.on(IPC.captionsModelProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.captionsModelProgress, handler);
+    };
+  },
+  captionsAudioOpen: () => ipcRenderer.invoke(IPC.captionsAudioOpen) as Promise<string>,
+  captionsAudioAppend: (jobId, samples) => ipcRenderer.invoke(IPC.captionsAudioAppend, jobId, samples) as Promise<void>,
+  captionsAudioClose: (jobId) => ipcRenderer.invoke(IPC.captionsAudioClose, jobId) as Promise<void>,
+  captionsTranscribe: (jobId, request) => ipcRenderer.invoke(IPC.captionsTranscribe, jobId, request) as Promise<CaptionTranscribeResult>,
+  captionsCancel: (jobId) => ipcRenderer.invoke(IPC.captionsCancel, jobId) as Promise<void>,
+  onCaptionProgress(listener) {
+    const handler = (_event: unknown, progress: CaptionProgressEvent): void => listener(progress);
+    ipcRenderer.on(IPC.captionsProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.captionsProgress, handler);
+    };
+  },
+  captionsOpenFile: () => ipcRenderer.invoke(IPC.captionsOpenFile) as Promise<{ path: string; contents: string } | null>,
+  captionsSaveFile: (suggestedName, srt, vtt) => ipcRenderer.invoke(IPC.captionsSaveFile, suggestedName, srt, vtt) as Promise<string | null>,
+  captionsWriteSidecar: (videoPath, format, contents) => ipcRenderer.invoke(IPC.captionsWriteSidecar, videoPath, format, contents) as Promise<string>,
 };
 
 contextBridge.exposeInMainWorld('filmora', api);
