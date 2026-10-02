@@ -21,6 +21,19 @@ files:
 asarUnpack:
   - node_modules/ffmpeg-static/**
 
+# The speech-to-text engine behind captions (whisper.cpp), compiled by the
+# release workflow into build/whisper and found by the app in
+# resources/whisper (src/main/subtitles/engine.ts). A program, so it goes
+# beside the asar rather than in it. The speech MODELS are not here: they are
+# downloaded when the user asks, into the app's data folder.
+# In a checkout without build/whisper nothing is copied, and the app says
+# captions cannot be generated in this build.
+extraResources:
+  - from: build/whisper
+    to: whisper
+    filter:
+      - '**/*'
+
 win:
   target: [nsis]
 mac:

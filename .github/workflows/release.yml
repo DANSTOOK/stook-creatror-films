@@ -13,6 +13,20 @@ on:
 permissions:
   contents: write
 
+env:
+  # The speech-to-text engine behind captions: whisper.cpp (MIT), pinned to
+  # the commit of its v1.9.4 release. Changing it changes what ships: test
+  # captions (npm run test:captions:ui) against the new build before tagging.
+  WHISPER_COMMIT: 927cfce34f31707e17f2bff35c349632fb9e2c3a
+  # Needed to COMPILE the Vulkan backend only. Nothing of it is installed on
+  # the user's computer: the build uses the Vulkan driver their GPU already has.
+  VULKAN_SDK_VERSION: 1.4.313.2
+  # The Silero voice detector (885 KB, MIT) keeps Whisper from writing over
+  # silence and music. Off until it has been tried with the word alignment
+  # (-dtw) on a real recording: see CHANGELOG, "Sin verificar".
+  BUNDLE_VAD: 'false'
+  VAD_SHA256: 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
+
 jobs:
   release:
     runs-on: windows-latest
@@ -40,6 +54,91 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
             exit 1
           fi
+
+      # --- The speech-to-text engine -------------------------------------------
+      # Built here rather than downloaded: upstream publishes Windows builds
+      # for the CPU and for CUDA (675 MB), none with Vulkan. Vulkan runs on
+      # NVIDIA, AMD and Intel GPUs with the driver that is already there.
+      #
+      # Dynamic backends (GGML_BACKEND_DL): ggml-vulkan.dll is loaded only if
+      # the computer has a Vulkan driver; without one, or without a GPU worth
+      # using, the same whisper-cli.exe runs on the CPU with the variant for
+      # that processor (GGML_CPU_ALL_VARIANTS). GGML_NATIVE=OFF: built for any
+      # x64 processor, not for the runner's.
+      #
+      # It lands in build/whisper, which electron-builder copies into the
+      # installer as resources/whisper (extraResources in electron-builder.yml)
+      # and the app finds there (src/main/subtitles/engine.ts).
+      - name: Cache the speech engine
+        id: whisper
+        uses: actions/cache@v4
+        with:
+          path: build/whisper
+          key: whisper-${{ env.WHISPER_COMMIT }}-vulkan-${{ env.VULKAN_SDK_VERSION }}-vad-${{ env.BUNDLE_VAD }}-1
+
+      - name: Install the Vulkan SDK (to compile only)
+        if: steps.whisper.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'VulkanSDK.exe'
+          curl.exe -fL -o $installer "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_SDK_VERSION.exe"
+          $run = Start-Process -FilePath $installer -ArgumentList '--accept-licenses', '--default-answer', '--confirm-command', 'install' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "The Vulkan SDK installer exited with $($run.ExitCode)" }
+          # Where the installer puts it; CMake's FindVulkan reads VULKAN_SDK.
+          $sdk = "C:\VulkanSDK\$env:VULKAN_SDK_VERSION"
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "The Vulkan SDK is not in $sdk" }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$sdk\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Fetch whisper.cpp
+        if: steps.whisper.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          ref: ${{ env.WHISPER_COMMIT }}
+          path: .whisper-src
+
+      - name: Build whisper.cpp with Vulkan
+        if: steps.whisper.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          cmake -S .whisper-src -B .whisper-build -A x64 `
+            -DBUILD_SHARED_LIBS=ON `
+            -DWHISPER_SDL2=OFF `
+            -DWHISPER_BUILD_TESTS=OFF `
+            -DGGML_NATIVE=OFF `
+            -DGGML_BACKEND_DL=ON `
+            -DGGML_CPU_ALL_VARIANTS=ON `
+            -DGGML_VULKAN=ON
+          if ($LASTEXITCODE -ne 0) { throw 'cmake could not configure whisper.cpp' }
+          cmake --build .whisper-build --config Release -j
+          if ($LASTEXITCODE -ne 0) { throw 'whisper.cpp did not build' }
+
+          # Only what the app runs: the program, its libraries, the backends.
+          $out = 'build/whisper'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $bin = '.whisper-build/bin/Release'
+          Copy-Item "$bin/whisper-cli.exe", "$bin/whisper.dll", "$bin/ggml.dll", "$bin/ggml-base.dll" $out
+          Copy-Item "$bin/ggml-cpu-*.dll", "$bin/ggml-vulkan.dll" $out
+          Copy-Item .whisper-src/LICENSE "$out/LICENSE-whisper.cpp.txt"
+          if (-not (Test-Path "$out/ggml-vulkan.dll")) { throw 'The Vulkan backend was not built' }
+
+          if ($env:BUNDLE_VAD -eq 'true') {
+            $vad = "$out/ggml-silero-v6.2.0.bin"
+            curl.exe -fL -o $vad 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin'
+            $hash = (Get-FileHash $vad -Algorithm SHA256).Hash.ToLower()
+            if ($hash -ne $env:VAD_SHA256) { throw "The voice detector's checksum is $hash, not $env:VAD_SHA256" }
+          }
+
+      # A release never ships an engine that does not start. The runner has
+      # no GPU, so this is also the CPU fallback being exercised.
+      - name: Check the speech engine starts
+        shell: pwsh
+        run: |
+          Get-ChildItem build/whisper | Format-Table Name, Length
+          $help = & build/whisper/whisper-cli.exe --help 2>&1 | Out-String
+          if ($help -notmatch 'usage:') { throw "whisper-cli did not start:`n$help" }
+          if ($help -notmatch 'loaded CPU backend') { throw "whisper-cli found no CPU backend:`n$help" }
 
       - name: Build installer
         run: npm run build && node ./node_modules/electron-builder/cli.js --win --publish never

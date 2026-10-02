@@ -14,3 +14,9 @@ release/
 .bench-tmp/
 .bench-media/
 .stress-tmp/
+# The speech-to-text engine, built by the release workflow. Never committed.
+build/whisper/
+.whisper-src/
+.whisper-build/
+# Speech models, wherever one ends up.
+ggml-*.bin

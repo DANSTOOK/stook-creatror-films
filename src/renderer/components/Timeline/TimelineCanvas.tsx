@@ -813,7 +813,8 @@ function drawClip(
 
   // Alpha-bearing sources get a marker, since that is what decides whether a
   // clip can be exported as a transparent sprite.
-  if (clip.hasAlphaChannel) {
+  // Not on a caption: every caption is see-through, and the dot sat on its words.
+  if (clip.hasAlphaChannel && !clip.caption) {
     context.fillStyle = '#f8fafc';
     context.globalAlpha = 0.8;
     context.beginPath();
