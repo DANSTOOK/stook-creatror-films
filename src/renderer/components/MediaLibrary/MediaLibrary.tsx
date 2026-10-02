@@ -547,7 +547,11 @@ export function MediaLibrary(): JSX.Element {
             aria-selected={tab === id}
             aria-controls="library-tabpanel"
             tabIndex={tab === id ? 0 : -1}
-            className={`relative h-control-dense min-w-0 flex-1 truncate rounded-control px-1 text-xs transition-colors ${
+            // Four names in a narrow panel: each tab is as wide as its name
+            // needs, not a quarter each, and one cut short still says its
+            // whole name when pointed at.
+            title={tr(LIBRARY_TAB_LABEL[id])}
+            className={`relative h-control-dense min-w-0 flex-auto truncate rounded-control px-1 text-xs transition-colors ${
               tab === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
