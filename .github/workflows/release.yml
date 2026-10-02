@@ -22,9 +22,15 @@ env:
   # the user's computer: the build uses the Vulkan driver their GPU already has.
   VULKAN_SDK_VERSION: 1.4.313.2
   # The Silero voice detector (885 KB, MIT) keeps Whisper from writing over
-  # silence and music. Off until it has been tried with the word alignment
-  # (-dtw) on a real recording: see CHANGELOG, "Sin verificar".
-  BUNDLE_VAD: 'false'
+  # music: only what it hears as speech is transcribed. Measured before it
+  # was turned on (npm run test:bench:captions-vad, and the CHANGELOG): the
+  # same words and the same times, and no caption made up over music.
+  # The app puts the word times back through the table the engine prints
+  # (`vad_segment_info:` lines) - after changing WHISPER_COMMIT, run that
+  # bench: it fails if the table is no longer printed that way.
+  # The file is checked against this SHA-256; a different one fails the build.
+  BUNDLE_VAD: 'true'
+  VAD_FILE: ggml-silero-v6.2.0.bin
   VAD_SHA256: 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
 
 jobs:
@@ -123,11 +129,19 @@ jobs:
           Copy-Item .whisper-src/LICENSE "$out/LICENSE-whisper.cpp.txt"
           if (-not (Test-Path "$out/ggml-vulkan.dll")) { throw 'The Vulkan backend was not built' }
 
+          # The voice detector, from its one source, with its licence beside
+          # whisper.cpp's. A file that is not the one measured is not kept;
+          # the next step checks it again, cached or not.
           if ($env:BUNDLE_VAD -eq 'true') {
-            $vad = "$out/ggml-silero-v6.2.0.bin"
-            curl.exe -fL -o $vad 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin'
+            $vad = "$out/$env:VAD_FILE"
+            curl.exe -fL -o $vad "https://huggingface.co/ggml-org/whisper-vad/resolve/main/$env:VAD_FILE"
+            if ($LASTEXITCODE -ne 0) { throw 'The voice detector could not be downloaded' }
             $hash = (Get-FileHash $vad -Algorithm SHA256).Hash.ToLower()
-            if ($hash -ne $env:VAD_SHA256) { throw "The voice detector's checksum is $hash, not $env:VAD_SHA256" }
+            if ($hash -ne $env:VAD_SHA256) {
+              Remove-Item $vad
+              throw "The voice detector's checksum is $hash, not $env:VAD_SHA256"
+            }
+            Copy-Item build/LICENSE-silero-vad.txt "$out/LICENSE-silero-vad.txt"
           }
 
       # A release never ships an engine that does not start. The runner has
@@ -139,6 +153,15 @@ jobs:
           $help = & build/whisper/whisper-cli.exe --help 2>&1 | Out-String
           if ($help -notmatch 'usage:') { throw "whisper-cli did not start:`n$help" }
           if ($help -notmatch 'loaded CPU backend') { throw "whisper-cli found no CPU backend:`n$help" }
+          # Nor a voice detector that is not, byte for byte, the one measured.
+          if ($env:BUNDLE_VAD -eq 'true') {
+            $vad = "build/whisper/$env:VAD_FILE"
+            if (-not (Test-Path $vad)) { throw "The voice detector is not in build/whisper" }
+            $hash = (Get-FileHash $vad -Algorithm SHA256).Hash.ToLower()
+            if ($hash -ne $env:VAD_SHA256) { throw "The voice detector's checksum is $hash, not $env:VAD_SHA256" }
+            if (-not (Test-Path build/whisper/LICENSE-silero-vad.txt)) { throw "The voice detector's licence is not beside it" }
+            if ($help -notmatch '--vad') { throw "This whisper-cli has no --vad option:`n$help" }
+          }
 
       - name: Build installer
         run: npm run build && node ./node_modules/electron-builder/cli.js --win --publish never

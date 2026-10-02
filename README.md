@@ -465,6 +465,17 @@ swept at start-up.
   decoder's timestamps: a word starts where the token before it ended
   (`shared/captions/whisperOutput.ts`). Segments Whisper invents over silence
   (the "Amara.org" credit, `[MÚSICA]`) are dropped.
+- **The voice detector** (Silero VAD, 885 KB, MIT) ships beside the engine:
+  the release workflow fetches `ggml-silero-v6.2.0.bin` from
+  `huggingface.co/ggml-org/whisper-vad` and fails if its SHA-256 is not the
+  one fixed there. Only what it hears as speech is transcribed, which is
+  what stops Whisper writing "Gracias por ver el video." over music. With
+  it the token times come back in the time of the sound with its silences
+  cut out; the transcriber reads the table the engine prints
+  (`vad_segment_info:`) and puts them back, and if there is no table it
+  transcribes again without the detector. `SCF_WHISPER_VAD=off` turns it
+  off; `npm run test:bench:captions-vad` measures it against the same
+  engine without it.
 - **The rules** (`renderer/captions/rules.ts`) are Netflix's for Spanish: 42
   characters a line, two lines, 17 characters a second, 5/6 s to 7 s, 2-frame
   gaps, and no line ending on an article or preposition.

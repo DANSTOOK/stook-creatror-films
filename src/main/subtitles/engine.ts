@@ -66,9 +66,11 @@ export function findEngine(places: { resourcesPath?: string; appPath?: string; e
 }
 
 /**
- * For measuring the voice detector against the same engine with and without
- * it (tests/bench/captions-vad.mjs): SCF_WHISPER_VAD names a model file to
- * use, or is `off` to use none, whatever the engine's folder holds.
+ * SCF_WHISPER_VAD names a voice detector model to use, or is `off` to use
+ * none, whatever the engine's folder holds. For measuring the detector
+ * against the same engine without it (tests/bench/captions-vad.mjs), for the
+ * tests in a checkout whose engine has none - and the way to turn it off if
+ * it ever leaves somebody's speech out.
  */
 function withVadOverride(engine: WhisperEngine, override: string | undefined): WhisperEngine {
   if (!override) return engine;
@@ -182,7 +184,10 @@ export interface WhisperRun {
  *   seconds transcribes the whole file in the wrong language.
  * - `-pp` prints progress.
  * - With the voice detector, only what it hears as speech is transcribed,
- *   which is what keeps Whisper from writing over silence and music.
+ *   which is what keeps Whisper from writing over music. The token times
+ *   then come back in the time of the sound without its silences, and the
+ *   transcriber puts them back through the table the program prints (see
+ *   parseVadSegments in shared/captions/whisperOutput).
  */
 export function whisperCommand(run: WhisperRun): { args: string[]; env: Record<string, string> } {
   const args = [
