@@ -5,7 +5,7 @@ import { cpus, constants as osConstants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import type { CaptionWord } from '@shared/types';
 import { parseProgress, parseWhisperJson, type WhisperJson } from '@shared/captions/whisperOutput';
-import { chooseVulkanDevice, parseVulkanDevices, threadsFor, VULKAN_PROBE_ENV, whisperCommand, type VulkanDevice, type WhisperEngine } from './engine';
+import { chooseVulkanDevice, MAX_VULKAN_DEVICES, parseVulkanDevices, readVulkanProbe, threadsFor, vulkanProbeEnv, whisperCommand, type VulkanDevice, type WhisperEngine } from './engine';
 import type { CaptionModel } from './catalog';
 
 /**
@@ -102,23 +102,34 @@ export class Transcriber {
       return this.gpuChoice;
     }
     this.gpuChoice = (async () => {
-      const child = spawn(engine.cli, ['--help'], { cwd: engine.dir, env: { ...process.env, ...VULKAN_PROBE_ENV }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-      let printed = '';
-      child.stdout?.on('data', (chunk: Buffer) => (printed += chunk.toString('utf8')));
-      child.stderr?.on('data', (chunk: Buffer) => (printed += chunk.toString('utf8')));
-      const timer = setTimeout(() => child.kill(), 15_000);
-      await new Promise<void>((resolve) => {
-        child.on('error', () => resolve());
-        child.on('close', () => resolve());
-      });
-      clearTimeout(timer);
-      const devices = parseVulkanDevices(printed);
-      // The list could not be read (a driver without Vulkan prints none):
-      // let the program choose, which it does dedicated GPUs first.
-      if (devices.length === 0) return /ggml_vulkan/i.test(printed) ? null : 'auto';
+      // One GPU at a time, by Vulkan's own numbers: see vulkanProbeEnv.
+      const devices: VulkanDevice[] = [];
+      for (let index = 0; index < MAX_VULKAN_DEVICES; index += 1) {
+        const probe = readVulkanProbe(await this.probe(engine, vulkanProbeEnv(index)), index);
+        // The backend said nothing (a driver without Vulkan): let the
+        // program choose, which it does dedicated GPUs first.
+        if (index === 0 && probe.silent) return 'auto';
+        if (probe.past) break;
+        if (probe.device) devices.push(probe.device);
+      }
       return chooseVulkanDevice(devices);
     })();
     return this.gpuChoice;
+  }
+
+  /** What the program prints as it loads its backends, under `env`. */
+  private async probe(engine: WhisperEngine, env: Record<string, string>): Promise<string> {
+    const child = spawn(engine.cli, ['--help'], { cwd: engine.dir, env: { ...process.env, ...env }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let printed = '';
+    child.stdout?.on('data', (chunk: Buffer) => (printed += chunk.toString('utf8')));
+    child.stderr?.on('data', (chunk: Buffer) => (printed += chunk.toString('utf8')));
+    const timer = setTimeout(() => child.kill(), 15_000);
+    await new Promise<void>((resolve) => {
+      child.on('error', () => resolve());
+      child.on('close', () => resolve());
+    });
+    clearTimeout(timer);
+    return printed;
   }
 
   /** Start a job: ffmpeg waiting for the mix. Returns the job's id. */

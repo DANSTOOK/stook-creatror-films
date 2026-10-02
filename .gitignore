@@ -18,5 +18,6 @@ release/
 build/whisper/
 .whisper-src/
 .whisper-build/
+.whisper-dev/
 # Speech models, wherever one ends up.
 ggml-*.bin

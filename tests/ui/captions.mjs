@@ -38,8 +38,11 @@ import { _electron as electron } from 'playwright';
  *   and the network is cut for all of it but that download.
  *
  * Needs the engine and both models where the bench keeps them:
- *   .stress-tmp/whisper-bin/b5130-cpu/Release   (CAPTIONS_WHISPER_DIR)
- *   .stress-tmp/whisper-models                  (CAPTIONS_MODELS_DIR)
+ *   build/whisper            (CAPTIONS_WHISPER_DIR) - the engine a release carries
+ *   .whisper-dev/models      (CAPTIONS_MODELS_DIR)
+ *
+ * Not under .stress-tmp: the stress run empties that folder, and took the
+ * downloaded models with it once.
  * CAPTIONS_PACKAGED=1 runs the packaged app (release/win-unpacked) with the
  * engine it carries in resources/whisper, as an installed copy would; there
  * the download step is left out, since an installed app only downloads from
@@ -55,8 +58,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(here, '../..');
 const workDir = join(projectRoot, '.ui-tmp', 'captions');
 const shotsDir = process.env.CAPTIONS_SHOTS ?? '';
-const whisperDir = process.env.CAPTIONS_WHISPER_DIR ?? join(projectRoot, '.stress-tmp', 'whisper-bin', 'b5130-cpu', 'Release');
-const modelsDir = process.env.CAPTIONS_MODELS_DIR ?? join(projectRoot, '.stress-tmp', 'whisper-models');
+const whisperDir = process.env.CAPTIONS_WHISPER_DIR ?? join(projectRoot, 'build', 'whisper');
+const modelsDir = process.env.CAPTIONS_MODELS_DIR ?? join(projectRoot, '.whisper-dev', 'models');
 const packagedExe = process.env.CAPTIONS_PACKAGED === '1' ? join(projectRoot, 'release/win-unpacked/STOOK CREATOR FILMS.exe') : null;
 const FAST = 'ggml-small-q5_1.bin';
 const PRECISE = 'ggml-large-v3-turbo-q5_0.bin';

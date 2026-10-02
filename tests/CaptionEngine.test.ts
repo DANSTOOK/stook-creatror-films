@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CAPTION_MODELS, type CaptionModel } from '@main/subtitles/catalog';
-import { chooseVulkanDevice, engineIn, findEngine, parseVulkanDevices, threadsFor, whisperCommand } from '@main/subtitles/engine';
+import { chooseVulkanDevice, engineIn, findEngine, parseVulkanDevices, readVulkanProbe, threadsFor, vulkanProbeEnv, whisperCommand } from '@main/subtitles/engine';
 import { ChecksumError, deleteModel, downloadModel, importModel, isModelReady, modelPath } from '@main/subtitles/models';
 
 /**
@@ -42,6 +42,29 @@ describe('which GPU transcribes', () => {
     expect(chooseVulkanDevice(parseVulkanDevices('ggml_vulkan: 0 = AMD Radeon(TM) Graphics (AMD proprietary driver) | uma: 1 | fp16: 1'))).toBeNull();
     expect(chooseVulkanDevice(parseVulkanDevices('ggml_vulkan: 0 = llvmpipe (LLVM 17.0.6, 256 bits) (llvmpipe) | uma: 0 | fp16: 1'))).toBeNull();
     expect(chooseVulkanDevice([])).toBeNull();
+  });
+
+  it('asks for one GPU at a time, and reads what the real program answers', () => {
+    // Printed by the engine v1.34.0-beta.1 shipped, on the laptop it was built for.
+    const nvidiaAlone = [
+      'ggml_vulkan: Found 1 Vulkan devices:',
+      'ggml_vulkan: 0 = NVIDIA GeForce RTX 4060 Laptop GPU (NVIDIA) | uma: 0 | fp16: 1 | bf16: 1 | fp4: 0 | warp size: 32 | shared memory: 49152 | int dot: 1 | matrix cores: NV_coopmat2',
+      'load_backend: loaded Vulkan backend from C:\\app\\resources\\whisper\\ggml-vulkan.dll',
+    ].join('\r\n');
+    const intelAlone = 'ggml_vulkan: Found 1 Vulkan devices:\r\nggml_vulkan: 0 = Intel(R) RaptorLake-S Mobile Graphics Controller (Intel Corporation) | uma: 1 | fp16: 1 | bf16: 0 | fp4: 0 | warp size: 32';
+    // What asking for a GPU that is not there gets - and what asking for 0 to 7 at once got.
+    const refused = 'ggml_vulkan: Invalid device index 2 in GGML_VK_VISIBLE_DEVICES.\r\nload_backend: loaded CPU backend from C:\\app\\resources\\whisper\\ggml-cpu-alderlake.dll';
+
+    expect(vulkanProbeEnv(1)).toEqual({ GGML_VK_VISIBLE_DEVICES: '1' });
+    expect(readVulkanProbe(nvidiaAlone, 0)).toEqual({ device: { index: 0, name: 'NVIDIA GeForce RTX 4060 Laptop GPU', integrated: false }, past: false, silent: false });
+    // Shown alone every GPU calls itself 0; its number is the one asked for.
+    expect(readVulkanProbe(intelAlone, 1).device).toEqual({ index: 1, name: 'Intel(R) RaptorLake-S Mobile Graphics Controller', integrated: true });
+    expect(readVulkanProbe(refused, 2)).toEqual({ device: null, past: true, silent: false });
+    // No Vulkan driver: the backend never speaks.
+    expect(readVulkanProbe('load_backend: loaded CPU backend from x', 0)).toEqual({ device: null, past: true, silent: true });
+
+    const found = [readVulkanProbe(nvidiaAlone, 0).device, readVulkanProbe(intelAlone, 1).device].filter((device) => device !== null);
+    expect(chooseVulkanDevice(found)).toMatchObject({ index: 0, name: 'NVIDIA GeForce RTX 4060 Laptop GPU' });
   });
 
   it('takes another dedicated GPU when there is no NVIDIA one', () => {

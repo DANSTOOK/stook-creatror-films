@@ -108,12 +108,38 @@ export function chooseVulkanDevice(devices: readonly VulkanDevice[]): VulkanDevi
   return real.find((device) => /nvidia|geforce|rtx|gtx|quadro/i.test(device.name)) ?? real[0] ?? null;
 }
 
+/** No computer this runs on has more GPUs than this; it only bounds the asking. */
+export const MAX_VULKAN_DEVICES = 8;
+
 /**
- * The environment that makes every GPU show in the list, numbered as Vulkan
- * numbers them. Left to itself the backend lists only the ones it would use,
- * renumbered from zero - numbers GGML_VK_VISIBLE_DEVICES does not take.
+ * The environment that shows one GPU alone, by Vulkan's own number for it.
+ *
+ * The GPUs are asked for one at a time. Left to itself the backend lists the
+ * ones it would use renumbered from zero - numbers GGML_VK_VISIBLE_DEVICES
+ * does not take - and a list naming a GPU that is not there is refused whole
+ * ("Invalid device index 2 in GGML_VK_VISIBLE_DEVICES"), with the backend
+ * not loading at all: asking for 0 to 7 at once read as "no GPU" on every
+ * computer, and every transcription ran on the processor (v1.34.0-beta.1).
  */
-export const VULKAN_PROBE_ENV = { GGML_VK_VISIBLE_DEVICES: '0,1,2,3,4,5,6,7' };
+export const vulkanProbeEnv = (index: number): Record<string, string> => ({ GGML_VK_VISIBLE_DEVICES: String(index) });
+
+export interface VulkanProbe {
+  /** The GPU at that number, when there is one. */
+  device: VulkanDevice | null;
+  /** That number is past the last GPU: stop asking. */
+  past: boolean;
+  /** The Vulkan backend said nothing at all: no driver, or it did not load. */
+  silent: boolean;
+}
+
+/** What the program printed when shown only the GPU at `index`. */
+export function readVulkanProbe(log: string, index: number): VulkanProbe {
+  if (/invalid device index/i.test(log)) return { device: null, past: true, silent: false };
+  const [alone] = parseVulkanDevices(log);
+  if (!alone) return { device: null, past: true, silent: !/ggml_vulkan/i.test(log) };
+  // Shown alone it calls itself 0; its real number is the one asked for.
+  return { device: { ...alone, index }, past: false, silent: false };
+}
 
 /* The command line ------------------------------------------------------------- */
 
