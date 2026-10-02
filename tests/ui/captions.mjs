@@ -405,7 +405,7 @@ async function main() {
       const { rulesFor, checkCue, isWeak } = window.__scfCaptions;
       const { project } = window.__scfStore.getState();
       const limits = rulesFor('classic', project);
-      const out = { long: [], lines: [], short: [], longTime: [], fast: [], gaps: [], weak: [], limits };
+      const out = { long: [], lines: [], short: [], longTime: [], fast: [], fastWithRoom: [], gaps: [], weak: [], limits };
       list.forEach((clip, index) => {
         const lines = clip.text.split('\n');
         const cue = { start: clip.start / project.fps, end: (clip.start + clip.duration) / project.fps, lines };
@@ -414,7 +414,11 @@ async function main() {
         if (!result.lines) out.lines.push(clip.text);
         if (!result.minDuration) out.short.push(`${clip.text} (${cue.end - cue.start})`);
         if (!result.maxDuration) out.longTime.push(clip.text);
-        if (!result.readingSpeed) out.fast.push(`${clip.text} (${(lines.join('').length / (cue.end - cue.start)).toFixed(1)})`);
+        // Over the reading speed with room left to stay up longer is a rule broken;
+        // over it with the next caption 2 frames away is speech that is itself that fast.
+        const next0 = list[index + 1];
+        const room = next0 ? next0.start - (clip.start + clip.duration) > 2 : false;
+        if (!result.readingSpeed) (room ? out.fastWithRoom : out.fast).push(`${(lines.join('').length / (cue.end - cue.start)).toFixed(1)}`);
         if (lines.length === 2 && isWeak(lines[0].split(' ').pop(), 'es')) out.weak.push(lines[0]);
         const next = list[index + 1];
         if (next) {
@@ -429,7 +433,8 @@ async function main() {
     check('gaps between captions are 2 frames, or half a second or more', rules.gaps.length === 0, `gaps of ${rules.gaps.join(', ')} frames`);
     check('no line ends on an article, a preposition or a conjunction', rules.weak.length === 0, rules.weak.join(' | '));
     // Speech faster than 17 characters a second cannot be slowed down: those are counted, not failed.
-    check('reading speed is at most 17 characters a second, but for speech that is itself faster (at most 2 captions)', rules.fast.length <= 2, `${rules.fast.length} over: ${rules.fast.join(' | ')}`);
+    check('no caption is over 17 characters a second while it has room to stay up longer', rules.fastWithRoom.length === 0 && rules.fast.every((speed) => Number(speed) < 20),
+      `${rules.fast.length} of ${clips.length} are over because the speech itself is that fast, with the next caption 2 frames away: ${rules.fast.join(', ')} characters a second`);
 
     console.log('5. the Precise model, and undo');
     await window.evaluate(() => window.__scfStore.getState().undo());
@@ -558,9 +563,21 @@ async function main() {
       const video = store.project.tracks.find((track) => track.type === 'video');
       window.__scfStore.getState().moveClipTo(id, video.id, clip.startFrame);
       const stayed = window.__scfStore.getState().project.clips[id].trackId === clip.trackId;
-      return { trimmed: trimmed.durationFrames === clip.durationFrames - 6 && trimmed.caption.text === clip.caption.text, stayed };
+      // The magnet is on. Deleting a caption must not pull the later ones off their words.
+      const startsOf = () => Object.values(window.__scfStore.getState().project.clips).filter((other) => other.caption && other.id !== id).map((other) => `${other.id}@${other.startFrame}`).sort().join();
+      const beforeDelete = startsOf();
+      window.__scfStore.getState().removeClips([id]);
+      const kept = startsOf() === beforeDelete && window.__scfStore.getState().ui.rippleEnabled === true;
+      window.__scfStore.getState().undo();
+      // Dragged far to the right, it stops at the next caption instead of pushing it.
+      window.__scfStore.getState().moveClipTo(id, clip.trackId, clip.startFrame + 900);
+      const after = window.__scfStore.getState().project.clips[id];
+      const stopped = startsOf() === beforeDelete && after.startFrame - clip.startFrame <= 2;
+      if (after.startFrame !== clip.startFrame) window.__scfStore.getState().undo();
+      return { trimmed: trimmed.durationFrames === clip.durationFrames - 6 && trimmed.caption.text === clip.caption.text, stayed, kept, stopped };
     }, target.id);
     check('a caption trims like a clip and keeps its text; dragged onto a video track it stays on its own', moved.trimmed && moved.stayed, JSON.stringify(moved));
+    check('with the magnet on, deleting a caption or dragging it into the next one moves no other caption', moved.kept && moved.stopped, JSON.stringify(moved));
 
     console.log('9. files');
     const srtPath = join(exportDir, 'captions.srt');
@@ -630,7 +647,7 @@ async function main() {
       const video = join(exportDir, `${name}.mp4`);
       let white = -1;
       if (finished && existsSync(video)) {
-        const { stdout } = await execFileAsync(ffmpeg, ['-v', 'error', '-ss', String(probeFrame / FPS), '-i', video, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'],
+        const { stdout } = await execFileAsync(ffmpeg, ['-v', 'error', '-ss', String(probeFrame / FPS), '-i', video, '-frames:v', '1', '-vf', 'scale=960:540', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'],
           { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
         // Half size and through H.264, thin white letters come out a little grey.
         white = whiteBox(stdout, 960, 540, 180).count;

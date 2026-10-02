@@ -324,6 +324,44 @@ describe('captions on the timeline', () => {
     expect(restored[0].caption?.text).toBe(clip.caption?.text);
   });
 
+  it('the magnet leaves captions alone: deleting, moving or trimming one never moves the others', () => {
+    const store = useProjectStore.getState();
+    store.addCaptionTrack(
+      { subtitles: [{ startMs: 0, endMs: 1000, text: 'a' }, { startMs: 2000, endMs: 3000, text: 'b' }, { startMs: 3100, endMs: 4000, text: 'c' }, { startMs: 6000, endMs: 7000, text: 'd' }] },
+      { preset: 'classic', language: 'es' },
+    );
+    expect(useProjectStore.getState().ui.rippleEnabled).toBe(true);
+    const byText = (): Record<string, Clip> => Object.fromEntries(Object.values(useProjectStore.getState().project.clips).map((clip) => [clip.caption?.text ?? '', clip]));
+    const starts = (): number[] => ['a', 'b', 'c', 'd'].map((text) => byText()[text]?.startFrame ?? -1);
+    expect(starts()).toEqual([0, 60, 93, 180]);
+
+    // Deleted: the hole stays open.
+    useProjectStore.getState().removeClips([byText().b.id]);
+    expect(starts()).toEqual([0, -1, 93, 180]);
+    useProjectStore.getState().undo();
+
+    // Moved later: it stops at the caption after it, which does not budge.
+    useProjectStore.getState().moveClipTo(byText().b.id, byText().b.trackId, 200);
+    expect(starts()).toEqual([0, 63, 93, 180]);
+    // Moved earlier: it stops at the one before.
+    useProjectStore.getState().moveClipTo(byText().b.id, byText().b.trackId, 0);
+    expect(starts()).toEqual([0, 30, 93, 180]);
+    // Into free space: it goes where it is put.
+    useProjectStore.getState().moveClipTo(byText().c.id, byText().c.trackId, 120);
+    expect(starts()).toEqual([0, 30, 120, 180]);
+    // Dragged as a group, the same.
+    useProjectStore.getState().moveClipGroup([byText().a.id, byText().b.id], 500, 0);
+    expect(starts()).toEqual([60, 90, 120, 180]);
+
+    // Trimmed shorter at its end: the next one stays; longer: it stops at the next one.
+    useProjectStore.getState().trimClip(byText().c.id, 'end', 130);
+    expect(starts()).toEqual([60, 90, 120, 180]);
+    expect(byText().c.durationFrames).toBe(10);
+    useProjectStore.getState().trimClip(byText().c.id, 'end', 400);
+    expect(byText().c.startFrame + byText().c.durationFrames).toBe(180);
+    expect(starts()).toEqual([60, 90, 120, 180]);
+  });
+
   it('typing in a caption is one undo step, and renames the clip', () => {
     const store = useProjectStore.getState();
     store.addCaptionTrack({ subtitles: [{ startMs: 0, endMs: 2000, text: 'Hola' }] }, { preset: 'classic', language: 'es' });

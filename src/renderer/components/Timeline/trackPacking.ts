@@ -218,6 +218,9 @@ export function planGroupMove(
   const groupStart = Math.min(...moving.map((clip) => clip.startFrame));
   const delta = Math.max(Math.round(deltaFrames), -groupStart);
 
+  // Captions follow rules of their own: see planCaptionMove.
+  if (moving.every((clip) => clip.caption)) return planCaptionMove(clips, moving, delta);
+
   // Between tracks: all of the group, or none of it.
   const rows = Math.round(deltaTracks);
   const rowOf = new Map(options.tracks.map((track, index) => [track.id, index]));
@@ -238,7 +241,9 @@ export function planGroupMove(
   const survivors: Record<string, Clip> = {};
   for (const [id, clip] of Object.entries(clips)) if (!movingIds.has(id)) survivors[id] = clip;
   if (options.ripple) {
-    for (const [id, start] of rippleDelete(clips, movingIds)) {
+    // Captions moved along with other clips leave their holes open, as always.
+    const closing = new Set(moving.filter((clip) => !clip.caption).map((clip) => clip.id));
+    for (const [id, start] of rippleDelete(clips, closing)) {
       if (survivors[id]) survivors[id] = { ...survivors[id], startFrame: start };
     }
   }
@@ -288,6 +293,34 @@ export function planGroupMove(
     const startFrame = pushed.get(id) ?? clip.startFrame;
     if (startFrame !== clips[id].startFrame) plan.set(id, { startFrame, trackId: clip.trackId });
   }
+  return plan;
+}
+
+/**
+ * Moving captions: in time only, and only as far as the captions beside
+ * them allow.
+ *
+ * A caption is tied to a moment of the sound, and so is every other caption
+ * on its track. So nothing here does what moving a clip does: the hole it
+ * leaves is not closed (the magnet would drag every later caption out of
+ * step with its words), and a caption it runs into is not pushed along (the
+ * same, for that one and all after it). It stops at its neighbour instead.
+ */
+export function planCaptionMove(clips: Record<string, Clip>, moving: readonly Clip[], delta: number): Map<string, Placement> {
+  const plan = new Map<string, Placement>();
+  const movingIds = new Set(moving.map((clip) => clip.id));
+  let back = Infinity;
+  let forward = Infinity;
+  for (const clip of moving) {
+    const others = Object.values(clips).filter((other) => other.trackId === clip.trackId && !movingIds.has(other.id));
+    const before = others.filter((other) => clipEndFrame(other) <= clip.startFrame).reduce((limit, other) => Math.max(limit, clipEndFrame(other)), 0);
+    const after = others.filter((other) => other.startFrame >= clipEndFrame(clip)).reduce((limit, other) => Math.min(limit, other.startFrame), Infinity);
+    back = Math.min(back, clip.startFrame - before);
+    forward = Math.min(forward, after - clipEndFrame(clip));
+  }
+  const allowed = Math.max(-back, Math.min(forward, delta));
+  if (allowed === 0) return plan;
+  for (const clip of moving) plan.set(clip.id, { startFrame: clip.startFrame + allowed, trackId: clip.trackId });
   return plan;
 }
 

@@ -1312,8 +1312,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().transact('Delete clip', (project) => {
       const clips = Object.fromEntries(Object.entries(project.clips).filter(([id]) => !doomed.has(id)));
       // The magnet: what came after a deleted clip closes up behind it.
+      // Not on a captions track: closing the hole a deleted caption leaves
+      // would pull every later caption away from its words.
       if (ripple) {
-        for (const [id, start] of rippleDelete(project.clips, doomed)) clips[id] = moveClip(clips[id], start);
+        const closing = new Set([...doomed].filter((id) => !project.clips[id]?.caption));
+        for (const [id, start] of rippleDelete(project.clips, closing)) if (clips[id]) clips[id] = moveClip(clips[id], start);
       }
       // Deleting one half of a pair leaves the other linked to nothing.
       return { ...project, clips: tidyLinkGroups(clips) };
@@ -1419,6 +1422,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { project, ui, assets } = get();
     const clip = project.clips[clipId];
     if (!clip) return;
+    // A caption moves in time only, between its neighbours (planCaptionMove).
+    if (clip.caption) {
+      get().moveClipGroup([clipId], Math.round(startFrame) - (base?.[clipId] ?? clip).startFrame, 0, { base, mergeKey: `move:${clipId}` });
+      return;
+    }
 
     // Sound stays on audio tracks and pictures on picture tracks; a drag onto
     // the wrong kind keeps the clip on its own track and only moves it in time.
@@ -1569,7 +1577,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
     // With the magnet, trimming the end carries the rest of the track along
     // (a ripple trim), so it neither leaves a hole nor runs into the next clip.
-    const rippleEnd = edge === 'end' && ui.rippleEnabled;
+    // Never on a caption: the captions after it stay with their words.
+    const rippleEnd = edge === 'end' && ui.rippleEnabled && !clip.caption;
 
     // Otherwise an edge stops at its neighbour: a trimmed clip never grows
     // over the next one on its track (point 8 - clips never overlap).
