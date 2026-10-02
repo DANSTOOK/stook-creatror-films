@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { cpus, constants as osConstants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import type { CaptionWord } from '@shared/types';
-import { parseProgress, parseWhisperJson, type WhisperJson } from '@shared/captions/whisperOutput';
+import { parseProgress, parseVadSegments, parseWhisperJson, type WhisperJson } from '@shared/captions/whisperOutput';
 import { chooseVulkanDevice, MAX_VULKAN_DEVICES, parseVulkanDevices, readVulkanProbe, threadsFor, vulkanProbeEnv, whisperCommand, type VulkanDevice, type WhisperEngine } from './engine';
 import type { CaptionModel } from './catalog';
 
@@ -45,6 +45,8 @@ export interface TranscriptionOutcome {
   gpu: string | null;
   audioSeconds: number;
   elapsedSeconds: number;
+  /** Stretches of speech the voice detector kept; null when it did not run. */
+  vadSegments: number | null;
 }
 
 export class TranscriptionError extends Error {
@@ -189,10 +191,11 @@ export class Transcriber {
       if (!engine) throw new TranscriptionError('whisper', 'the speech-to-text program is not part of this build');
       const info = await stat(job.wav);
       const audioSeconds = Math.max(0, (info.size - 44) / (16_000 * 2));
-      const cancelled = (): TranscriptionOutcome => ({ cancelled: true, words: [], dropped: [], ran: 'cpu', gpu: null, audioSeconds, elapsedSeconds: (Date.now() - started) / 1000 });
+      const cancelled = (): TranscriptionOutcome => ({ cancelled: true, words: [], dropped: [], ran: 'cpu', gpu: null, audioSeconds, elapsedSeconds: (Date.now() - started) / 1000, vadSegments: null });
       if (job.cancelled) return cancelled();
 
       let gpu = await this.chooseGpu();
+      let vadModel = engine.vadModel;
       const output = join(job.dir, 'out');
       for (;;) {
         const { args, env } = whisperCommand({
@@ -203,7 +206,7 @@ export class Transcriber {
           language,
           threads: threadsFor(cpus().length, gpu !== null && gpu !== 'auto'),
           gpu,
-          vadModel: engine.vadModel,
+          vadModel,
         });
         if (job.cancelled) return cancelled();
         const child = spawn(engine.cli, args, { cwd: engine.dir, env: { ...process.env, ...env }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -216,12 +219,20 @@ export class Transcriber {
         }
         let usedGpu = false;
         let gpuName: string | null = gpu && gpu !== 'auto' ? gpu.name : null;
+        // The voice detector's table, a line a stretch of speech: kept whole,
+        // however long the rest of what the program prints gets.
+        let vadLog = '';
+        let unfinished = '';
         child.stderr?.on('data', (chunk: Buffer) => {
           const text = chunk.toString('utf8');
-          for (const line of text.split(/\r?\n/)) {
+          // A line may arrive in two pieces.
+          const lines = (unfinished + text).split(/\r?\n/);
+          unfinished = lines.pop() ?? '';
+          for (const line of lines) {
             const fraction = parseProgress(line);
             if (fraction !== null) onProgress(fraction);
             if (/using\s+Vulkan\d*\s+backend/i.test(line)) usedGpu = true;
+            if (line.includes('vad_segment_info:')) vadLog += `${line}\n`;
           }
           if (gpuName === null) gpuName = parseVulkanDevices(text)[0]?.name ?? null;
         });
@@ -238,9 +249,18 @@ export class Transcriber {
           throw new TranscriptionError('whisper', tail(stderr) || `code ${code}`);
         }
         const json = JSON.parse(await readFile(`${output}.json`, 'utf8')) as WhisperJson;
-        const { words, dropped } = parseWhisperJson(json);
+        // With the voice detector the word times are those of the sound with
+        // its silences cut out: they are put back through its table.
+        const vad = vadModel ? parseVadSegments(`${vadLog}${unfinished}`) : [];
+        const { words, dropped } = parseWhisperJson(json, vad);
+        // Words, and no table to place them with (a program that prints it
+        // some other way): better slower and right - once more without.
+        if (vadModel && vad.length === 0 && words.length > 0) {
+          vadModel = null;
+          continue;
+        }
         onProgress(1);
-        return { cancelled: false, words, dropped, ran: usedGpu ? 'gpu' : 'cpu', gpu: usedGpu ? gpuName : null, audioSeconds, elapsedSeconds: (Date.now() - started) / 1000 };
+        return { cancelled: false, words, dropped, ran: usedGpu ? 'gpu' : 'cpu', gpu: usedGpu ? gpuName : null, audioSeconds, elapsedSeconds: (Date.now() - started) / 1000, vadSegments: vadModel ? vad.length : null };
       }
     } finally {
       await this.finish(job);

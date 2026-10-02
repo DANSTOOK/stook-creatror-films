@@ -104,12 +104,73 @@ export interface ParsedTranscript {
 }
 
 /**
- * The words of a transcript, in order, with start and end in seconds of the
- * audio that was transcribed.
+ * A stretch of speech the voice detector kept (`--vad`): where it is in the
+ * sound that was given, and where in the shorter sound Whisper then heard,
+ * in seconds.
  */
-export function parseWhisperJson(json: WhisperJson): ParsedTranscript {
+export interface VadSegment {
+  origStart: number;
+  origEnd: number;
+  vadStart: number;
+  vadEnd: number;
+}
+
+/**
+ * The voice detector cuts the silences out before Whisper listens: the
+ * stretches of speech are put one after another, a fifth of a second apart.
+ * The program maps the times of its SEGMENTS back onto the sound it was
+ * given, but not the times of the tokens inside them - `offsets` and `t_dtw`
+ * come back in the shortened sound's time. Measured on a recording with
+ * known word times, captions came up a median of 4.4 s early, and 34 s early
+ * after a 30 s silence. The program does print the table as it works, one
+ * line a stretch:
+ *
+ *   whisper_vad: vad_segment_info: orig_start: 2.11, orig_end: 5.66, vad_start: 1.51, vad_end: 5.06
+ *
+ * and this reads it, so the token times can be put back (vadTimeToOriginal).
+ */
+export function parseVadSegments(log: string): VadSegment[] {
+  const segments: VadSegment[] = [];
+  const line = /vad_segment_info:\s*orig_start:\s*([\d.]+),\s*orig_end:\s*([\d.]+),\s*vad_start:\s*([\d.]+),\s*vad_end:\s*([\d.]+)/g;
+  for (const match of log.matchAll(line)) {
+    const [origStart, origEnd, vadStart, vadEnd] = match.slice(1).map(Number);
+    if ([origStart, origEnd, vadStart, vadEnd].every(Number.isFinite)) segments.push({ origStart, origEnd, vadStart, vadEnd });
+  }
+  return segments.sort((a, b) => a.vadStart - b.vadStart);
+}
+
+/**
+ * A moment of the shortened sound, as a moment of the sound that was given.
+ * Inside a stretch the samples are the same ones, so the time runs on from
+ * where the stretch starts. Past its end come a tenth of a second more of
+ * the same sound and a tenth of silence that stands for the whole pause: a
+ * moment there is held at the start of the next stretch at the latest, so
+ * times never go backwards.
+ */
+export function vadTimeToOriginal(segments: readonly VadSegment[], seconds: number): number {
+  if (segments.length === 0) return seconds;
+  let low = 0;
+  let high = segments.length - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (segments[middle].vadStart <= seconds) low = middle;
+    else high = middle - 1;
+  }
+  const segment = segments[low];
+  const next = segments[low + 1];
+  const original = segment.origStart + Math.max(0, seconds - segment.vadStart);
+  return next ? Math.min(original, next.origStart) : original;
+}
+
+/**
+ * The words of a transcript, in order, with start and end in seconds of the
+ * audio that was transcribed. `vad` is the voice detector's table when it
+ * ran (parseVadSegments): token times are put back through it first.
+ */
+export function parseWhisperJson(json: WhisperJson, vad: readonly VadSegment[] = []): ParsedTranscript {
   const words: CaptionWord[] = [];
   const dropped: string[] = [];
+  const original = (seconds: number): number => vadTimeToOriginal(vad, seconds);
 
   // Where the token before ended, by the alignment - carried from one
   // segment into the next, which Whisper cuts wherever its window ends.
@@ -132,10 +193,10 @@ export function parseWhisperJson(json: WhisperJson): ParsedTranscript {
     };
 
     for (const token of segment.tokens ?? []) {
-      const aligned = typeof token.t_dtw === 'number' && token.t_dtw >= 0 ? token.t_dtw / 100 : null;
+      const aligned = typeof token.t_dtw === 'number' && token.t_dtw >= 0 ? original(token.t_dtw / 100) : null;
       if (isSpecial(token.text)) continue;
-      const from = token.offsets ? token.offsets.from / 1000 : alignedEnd ?? 0;
-      const to = token.offsets ? token.offsets.to / 1000 : from;
+      const from = token.offsets ? original(token.offsets.from / 1000) : alignedEnd ?? 0;
+      const to = token.offsets ? original(token.offsets.to / 1000) : from;
       const punctuation = isPunctuation(token.text);
       const opening = /^\s*[¿¡"«(]/.test(token.text);
       const startsWord = current === null || (/^\s/.test(token.text) && (!punctuation || opening));

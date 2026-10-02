@@ -153,6 +153,12 @@ export interface CaptionTranscribeResult {
   /** Seconds of sound transcribed, and how long it took. */
   audioSeconds: number;
   elapsedSeconds: number;
+  /**
+   * Stretches of speech the voice detector kept - only those were listened
+   * to. Null when it did not run (a build without it, or its table of times
+   * could not be read and the sound was transcribed whole instead).
+   */
+  vadSegments: number | null;
 }
 
 export interface CaptionProgressEvent {
