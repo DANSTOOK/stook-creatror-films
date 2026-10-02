@@ -13,6 +13,9 @@ import { TransitionDialog } from './components/TransitionDialog';
 import { SHOW_INSPECTOR_EVENT } from './components/Timeline/Timeline';
 import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
+import { GenerateCaptionsDialog } from './components/Captions/GenerateCaptionsDialog';
+import { CaptionProgress } from './components/Captions/CaptionProgress';
+import { exportCaptionsToDialog, importCaptionsFromDialog } from './captions/captionFiles';
 import { PreviewViewport } from './components/PreviewViewport';
 import { Timeline } from './components/Timeline';
 import { UnsavedChangesDialog } from './components/UnsavedChangesDialog/UnsavedChangesDialog';
@@ -126,6 +129,7 @@ export default function App(): JSX.Element {
     void loadLocalFamilies();
   }, []);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [captionsOpen, setCaptionsOpen] = useState(false);
   /**
    * Areas that are put away.
    *
@@ -190,6 +194,7 @@ export default function App(): JSX.Element {
   const exportPresence = usePresence(exportOpen);
   const settingsPresence = usePresence(settingsOpen);
   const preferencesPresence = usePresence(preferencesOpen);
+  const captionsPresence = usePresence(captionsOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -485,6 +490,15 @@ export default function App(): JSX.Element {
       case 'fontLicenses':
         setLicensesOpen(true);
         return;
+      case 'generateCaptions':
+        if (nativeAvailable) setCaptionsOpen(true);
+        return;
+      case 'importCaptions':
+        if (nativeAvailable) void importCaptionsFromDialog();
+        return;
+      case 'exportCaptions':
+        if (nativeAvailable) void exportCaptionsToDialog();
+        return;
       default:
         return;
     }
@@ -575,6 +589,7 @@ export default function App(): JSX.Element {
 
           {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+          {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
           {preferencesPresence.mounted && (
             <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
           )}
@@ -613,6 +628,8 @@ export default function App(): JSX.Element {
       {/* Outside the editor, which is inert behind the start screen: About works from there too. */}
       {licensesOpen && <FontLicensesDialog onClose={() => setLicensesOpen(false)} />}
       <RelinkDialog />
+      {/* Captions being generated: a card in the corner, the editor still usable. */}
+      {view === 'editor' && <CaptionProgress />}
       <Toaster />
       <TooltipLayer />
     </div>

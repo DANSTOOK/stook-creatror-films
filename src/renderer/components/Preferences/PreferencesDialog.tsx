@@ -10,6 +10,7 @@ import {
 } from '@renderer/timing/transitionLength';
 import { LANGUAGES, isLanguage } from '@shared/i18n';
 import { useLanguageStore, useT } from '@renderer/i18n';
+import { SpeechModels } from '@renderer/components/Captions/SpeechModels';
 
 /**
  * Settings of this computer rather than of a project.
@@ -140,7 +141,7 @@ export function PreferencesDialog({ onClose, closing = false }: PreferencesDialo
       onClose={onClose}
       closing={closing}
       testId="preferences-dialog"
-      widthClass="w-[420px]"
+      widthClass="w-[460px]"
       bodyClassName="space-y-2 p-4"
       footer={
         <button type="button" className="button-primary" onClick={onClose}>
@@ -158,6 +159,9 @@ export function PreferencesDialog({ onClose, closing = false }: PreferencesDialo
       <p className="text-2xs leading-relaxed text-slate-400">{t('prefs.languageHint')}</p>
       <div className="pt-2">
         <TransitionLengthSelect />
+      </div>
+      <div className="pt-2">
+        <SpeechModels />
       </div>
     </Dialog>
   );

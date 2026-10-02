@@ -498,7 +498,8 @@ export function Timeline(): JSX.Element {
           onSelect: () => state.paste(),
         },
         // A grade travels between picture clips; a sound has none.
-        ...(state.project.tracks.find((track) => track.id === clip.trackId)?.type === 'audio'
+        // A grade travels between picture clips; a sound has none, nor has a caption.
+        ...(['audio', 'captions'].includes(state.project.tracks.find((track) => track.id === clip.trackId)?.type ?? '')
           ? []
           : [
               { separator: true },
@@ -716,7 +717,7 @@ export function Timeline(): JSX.Element {
             ? clips.find((other) => other.trackId === hit.clip.trackId && other.id !== hit.clip.id && other.startFrame === clipEndFrame(hit.clip))
             : undefined;
         const cut = touching ? (hit.edge === 'start' ? { fromId: touching.id, toId: hit.clip.id } : { fromId: hit.clip.id, toId: touching.id }) : null;
-        const onPicture = tracks.find((track) => track.id === hit.clip.trackId)?.type !== 'audio';
+        const onPicture = !['audio', 'captions'].includes(tracks.find((track) => track.id === hit.clip.trackId)?.type ?? '');
         const transitionItems: ContextMenuItem[] = !onPicture
           ? []
           : cut
@@ -1603,7 +1604,7 @@ export function Timeline(): JSX.Element {
                 className="absolute inset-y-1 left-0 w-1 rounded-r-sm"
                 style={{ background: TRACK_TYPE_COLORS[track.type] }}
               />
-              <span className="sr-only">{t(track.type === 'audio' ? 'timeline.audioTrack' : 'timeline.videoTrack')}</span>
+              <span className="sr-only">{t(track.type === 'audio' ? 'timeline.audioTrack' : track.type === 'captions' ? 'timeline.captionsTrack' : 'timeline.videoTrack')}</span>
               <div className="flex items-center justify-between gap-1">
                 {renamingTrackId === track.id ? (
                   <input
@@ -1666,6 +1667,8 @@ export function Timeline(): JSX.Element {
                     {track.visible ? <Eye size={13} /> : <EyeOff size={13} />}
                   </button>
                 )}
+                {/* Captions make no sound: nothing to mute. */}
+                {track.type !== 'captions' && (
                 <button
                   type="button"
                   className={`tool-button tool-button-dense ${track.muted ? 'bg-amber-400/15 text-amber-300' : ''}`}
@@ -1676,6 +1679,7 @@ export function Timeline(): JSX.Element {
                 >
                   {track.muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                 </button>
+                )}
                 {track.type === 'audio' && (
                   <button
                     type="button"

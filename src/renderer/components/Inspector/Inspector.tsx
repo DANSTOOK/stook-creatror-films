@@ -21,6 +21,8 @@ import { LEVEL_CURVES, OFFSET_CURVES, neutralCurve, type LevelCurve, type Offset
 import { neutralVignette } from '@renderer/color/grade';
 import { NumberRow, PairRow, Section, SliderRow, SwitchRow, type SectionProps } from './rows';
 import { TitleTab } from './TitleTab';
+import { CaptionTab } from './CaptionTab';
+import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
 
 /**
@@ -48,11 +50,12 @@ import { TransitionPanel } from './TransitionPanel';
  * and the typing are converted; the project stores what it always did.
  */
 
-type Tab = 'title' | 'video' | 'audio' | 'color' | 'info';
+type Tab = 'title' | 'caption' | 'video' | 'audio' | 'color' | 'info';
 type Effect = 'mask' | 'chromaKey' | 'pixelArt';
 
 const TAB_LABELS: Record<Tab, MessageKey> = {
   title: 'inspector.tabTitle',
+  caption: 'inspector.tabCaption',
   video: 'inspector.tabVideo',
   audio: 'inspector.tabAudio',
   color: 'inspector.tabColor',
@@ -90,14 +93,14 @@ const degrees = (radians: number): string => `${Math.round((radians * 180) / Mat
 /** The clip's technical facts, like Final Cut's Info inspector. */
 function InfoRows({ clip, asset, fps }: { clip: Clip; asset: MediaAsset | undefined; fps: number }): JSX.Element {
   const t = useT();
-  const kind = clip.title ? 'title' : asset?.kind ?? (clip.hasAlphaChannel ? 'image' : 'video');
+  const kind = clip.caption ? 'caption' : clip.title ? 'title' : asset?.kind ?? (clip.hasAlphaChannel ? 'image' : 'video');
   const rows: Array<[string, string]> = [
     [
       t('inspector.infoType'),
-      t(kind === 'title' ? 'inspector.kindTitle' : kind === 'audio' ? 'inspector.kindAudio' : kind === 'image' ? 'inspector.kindImage' : 'inspector.kindVideo'),
+      t(kind === 'caption' ? 'inspector.kindCaption' : kind === 'title' ? 'inspector.kindTitle' : kind === 'audio' ? 'inspector.kindAudio' : kind === 'image' ? 'inspector.kindImage' : 'inspector.kindVideo'),
     ],
   ];
-  if (kind !== 'audio') {
+  if (kind !== 'audio' && kind !== 'caption') {
     rows.push([t('inspector.infoChannels'), clip.hasAlphaChannel ? t('inspector.channelsAlpha') : 'RGB']);
     if (asset && asset.width > 0) rows.push([t('inspector.infoSize'), `${asset.width} × ${asset.height}`]);
     if (asset?.sourceFps) rows.push([t('inspector.infoFrameRate'), `${Number(asset.sourceFps.toFixed(3))} fps`]);
@@ -161,9 +164,12 @@ export function Inspector(): JSX.Element {
   const [tab, setTab] = useState<Tab>('video');
   // A title opens on its own tab, where what it says and how it looks are.
   const isTitle = Boolean(clip?.title);
+  // So does a caption: its text is what there is to change about it.
+  const isCaption = Boolean(clip?.caption);
   useEffect(() => {
     if (isTitle) setTab('title');
-  }, [clip?.id, isTitle]);
+    else if (isCaption) setTab('caption');
+  }, [clip?.id, isTitle, isCaption]);
   /** Folded sections, by section id: a choice about the inspector, kept across clips. */
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
   /** Effects added from the menu, shown even while off and at their defaults. */
@@ -284,7 +290,10 @@ export function Inspector(): JSX.Element {
   // Only the tabs that mean something for this clip.
   // Only the tabs that mean something for this clip. A title has no sound, and
   // its colours are set on the Title tab rather than graded.
-  const tabs: Tab[] = clip.title
+  // A caption is its text and its time: it is placed and styled by its track.
+  const tabs: Tab[] = clip.caption
+    ? ['caption', 'info']
+    : clip.title
     ? ['title', 'video', 'info']
     : audioOnly ? ['audio', 'info'] : still ? ['video', 'color', 'info'] : ['video', 'audio', 'color', 'info'];
   const current: Tab = tabs.includes(tab) ? tab : tabs[0];
@@ -811,6 +820,13 @@ export function Inspector(): JSX.Element {
             sectionProps={sectionProps}
             position={resolved.position}
             onPosition={(axis, value) => setVectorKeyframe(clip.id, 'position', frame, { ...resolved.position, [axis]: value })}
+          />
+        )}
+        {current === 'caption' && (
+          <CaptionTab
+            clip={clip}
+            settings={captionSettingsOf(project.tracks.find((track) => track.id === clip.trackId))}
+            frame={{ width: project.width, height: project.height, fps: project.fps }}
           />
         )}
         {current === 'video' && videoTab}

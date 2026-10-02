@@ -29,6 +29,7 @@ import { useSessionStore } from '@renderer/store/useSessionStore';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { currentLocale, useT, type MessageKey } from '@renderer/i18n';
 import { errorText } from '@renderer/errorText';
+import { notify } from '@renderer/notifications/notifications';
 import { describeExportProgress, formatClock } from './exportProgress';
 import { exportEndFrame } from './exportRange';
 import { defaultFileName } from './exportName';
@@ -37,6 +38,9 @@ import { setExporting } from '@renderer/motion/environment';
 import { missingFamilies } from '@renderer/text/fonts';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { FALLBACK_FAMILY } from '@renderer/text/titleStyle';
+import { captionCues } from '@renderer/captions/captionClips';
+import { withoutCaptions } from '@renderer/captions/captionRender';
+import { writeSubtitles, type SubtitleFormat } from '@renderer/captions/subtitleFiles';
 
 /**
  * Export dialog, including the game-asset mode.
@@ -120,6 +124,8 @@ interface FinishedExport {
   renderSeconds: number;
   encoder: string;
   fps: number;
+  /** The subtitle file written beside it, when one was asked for. */
+  captionsFile?: string;
 }
 
 /** Split a path at its last separator, either kind. */
@@ -301,6 +307,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
   /* Thumbnail --------------------------------------------------------------- */
 
+  // Captions: drawn into the picture (what the viewer shows), and/or written
+  // as a file beside the video, which is what YouTube and players take.
+  const [burnCaptions, setBurnCaptions] = useState(true);
+  const [captionFile, setCaptionFile] = useState<SubtitleFormat | 'none'>('none');
+  const captionCount = captionCues(project).length;
   const [thumbnailPath, setThumbnailPath] = useState<string | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const coverArt = COVER_ART_FORMATS.has(settings.format);
@@ -408,6 +419,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     // forces the old seek path, for comparing the two in tests.
     if (!(window as { __scfSeekExport?: boolean }).__scfSeekExport) renderer.startSequentialDecode();
 
+    // Captions not burnt in are simply not drawn; everything else is.
+    const drawn = burnCaptions ? project : withoutCaptions(project);
+
     try {
       await renderer.ensureLUTs(project);
 
@@ -508,10 +522,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         }
 
         if (encoder) {
-          await renderer.renderExactToCanvas(project, frame);
+          await renderer.renderExactToCanvas(drawn, frame);
           await encoder.encodeCanvas(renderer.canvas);
         } else {
-          const rgba = await renderer.renderExact(project, frame, settings.premultiplyAlpha);
+          const rgba = await renderer.renderExact(drawn, frame, settings.premultiplyAlpha);
           await window.filmora.exportFrame(activeJobId, rgba.buffer as ArrayBuffer);
         }
       }
@@ -522,6 +536,19 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
       await window.filmora.exportFinish(activeJobId);
       const fps = settings.fps || project.fps;
+      // The subtitle file: the captions in the range rendered, counted from its start.
+      let captionsFile: string | undefined;
+      if (captionFile !== 'none' && window.filmora.captionsWriteSidecar) {
+        const cues = captionCues(project, { fromFrame: settings.startFrame, toFrame: settings.endFrame });
+        if (cues.length > 0) {
+          try {
+            const written = await window.filmora.captionsWriteSidecar(settings.outputPath, captionFile, writeSubtitles(captionFile, cues));
+            captionsFile = splitPath(written).name;
+          } catch (error) {
+            notify(t('export.captionsFailed', { detail: errorText(error) }), 'error');
+          }
+        }
+      }
       setResult({
         path: settings.outputPath,
         ...splitPath(settings.outputPath),
@@ -530,6 +557,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         renderSeconds: (performance.now() - startedAt) / 1000,
         encoder: jobPlan.label,
         fps,
+        ...(captionsFile ? { captionsFile } : {}),
       });
       // The result card says all of it; a status line repeating it is noise.
       setMessage(null);
@@ -545,7 +573,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, t]);
+  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, t]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const renderFps = settings.fps || project.fps;
@@ -1090,6 +1118,38 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   )}
                 </Section>
 
+                {captionCount > 0 && (
+                  <Section title={t('export.captions')}>
+                    <label className="flex items-start gap-2 text-xs text-slate-200">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        data-testid="export-captions-burn"
+                        checked={burnCaptions}
+                        onChange={(event) => setBurnCaptions(event.target.checked)}
+                      />
+                      <span>
+                        {t('export.captionsBurn')}
+                        <span className="block text-2xs text-slate-400">{t('export.captionsBurnHint')}</span>
+                      </span>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-2xs text-slate-400">{t('export.captionsFile')}</span>
+                      <select
+                        className="numeric-input"
+                        data-testid="export-captions-file"
+                        value={captionFile}
+                        onChange={(event) => setCaptionFile(event.target.value === 'srt' || event.target.value === 'vtt' ? event.target.value : 'none')}
+                      >
+                        <option value="none">{t('export.captionsFileNone')}</option>
+                        <option value="srt">{t('export.captionsFileSrt')}</option>
+                        <option value="vtt">{t('export.captionsFileVtt')}</option>
+                      </select>
+                    </label>
+                    <p className="text-2xs text-slate-400">{t('export.captionsCount', { count: captionCount })}</p>
+                  </Section>
+                )}
+
                 {/* Rarely changed, so it stays folded; the summary still says what will render. */}
                 <details className="rounded border border-panel-700 bg-panel-950 p-3" open={restartPending || undefined}>
                   {/* What will render stays readable with the section folded. */}
@@ -1209,6 +1269,7 @@ function ExportResult({
     { label: t('export.statRenderTime'), value: formatClock(result.renderSeconds) },
     { label: t('export.statFrameRate'), value: `${Number(result.fps.toFixed(3))} fps` },
     { label: t('export.statEncoder'), value: result.encoder, wide: true },
+    ...(result.captionsFile ? [{ label: t('export.statCaptions'), value: result.captionsFile, wide: true }] : []),
   ];
   return (
     <section
