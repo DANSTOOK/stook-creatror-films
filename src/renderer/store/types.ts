@@ -389,7 +389,25 @@ function normalizeAudio(audio: unknown): ProjectAudioState {
  * when it was saved, or the mixer has quietly re-mixed somebody's edit.
  */
 export function normalizeProject(project: ProjectState): ProjectState {
-  return withTransitions(normalizeClipsAndTracks(project), project.transitions);
+  return withParkedCaptions(withTransitions(normalizeClipsAndTracks(project), project.transitions), project.parkedCaptions);
+}
+
+/**
+ * Captions kept out of the edit (captions/follow.ts), read from a file: only
+ * captions, only for a captions track the project still has, and never one
+ * that is also on the timeline. A project with none carries no field.
+ */
+function withParkedCaptions(project: ProjectState, raw: unknown): ProjectState {
+  const { parkedCaptions: _dropped, ...rest } = project;
+  void _dropped;
+  if (!raw || typeof raw !== 'object') return rest;
+  const tracks = new Set(rest.tracks.filter((track) => track.type === 'captions').map((track) => track.id));
+  const parked: Record<string, Clip> = {};
+  for (const [id, clip] of Object.entries(raw as Record<string, Clip>)) {
+    if (!clip || typeof clip !== 'object' || !clip.caption || !tracks.has(clip.trackId) || rest.clips[id]) continue;
+    parked[id] = { ...clip, id, caption: normalizeCaption(clip.caption) };
+  }
+  return Object.keys(parked).length > 0 ? { ...rest, parkedCaptions: parked } : rest;
 }
 
 /**

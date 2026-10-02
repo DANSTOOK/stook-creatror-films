@@ -328,17 +328,66 @@ export type CaptionLanguage = 'es' | 'en';
  */
 export type CaptionPreset = 'classic' | 'social';
 
+/**
+ * How the captions of a track look. Lengths are pixels of a 1080-line frame,
+ * as a title's are; colours are sRGB `#rrggbb`.
+ */
+export interface CaptionLook {
+  fontFamily: string;
+  /** 100 to 900. */
+  fontWeight: number;
+  /**
+   * Letter size, or null for the size at which a full line of the preset
+   * just fits the title-safe width - which is what a new track has.
+   */
+  fontSize: number | null;
+  color: string;
+  outline: { enabled: boolean; color: string; width: number };
+  /** A band behind the text, for pictures an outline is not enough on. */
+  box: { enabled: boolean; color: string; opacity: number };
+  /** Against the bottom or the top of the title-safe area. */
+  position: 'bottom' | 'top';
+}
+
 /** What a captions track says about all of its captions. */
 export interface CaptionTrackSettings {
   preset: CaptionPreset;
   language: CaptionLanguage;
+  /** Absent: the preset's own look. */
+  look?: CaptionLook;
+}
+
+/**
+ * What a caption is tied to: the piece of a clip's footage it was heard in.
+ * Times are seconds of that footage, so the tie survives the clip being
+ * moved, trimmed, cut, sped up, or the project changing frame rate. See
+ * renderer/captions/follow.ts.
+ */
+export interface CaptionLink {
+  /** The clip it follows; another clip of the same footage takes over if this one stops showing it. */
+  clipId: string;
+  /** The footage, by its URI, for finding that other clip. */
+  sourceUri: string;
+  /** The stretch of footage the caption covers when all of it is in the edit. */
+  from: number;
+  to: number;
+  /** The moment of footage the caption's own content starts counting from (its words' zero). */
+  origin: number;
+  /**
+   * Seconds of timeline the caption is up before `from` and after `to`: a
+   * caption stays up a little after its last word. Kept only while that end
+   * of its words is in the edit.
+   */
+  lead?: number;
+  hold?: number;
 }
 
 /**
  * One recognised word. Times are seconds of the caption's content, counted
  * like a file's: the word shows at timeline frame
- * `startFrame + (start * fps - sourceOffsetFrames)`. So a caption keeps its
- * words when it is moved, trimmed or cut, as a clip keeps its footage.
+ * `startFrame + (start * fps - sourceOffsetFrames) / speed`. So a caption
+ * keeps its words when it is moved, trimmed or cut, as a clip keeps its
+ * footage.
  */
 export interface CaptionWord {
   text: string;
@@ -354,6 +403,14 @@ export interface CaptionWord {
 export interface CaptionContent {
   text: string;
   words?: CaptionWord[];
+  /**
+   * The line breaks are the author's (typed with Enter, or read from a
+   * file) and are left alone. Absent: lines are laid out again by the rules
+   * whenever the text changes.
+   */
+  manualBreaks?: boolean;
+  /** The footage this caption follows; absent on one that stays where it is put. */
+  link?: CaptionLink;
 }
 
 export interface Clip {
@@ -520,6 +577,13 @@ export interface ProjectState {
    * projects saved before transitions existed, which means none.
    */
   transitions?: Record<string, Transition>;
+  /**
+   * Captions whose footage is not in the edit right now - its clip was
+   * deleted, or trimmed past them. They are kept, out of sight and out of
+   * every render, and come back when the footage does. See
+   * renderer/captions/follow.ts.
+   */
+  parkedCaptions?: Record<string, Clip>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -711,6 +775,12 @@ export interface ExportSettings {
    * which a WAV's 4 GB header does - about three hours of stereo float.
    */
   audioRawFormat?: { sampleRate: number; channels: number };
+  /**
+   * A subtitle file to put inside the video as a track the viewer can switch
+   * on and off (MP4 and MOV: mov_text; WebM: WebVTT), with its language as
+   * an ISO 639-2 code. A temporary .srt written before the encoder starts.
+   */
+  subtitles?: { path: string; language: 'spa' | 'eng' };
   /**
    * Image embedded as the file's cover (MP4 / MOV), the thumbnail players and
    * Explorer show. Added after the encode by a stream-copy pass.

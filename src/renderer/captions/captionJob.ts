@@ -139,7 +139,10 @@ export const useCaptionJob = create<JobState>((set, get) => ({
         notify(t('captions.doneNone'), 'warning');
         return null;
       }
-      useProjectStore.getState().addCaptionTrack({ cues, offsetFrame: 0 }, { preset: options.preset, language: options.language });
+      // Heard on one track: tied to that track's clips. Heard in the mix: to whichever clip carries the speech.
+      useProjectStore
+        .getState()
+        .addCaptionTrack({ cues, offsetFrame: 0, ...(options.source !== 'mix' ? { sourceTrackId: options.source } : {}) }, { preset: options.preset, language: options.language });
       const summary: CaptionJobSummary = { captions: cues.length, words: result.words.length, result, totalSeconds: (performance.now() - startedAt) / 1000 };
       set({ last: summary });
       notify(

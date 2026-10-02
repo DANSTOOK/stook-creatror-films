@@ -1,6 +1,7 @@
 import type { CaptionLanguage, CaptionPreset, CaptionTrackSettings, CaptionWord, Clip, ProjectState, Track } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { createClip } from '@renderer/store/types';
+import { speedOf } from '@renderer/timing/clipSpeed';
 import { linesForWords, rulesFor, type Cue } from './rules';
 import type { SubtitleCue } from './subtitleFiles';
 
@@ -27,6 +28,7 @@ export function captionSettingsOf(track: Track | undefined): CaptionTrackSetting
   return {
     preset: saved?.preset === 'social' ? 'social' : 'classic',
     language: saved?.language === 'en' ? 'en' : 'es',
+    ...(saved?.look ? { look: saved.look } : {}),
   };
 }
 
@@ -71,14 +73,18 @@ export function cuesToClips(cues: readonly Cue[], trackId: string, fps: number, 
 
 const round3 = (value: number): number => Math.round(value * 1000) / 1000;
 
-/** Cues read from a subtitle file into caption clips; they keep no words. */
+/**
+ * Cues read from a subtitle file into caption clips. They keep no words, and
+ * their line breaks are the file's: whoever wrote it chose them.
+ */
 export function subtitleCuesToClips(cues: readonly SubtitleCue[], trackId: string, fps: number): Clip[] {
   const clips: Clip[] = [];
   let floor = 0;
   for (const cue of cues) {
     const start = Math.max(floor, Math.round((cue.startMs / 1000) * fps));
     const end = Math.max(start + 1, Math.round((cue.endMs / 1000) * fps));
-    clips.push(createCaptionClip(trackId, start, end, cue.text));
+    const clip = createCaptionClip(trackId, start, end, cue.text);
+    clips.push({ ...clip, caption: { ...(clip.caption as NonNullable<Clip['caption']>), manualBreaks: true } });
     floor = end;
   }
   return clips;
@@ -130,8 +136,10 @@ export function splitCaption(left: Clip, right: Clip, frame: number, fps: number
   const caption = left.caption;
   if (!caption) return [left, right];
   const rules = rulesFor(settings.preset, frameSize);
-  // The cut, in the caption's content seconds (both halves count the same way).
-  const cut = (left.sourceOffsetFrames + frame - left.startFrame) / fps;
+  // The cut, in the caption's content seconds (both halves count the same
+  // way), at the pace the caption runs at when it follows a retimed clip.
+  const speed = speedOf(left);
+  const cut = (left.sourceOffsetFrames + (frame - left.startFrame) * speed) / fps;
   const words = caption.words ?? [];
   const leftWords = words.filter((word) => (word.start + word.end) / 2 < cut);
   const rightWords = words.filter((word) => (word.start + word.end) / 2 >= cut);
@@ -152,8 +160,50 @@ export function splitCaption(left: Clip, right: Clip, frame: number, fps: number
   const layout = (list: string[]): string => linesForWords(list, rules, settings.language).join('\n');
   const leftText = layout(leftTokens);
   const rightText = layout(rightTokens);
+  // Both halves stay tied to what the whole was tied to; each is tied again
+  // from where it now is (captions/follow.ts). The lines are the rules' again.
+  const link = caption.link ? { link: caption.link } : {};
   return [
-    { ...left, name: captionName(leftText), caption: { text: leftText, ...(leftWords.length > 0 ? { words: leftWords } : {}) } },
-    { ...right, name: captionName(rightText), caption: { text: rightText, ...(rightWords.length > 0 ? { words: rightWords } : {}) } },
+    { ...left, name: captionName(leftText), caption: { text: leftText, ...(leftWords.length > 0 ? { words: leftWords } : {}), ...link } },
+    {
+      ...right,
+      // Content frames, which at another pace are not timeline frames.
+      sourceOffsetFrames: left.sourceOffsetFrames + Math.round((frame - left.startFrame) * speed),
+      name: captionName(rightText),
+      caption: { text: rightText, ...(rightWords.length > 0 ? { words: rightWords } : {}), ...link },
+    },
   ];
+}
+
+/**
+ * Two captions made one: from the start of the first to the end of the
+ * second, with the words of both (the second's counted from the first's
+ * zero, so the razor can part them again exactly where they were joined).
+ * The text is laid out again by the rules - unless either had line breaks
+ * of its author's, in which case each keeps its lines, one under the other.
+ */
+export function mergeCaptionClips(first: Clip, second: Clip, fps: number, settings: CaptionTrackSettings, frameSize: { width: number; height: number }): Clip {
+  const a = first.caption;
+  const b = second.caption;
+  if (!a || !b) return first;
+  const rules = rulesFor(settings.preset, frameSize);
+  const speed = speedOf(first);
+  const round3 = (value: number): number => Math.round(value * 1000) / 1000;
+  // A word of the second, at the timeline frame it is spoken on, in the first's content seconds.
+  const rebase = (seconds: number): number => {
+    const frame = second.startFrame + (seconds * fps - second.sourceOffsetFrames) / speedOf(second);
+    return round3((first.sourceOffsetFrames + (frame - first.startFrame) * speed) / fps);
+  };
+  const words = [...(a.words ?? []), ...(b.words ?? []).map((word) => ({ text: word.text, start: rebase(word.start), end: rebase(word.end) }))];
+  const manual = a.manualBreaks === true || b.manualBreaks === true;
+  const text = manual
+    ? [a.text.trim(), b.text.trim()].filter((part) => part !== '').join('\n')
+    : linesForWords([...tokens(a.text), ...tokens(b.text)], rules, settings.language).join('\n');
+  const end = Math.max(first.startFrame + first.durationFrames, second.startFrame + second.durationFrames);
+  return {
+    ...first,
+    durationFrames: end - first.startFrame,
+    name: captionName(text),
+    caption: { text, ...(words.length > 0 ? { words } : {}), ...(manual ? { manualBreaks: true } : {}), ...(a.link ? { link: a.link } : {}) },
+  };
 }

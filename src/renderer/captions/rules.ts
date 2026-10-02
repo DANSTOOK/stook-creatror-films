@@ -349,3 +349,108 @@ export function checkCue(cue: Pick<Cue, 'start' | 'end' | 'lines'>, rules: Capti
     maxDuration: seconds <= rules.maxSeconds + epsilon,
   };
 }
+
+/* Editing ----------------------------------------------------------------------- */
+
+/**
+ * A caption's text with its lines laid out again by the rules, for when it
+ * is typed into: one line while it fits, two at the best break, more only
+ * when two cannot hold it.
+ *
+ * Only the spaces between words change (each becomes a space or a line
+ * break), and what is typed after the last word is kept, so the caret of
+ * whoever is typing stays where it was and a trailing space is not eaten.
+ */
+export function reflowText(text: string, rules: CaptionRules, language: CaptionLanguage): string {
+  const lead = /^\s*/.exec(text)?.[0] ?? '';
+  const tail = /\s*$/.exec(text.slice(lead.length))?.[0] ?? '';
+  const body = text.slice(lead.length, text.length - tail.length);
+  if (body === '') return text.replace(/\n/g, ' ');
+  const lines = linesForWords(body.split(/\s+/), rules, language);
+  return `${lead.replace(/\n/g, ' ')}${lines.join('\n')}${tail.replace(/\n/g, ' ')}`;
+}
+
+/** What is wrong with a caption, if anything. */
+export interface CaptionIssues {
+  /** More characters a second than can be read. */
+  tooFast: boolean;
+  /** On screen for less than the minimum. */
+  tooShort: boolean;
+  /** On screen for longer than the maximum. */
+  tooLong: boolean;
+  tooManyLines: boolean;
+  lineTooLong: boolean;
+}
+
+export const NO_ISSUES: CaptionIssues = { tooFast: false, tooShort: false, tooLong: false, tooManyLines: false, lineTooLong: false };
+
+export function captionIssues(text: string, seconds: number, rules: CaptionRules): CaptionIssues {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  if (lines.length === 0) return NO_ISSUES;
+  const epsilon = 1e-6;
+  return {
+    tooFast: readingSpeed(lines, seconds) > rules.maxCps + epsilon,
+    tooShort: seconds < rules.minSeconds - epsilon,
+    tooLong: seconds > rules.maxSeconds + epsilon,
+    tooManyLines: lines.length > rules.maxLines,
+    lineTooLong: lines.some((line) => line.length > rules.maxCharsPerLine),
+  };
+}
+
+export const hasIssues = (issues: CaptionIssues): boolean =>
+  issues.tooFast || issues.tooShort || issues.tooLong || issues.tooManyLines || issues.lineTooLong;
+
+/** A caption as the timing fix sees it: frames on the timeline, and its text. */
+export interface TimedCaption {
+  id: string;
+  startFrame: number;
+  endFrame: number;
+  text: string;
+}
+
+/**
+ * New end frames for captions whose timing can be put right without
+ * touching anything that is not theirs to touch.
+ *
+ * Safe means: a start never moves (it is where the words begin), nothing is
+ * ever shortened below what it needs, and a caption only grows into time no
+ * other caption is using. Within that:
+ *   - too short, or too fast to read: it stays up longer, as far as the
+ *     next caption (less the 2-frame gap) and the 7-second limit allow;
+ *   - a gap to the next one of less than half a second that is not 2
+ *     frames: closed to 2 frames;
+ *   - running into the next one: ended 2 frames before it.
+ * A caption that is too long, or has too much text for its time even at
+ * full stretch, is left for a person: that takes cutting it or its words.
+ * Returns only the captions that change.
+ */
+export function fixTiming(captions: readonly TimedCaption[], rules: CaptionRules, fps: number): Map<string, number> {
+  const out = new Map<string, number>();
+  const row = [...captions].sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
+  const maxFrames = Math.floor(rules.maxSeconds * fps + 1e-6);
+  const minFrames = Math.ceil(rules.minSeconds * fps - 1e-6);
+  const chainFrames = Math.round(rules.closeGapsUnder * fps);
+  row.forEach((caption, index) => {
+    const next = row[index + 1];
+    const latest = next ? next.startFrame - rules.gapFrames : Infinity;
+    const length = caption.endFrame - caption.startFrame;
+    const chars = caption.text.replace(/\n/g, '').trim().length;
+    const toRead = Math.ceil((chars / rules.maxCps) * fps - 1e-6);
+    let end = caption.endFrame;
+    // Longer, when it needs it and there is room - never past seven seconds.
+    const wanted = Math.min(Math.max(length, minFrames, toRead), Math.max(length, maxFrames));
+    end = Math.max(end, Math.min(caption.startFrame + wanted, latest));
+    if (next) {
+      const gap = next.startFrame - end;
+      // Too close, or over the next one: 2 frames before it, if that leaves it a frame.
+      if (gap < rules.gapFrames) end = Math.max(caption.startFrame + 1, latest);
+      // Neither 2 frames nor half a second: chained, unless that makes it too long.
+      else if (gap > rules.gapFrames && gap < chainFrames && latest - caption.startFrame <= maxFrames) end = latest;
+    }
+    if (end !== caption.endFrame && end > caption.startFrame) out.set(caption.id, end);
+  });
+  return out;
+}

@@ -2,6 +2,7 @@ import type { CaptionTrackSettings, Clip, ProjectState, TitleContent, TitleStyle
 import { REFERENCE_HEIGHT, TITLE_SAFE } from '@renderer/text/titleStyle';
 import { captionSettingsOf, isCaptionTrack } from './captionClips';
 import { rulesFor } from './rules';
+import { lookOf } from './look';
 
 /**
  * Captions drawn by the titles' text renderer (renderer/text).
@@ -11,11 +12,13 @@ import { rulesFor } from './rules';
  * title-safe area - so it is laid out, rasterised, cached and exported
  * exactly as titles are, and the viewer and the export cannot differ.
  *
- * One look for now (phase 1): white Inter with a dark outline and a soft
- * shadow, readable on any picture without a box hiding it. The size is set
- * so a full line of the preset fits across the title-safe width: 46 px of a
+ * The look is the track's (captions/look.ts): white Inter with a dark
+ * outline and a soft shadow until it is changed, readable on any picture
+ * without a box hiding it. Left on automatic, the size is the one at which
+ * a full line of the preset fits across the title-safe width: 46 px of a
  * 1080-line frame for 42 characters on a wide frame; on a tall one larger
- * letters than 42 would allow, for the 32 the rules give it.
+ * letters than 42 would allow, for the 32 the rules give it. A size chosen
+ * by hand is used as it is; a line too wide for it wraps.
  */
 
 /** Average advance of a character of Inter at these weights, as a share of the size. */
@@ -25,24 +28,26 @@ export function captionStyle(settings: CaptionTrackSettings, frame: { width: num
   const rules = rulesFor(settings.preset, frame);
   const unit = frame.height / REFERENCE_HEIGHT;
   const social = settings.preset === 'social';
+  const look = lookOf(settings);
   const wanted = social ? 64 : 46;
   // The largest size at which a full line fits the safe width.
   const fitting = (frame.width * TITLE_SAFE) / (rules.maxCharsPerLine * AVERAGE_ADVANCE) / unit;
-  const fontSize = Math.max(12, Math.min(wanted, Math.floor(fitting)));
+  const fontSize = look.fontSize ?? Math.max(12, Math.min(wanted, Math.floor(fitting)));
   return {
-    fontFamily: 'Inter',
-    fontWeight: social ? 800 : 600,
+    fontFamily: look.fontFamily,
+    fontWeight: look.fontWeight,
     fontSize,
-    color: '#ffffff',
+    color: look.color,
     align: 'center',
     lineHeight: 1.2,
     letterSpacing: 0,
     secondaryScale: 1,
     maxWidth: 1,
-    anchor: 'bottom',
-    stroke: { enabled: true, color: '#000000', width: social ? 5 : 3 },
-    shadow: { enabled: true, color: '#000000', opacity: 0.45, distance: 2, angle: 90, blur: 6 },
-    box: { enabled: false, color: '#000000', opacity: 0.6, padding: 12, radius: 4 },
+    anchor: look.position === 'top' ? 'top' : 'bottom',
+    stroke: { enabled: look.outline.enabled, color: look.outline.color, width: look.outline.width },
+    // A soft shadow under letters that stand on the picture; a band needs none.
+    shadow: { enabled: !look.box.enabled, color: '#000000', opacity: 0.45, distance: 2, angle: 90, blur: 6 },
+    box: { enabled: look.box.enabled, color: look.box.color, opacity: look.box.opacity, padding: 12, radius: 4 },
   };
 }
 
@@ -59,7 +64,7 @@ export function captionTitle(text: string, style: TitleStyle): TitleContent {
 const drawnAs = new WeakMap<Clip, { key: string; clip: Clip }>();
 
 function asTitleClip(clip: Clip, settings: CaptionTrackSettings, frame: { width: number; height: number }): Clip {
-  const key = `${settings.preset}|${frame.width}x${frame.height}`;
+  const key = `${settings.preset}|${frame.width}x${frame.height}|${settings.look ? JSON.stringify(settings.look) : ''}`;
   const known = drawnAs.get(clip);
   if (known && known.key === key) return known.clip;
   const drawn: Clip = { ...clip, title: captionTitle(clip.caption?.text ?? '', captionStyle(settings, frame)) };

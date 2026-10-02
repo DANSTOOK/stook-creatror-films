@@ -253,25 +253,28 @@ export function retimeProject(project: ProjectState, nextFps: number): ProjectSt
     durationFrames: Math.max(1, scale(project.durationFrames)),
     currentFrame: scale(project.currentFrame),
     markers: project.markers.map((marker) => ({ ...marker, frame: scale(marker.frame) })),
-    clips: Object.fromEntries(
-      Object.entries(project.clips).map(([id, clip]) => [
-        id,
-        {
-          ...clip,
-          startFrame: scale(clip.startFrame),
-          durationFrames: Math.max(1, scale(clip.durationFrames)),
-          sourceOffsetFrames: scale(clip.sourceOffsetFrames),
-          transform: {
-            ...clip.transform,
-            position: scaleKeyframes(clip.transform.position),
-            scale: scaleKeyframes(clip.transform.scale),
-            rotation: scaleKeyframes(clip.transform.rotation),
-            opacity: scaleKeyframes(clip.transform.opacity),
-          },
-        },
-      ]),
-    ),
+    clips: Object.fromEntries(Object.entries(project.clips).map(([id, clip]) => [id, retimeClip(clip)])),
+    // Captions kept out of the edit are counted in frames too.
+    ...(project.parkedCaptions
+      ? { parkedCaptions: Object.fromEntries(Object.entries(project.parkedCaptions).map(([id, clip]) => [id, retimeClip(clip)])) }
+      : {}),
   };
+
+  function retimeClip(clip: Clip): Clip {
+    return {
+      ...clip,
+      startFrame: scale(clip.startFrame),
+      durationFrames: Math.max(1, scale(clip.durationFrames)),
+      sourceOffsetFrames: scale(clip.sourceOffsetFrames),
+      transform: {
+        ...clip.transform,
+        position: scaleKeyframes(clip.transform.position),
+        scale: scaleKeyframes(clip.transform.scale),
+        rotation: scaleKeyframes(clip.transform.rotation),
+        opacity: scaleKeyframes(clip.transform.opacity),
+      },
+    };
+  }
 }
 
 /**

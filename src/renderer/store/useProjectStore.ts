@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type {
+  CaptionLook,
+  CaptionPreset,
   CaptionTrackSettings,
   Clip,
   ColorGradingConfig,
@@ -35,8 +37,11 @@ import {
   presetKind,
 } from '@renderer/timing/transitions';
 import { t as translateNow } from '@renderer/i18n';
-import { captionName, captionSettingsOf, captionTrack, cuesToClips, splitCaption, subtitleCuesToClips } from '@renderer/captions/captionClips';
-import type { Cue } from '@renderer/captions/rules';
+import { captionName, captionSettingsOf, captionTrack, cuesToClips, mergeCaptionClips, splitCaption, subtitleCuesToClips } from '@renderer/captions/captionClips';
+import { fixTiming, reflowText, rulesFor, type Cue } from '@renderer/captions/rules';
+import { followCaptions, linkCaptions, unlinkCaptions, type SoundOf } from '@renderer/captions/follow';
+import { replaceInText, type FindOptions } from '@renderer/captions/findReplace';
+import { lookOf, normalizeLook } from '@renderer/captions/look';
 import type { SubtitleCue } from '@renderer/captions/subtitleFiles';
 import { newTransitionFrames } from '@renderer/timing/transitionLength';
 import { createId } from '@shared/utils/id';
@@ -318,11 +323,37 @@ interface ProjectStore {
    * subtitle file (milliseconds). One undo step; returns the track's id.
    */
   addCaptionTrack(
-    source: { cues: Cue[]; offsetFrame: number } | { subtitles: SubtitleCue[] },
+    source: { cues: Cue[]; offsetFrame: number; sourceTrackId?: string } | { subtitles: SubtitleCue[] },
     settings: CaptionTrackSettings,
   ): string;
-  /** A caption's text; a typing run with the same `mergeKey` is one undo step. */
-  setCaptionText(clipId: string, text: string, mergeKey?: string): void;
+  /**
+   * A caption's text; a typing run with the same `mergeKey` is one undo step.
+   * Its lines are laid out again by the rules as it changes - unless they are
+   * its author's (`manual`: Enter was pressed, or they were before).
+   */
+  setCaptionText(clipId: string, text: string, mergeKey?: string, manual?: boolean): void;
+  /** Whose the line breaks are: the author's, or (false) the rules' again, laid out now. */
+  setCaptionBreaks(clipId: string, manual: boolean): void;
+  /** Join a caption with the one after or before it on its track. Returns the joined caption's id. */
+  mergeCaptions(clipId: string, direction: 'next' | 'previous'): string | null;
+  /**
+   * Put right the timing that can safely be put right (rules.fixTiming), on
+   * a whole track or on the captions named. One undo step; returns how many changed.
+   */
+  fixCaptionTiming(trackId: string, clipIds?: readonly string[]): number;
+  /**
+   * Replace in the captions of a track: every match, or the one named. One
+   * undo step; returns how many were replaced.
+   */
+  replaceInCaptions(trackId: string, query: string, replacement: string, options?: FindOptions & { only?: { clipId: string; occurrence: number } }): number;
+  /** A track's look: a change to it, or null for its preset's own again. */
+  setCaptionLook(trackId: string, patch: Partial<CaptionLook> | null, mergeKey?: string): void;
+  /** A track's preset - its line rules and, with them, its look. */
+  setCaptionPreset(trackId: string, preset: CaptionPreset): void;
+  /** Tie captions to the footage under them, so they follow it (captions/follow.ts). */
+  linkCaptionsToClips(clipIds: readonly string[]): number;
+  /** Set captions free of their clips: they stay where they are. */
+  unlinkCaptionsFromClips(clipIds: readonly string[]): void;
 
 
   removeClips(clipIds: string[]): void;
@@ -480,6 +511,17 @@ function libraryAt(
 }
 
 /** Keep `durationFrames` at least as long as the content plus a little tail. */
+/** How sure it is that a clip carries sound, from the library: for tying captions to footage. */
+function soundOfAssets(assets: readonly MediaAsset[]): SoundOf {
+  const byUri = new Map(assets.map((asset) => [asset.uri, asset]));
+  return (clip) => {
+    const asset = byUri.get(clip.sourceUri);
+    if (!asset || asset.kind === 'image') return 0;
+    // A video's sound is known only once it has been pulled out of the file.
+    return asset.kind === 'audio' || asset.audioUri ? 2 : 1;
+  };
+}
+
 function withContentLength(project: ProjectState): ProjectState {
   const content = projectContentLength(project);
   if (content <= project.durationFrames) return project;
@@ -568,7 +610,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   transact(label, mutate, mergeKey) {
     const before = get().project;
-    const after = withContentLength(tidyTransitions(mutate(before)));
+    // Captions follow their footage: whatever the edit did to a clip, it did to its captions.
+    const after = withContentLength(followCaptions(before, tidyTransitions(mutate(before)), soundOfAssets(get().assets)));
     if (after === before) return;
 
     useHistoryStore.getState().push(createSnapshotCommand(label, before, after, mergeKey));
@@ -1286,22 +1329,184 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           : subtitleCuesToClips(source.subtitles, track.id, current.fps);
       const clips = { ...current.clips };
       for (const clip of made) clips[clip.id] = clip;
-      return { ...current, tracks: withRowOrders(rows), clips };
+      const placed = { ...current, tracks: withRowOrders(rows), clips };
+      // Transcribed captions are tied to the footage they were heard in, so
+      // they follow it from now on. Captions read from a file are not: nothing
+      // says they belong to what happens to be under them.
+      if (!('cues' in source)) return placed;
+      return linkCaptions(placed, made.map((clip) => clip.id), soundOfAssets(get().assets), source.sourceTrackId ?? null);
     });
     set({ ui: { ...get().ui, selectedTrackId: trackId } });
     return trackId;
   },
 
-  setCaptionText(clipId, text, mergeKey) {
+  setCaptionText(clipId, typed, mergeKey, manual) {
     get().transact(
       'Edit caption',
       (project) => {
         const clip = project.clips[clipId];
-        if (!clip?.caption || clip.caption.text === text) return project;
-        return { ...project, clips: { ...project.clips, [clipId]: { ...clip, name: captionName(text), caption: { ...clip.caption, text } } } };
+        if (!clip?.caption) return project;
+        const track = project.tracks.find((candidate) => candidate.id === clip.trackId);
+        const settings = captionSettingsOf(track);
+        const keep = manual === true || clip.caption.manualBreaks === true;
+        const text = keep ? typed : reflowText(typed, rulesFor(settings.preset, project), settings.language);
+        if (clip.caption.text === text && Boolean(clip.caption.manualBreaks) === keep) return project;
+        const { manualBreaks: _was, ...content } = clip.caption;
+        void _was;
+        return {
+          ...project,
+          clips: { ...project.clips, [clipId]: { ...clip, name: captionName(text), caption: { ...content, text, ...(keep ? { manualBreaks: true } : {}) } } },
+        };
       },
       mergeKey,
     );
+  },
+
+  setCaptionBreaks(clipId, manual) {
+    get().transact('Caption line breaks', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.caption || Boolean(clip.caption.manualBreaks) === manual) return project;
+      const settings = captionSettingsOf(project.tracks.find((candidate) => candidate.id === clip.trackId));
+      const { manualBreaks: _was, ...content } = clip.caption;
+      void _was;
+      const text = manual ? content.text : reflowText(content.text.replace(/\s+/g, ' ').trim(), rulesFor(settings.preset, project), settings.language);
+      return {
+        ...project,
+        clips: { ...project.clips, [clipId]: { ...clip, name: captionName(text), caption: { ...content, text, ...(manual ? { manualBreaks: true } : {}) } } },
+      };
+    });
+  },
+
+  mergeCaptions(clipId, direction) {
+    const { project } = get();
+    const clip = project.clips[clipId];
+    if (!clip?.caption) return null;
+    const row = Object.values(project.clips)
+      .filter((other) => other.trackId === clip.trackId && other.caption)
+      .sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
+    const at = row.findIndex((other) => other.id === clipId);
+    const first = direction === 'next' ? clip : row[at - 1];
+    const second = direction === 'next' ? row[at + 1] : clip;
+    if (!first || !second) return null;
+    const track = project.tracks.find((candidate) => candidate.id === clip.trackId);
+    if (track?.locked) return null;
+    const settings = captionSettingsOf(track);
+
+    get().transact('Merge captions', (current) => {
+      const a = current.clips[first.id];
+      const b = current.clips[second.id];
+      if (!a || !b) return current;
+      const { [b.id]: _gone, ...clips } = current.clips;
+      void _gone;
+      clips[a.id] = mergeCaptionClips(a, b, current.fps, settings, current);
+      return { ...current, clips };
+    });
+    set({ ui: { ...get().ui, selectedClipIds: [first.id] } });
+    return first.id;
+  },
+
+  fixCaptionTiming(trackId, clipIds) {
+    const { project } = get();
+    const track = project.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || track.type !== 'captions' || track.locked) return 0;
+    const settings = captionSettingsOf(track);
+    const row = Object.values(project.clips).filter((clip) => clip.trackId === trackId && clip.caption);
+    const ends = fixTiming(
+      row.map((clip) => ({ id: clip.id, startFrame: clip.startFrame, endFrame: clip.startFrame + clip.durationFrames, text: clip.caption?.text ?? '' })),
+      rulesFor(settings.preset, project),
+      project.fps,
+    );
+    const wanted = clipIds ? new Set(clipIds) : null;
+    const changes = [...ends].filter(([id]) => !wanted || wanted.has(id));
+    if (changes.length === 0) return 0;
+    get().transact('Fix caption timing', (current) => {
+      const clips = { ...current.clips };
+      for (const [id, endFrame] of changes) {
+        const clip = clips[id];
+        if (clip) clips[id] = { ...clip, durationFrames: Math.max(1, endFrame - clip.startFrame) };
+      }
+      return { ...current, clips };
+    });
+    return changes.length;
+  },
+
+  replaceInCaptions(trackId, query, replacement, options = {}) {
+    const { project } = get();
+    const track = project.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || track.type !== 'captions' || track.locked) return 0;
+    const settings = captionSettingsOf(track);
+    const rules = rulesFor(settings.preset, project);
+    let count = 0;
+    const changed: Record<string, Clip> = {};
+    for (const clip of Object.values(project.clips)) {
+      if (clip.trackId !== trackId || !clip.caption) continue;
+      if (options.only && options.only.clipId !== clip.id) continue;
+      const result = replaceInText(clip.caption.text, query, replacement, { matchCase: options.matchCase, ...(options.only ? { occurrence: options.only.occurrence } : {}) });
+      if (result.count === 0) continue;
+      count += result.count;
+      // Laid out again, unless its breaks are its author's.
+      const text = clip.caption.manualBreaks ? result.text : reflowText(result.text.replace(/\s+/g, ' ').trim(), rules, settings.language);
+      changed[clip.id] = { ...clip, name: captionName(text), caption: { ...clip.caption, text } };
+    }
+    if (count === 0) return 0;
+    get().transact('Replace in captions', (current) => ({ ...current, clips: { ...current.clips, ...changed } }));
+    return count;
+  },
+
+  setCaptionLook(trackId, patch, mergeKey) {
+    get().transact(
+      'Caption style',
+      (project) => {
+        const track = project.tracks.find((candidate) => candidate.id === trackId);
+        if (!track || track.type !== 'captions') return project;
+        const settings = captionSettingsOf(track);
+        const { look: _was, ...plain } = settings;
+        void _was;
+        const next: CaptionTrackSettings =
+          patch === null
+            ? plain
+            : {
+                ...plain,
+                look: normalizeLook(
+                  {
+                    ...lookOf(settings),
+                    ...patch,
+                    outline: { ...lookOf(settings).outline, ...patch.outline },
+                    box: { ...lookOf(settings).box, ...patch.box },
+                  },
+                  settings.preset,
+                ),
+              };
+        if (JSON.stringify(next) === JSON.stringify(track.captions)) return project;
+        return { ...project, tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions: next } : candidate)) };
+      },
+      mergeKey,
+    );
+  },
+
+  setCaptionPreset(trackId, preset) {
+    get().transact('Caption preset', (project) => {
+      const track = project.tracks.find((candidate) => candidate.id === trackId);
+      if (!track || track.type !== 'captions') return project;
+      const settings = captionSettingsOf(track);
+      if (settings.preset === preset && !settings.look) return project;
+      // A preset is its rules and its look: choosing one starts from both.
+      return {
+        ...project,
+        tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions: { preset, language: settings.language } } : candidate)),
+      };
+    });
+  },
+
+  linkCaptionsToClips(clipIds) {
+    const before = get().project;
+    get().transact('Link captions', (project) => linkCaptions(project, clipIds, soundOfAssets(get().assets)));
+    const after = get().project;
+    return clipIds.filter((id) => after.clips[id]?.caption?.link && !before.clips[id]?.caption?.link).length;
+  },
+
+  unlinkCaptionsFromClips(clipIds) {
+    get().transact('Unlink captions', (project) => unlinkCaptions(project, clipIds));
   },
 
   removeClips(clipIds) {
@@ -1453,7 +1658,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
         const clips = { ...current.clips };
         if (base) {
-          for (const [id, original] of Object.entries(base)) if (id !== clipId && clips[id]) clips[id] = original;
+          // Linked captions are not put back: they follow their clips from where they are.
+          for (const [id, original] of Object.entries(base)) if (id !== clipId && clips[id] && !original.caption?.link) clips[id] = original;
         }
 
         // The magnet (point 9): the hole the clip leaves where it was closes
@@ -1496,7 +1702,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const clips = { ...current.clips };
         // Clips pushed aside earlier in the same drag go back first.
         if (options.base) {
-          for (const [id, original] of Object.entries(options.base)) if (clips[id]) clips[id] = original;
+          // Linked captions that are not themselves being moved are not put
+          // back: they follow their clips from where they are.
+          const moving = new Set(clipIds);
+          for (const [id, original] of Object.entries(options.base)) {
+            if (clips[id] && (moving.has(id) || !original.caption?.link)) clips[id] = original;
+          }
         }
         for (const [id, placement] of plan) {
           const clip = clips[id];
