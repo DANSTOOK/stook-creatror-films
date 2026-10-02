@@ -74,25 +74,27 @@ export function isHallucination(segmentText: string): boolean {
   return HALLUCINATIONS.some((pattern) => pattern.test(text));
 }
 
-/** Seconds a letter takes at an ordinary speaking rate: about 11 letters a second. */
-const SECONDS_PER_LETTER = 0.09;
+/** Seconds a letter takes when spoken briskly: about 16 letters a second. */
+const SECONDS_PER_LETTER = 0.06;
 
 /**
  * When a word starts. Normally where the token before it ended. After a
  * pause that is wrong: the token before (a full stop, say) is aligned to
  * where the speech stopped, or somewhere in the silence, and the caption
  * would come up before anyone speaks - measured 0.3 to 0.6 s early with the
- * turbo model. A pause shows as a token that ends much later than the one
- * before it; the word then starts its own length before its own end, the
- * length guessed from its letters. Without alignment, the decoder's own time.
+ * turbo model. So after punctuation, or after a gap much longer than the
+ * word itself, the word starts its own length before its own end - the
+ * length guessed from its letters, on the short side, so a wrong guess is a
+ * caption a little late rather than one up in the silence - unless the
+ * token before ended later still. Without alignment, the decoder's own time.
  */
-function wordStart(text: string, aligned: number | null, alignedEnd: number | null, from: number): number {
+function wordStart(text: string, aligned: number | null, alignedEnd: number | null, afterPause: boolean, from: number): number {
   if (aligned === null) return from;
   const letters = [...text].filter((character) => /[\p{L}\p{N}]/u.test(character)).length;
-  const length = Math.min(0.6, Math.max(0.15, letters * SECONDS_PER_LETTER));
+  const length = Math.min(0.5, Math.max(0.12, letters * SECONDS_PER_LETTER));
   const own = Math.max(0, aligned - length);
   if (alignedEnd === null) return own;
-  return aligned - alignedEnd > length + 0.2 ? own : alignedEnd;
+  return afterPause || aligned - alignedEnd > length + 0.2 ? Math.max(alignedEnd, own) : alignedEnd;
 }
 
 export interface ParsedTranscript {
@@ -112,6 +114,8 @@ export function parseWhisperJson(json: WhisperJson): ParsedTranscript {
   // Where the token before ended, by the alignment - carried from one
   // segment into the next, which Whisper cuts wherever its window ends.
   let alignedEnd: number | null = null;
+  // The token before was closing punctuation: a pause may follow it.
+  let afterPunctuation = false;
 
   for (const segment of json.transcription ?? []) {
     if (isHallucination(segment.text)) {
@@ -138,7 +142,7 @@ export function parseWhisperJson(json: WhisperJson): ParsedTranscript {
 
       if (startsWord) {
         close();
-        current = { text: token.text, start: wordStart(token.text, aligned, alignedEnd, from), end: aligned ?? to };
+        current = { text: token.text, start: wordStart(token.text, aligned, alignedEnd, afterPunctuation, from), end: aligned ?? to };
       } else if (current) {
         current.text += token.text;
         // Closing punctuation is aligned to the end of the pause after it,
@@ -146,6 +150,7 @@ export function parseWhisperJson(json: WhisperJson): ParsedTranscript {
         if (!punctuation) current.end = Math.max(current.end, aligned ?? to);
       }
       if (aligned !== null) alignedEnd = aligned;
+      afterPunctuation = punctuation && !opening;
     }
     close();
   }

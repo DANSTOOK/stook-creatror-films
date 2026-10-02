@@ -12,6 +12,11 @@ import './index.css';
 import { installMotionEnvironment } from './motion/environment';
 import { ghostCount, prepareGhosts } from './motion/ghost';
 import { zoomStats } from './components/Timeline/zoomMotion';
+import { useCaptionJob } from './captions/captionJob';
+import { useCaptionModels } from './captions/captionModels';
+import { checkCue, isWeak, rulesFor } from './captions/rules';
+import { captionCues } from './captions/captionClips';
+import { parseSubtitles, writeSrt, writeVtt } from './captions/subtitleFiles';
 
 // Reduced motion, playing and exporting, as attributes on <html> for the CSS
 // to read - set before the first render so nothing animates it should not.
@@ -36,6 +41,10 @@ prepareGhosts();
 // stand-in, and the interface tests check exactly that - and that an export
 // still reads the original.
 (window as { __scfRenderer?: typeof getActiveFrameRenderer }).__scfRenderer = getActiveFrameRenderer;
+
+// Captions are checked against their own rules, and their job watched from
+// outside: the tests ask the same code the app runs, not a copy of it.
+(window as { __scfCaptions?: object }).__scfCaptions = { job: useCaptionJob, models: useCaptionModels, rulesFor, checkCue, isWeak, captionCues, writeSrt, writeVtt, parseSubtitles };
 
 // Streamed audio can only be checked in a real page - WebCodecs does not
 // exist under the unit tests - so the harness that compares it against a full

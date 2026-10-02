@@ -148,6 +148,17 @@ const fits = (words: readonly CaptionWord[], rules: CaptionRules, language: Capt
     language,
   ) !== null && words[words.length - 1].end - words[0].start <= rules.maxSeconds;
 
+/** Fits, and without its first line ending on a weak word: the only break it has may be a bad one. */
+function fitsWell(words: readonly CaptionWord[], rules: CaptionRules, language: CaptionLanguage): boolean {
+  if (!fits(words, rules, language)) return false;
+  const lines = breakLines(
+    words.map((word) => word.text),
+    rules,
+    language,
+  );
+  return !lines || lines.length < 2 || !isWeak(lines[0].split(' ').pop() ?? '', language);
+}
+
 /**
  * Cut a run of words (a sentence, or what lies between two pauses) into
  * captions that each fit.
@@ -156,10 +167,13 @@ const fits = (words: readonly CaptionWord[], rules: CaptionRules, language: Capt
  * three words alone on screen. The run is cut into as few captions as it
  * needs, each near an equal share of it, at the comma nearest that share
  * when there is one and never after a weak word when that can be helped.
+ * A run that fits in one caption only by ending a line on a weak word is
+ * cut in two as well, when that gives two captions that break properly.
  */
 function cutRun(run: CaptionWord[], rules: CaptionRules, language: CaptionLanguage): CaptionWord[][] {
   if (run.length === 0) return [];
-  if (fits(run, rules, language)) return [run];
+  if (fitsWell(run, rules, language)) return [run];
+  const wholeFits = fits(run, rules, language);
 
   // The fewest captions that hold it, found by filling each to the brim.
   let needed = 0;
@@ -171,16 +185,29 @@ function cutRun(run: CaptionWord[], rules: CaptionRules, language: CaptionLangua
 
   const chars = (n: number): number => joined(run.slice(0, n).map((word) => word.text)).length;
   const share = chars(run.length) / Math.max(2, needed);
-  let best: { cut: number; cost: number } | null = null;
-  for (let n = 1; n < run.length; n += 1) {
-    if (!fits(run.slice(0, n), rules, language)) break;
-    const last = run[n - 1].text;
-    let cost = Math.abs(chars(n) - share);
-    if (isWeak(last, language)) cost += 1000;
-    if (endsClause(last)) cost -= share * 0.35;
-    if (!best || cost < best.cost) best = { cut: n, cost };
+  const pick = (accept: (head: CaptionWord[], tail: CaptionWord[]) => boolean): number | null => {
+    let best: { cut: number; cost: number } | null = null;
+    for (let n = 1; n < run.length; n += 1) {
+      const head = run.slice(0, n);
+      if (!fits(head, rules, language)) break;
+      if (!accept(head, run.slice(n))) continue;
+      const last = run[n - 1].text;
+      let cost = Math.abs(chars(n) - share);
+      if (isWeak(last, language)) cost += 1000;
+      if (endsClause(last)) cost -= share * 0.35;
+      if (!best || cost < best.cost) best = { cut: n, cost };
+    }
+    return best?.cut ?? null;
+  };
+
+  // A caption that breaks properly, not ending on a weak word itself.
+  const good = pick((head) => fitsWell(head, rules, language) && !isWeak(head[head.length - 1].text, language));
+  // One that fitted whole is only cut when both halves come out well.
+  if (wholeFits) {
+    const both = pick((head, tail) => fitsWell(head, rules, language) && !isWeak(head[head.length - 1].text, language) && fitsWell(tail, rules, language));
+    return both === null ? [run] : [run.slice(0, both), run.slice(both)];
   }
-  const cut = best?.cut ?? 1;
+  const cut = good ?? pick(() => true) ?? 1;
   return [run.slice(0, cut), ...cutRun(run.slice(cut), rules, language)];
 }
 
