@@ -74,6 +74,27 @@ export function isHallucination(segmentText: string): boolean {
   return HALLUCINATIONS.some((pattern) => pattern.test(text));
 }
 
+/** Seconds a letter takes at an ordinary speaking rate: about 11 letters a second. */
+const SECONDS_PER_LETTER = 0.09;
+
+/**
+ * When a word starts. Normally where the token before it ended. After a
+ * pause that is wrong: the token before (a full stop, say) is aligned to
+ * where the speech stopped, or somewhere in the silence, and the caption
+ * would come up before anyone speaks - measured 0.3 to 0.6 s early with the
+ * turbo model. A pause shows as a token that ends much later than the one
+ * before it; the word then starts its own length before its own end, the
+ * length guessed from its letters. Without alignment, the decoder's own time.
+ */
+function wordStart(text: string, aligned: number | null, alignedEnd: number | null, from: number): number {
+  if (aligned === null) return from;
+  const letters = [...text].filter((character) => /[\p{L}\p{N}]/u.test(character)).length;
+  const length = Math.min(0.6, Math.max(0.15, letters * SECONDS_PER_LETTER));
+  const own = Math.max(0, aligned - length);
+  if (alignedEnd === null) return own;
+  return aligned - alignedEnd > length + 0.2 ? own : alignedEnd;
+}
+
 export interface ParsedTranscript {
   words: CaptionWord[];
   /** Segments dropped as made up, for the log and the tests. */
@@ -88,44 +109,43 @@ export function parseWhisperJson(json: WhisperJson): ParsedTranscript {
   const words: CaptionWord[] = [];
   const dropped: string[] = [];
 
+  // Where the token before ended, by the alignment - carried from one
+  // segment into the next, which Whisper cuts wherever its window ends.
+  let alignedEnd: number | null = null;
+
   for (const segment of json.transcription ?? []) {
     if (isHallucination(segment.text)) {
       if (segment.text.trim() !== '') dropped.push(segment.text.trim());
       continue;
     }
-    const tokens = segment.tokens ?? [];
-    // The end of the token before, from the alignment: where the next word starts.
-    let previousEnd: number | null = segment.offsets ? segment.offsets.from / 1000 : null;
     let current: { text: string; start: number; end: number } | null = null;
 
     const close = (): void => {
       if (!current) return;
       const text = current.text.trim();
-      if (text !== '' && !isSoundTag(text)) words.push({ text, start: current.start, end: current.end });
+      if (text !== '' && !isSoundTag(text)) words.push({ text, start: current.start, end: Math.max(current.start, current.end) });
       current = null;
     };
 
-    for (const token of tokens) {
+    for (const token of segment.tokens ?? []) {
       const aligned = typeof token.t_dtw === 'number' && token.t_dtw >= 0 ? token.t_dtw / 100 : null;
-      if (isSpecial(token.text)) {
-        if (aligned !== null) previousEnd = aligned;
-        continue;
-      }
-      const from = token.offsets ? token.offsets.from / 1000 : previousEnd ?? 0;
+      if (isSpecial(token.text)) continue;
+      const from = token.offsets ? token.offsets.from / 1000 : alignedEnd ?? 0;
       const to = token.offsets ? token.offsets.to / 1000 : from;
-      const end = aligned ?? to;
-      const startsWord = /^\s/.test(token.text) || current === null;
+      const punctuation = isPunctuation(token.text);
+      const opening = /^\s*[¿¡"«(]/.test(token.text);
+      const startsWord = current === null || (/^\s/.test(token.text) && (!punctuation || opening));
 
-      if (startsWord && !(current !== null && isPunctuation(token.text) && !/^\s*[¿¡"«(]/.test(token.text))) {
+      if (startsWord) {
         close();
-        const start = previousEnd !== null && aligned !== null ? previousEnd : from;
-        current = { text: token.text, start, end };
+        current = { text: token.text, start: wordStart(token.text, aligned, alignedEnd, from), end: aligned ?? to };
       } else if (current) {
         current.text += token.text;
-        current.end = Math.max(current.end, end);
+        // Closing punctuation is aligned to the end of the pause after it,
+        // not to the end of the word: it does not make the word longer.
+        if (!punctuation) current.end = Math.max(current.end, aligned ?? to);
       }
-      if (aligned !== null) previousEnd = aligned;
-      else previousEnd = to;
+      if (aligned !== null) alignedEnd = aligned;
     }
     close();
   }

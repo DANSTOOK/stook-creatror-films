@@ -150,34 +150,38 @@ const fits = (words: readonly CaptionWord[], rules: CaptionRules, language: Capt
 
 /**
  * Cut a run of words (a sentence, or what lies between two pauses) into
- * captions that each fit. Greedy, but a caption ends at the last comma it
- * holds, or at least not on a weak word, when that leaves it more than half
- * full.
+ * captions that each fit.
+ *
+ * Not greedily: filling each caption to the brim leaves the sentence's last
+ * three words alone on screen. The run is cut into as few captions as it
+ * needs, each near an equal share of it, at the comma nearest that share
+ * when there is one and never after a weak word when that can be helped.
  */
 function cutRun(run: CaptionWord[], rules: CaptionRules, language: CaptionLanguage): CaptionWord[][] {
-  const pieces: CaptionWord[][] = [];
-  let rest = run;
-  while (rest.length > 0) {
-    if (fits(rest, rules, language)) {
-      pieces.push(rest);
-      break;
-    }
-    // How many words fit.
+  if (run.length === 0) return [];
+  if (fits(run, rules, language)) return [run];
+
+  // The fewest captions that hold it, found by filling each to the brim.
+  let needed = 0;
+  for (let at = 0; at < run.length; needed += 1) {
     let count = 1;
-    while (count < rest.length && fits(rest.slice(0, count + 1), rules, language)) count += 1;
-    const capacity = joined(rest.slice(0, count).map((word) => word.text)).length;
-    let cut = count;
-    const chars = (n: number): number => joined(rest.slice(0, n).map((word) => word.text)).length;
-    const clause = [...Array(count).keys()].map((i) => count - i).find((n) => n < count && endsClause(rest[n - 1].text) && chars(n) >= capacity * 0.5);
-    if (clause) cut = clause;
-    else {
-      const strong = [...Array(count).keys()].map((i) => count - i).find((n) => !isWeak(rest[n - 1].text, language) && chars(n) >= capacity * 0.5);
-      if (strong) cut = strong;
-    }
-    pieces.push(rest.slice(0, cut));
-    rest = rest.slice(cut);
+    while (at + count < run.length && fits(run.slice(at, at + count + 1), rules, language)) count += 1;
+    at += count;
   }
-  return pieces;
+
+  const chars = (n: number): number => joined(run.slice(0, n).map((word) => word.text)).length;
+  const share = chars(run.length) / Math.max(2, needed);
+  let best: { cut: number; cost: number } | null = null;
+  for (let n = 1; n < run.length; n += 1) {
+    if (!fits(run.slice(0, n), rules, language)) break;
+    const last = run[n - 1].text;
+    let cost = Math.abs(chars(n) - share);
+    if (isWeak(last, language)) cost += 1000;
+    if (endsClause(last)) cost -= share * 0.35;
+    if (!best || cost < best.cost) best = { cut: n, cost };
+  }
+  const cut = best?.cut ?? 1;
+  return [run.slice(0, cut), ...cutRun(run.slice(cut), rules, language)];
 }
 
 /**
