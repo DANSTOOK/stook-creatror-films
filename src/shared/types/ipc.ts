@@ -86,7 +86,79 @@ export const IPC = {
   youtubeCancelUpload: 'youtube:cancel-upload',
   youtubeProgress: 'youtube:progress',
   youtubeOpenStudio: 'youtube:open-studio',
+  captionsStatus: 'captions:status',
+  captionsModelDownload: 'captions:model-download',
+  captionsModelCancel: 'captions:model-cancel',
+  captionsModelImport: 'captions:model-import',
+  captionsModelDelete: 'captions:model-delete',
+  captionsModelProgress: 'captions:model-progress',
+  captionsAudioOpen: 'captions:audio-open',
+  captionsAudioAppend: 'captions:audio-append',
+  captionsAudioClose: 'captions:audio-close',
+  captionsTranscribe: 'captions:transcribe',
+  captionsCancel: 'captions:cancel',
+  captionsProgress: 'captions:progress',
+  captionsOpenFile: 'captions:open-file',
+  captionsSaveFile: 'captions:save-file',
+  captionsWriteSidecar: 'captions:write-sidecar',
 } as const;
+
+/* Captions ------------------------------------------------------------------ */
+
+/** The two speech models on offer: see main/subtitles/catalog.ts. */
+export type CaptionModelId = 'precise' | 'fast';
+
+export interface CaptionModelStatus {
+  id: CaptionModelId;
+  file: string;
+  bytes: number;
+  /** On this computer and verified against its fixed SHA-256. */
+  present: boolean;
+  /** Where it would be downloaded from. */
+  source: string;
+}
+
+export interface CaptionEngineStatus {
+  /** The speech-to-text program is part of this build. */
+  available: boolean;
+  /** It can use the GPU (a Vulkan build) - whether a GPU is used depends on what it finds. */
+  vulkan: boolean;
+  /** The GPU it will use, by name, when there is one it will use. */
+  gpu: string | null;
+  /** The voice detector (Silero VAD) ships with it. */
+  vad: boolean;
+  models: CaptionModelStatus[];
+}
+
+export interface CaptionModelProgress {
+  id: CaptionModelId;
+  received: number;
+  total: number;
+}
+
+export interface CaptionTranscribeRequest {
+  model: CaptionModelId;
+  language: 'es' | 'en';
+}
+
+export interface CaptionTranscribeResult {
+  cancelled: boolean;
+  words: import('./index').CaptionWord[];
+  /** Segments dropped as made up (see shared/captions/whisperOutput). */
+  dropped: string[];
+  /** What did the work: 'gpu' (Vulkan) or 'cpu'. */
+  ran: 'gpu' | 'cpu';
+  gpu: string | null;
+  /** Seconds of sound transcribed, and how long it took. */
+  audioSeconds: number;
+  elapsedSeconds: number;
+}
+
+export interface CaptionProgressEvent {
+  jobId: string;
+  /** 0-1 through the transcription (the audio mix is the page's own progress). */
+  fraction: number;
+}
 
 export interface PickedFile {
   path: string;
