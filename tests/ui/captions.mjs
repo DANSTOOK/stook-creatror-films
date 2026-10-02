@@ -1,7 +1,8 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -30,7 +31,10 @@ import { _electron as electron } from 'playwright';
  *   9. export: burnt in or not, and the file beside the video;
  *  10. the same in Spanish;
  *  11. models: the permission prompt, declining, import from a file, a
- *      wrong file, delete (and, with CAPTIONS_DOWNLOAD=1, a real download);
+ *      wrong file, delete, and a download - with its redirect, progress,
+ *      checksum and cancel - from a server on this computer that serves the
+ *      model files already here (CAPTIONS_DOWNLOAD=1 downloads the Fast
+ *      model, 190 MB, from Hugging Face instead);
  *   and the network is cut for all of it but that download.
  *
  * Needs the engine and both models where the bench keeps them:
@@ -732,7 +736,35 @@ async function main() {
   console.log('13. models: asking before downloading, importing, deleting');
   const emptyModels = join(workDir, 'models');
   await mkdir(emptyModels, { recursive: true });
-  const second = await launch('profile-models', emptyModels);
+  // A stand-in for Hugging Face on this computer: the same files, behind the
+  // same kind of redirect, the big one slowed so it can be cancelled part-way.
+  const real = process.env.CAPTIONS_DOWNLOAD === '1';
+  const served = [];
+  const server = createServer((request, response) => {
+    served.push(request.url);
+    const name = basename(request.url);
+    const file = join(modelsDir, name);
+    if (request.url.startsWith('/resolve/')) {
+      response.writeHead(302, { location: `/cdn/${name}` });
+      response.end();
+      return;
+    }
+    if (!existsSync(file)) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    response.writeHead(200, { 'content-length': statSync(file).size, 'content-type': 'application/octet-stream' });
+    const stream = createReadStream(file, { highWaterMark: 1 << 20 });
+    // A megabyte at a time, with a breath between: long enough to see progress, and to cancel the big one.
+    const pause = name === PRECISE ? 60 : 12;
+    stream.on('data', () => { stream.pause(); setTimeout(() => stream.resume(), pause); });
+    stream.pipe(response);
+    response.on('close', () => stream.destroy());
+  });
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  const base = `http://127.0.0.1:${server.address().port}/resolve`;
+  const second = await launch('profile-models', emptyModels, real ? {} : { SCF_WHISPER_MODEL_BASE: base });
   try {
     const { app: app2, window: window2 } = second;
     const listModels = async () => (existsSync(emptyModels) ? (await readdir(emptyModels)).sort() : []);
@@ -791,8 +823,8 @@ async function main() {
     check('Delete removes it from the disk', (await listModels()).length === 0, (await listModels()).join(', '));
     check('none of this used the network', (await second.mainRequests()).length === 0);
 
-    if (process.env.CAPTIONS_DOWNLOAD === '1') {
-      console.log('14. a real download of the Fast model (190 MB), from Hugging Face');
+    {
+      console.log(real ? '14. a real download of the Fast model (190 MB), from Hugging Face' : '14. downloading: the Fast model, from a server on this computer');
       await window2.getByTestId('speech-model-download-fast').click();
       await prompt.waitFor({ state: 'visible', timeout: 5_000 });
       await window2.getByTestId('captions-download-confirm').click();
@@ -808,9 +840,15 @@ async function main() {
       const hash = stdout.split(/\r?\n/)[1]?.replace(/\s/g, '').toLowerCase();
       check('it downloads with progress, and what arrives has the SHA-256 fixed in the app',
         present && /Downloading: \d+% \(.+ of 190 MB\)/.test(sawProgress) && hash === 'ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb', `${sawProgress} - ${hash}`);
-      const hosts = [...new Set((await second.mainRequests()).map((url) => new URL(url).host))];
-      check('the only requests were for that file: huggingface.co and the host it redirects to', hosts.length >= 1 && hosts.length <= 3 && hosts[0] === 'huggingface.co'
-        && (await second.mainRequests())[0] === `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${FAST}`, hosts.join(', '));
+      const asked = await second.mainRequests();
+      const hosts = [...new Set(asked.map((url) => new URL(url).host))];
+      if (real) {
+        check('the only requests were for that file: huggingface.co and the host it redirects to', hosts.length >= 1 && hosts.length <= 3 && hosts[0] === 'huggingface.co'
+          && asked[0] === `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${FAST}`, hosts.join(', '));
+      } else {
+        check('the only requests were for that file: asked for once, followed through its redirect', asked.length === 2 && asked[0] === `${base}/${FAST}` && asked[1].endsWith(`/cdn/${FAST}`)
+          && served.join('|') === `/resolve/${FAST}|/cdn/${FAST}`, asked.join(' -> '));
+      }
       // A download cancelled part-way leaves nothing.
       await window2.getByTestId('speech-model-download-precise').click();
       await prompt.waitFor({ state: 'visible', timeout: 5_000 });
@@ -826,6 +864,7 @@ async function main() {
     check('no errors in the console', second.issues.length === 0, second.issues.slice(0, 3).join(' | '));
   } finally {
     await second.app.close().catch(() => undefined);
+    server.close();
   }
 
   const passed = checks.filter(Boolean).length;

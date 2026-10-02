@@ -87,7 +87,12 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
     downloads.set(model.id, controller);
     let lastSent = 0;
     try {
-      await downloadModel(modelsDir(), model, {
+      // The tests serve the same file from this computer, to exercise the
+      // download without fetching half a gigabyte each run. Never in an
+      // installed app - and wherever it comes from, the file still has to
+      // match the SHA-256 fixed in the catalogue.
+      const base = app.isPackaged ? undefined : process.env.SCF_WHISPER_MODEL_BASE;
+      await downloadModel(modelsDir(), base ? { ...model, url: `${base}/${model.file}` } : model, {
         // Chromium's network stack: the system's proxy settings apply.
         fetch: (url, init) => net.fetch(url, init),
         signal: controller.signal,
