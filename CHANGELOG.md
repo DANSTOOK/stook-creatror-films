@@ -7,12 +7,74 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **987 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **988 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.34.0-beta.1 (ninguna petición a la red, los 60
+y sin red: **129/129** con la v1.34.0-beta.2 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.34.0-beta.2 — Los subtítulos usan la tarjeta gráfica
+
+Corrige la v1.34.0-beta.1, publicada el mismo día: esta es la que hay que
+instalar.
+
+### Arreglado
+- **Los subtítulos se transcribían siempre con el procesador, nunca con la
+  tarjeta gráfica.** Para saber qué tarjetas hay, la app preguntaba al motor
+  por las posiciones «0 a 7» de una vez. El motor real rechaza la lista entera
+  en cuanto una posición no existe («Invalid device index 2») y no carga
+  Vulkan; la app lo leía como «no hay tarjeta que valga». Ahora pregunta
+  posición por posición hasta que el motor dice que no hay más, y elige la
+  dedicada (NVIDIA primero, nunca la integrada).
+  - Por qué no se vio antes: el motor con Vulkan lo compila la release, así
+    que no existía hasta la beta.1; la elección de tarjeta solo se había
+    probado contra un texto de ejemplo, y así constaba en «Sin verificar».
+
+### Cómo se comprobó
+- **Con el motor sacado del instalador de la beta.1** (el que compiló GitHub
+  Actions), sin instalar nada, en la RTX 4060 Laptop y con el equipo en
+  reposo; 10 min 45 s de voz en español (sintética, de Windows):
+
+  | Modelo  | Antes (procesador) | Ahora (RTX 4060)            |
+  |---------|--------------------|-----------------------------|
+  | Preciso | 5 min 46 s         | 38,6 s (16,7× tiempo real)  |
+  | Rápido  | 1 min 57 s         | 35,1 s (18,4× tiempo real)  |
+
+  La app dice ahora «con la NVIDIA GeForce RTX 4060 Laptop GPU». La
+  reproducción a su lado mantuvo el p95 en 5,7 ms; hubo un único tirón de
+  173 ms al cargar el modelo Preciso en la tarjeta.
+- **Pruebas unitarias con lo que imprime el motor real** en este equipo: la
+  NVIDIA sola, la Intel sola y el rechazo. 988 unitarias en total.
+- **Prueba de subtítulos en la app:** 73/73 en desarrollo y 70/70 sobre el
+  ejecutable empaquetado, las dos transcribiendo con la NVIDIA.
+- **Interfaz sobre el ejecutable empaquetado y sin red:** 129/129.
+- El resto de la batería (extremo a extremo, color, visores, ruedas, curvas,
+  títulos, transiciones, movimiento, proyectos y estrés) se pasó entera una
+  hora antes para la beta.1 y no se repitió: el cambio solo toca cómo se
+  elige la tarjeta para transcribir.
+
+### Ya verificado, de lo que la beta.1 daba por «sin verificar»
+- **El motor con Vulkan** compila en GitHub Actions y va dentro del
+  instalador (`resources/whisper`, con `ggml-vulkan.dll`); el instalador pasa
+  de 100,8 a 108,9 MB.
+- **La elección de la tarjeta**, con el arreglo de arriba.
+- **La descarga real del modelo desde Hugging Face** desde la app (el Rápido,
+  190 MB): pide permiso, solo pide ese archivo, comprueba la huella y al
+  cancelar no deja medio archivo.
+
+### Sigue sin verificar
+- Voces reales (ruido, música, acentos) y la transcripción en inglés.
+- El detector de voz (Silero), que sigue apagado.
+- Otras tarjetas: AMD, Intel Arc, y equipos sin Vulkan.
+
+### Para las pruebas
+- Los modelos y el motor de prueba estaban en `.stress-tmp`, que la prueba de
+  estrés vacía: la batería de la beta.1 se los llevó. Ahora viven en
+  `build/whisper` y `.whisper-dev/models`, fuera de git. Los modelos se
+  volvieron a descargar de la misma fuente oficial, con la misma huella.
 
 ---
 
