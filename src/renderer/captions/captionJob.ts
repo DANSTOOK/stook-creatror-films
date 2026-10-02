@@ -8,6 +8,7 @@ import { errorText } from '@renderer/errorText';
 import { t } from '@renderer/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { rulesFor, wordsToCues } from './rules';
+import { showLibraryTab } from '@renderer/components/MediaLibrary/libraryTabs';
 
 /**
  * Generating captions: one job at a time, in the background.
@@ -143,6 +144,8 @@ export const useCaptionJob = create<JobState>((set, get) => ({
       useProjectStore
         .getState()
         .addCaptionTrack({ cues, offsetFrame: 0, ...(options.source !== 'mix' ? { sourceTrackId: options.source } : {}) }, { preset: options.preset, language: options.language });
+      // The list of what was just written comes forward.
+      showLibraryTab('captions');
       const summary: CaptionJobSummary = { captions: cues.length, words: result.words.length, result, totalSeconds: (performance.now() - startedAt) / 1000 };
       set({ last: summary });
       notify(

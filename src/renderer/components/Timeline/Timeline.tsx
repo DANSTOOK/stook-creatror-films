@@ -436,6 +436,41 @@ export function Timeline(): JSX.Element {
 
       const canSplit = frame > clip.startFrame && frame < clipEndFrame(clip);
 
+      // A caption has a menu of its own: it has no speed, no grade and no
+      // mask, and what it can be is cut between two words, joined to the one
+      // beside it, and tied to or let go of the clip its words are in.
+      if (clip.caption) {
+        const row = Object.values(state.project.clips)
+          .filter((other) => other.trackId === clip.trackId && other.caption)
+          .sort((a, b) => a.startFrame - b.startFrame || a.id.localeCompare(b.id));
+        const at = row.findIndex((other) => other.id === clip.id);
+        const linked = Boolean(clip.caption.link);
+        return [
+          { label: t('transcript.split'), icon: Scissors, shortcut: 'B', disabled: !canSplit, onSelect: () => state.razorAtFrame(state.project.currentFrame, [clip.id]) },
+          { label: t('transcript.mergePrevious'), disabled: at <= 0, onSelect: () => void state.mergeCaptions(clip.id, 'previous') },
+          { label: t('transcript.mergeNext'), disabled: at === row.length - 1, onSelect: () => void state.mergeCaptions(clip.id, 'next') },
+          { separator: true },
+          {
+            label: t(linked ? 'caption.unlink' : 'caption.link'),
+            icon: Link2,
+            onSelect: () => {
+              const ids = selected.filter((id) => state.project.clips[id]?.caption);
+              if (linked) state.unlinkCaptionsFromClips(ids);
+              else if (state.linkCaptionsToClips(ids) === 0) notify(t('caption.nothingToFollow'), 'warning');
+            },
+          },
+          { label: t('transcript.fixTiming'), onSelect: () => void state.fixCaptionTiming(clip.trackId, selected) },
+          { separator: true },
+          {
+            label: selected.length > 1 ? t('timeline.deleteClips', { count: selected.length }) : t('transcript.delete'),
+            icon: Trash2,
+            shortcut: keyLabel('Del'),
+            danger: true,
+            onSelect: () => state.removeClips(selected),
+          },
+        ];
+      }
+
       return [
         {
           label: t('timeline.split'),

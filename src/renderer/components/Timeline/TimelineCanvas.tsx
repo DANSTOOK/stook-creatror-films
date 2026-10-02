@@ -9,6 +9,8 @@ import { isReversed, sourceFramesUsed, speedLabel } from '@renderer/timing/clipS
 import type { ClipAppearance, Filmstrip } from '@renderer/media/clipContent';
 import { fadeLengths } from '@renderer/timing/clipFades';
 import { isFamilyMissing } from '@renderer/text/fonts';
+import { captionSettingsOf } from '@renderer/captions/captionClips';
+import { captionIssues, hasIssues, rulesFor } from '@renderer/captions/rules';
 import { transitionBoxes, type TransitionBox } from './transitionBoxes';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { stepZoomView, type DisplayedView } from './zoomMotion';
@@ -686,6 +688,8 @@ export interface ClipContent {
   offline?: boolean;
   /** A title drawn in the fallback font, because its own is not on this computer. */
   fontMissing?: boolean;
+  /** A caption that breaks one of its rules: too fast, too short, too long, too many lines. */
+  captionIssue?: boolean;
 }
 
 /**
@@ -715,6 +719,19 @@ export const NOTE_WARM = '#fef3c7';
 /** A clip's name on the clip: slate-100, as NOTE_COOL. */
 export const CLIP_NAME = '#f1f5f9';
 export const NOTE_COOL = '#f1f5f9';
+
+/**
+ * The corner a caption wears when it breaks a rule: amber-400, about 4:1 on the
+ * captions colour (3:1 is the bar for a graphic), the hue warnings have
+ * everywhere else.
+ */
+export const CAPTION_WARNING = '#fbbf24';
+
+/** Whether a caption breaks a rule of its track - the same test the Transcript and the Inspector make. */
+function captionHasIssue(clip: Clip, track: Track, project: ProjectState): boolean {
+  const settings = captionSettingsOf(track);
+  return hasIssues(captionIssues(clip.caption?.text ?? '', clip.durationFrames / project.fps, rulesFor(settings.preset, project)));
+}
 
 /** Behind a clip name drawn over pictures: dark enough for 4.5:1 over a white frame. */
 export const NAME_BAND = 'rgba(10, 11, 14, 0.66)';
@@ -821,6 +838,19 @@ function drawClip(
     context.arc(x + clipWidth - 8, top + 10, 3, 0, Math.PI * 2);
     context.fill();
     context.globalAlpha = 1;
+  }
+
+  // A caption that breaks a rule wears an amber corner, wide or narrow: at a
+  // zoom where its text no longer fits, the mark is what is left to see.
+  if (content.captionIssue) {
+    const corner = Math.min(11, bodyWidth);
+    context.fillStyle = CAPTION_WARNING;
+    context.beginPath();
+    context.moveTo(bodyRight - corner, bodyTop);
+    context.lineTo(bodyRight, bodyTop);
+    context.lineTo(bodyRight, bodyTop + corner);
+    context.closePath();
+    context.fill();
   }
 
   if (bodyWidth > 42) {
@@ -1197,6 +1227,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
             filmstrip: filmstrips?.[clip.sourceUri],
             offline: offlineUris?.has(clip.sourceUri) ?? false,
             fontMissing: clip.title ? isFamilyMissing(clip.title.style.fontFamily) : false,
+            captionIssue: clip.caption ? captionHasIssue(clip, track, project) : false,
           },
           appearance,
           project.fps,

@@ -65,7 +65,7 @@ const EXIT_NAME: Record<TitleExit, MessageKey> = {
 const seconds = (value: number): string => `${value.toFixed(2)} s`;
 
 /** A label on the left and anything on the right, as the other rows are laid out. */
-function FieldRow({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
+export function FieldRow({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
   return (
     <div className="grid grid-cols-[76px_1fr] items-center gap-2">
       {htmlFor ? (
@@ -81,7 +81,7 @@ function FieldRow({ label, htmlFor, children }: { label: string; htmlFor?: strin
 }
 
 /** A colour well with its value written beside it. */
-function ColorRow({ label, name, value, testId, onChange }: { label: string; name: string; value: string; testId: string; onChange(value: string): void }): JSX.Element {
+export function ColorRow({ label, name, value, testId, onChange }: { label: string; name: string; value: string; testId: string; onChange(value: string): void }): JSX.Element {
   const id = useId();
   return (
     <FieldRow label={label} htmlFor={id}>

@@ -5,6 +5,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { captionCues } from './captionClips';
 import { parseSubtitles, writeSrt, writeVtt } from './subtitleFiles';
+import { showLibraryTab } from '@renderer/components/MediaLibrary/libraryTabs';
 
 /**
  * Timeline > Import captions and Export captions: subtitle files in and out
@@ -34,6 +35,7 @@ export async function importCaptionsFromDialog(): Promise<number> {
     store.addCaptionTrack({ subtitles: cues }, { preset: 'classic', language });
     const last = cues[cues.length - 1];
     store.revealFrames(0, Math.round((last.endMs / 1000) * useProjectStore.getState().project.fps));
+    showLibraryTab('captions');
     notify(t('captions.imported', { count: cues.length, name }), 'success');
     return cues.length;
   } catch (error) {

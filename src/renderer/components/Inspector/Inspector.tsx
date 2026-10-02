@@ -22,6 +22,7 @@ import { neutralVignette } from '@renderer/color/grade';
 import { NumberRow, PairRow, Section, SliderRow, SwitchRow, type SectionProps } from './rows';
 import { TitleTab } from './TitleTab';
 import { CaptionTab } from './CaptionTab';
+import { CaptionStyleTab } from './CaptionStyleTab';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
 
@@ -50,12 +51,13 @@ import { TransitionPanel } from './TransitionPanel';
  * and the typing are converted; the project stores what it always did.
  */
 
-type Tab = 'title' | 'caption' | 'video' | 'audio' | 'color' | 'info';
+type Tab = 'title' | 'caption' | 'captionStyle' | 'video' | 'audio' | 'color' | 'info';
 type Effect = 'mask' | 'chromaKey' | 'pixelArt';
 
 const TAB_LABELS: Record<Tab, MessageKey> = {
   title: 'inspector.tabTitle',
   caption: 'inspector.tabCaption',
+  captionStyle: 'inspector.tabCaptionStyle',
   video: 'inspector.tabVideo',
   audio: 'inspector.tabAudio',
   color: 'inspector.tabColor',
@@ -168,7 +170,8 @@ export function Inspector(): JSX.Element {
   const isCaption = Boolean(clip?.caption);
   useEffect(() => {
     if (isTitle) setTab('title');
-    else if (isCaption) setTab('caption');
+    // From one caption to the next, the Style tab stays open: it is the same track's.
+    else if (isCaption) setTab((open) => (open === 'captionStyle' ? open : 'caption'));
   }, [clip?.id, isTitle, isCaption]);
   /** Folded sections, by section id: a choice about the inspector, kept across clips. */
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set());
@@ -290,9 +293,9 @@ export function Inspector(): JSX.Element {
   // Only the tabs that mean something for this clip.
   // Only the tabs that mean something for this clip. A title has no sound, and
   // its colours are set on the Title tab rather than graded.
-  // A caption is its text and its time: it is placed and styled by its track.
+  // A caption is its text and its time; how it looks is its track's, on a tab of its own.
   const tabs: Tab[] = clip.caption
-    ? ['caption', 'info']
+    ? ['caption', 'captionStyle', 'info']
     : clip.title
     ? ['title', 'video', 'info']
     : audioOnly ? ['audio', 'info'] : still ? ['video', 'color', 'info'] : ['video', 'audio', 'color', 'info'];
@@ -766,6 +769,7 @@ export function Inspector(): JSX.Element {
   );
 
   const tabId = (id: Tab): string => `inspector-tab-${id}`;
+  const captionTrack = clip.caption ? project.tracks.find((track) => track.id === clip.trackId) : undefined;
 
   return (
     <aside data-testid="inspector-panel" className="panel w-full">
@@ -827,6 +831,14 @@ export function Inspector(): JSX.Element {
             clip={clip}
             settings={captionSettingsOf(project.tracks.find((track) => track.id === clip.trackId))}
             frame={{ width: project.width, height: project.height, fps: project.fps }}
+          />
+        )}
+        {current === 'captionStyle' && captionTrack && (
+          <CaptionStyleTab
+            track={captionTrack}
+            settings={captionSettingsOf(captionTrack)}
+            frame={{ width: project.width, height: project.height }}
+            sectionProps={sectionProps}
           />
         )}
         {current === 'video' && videoTab}

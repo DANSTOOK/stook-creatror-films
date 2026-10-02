@@ -42,6 +42,8 @@ import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useIndicator } from '@renderer/motion/useIndicator';
 import { TitlesBrowser, TransitionsBrowser } from './LibraryBrowsers';
+import { TranscriptPanel } from '@renderer/components/Captions/TranscriptPanel';
+import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
 import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
@@ -77,9 +79,15 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-type LibraryTab = 'media' | 'titles' | 'transitions';
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions'];
-const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = { media: 'library.media', titles: 'library.titles', transitions: 'library.transitions' };
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'captions'];
+const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
+  media: 'library.media',
+  titles: 'library.titles',
+  transitions: 'library.transitions',
+  // The transcript: the captions as a list (components/Captions/TranscriptPanel).
+  captions: 'library.captions',
+};
+
 const LIBRARY_TAB_KEY = 'scf.libraryTab';
 
 function loadLibraryTab(): LibraryTab {
@@ -135,6 +143,15 @@ export function MediaLibrary(): JSX.Element {
     setTabState(next);
   }, []);
   const tabIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(tab);
+  // New captions bring their list forward, as a new title selects itself.
+  useEffect(() => {
+    const show = (event: Event): void => {
+      const wanted = (event as CustomEvent<string>).detail;
+      if (LIBRARY_TABS.includes(wanted as LibraryTab)) setTab(wanted as LibraryTab);
+    };
+    window.addEventListener(LIBRARY_TAB_EVENT, show);
+    return () => window.removeEventListener(LIBRARY_TAB_EVENT, show);
+  }, [setTab]);
 
   const visibleAssets = useMemo(() => assetsInBin(assets, bins, currentBinId), [assets, bins, currentBinId]);
 
@@ -564,6 +581,7 @@ export function MediaLibrary(): JSX.Element {
       <div id="library-tabpanel" role="tabpanel" aria-labelledby={`library-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
       {tab === 'titles' && <TitlesBrowser />}
       {tab === 'transitions' && <TransitionsBrowser />}
+      {tab === 'captions' && <TranscriptPanel />}
       {tab === 'media' && !libraryEmpty && (
         <nav
           role="tree"
