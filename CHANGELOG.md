@@ -7,12 +7,303 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **988 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1045 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.34.0-beta.2 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## Sin publicar — Subtítulos, fase 2
+
+Editar los subtítulos como en un editor profesional. Segunda de tres fases: la
+primera puso el motor, la pista y los archivos; esta pone la lista para
+revisarlos, el aspecto, las tres maneras de entregarlos y, sobre todo, que
+**los subtítulos sigan a la edición**. Los animados palabra por palabra son
+la fase 3.
+
+No hay instalador de esto todavía. Todo lo de abajo está medido sobre la
+compilación de desarrollo.
+
+### Añadido
+- **Los subtítulos siguen a la edición.** Era el problema conocido de la
+  fase 1: si después de generarlos cortabas o movías el vídeo, se quedaban
+  donde estaban. Ahora cada subtítulo va atado al trozo de metraje donde se
+  dicen sus palabras:
+  - **mueves el clip** (o lo arrastra el imán): sus subtítulos van con él;
+  - **lo recortas**: el subtítulo que queda a medias se acorta a lo que
+    queda; el que se queda sin palabras sale de la línea de tiempo, pero no
+    se pierde. Si vuelves a alargar el clip, o deshaces, vuelve tal cual;
+  - **lo borras**: sus subtítulos salen con él, y vuelven si vuelve el mismo
+    metraje;
+  - **lo cortas en dos**: no se mueve nada, y cada subtítulo sigue después a
+    la mitad donde están sus palabras;
+  - **le cambias la velocidad**: el subtítulo coge el ritmo nuevo. Un clip al
+    revés no tiene voz que seguir: sus subtítulos salen de la edición;
+  - un subtítulo que mueves, recortas o cortas **a mano** se ata de nuevo a
+    lo que tenga debajo;
+  - **Soltar del clip** / **Seguir al clip**, en el Inspector y en el menú del
+    subtítulo, para el que quieras dejar fijo;
+  - los subtítulos importados de un archivo no se atan si no lo pides, y una
+    pista de subtítulos con candado no se toca.
+- **Biblioteca > Subtítulos**: la lista de todos los subtítulos de una pista,
+  con sus tiempos.
+  - un clic en una fila lleva el cursor ahí; un clic en su texto lo edita en
+    el sitio (Intro termina, Mayús+Intro parte la línea, Tab pasa al
+    siguiente);
+  - **Buscar y reemplazar**, con el número de coincidencias («1 de 3»),
+    anterior y siguiente, distinguir mayúsculas, reemplazar una o **todas en
+    un solo paso de deshacer**;
+  - **Partir en el cursor**, **Unir con el siguiente**, **Arreglar tiempos**;
+  - dice cuántos subtítulos están fuera de la edición porque su metraje se
+    recortó o se borró.
+- **Partir y unir.** Un subtítulo se parte en el cursor o con la cuchilla,
+  siempre entre dos palabras, y se une con el anterior o el siguiente. Cada
+  cosa es un paso de deshacer y cada palabra sigue en el fotograma en que se
+  dijo.
+- **Las líneas se reparten solas mientras escribes**, con las reglas de la
+  fase 1 (42 caracteres, dos líneas, ninguna línea acabada en artículo o
+  preposición), sin que el cursor de texto salte. Mayús+Intro parte la línea
+  donde tú digas, y desde entonces los saltos son tuyos; un interruptor en el
+  Inspector se los devuelve a las reglas.
+- **Avisos.** Un subtítulo que rompe una regla —más de 17 caracteres por
+  segundo, menos de 5/6 de segundo, más de 7 segundos, más líneas de las que
+  tiene el estilo, una línea demasiado larga— lleva una esquina ámbar en la
+  línea de tiempo y una marca en la lista que dice qué le pasa.
+- **Arreglar tiempos**, donde es seguro: deja cada subtítulo en pantalla lo
+  que su texto necesita si hay sitio antes del siguiente, y pone los huecos
+  en 2 fotogramas. Nunca mueve un comienzo ni pasa de 7 segundos.
+- **Pestaña Estilo** en el Inspector, para toda la pista: estilo base
+  (*Clásico* o *Redes*), fuente (Inter, Source Serif 4 y Oswald, que vienen
+  con la app, y las del sistema), grosor, tamaño (automático o un número),
+  color, contorno, fondo en banda, y posición abajo o arriba dentro del área
+  segura. Se dibuja con el mismo texto de los títulos.
+- **Tres maneras de entregarlos**, dichas por su nombre en la ventana de
+  exportación, y combinables:
+  - **grabados en la imagen**: los ve todo el mundo y nadie los puede quitar;
+  - **una pista dentro del vídeo** (nuevo): el espectador la activa en su
+    reproductor. Va como texto con su idioma (`spa` o `eng`), en MP4, MOV y
+    WebM. Una secuencia PNG no puede llevarla, y lo dice. YouTube no la lee;
+  - **un archivo junto al vídeo**, `.srt` o `.vtt`, como antes: lo que pide
+    YouTube.
+  - Si eliges grabados y además pista, avisa de que un reproductor puede
+    dibujarlos dos veces. Si la fuente de los subtítulos no está en el
+    equipo, lo dice antes de exportar.
+- **El detector de voz va con el motor** (Silero VAD, 885 KB, licencia MIT).
+  Antes de escuchar, separa lo que es voz de lo que no, y el motor solo
+  transcribe la voz. Sirve para que no escriba sobre la música: ver los
+  números abajo.
+- El menú de un subtítulo en la línea de tiempo es el suyo: partir, unir,
+  seguir o soltar, arreglar tiempos, borrar.
+- Todo en **español y en inglés**.
+
+### Cambiado
+- La Biblioteca tiene una cuarta pestaña, **Subtítulos**, y pasa a ella sola
+  cuando se generan o se importan. Las pestañas miden ahora lo que su nombre.
+- El Inspector de un subtítulo tiene tres pestañas: Subtítulo, Estilo, Info.
+- Los avisos de la pestaña Subtítulo dicen ahora qué hacer («“Arreglar
+  tiempos” lo deja más rato si hay sitio; si no, acorta el texto»).
+
+### Arreglado
+- **Con el detector de voz, los subtítulos salían segundos antes de tiempo.**
+  El detector quita los silencios antes de que el motor escuche, y el motor
+  devuelve los tiempos de cada palabra contados sobre ese sonido recortado.
+  Medido: los subtítulos empezaban 4,4 s antes de mediana (7,6 s el peor), y
+  34 s antes tras un silencio de 30 s; solo 1 de 24 quedaba a menos de
+  200 ms. El motor imprime la tabla de lo que quitó: la app la lee y devuelve
+  cada palabra a su sitio. Si alguna vez no hay tabla, transcribe otra vez
+  sin detector en lugar de fiarse.
+- **Un subtítulo recién generado podía salir marcado como «demasiado
+  rápido»** con sitio de sobra detrás. Se le daba justo su tiempo de lectura
+  en segundos y al redondear a fotogramas perdía uno: 72 caracteres en 127
+  fotogramas son 17,008 por segundo. Ahora ese tiempo se cuenta en
+  fotogramas enteros.
+
+### Decisiones, y por qué
+- **A qué se ata un subtítulo.** Al metraje, no a un punto de la línea de
+  tiempo: guarda qué clip y qué segundos de su archivo. Es lo que hace Final
+  Cut con los subtítulos conectados a un clip. Premiere los deja en la
+  secuencia y solo los mueve un borrado con imán en todas las pistas: quitas
+  un clip, recolocas el resto a mano y los subtítulos se quedan atrás, que
+  era justo nuestro problema. Como lo guardado son segundos del archivo, no
+  depende de los fotogramas por segundo del proyecto.
+- **Lo que sale de la edición no se borra**, se aparta. Recortar es algo que
+  se prueba y se deshace; perder el texto corregido a mano por recortar de
+  más sería un castigo.
+- **Dónde va la lista.** En la Biblioteca, a la izquierda, y no en el
+  Inspector. Premiere tiene su panel Texto a la izquierda, Final Cut su
+  índice junto a la línea de tiempo, y Resolve la lista de subtítulos en el
+  Inspector. Con la lista a un lado y el Inspector al otro se ven a la vez
+  la lista entera y el detalle del subtítulo elegido; metida en el Inspector
+  habría que elegir entre una y otro.
+- **El aspecto es de la pista, no de cada subtítulo.** Cambiarlo subtítulo a
+  subtítulo no salía barato, y no se ha hecho (ver *Problemas conocidos*).
+
+### El detector de voz: los números
+Medido antes de activarlo, en la app real con la ventana oculta y la red
+cortada, en la RTX 4060 Laptop con el equipo en reposo
+(`npm run test:bench:captions-vad`). La misma grabación de la fase 1 (80,6 s,
+206 palabras, voz sintética de Windows con el instante de cada palabra) y
+variantes hechas en este equipo con ffmpeg. Cada casilla es «sin detector →
+con detector».
+
+| Grabación                              | Modelo  | Errores de palabra | Comienzo de subtítulo, mediana / peor |
+|----------------------------------------|---------|--------------------|---------------------------------------|
+| La voz sola                            | Rápido  | 0 → 1 de 206       | 30 / 87 ms → 20 / 100 ms              |
+|                                        | Preciso | 1 → 0              | 37 / 118 ms → 15 / 100 ms             |
+| Con 30 s de silencio en medio          | Rápido  | 0 → 2              | 28 / 118 ms → 22 / 118 ms             |
+|                                        | Preciso | 1 → 0              | 37 / 118 ms → 15 / 118 ms             |
+| Con música debajo (15 dB por debajo)   | Rápido  | 2 → 1              | 32 / 103 ms → 18 / 152 ms             |
+|                                        | Preciso | 0 → 1              | 37 / 118 ms → 13 / 118 ms             |
+| Con música tan alta como la voz        | Rápido  | 0 → 1              | 32 / 118 ms → 28 / 152 ms             |
+|                                        | Preciso | 1 → 2              | 37 / 118 ms → 28 / 118 ms             |
+| La voz 30 dB más baja, con soplido     | Rápido  | 0 → 1              | 30 / 118 ms → 33 / 118 ms             |
+|                                        | Preciso | 3 → 3              | 37 / 118 ms → 37 / 118 ms             |
+| 20 s de música y luego la voz          | Rápido  | 1 → 2              | 28 / 133 ms → 13 / 210 ms             |
+|                                        | Preciso | 1 → 1              | 37 / 133 ms → 18 / 100 ms             |
+| 10 min 45 s de voz (1648 palabras)     | Rápido  | 0 → 5              | 25 / 153 ms → 22 / 148 ms             |
+|                                        | Preciso | 6 → 7              | 28 / 148 ms → 25 / 138 ms             |
+
+- **Texto inventado.** Sobre un minuto de música sin voz, el modelo Preciso
+  (el que viene marcado) escribió dos veces «Gracias por ver el video.». Con
+  el detector, ninguna. El Rápido escribió «[Música]» dos veces, que el
+  filtro de la fase 1 ya quitaba; con el detector ni llega a escribirlo. En
+  el silencio de 30 s, en un minuto de silencio y sobre los 20 s de música
+  de entrada no se escribió nada ni con detector ni sin él.
+- **¿Estropea los tiempos?** No, una vez devueltos a su sitio (ver
+  *Arreglado*): las medianas quedan iguales o algo mejores, y todos los
+  subtítulos de todas las pasadas empiezan a menos de 200 ms de su primera
+  palabra, salvo uno a 210 ms (tarde, en una pasada del Rápido).
+- **¿Se come principios de palabra?** No se ve. De los 15 errores con
+  detector en las doce pasadas cortas, 14 son otra manera de escribir lo
+  mismo («8» por «ocho», «video» por «vídeo», «que» por «qué») y uno es
+  «leerla» por «leerlas». Sin detector fueron 10, cinco de ellos palabras
+  mal oídas («subtítulos» por «títulos», «leerla» por «leerlas», «a» por
+  «hasta»). En los 10 minutos, los cinco del Rápido son la misma frase
+  repetida cinco veces: «leerla sin prisa» por «leerlas sin prisa».
+- **¿Deja fuera voz que no detecta?** Con la voz 30 dB más baja y con la
+  música tan alta como la voz no perdió nada.
+- **Lo que cuesta:** medio segundo más en 80 s de voz (3,5–4,2 s → 4,0–4,5 s)
+  y de 2 a 4 s más en 10 min 45 s (25,7 → 30,1 s el Rápido, 26,8 → 28,7 s el
+  Preciso). Sobre música sola es más rápido: no hay nada que transcribir. Y
+  885 KB en el instalador.
+- **Decisión: se activa.** Quita lo único que el filtro de frases no puede
+  quitar —«Gracias por ver el vídeo» también lo dice la gente, así que no se
+  puede borrar por el texto— y en lo demás no se ve diferencia. Para
+  apagarlo: variable de entorno `SCF_WHISPER_VAD=off`.
+
+### Cómo se comprobó
+- **`npm run test:captions-f2:ui`: 72/72**, en la app real con la ventana
+  oculta y la red cortada, sobre un vídeo con sonido:
+  - la pestaña Subtítulos, su lista, el cursor que va a la fila y la fila que
+    sigue al cursor;
+  - **escribir en el sitio**: las líneas se reparten (dos de 42 como mucho),
+    el cursor de texto se queda donde estaba al teclear en medio, una tanda
+    es un paso de deshacer, Mayús+Intro deja el salto donde se pone;
+  - **buscar**: «1 de 3», siguiente, distinguir mayúsculas (2), una frase a
+    través de un salto de línea; **reemplazar** una (el contador baja) y
+    todas (un paso de deshacer que las devuelve todas);
+  - **partir y unir**: seis subtítulos tras partir, cada mitad con sus
+    palabras y cada palabra en su fotograma; unidos, uno otra vez;
+  - **avisos**: los dos subtítulos que rompen reglas están marcados en la
+    lista y llevan la esquina ámbar, y **Arreglar tiempos** los deja en 45 y
+    78 fotogramas sin mover ningún comienzo, en un paso de deshacer;
+  - **estilo**: Oswald, amarillo y arriba, medido en la imagen (letras
+    amarillas entre las líneas 66 y 166, ninguna blanca abajo), centrado, la
+    banda de fondo detrás del texto, y el estilo base que devuelve su
+    aspecto y sus reglas;
+  - **exportar grabados**: el fotograma PNG exportado y el del visor son
+    **idénticos píxel a píxel**: diferencia 0 en 2.073.600 píxeles;
+  - **exportar con pista**: ffmpeg lee en el MP4 un flujo de subtítulos
+    `mov_text` con idioma `spa` junto a la imagen y el sonido, y lo que se
+    saca de él son los tres subtítulos del tramo, en sus tiempos, con sus
+    acentos y su salto de línea; el `.srt` está al lado; el archivo temporal
+    se borra;
+  - **seguir a la edición**: el clip movido 3 s (los cinco subtítulos con
+    él), recortado (uno sale, otro se acorta, el resto quieto), devuelto
+    (igual que estaban), cortado (nada se mueve), su primera mitad borrada
+    con el imán (tres salen, dos llegan con la segunda mitad), deshacer, y
+    soltar y volver a atar uno;
+  - en español; ninguna petición a la red; ningún error en la consola.
+- **`npm run test:captions:ui`: 74/74**, la prueba de la fase 1 puesta al día
+  y ahora **con el detector de voz**, transcribiendo en la RTX 4060: Rápido
+  1 error en 206 palabras, mediana 20 ms y peor 100 ms; Preciso 0 errores,
+  15 ms y 100 ms; 24 tramos de voz escuchados. Incluye la descarga desde un
+  servidor en este equipo y que el motor no abre ninguna conexión.
+- **1045 pruebas unitarias**, 57 nuevas:
+  - 19 de seguir a la edición, a través del almacén: mover, un arrastre que
+    no se mueve, borrar con el imán, recortar y devolver, cortar, velocidad,
+    reversa, ediciones a mano, soltar y atar, pista con candado, el metraje
+    que vuelve, cambio de fotogramas por segundo, guardar y abrir;
+  - 25 de repartir líneas, avisos, arreglar tiempos, unir, buscar y
+    reemplazar, y el aspecto de la pista;
+  - 7 de los argumentos de ffmpeg para la pista dentro del vídeo (MP4, MOV,
+    WebM); sin subtítulos son exactamente los de antes;
+  - 5 de la tabla del detector de voz, con las líneas y las palabras reales
+    del motor a un lado y otro de un silencio de 30 s;
+  - 1 del tiempo de lectura en fotogramas enteros, a 24, 25, 29,97, 30 y 60.
+- **Lo que esto toca, vuelto a pasar:** extremo a extremo 21/21 (la
+  exportación real, cuyos argumentos se reordenaron), interfaz 127/127,
+  títulos 33/33 y transiciones 35/35 (las pestañas de la Biblioteca y los
+  campos compartidos del Inspector), y los dos chequeos de tipos.
+- **Lo que cuesta seguir a la edición**, medido en el almacén sin dibujar:
+  mover un clip un fotograma con 200 subtítulos, 0,3 ms; con 1000 subtítulos
+  y 200 clips, 2,1 ms; recortar el primero para que todo lo demás se
+  desplace, 2,5 ms. Sin subtítulos no cuesta nada: sale a la primera línea.
+- **Las comprobaciones del flujo de release para el detector**, pasadas aquí
+  sobre una carpeta dispuesta igual: el archivo real pasa; con un bit
+  cambiado, sin el archivo o sin la licencia al lado, se rechaza.
+
+### Sin verificar
+- **El flujo de release con el detector.** Descarga el archivo y falla si su
+  huella no es la fijada, pero solo se ejecuta al publicar. La próxima
+  release es la primera que lo lleva; el instalador crecerá unos 0,9 MB.
+- **El ejecutable empaquetado.** Nada de esta fase se ha probado
+  empaquetado; se hará con la batería completa antes de publicar.
+- **Voces reales.** Todo lo del detector está medido con una voz sintética
+  limpia, y música y soplido hechos con ffmpeg. No sé cómo se porta con
+  alguien que habla bajo y lejos del micrófono, con canto, con aplausos o
+  con varias personas a la vez. Si alguna vez deja fuera a alguien que
+  habla, `SCF_WHISPER_VAD=off` lo apaga; no hay interruptor en la interfaz.
+- **El inglés** sigue sin una transcripción medida.
+- **La pista dentro del vídeo en un reproductor de verdad.** Está leída de
+  vuelta con ffmpeg, no abierta en VLC, en el reproductor de Windows ni en
+  un móvil. En MOV y WebM solo están probados los argumentos, no un archivo.
+- **Grabados con una fuente del sistema.** La igualdad píxel a píxel está
+  medida con las fuentes que vienen con la app.
+- **Arrastrar con cientos de subtítulos en pantalla.** El coste está medido
+  en el almacén (arriba), no la fluidez del arrastre en la app.
+
+### Problemas conocidos
+- **No se puede dar un aspecto distinto a un solo subtítulo.** El estilo es
+  de toda la pista. Para dos aspectos, dos pistas.
+- **La pista dentro del vídeo no lleva el estilo**: letra, color y posición
+  los pone el reproductor. Es lo normal en ese tipo de pista.
+- **Un subtítulo se ata a un solo clip.** Si la voz está en una pista y
+  elegiste escuchar «toda la mezcla», la app decide a qué clip atarlo (el que
+  tiene sonido bajo el subtítulo; una pista de diálogo antes que una de
+  música). Si elige mal, «Soltar del clip» y «Seguir al clip» lo corrigen.
+- **Un subtítulo a caballo de un corte** sigue a la mitad donde está la mayor
+  parte cuando las mitades se separan; la otra parte no se queda con texto.
+- Un subtítulo cuyo habla va a más de 17 caracteres por segundo sin sitio
+  para alargarlo sigue marcado en ámbar: es verdad que va rápido, aunque
+  «Arreglar tiempos» no pueda hacer nada.
+- **Se sigue transcribiendo la línea de tiempo entera**, no un tramo.
+
+### Lo descargado para desarrollar
+Solo esto, con permiso, a `.whisper-dev/vad/` (fuera de git; nunca a
+`.stress-tmp`):
+- El detector de voz Silero en formato de whisper.cpp:
+  `https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin`
+  — 885.098 bytes —
+  SHA-256 `2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987`
+
+Es la misma dirección y la misma huella que usa el flujo de release. Silero
+VAD (Silero Team) tiene licencia MIT; su texto va en el instalador junto al
+de whisper.cpp (`LICENSE-silero-vad.txt`). Los modelos y el motor de la fase 1
+no se volvieron a descargar.
 
 ---
 

@@ -483,12 +483,35 @@ swept at start-up.
   words with their times) on a track of type `captions`. The compositor
   draws it as a title (`captionRender.ts`), so the viewer and the export
   cannot differ. The razor shares the words out by when they were spoken.
-- **Files**: `.srt` and `.vtt` in and out (`subtitleFiles.ts`); the export
-  dialog can burn the captions in, write the file beside the video, or both.
+- **Captions follow the edit** (`renderer/captions/follow.ts`). A caption is
+  tied to the footage its words are in - `caption.link`: which clip, and
+  which seconds of its source, as Final Cut connects captions to a clip -
+  and `followCaptions` runs inside every store transaction and puts each
+  linked caption where that footage now is: moved, trimmed, cut, retimed. A
+  caption whose footage left the edit is parked in `project.parkedCaptions`
+  (out of the timeline and of every render, kept) and returns when the
+  footage does. Edited by hand, a caption is tied again from where it was
+  put; captions read from a file are not tied unless asked.
+- **Editing**: the Library's Captions tab (`components/Captions/
+  TranscriptPanel.tsx`) lists a track's captions, edits them in place, finds
+  and replaces (`findReplace.ts`), splits, merges and fixes timing. Lines are
+  laid out again as the text is typed (`reflowText`, which only changes the
+  spaces between words so the caret can stay put); captions that break a rule
+  are marked there and on the timeline (`captionIssues`).
+- **The look** is the track's (`track.captions.look`, `look.ts`): font, size,
+  colour, outline, background band, bottom or top; the Inspector's Style tab.
+- **Files**: `.srt` and `.vtt` in and out (`subtitleFiles.ts`). The export
+  dialog offers three ways out, which combine: burnt into the picture, a
+  subtitle track inside the file (`mov_text` in MP4/MOV, WebVTT in WebM,
+  tagged with the language - a temporary .srt handed to ffmpeg as a third
+  input, `EncoderPipeline.buildArgs`), and a file beside the video.
 
 `npm run test:captions:ui` transcribes a recording with a known text in the
-running app; it needs the engine and both models in `.stress-tmp` (see its
-header). `npm run test:bench:captions` times ten minutes of speech and
+running app; it needs the engine in `build/whisper`, both models in
+`.whisper-dev/models` and the voice detector (see its header).
+`npm run test:captions-f2:ui` is the editing: the list, find and replace,
+split and merge, the look, the three exports and following the edit, with no
+engine needed. `npm run test:bench:captions` times ten minutes of speech and
 measures the preview's cadence meanwhile.
 
 ## Copy, cut and paste

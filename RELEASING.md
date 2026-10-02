@@ -44,13 +44,22 @@ GitHub, pero no como la última versión.
 
    ```bash
    npm run test:captions:ui
+   npm run test:captions-f2:ui
    ```
 
-   Necesita el motor y los dos modelos en `.stress-tmp` (lo dice su
-   cabecera). El instalador lleva el motor que compila el propio workflow
-   (whisper.cpp con Vulkan, en `resources/whisper`); la primera release tras
+   La primera necesita el motor en `build/whisper`, los dos modelos en
+   `.whisper-dev/models` y el detector de voz en `.whisper-dev/vad` (lo dice
+   su cabecera); nunca en `.stress-tmp`, que la prueba de estrés vacía. El
+   instalador lleva el motor que compila el propio workflow (whisper.cpp con
+   Vulkan, en `resources/whisper`) y, a su lado, el detector de voz, que el
+   workflow descarga y comprueba contra su huella; la primera release tras
    cambiar de versión tarda más, porque lo compila, y las siguientes lo
    toman de la caché.
+
+   Si cambia `WHISPER_COMMIT`, además `npm run test:bench:captions-vad`, con
+   el equipo en reposo: la app devuelve los tiempos de las palabras a su
+   sitio leyendo una tabla que imprime el motor, y esa prueba falla si el
+   motor nuevo deja de imprimirla así.
 
 3. Crea la release y súbela:
 
