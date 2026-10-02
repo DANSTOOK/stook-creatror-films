@@ -16,6 +16,213 @@ fotogramas exportados correctos).
 
 ---
 
+## Sin publicar — Subtítulos, fase 1
+
+Subtítulos automáticos hechos en tu equipo: la app escucha el sonido de la
+línea de tiempo y lo escribe, sin enviar nada a ningún sitio. Es la primera
+de tres fases: aquí están el motor, los modelos, la pista de subtítulos y los
+archivos `.srt` y `.vtt`. Los estilos y cortar y unir con comodidad van en la
+fase 2; los subtítulos animados palabra por palabra, en la 3.
+
+**Importante:** en este equipo solo se ha podido probar con el procesador.
+El motor con tarjeta gráfica (Vulkan) lo compila GitHub al hacer una
+release, y esa compilación todavía no se ha ejecutado nunca. Está en *Sin
+verificar*.
+
+### Añadido
+- **Línea de tiempo > Generar subtítulos…** (un menú nuevo). Se elige:
+  - el **idioma hablado**, español o inglés. Se elige, no se adivina, y
+    empieza en el idioma de la interfaz;
+  - el **sonido**: toda la mezcla o una sola pista;
+  - la **calidad**: *Preciso* (el que viene marcado) o *Rápido*;
+  - el **estilo**: *Clásico*, hasta dos líneas, o *Redes*, una línea corta.
+    Un proyecto vertical empieza en *Redes*.
+- **Se puede seguir editando mientras trabaja.** El diálogo se cierra y queda
+  una tarjeta en la esquina con el avance y **Cancelar**. Cancelar detiene el
+  motor y borra el sonido temporal.
+- **Los modelos de voz no vienen en el instalador** y la app no descarga
+  nada por su cuenta:
+  - si falta el modelo elegido, **pregunta antes**: dice cuál es, cuánto
+    pesa (574 MB el Preciso, 190 MB el Rápido), de dónde viene
+    (`huggingface.co/ggerganov/whisper.cpp`, su fuente oficial) y que lo
+    único que viaja es el modelo;
+  - lo que llega se comprueba contra una **huella SHA-256 fija dentro de la
+    app**. Si no coincide, se borra y no se usa;
+  - **Importar desde un archivo…**, para un equipo sin internet. Qué modelo
+    es lo dice su huella, no su nombre;
+  - **Preferencias > Modelos de voz**: descargar, cancelar, importar y
+    borrar.
+- **Pista de subtítulos**, de color rosa, siempre encima de las de vídeo.
+  Cada subtítulo es un bloque con su texto:
+  - se mueve, se recorta por los extremos y se deshace como un clip;
+  - la **cuchilla lo corta entre dos palabras**: cada mitad se queda con las
+    palabras que se dijeron en su lado;
+  - el **imán no los toca**: borrar, mover o recortar un subtítulo no mueve
+    a los demás, que siguen con sus palabras. Uno que se arrastra se para al
+    llegar al de al lado.
+- **Las reglas de la guía de Netflix para español**, al generarlos:
+  - 42 caracteres por línea y dos líneas como mucho (32 en un proyecto
+    vertical; 28 y una línea en *Redes*);
+  - hasta 17 caracteres por segundo, cuando el habla deja sitio;
+  - cada subtítulo dura entre 5/6 de segundo y 7 segundos;
+  - 2 fotogramas entre uno y el siguiente, o medio segundo o más;
+  - ninguna línea termina en un artículo, una preposición o una conjunción
+    («la | casa»), y una frase larga se reparte en subtítulos parejos.
+- **Pestaña Subtítulo en el Inspector**: el texto (una tanda de tecleo es un
+  solo paso de deshacer) y, debajo, líneas, línea más larga y velocidad de
+  lectura frente a sus límites, en ámbar cuando se pasan.
+- **En el visor**, con el mismo dibujo de texto de los títulos: letra blanca
+  con contorno, centrada, abajo, dentro del área segura.
+- **Al exportar**, un grupo *Subtítulos*: **grabarlos en la imagen** (sí, si
+  no se toca) y **archivo junto al vídeo**, `.srt` o `.vtt`, con los
+  subtítulos del tramo exportado.
+- **Línea de tiempo > Importar subtítulos…** y **Exportar subtítulos…**, para
+  `.srt` y `.vtt` sin transcribir ni exportar vídeo.
+- **Frases inventadas, fuera.** Whisper a veces escribe sobre el silencio o
+  la música textos que aprendió de otros subtítulos. Los segmentos que solo
+  dicen «Subtítulos realizados por la comunidad de Amara.org» y parecidos, o
+  `[MÚSICA]`, se descartan.
+- En **español y en inglés**.
+
+### Cómo se comprobó
+Con una **grabación en español de texto conocido**: 80,6 segundos y 206
+palabras, hecha en este equipo con una voz de Windows (Microsoft Sabina,
+es-MX). La voz dice en qué instante empieza cada palabra, así que hay con qué
+comparar. **Es una voz sintética**: limpia, sin ruido ni música ni acentos.
+Es el caso fácil; con voces reales el error será mayor.
+
+- **`npm run test:captions:ui`: 73/73** en la aplicación real, con la ventana
+  oculta y **la red cortada**:
+  - **Exactitud** (errores de palabra):
+    - Rápido: 0 de 206 (0,00 %);
+    - Preciso: 1 de 206 (0,49 %): escribió «subtítulos» donde decía
+      «títulos». El Preciso pone ¿ y ¡.
+  - **Tiempos**: los 24 subtítulos empiezan a menos de 200 ms de su primera
+    palabra.
+    - Rápido: mediana 30 ms, el peor 87 ms;
+    - Preciso: mediana 37 ms, el peor 118 ms.
+  - **Reglas**, medidas sobre lo generado: ninguna línea de más de 42
+    caracteres, ninguno de más de dos líneas, todos entre 5/6 s y 7 s, todos
+    los huecos de 2 fotogramas o de medio segundo o más, ninguna línea
+    acabada en palabra suelta. Tres de 24 pasan de 17 caracteres por segundo
+    (17,5, 17,5 y 17,7) porque la voz habla así de rápido y el siguiente
+    está a 2 fotogramas: no hay de dónde alargar.
+  - **Un solo paso de deshacer** para toda la pista.
+  - **Se puede editar mientras trabaja**: el cursor se movió y se añadió y
+    quitó un marcador con la transcripción en marcha.
+  - **Cancelar**: el motor estaba en marcha con su sonido en disco; después
+    no queda ni el proceso ni la carpeta temporal, y no se añade nada.
+  - **Nada sale del equipo**: ni la página ni el proceso principal
+    intentaron una sola petición, y el motor (`whisper-cli`) no abrió
+    ninguna conexión.
+  - **Imagen**: el subtítulo está centrado (centro en 960,5 de 1920), abajo,
+    dentro del área segura, y el visor y el fotograma de exportación son
+    idénticos píxel a píxel. Con la pista oculta no se dibuja.
+  - **Edición**: la pestaña Subtítulo, teclear (un paso de deshacer), el
+    aviso de línea larga, la cuchilla entre dos palabras, recortar, y que
+    con el imán puesto borrar o arrastrar un subtítulo no mueve ningún otro.
+  - **Archivos**: `.srt` y `.vtt` exportados, importados y exportados otra
+    vez son **idénticos byte a byte**.
+  - **Exportación** real a MP4: con «grabar» el subtítulo está en la imagen
+    y el `.srt` del tramo, junto al vídeo; sin «grabar», la imagen no lo
+    lleva y el `.vtt` sí está; sin pedir archivo, no se escribe ninguno.
+  - **En español**: el menú, el diálogo, la tarjeta, el mensaje, la pista
+    «Subtítulos 2», el Inspector, y el estilo Redes (una línea de 28 como
+    mucho, escuchando una sola pista).
+  - **Modelos**: sin modelos, pregunta antes de descargar y dice tamaño y
+    fuente; al decir que no, no hay petición, archivo ni trabajo; un archivo
+    con cuatro bytes cambiados se rechaza por su huella; el Rápido importado
+    desde un archivo se reconoce y se verifica; Borrar lo quita del disco.
+  - **Descarga**, desde un servidor en este mismo equipo que sirve el modelo
+    con una redirección como la de Hugging Face: avance, huella correcta
+    (`ae85e4a9…11bb`), una sola petición seguida por su redirección, y una
+    descarga cancelada a medias no deja medio archivo.
+- **La misma prueba sobre el ejecutable empaquetado: 70/70** (sin el paso de
+  descarga), con el motor dentro de la app (`resources/whisper`), como en
+  una instalación. Empaquetar sin el motor también funciona: la app dice que
+  esa compilación no puede generar subtítulos, e importar sigue yendo.
+- **Velocidad** (`npm run test:bench:captions`), con 10 minutos y 45 segundos
+  de habla, **solo con el procesador** (i9-13980HX, 8 hilos), equipo en
+  reposo:
+  - Preciso: **5 min 53 s** (1,8 veces más rápido que el habla);
+  - Rápido: **1 min 57 s** (5,5 veces).
+  - Lo estimado para el procesador era de 4 a 10 minutos y de 1 a 3: dentro.
+  - Una primera pasada, la noche anterior, dio 15 min 22 s y 8 min 18 s con
+    el mismo programa. Repetida por la mañana con el equipo en reposo dio lo
+    de arriba, y el motor a solas, con el modelo Rápido sobre el mismo archivo, 1 min 46 s
+    (en la app, 1 min 57 s). No sé
+    qué ocupaba el equipo esa noche: esa pasada no vale como medida.
+- **La reproducción no se resiente.** Con un vídeo de 1080p reproduciéndose
+  mientras transcribe, en seis medidas de 8 segundos: ningún fotograma
+  perdido y p95 de 5,7 ms entre fotogramas de pantalla, igual que sin
+  transcribir (5,8 ms). El motor trabaja con prioridad baja y en la mitad de
+  los núcleos, ocho como mucho.
+- **987 pruebas unitarias**, 61 nuevas: las reglas y los cortes de línea, la
+  cuchilla, el imán, los archivos, la lectura de lo que escribe el motor y
+  sus tiempos, qué tarjeta gráfica se elige, y que un modelo solo se usa si
+  su huella coincide.
+- **Siguen pasando**, pasadas después del cambio del imán: `test:titles:ui` 33/33 y `test:ui`
+  127/127.
+
+### Sin verificar
+- **El motor con tarjeta gráfica (Vulkan).** El flujo de release compila
+  whisper.cpp con Vulkan, pero solo se ejecuta al publicar, y no se ha
+  publicado nada. No se ha visto compilar ni correr en la RTX 4060, así que
+  no hay medida de velocidad con GPU. Si la compilación fallara, la release
+  se detiene; no saldría un instalador sin motor.
+- **La elección de la tarjeta.** La app lee la lista de tarjetas que imprime
+  el motor y elige la dedicada por nombre (NVIDIA primero, nunca la
+  integrada). Está probado contra un texto de ejemplo con ese formato, no
+  contra el motor real.
+- **La descarga desde Hugging Face desde la app.** Probada contra un
+  servidor local con redirección. Los dos archivos sí se descargaron de la
+  dirección real, a mano, para desarrollar (ver abajo), y sus huellas son
+  las que lleva la app.
+- **Voces reales**: ruido, música, varias personas, acentos. Y el **inglés**:
+  la interfaz está probada, una transcripción en inglés no.
+- **El detector de voz (Silero VAD)**, que evita que el motor escriba sobre
+  silencios. La app lo usa si viene con el motor, pero no viene: no se
+  descargó para probarlo y no sé si los tiempos por palabra siguen siendo
+  correctos con él. En el flujo de release está escrito y apagado.
+- **Cuánto crece el instalador.** El motor para procesador ocupa 10 MB sin
+  comprimir. Lo que añade la parte de Vulkan no se sabe hasta compilarla.
+
+### Problemas conocidos
+- **Los subtítulos no siguen a la edición.** Si después de generarlos se
+  corta o se mueve el vídeo, se quedan donde estaban. Por ahora conviene
+  generarlos al final.
+- **Sobre música o silencio largo** el motor puede escribir algo que nadie
+  dijo. Se descartan las frases conocidas, no todas las posibles.
+- **Se transcribe la línea de tiempo entera**, no un tramo ni un clip.
+- **Un solo aspecto** para los subtítulos; no se puede cambiar letra, color
+  ni posición (fase 2).
+- Un subtítulo cuyo habla va a más de 17 caracteres por segundo se marca en
+  ámbar en el Inspector aunque no haya sitio para alargarlo.
+- El ajuste de cuándo empieza una palabra tras una pausa está hecho con una
+  sola voz.
+
+### Lo descargado para desarrollar
+Solo esto, a carpetas de prueba (`.stress-tmp`), nunca al repositorio ni al
+perfil del usuario. Las tres huellas coinciden con las que publica su
+origen.
+- Motor para procesador, release oficial de whisper.cpp (compilación `b5130`
+  de la versión 1.9.4, commit `927cfce`):
+  `https://github.com/ggml-org/whisper.cpp/releases/download/b5130/whisper-bin-x64.zip`
+  — 8.573.270 bytes —
+  SHA-256 `f9ec6c52a2e949b62ab51fa21d0d497958f9e41c3010c157c4e42932d5316f3c`
+- Modelo Rápido:
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin`
+  — 190.085.487 bytes —
+  SHA-256 `ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb`
+- Modelo Preciso:
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin`
+  — 574.041.195 bytes —
+  SHA-256 `394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2`
+
+Whisper (OpenAI) y whisper.cpp tienen licencia MIT.
+
+---
+
 ## v1.33.0-beta.1 — Transiciones: fundidos, barridos, sonido y la Biblioteca
 
 Instalador de prueba con las fases 3 y 4 de transiciones. Antes de publicarla
