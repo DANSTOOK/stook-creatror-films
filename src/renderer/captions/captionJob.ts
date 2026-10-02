@@ -137,6 +137,8 @@ export const useCaptionJob = create<JobState>((set, get) => ({
       }
       const cues = wordsToCues(result.words, rulesFor(options.preset, now), options.language, now.fps);
       if (cues.length === 0) {
+        // Kept all the same: what was heard and thrown away is worth knowing.
+        set({ last: { captions: 0, words: result.words.length, result, totalSeconds: (performance.now() - startedAt) / 1000 } });
         notify(t('captions.doneNone'), 'warning');
         return null;
       }

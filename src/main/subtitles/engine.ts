@@ -60,9 +60,20 @@ export function findEngine(places: { resourcesPath?: string; appPath?: string; e
   for (const dir of candidates) {
     if (!dir) continue;
     const engine = engineIn(dir);
-    if (engine) return engine;
+    if (engine) return withVadOverride(engine, env.SCF_WHISPER_VAD);
   }
   return null;
+}
+
+/**
+ * For measuring the voice detector against the same engine with and without
+ * it (tests/bench/captions-vad.mjs): SCF_WHISPER_VAD names a model file to
+ * use, or is `off` to use none, whatever the engine's folder holds.
+ */
+function withVadOverride(engine: WhisperEngine, override: string | undefined): WhisperEngine {
+  if (!override) return engine;
+  if (override === 'off') return { ...engine, vadModel: null };
+  return existsSync(override) ? { ...engine, vadModel: override } : engine;
 }
 
 /* Which GPU ------------------------------------------------------------------- */
