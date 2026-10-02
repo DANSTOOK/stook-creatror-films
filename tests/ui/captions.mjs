@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -40,6 +40,9 @@ import { _electron as electron } from 'playwright';
  * Needs the engine and both models where the bench keeps them:
  *   build/whisper            (CAPTIONS_WHISPER_DIR) - the engine a release carries
  *   .whisper-dev/models      (CAPTIONS_MODELS_DIR)
+ * and the voice detector a release carries beside the engine. A checkout's
+ * build/whisper may not have it: then the one in .whisper-dev/vad
+ * (CAPTIONS_VAD) is handed to the app instead.
  *
  * Not under .stress-tmp: the stress run empties that folder, and took the
  * downloaded models with it once.
@@ -61,6 +64,10 @@ const shotsDir = process.env.CAPTIONS_SHOTS ?? '';
 const whisperDir = process.env.CAPTIONS_WHISPER_DIR ?? join(projectRoot, 'build', 'whisper');
 const modelsDir = process.env.CAPTIONS_MODELS_DIR ?? join(projectRoot, '.whisper-dev', 'models');
 const packagedExe = process.env.CAPTIONS_PACKAGED === '1' ? join(projectRoot, 'release/win-unpacked/STOOK CREATOR FILMS.exe') : null;
+const engineDir = packagedExe ? join(projectRoot, 'release/win-unpacked/resources/whisper') : whisperDir;
+const devVad = process.env.CAPTIONS_VAD ?? join(projectRoot, '.whisper-dev', 'vad', 'ggml-silero-v6.2.0.bin');
+// The detector beside the engine, as a release has it; or the one kept for development.
+const engineHasVad = existsSync(engineDir) && readdirSync(engineDir).some((file) => /^ggml-silero-.*\.bin$/i.test(file));
 const FAST = 'ggml-small-q5_1.bin';
 const PRECISE = 'ggml-large-v3-turbo-q5_0.bin';
 
@@ -152,6 +159,7 @@ async function launch(profile, models, extraEnv = {}) {
       // Packaged, the engine is the one inside the app.
       SCF_WHISPER_DIR: packagedExe ? undefined : whisperDir,
       SCF_WHISPER_MODELS_DIR: models,
+      SCF_WHISPER_VAD: engineHasVad ? undefined : devVad,
       ...extraEnv,
     },
   });
@@ -260,10 +268,10 @@ async function generate(window, { language = 'es', model = 'fast', preset = 'cla
 const waitIdle = (window, timeout = 600_000) => window.waitForFunction(() => window.__scfCaptions.job.getState().phase === 'idle', null, { timeout });
 
 async function main() {
-  const engineCli = packagedExe ? join(projectRoot, 'release/win-unpacked/resources/whisper/whisper-cli.exe') : join(whisperDir, 'whisper-cli.exe');
-  for (const needed of [engineCli, join(modelsDir, FAST), join(modelsDir, PRECISE)]) {
+  const engineCli = join(engineDir, 'whisper-cli.exe');
+  for (const needed of [engineCli, join(modelsDir, FAST), join(modelsDir, PRECISE), ...(engineHasVad ? [] : [devVad])]) {
     if (!existsSync(needed)) {
-      console.error(`Missing ${needed}. This test needs the speech engine and both models: see the header of tests/ui/captions.mjs.`);
+      console.error(`Missing ${needed}. This test needs the speech engine, its voice detector and both models: see the header of tests/ui/captions.mjs.`);
       process.exit(2);
     }
   }
@@ -377,6 +385,9 @@ async function main() {
     check('it ran as a child process of the app (whisper-cli), which opened no network connection', sawProcess && connections.length === 0,
       `seen ${sawProcess}, connections ${connections.join(', ') || 'none'}`);
     check('the editor stayed usable while it ran: the playhead moved and a marker was added and removed', edited);
+    const engine = await window.evaluate(() => window.filmora.captionsStatus());
+    check('the voice detector ran: only the stretches it heard as speech were listened to', engine.vad === true && fast.result.vadSegments > 5,
+      `${fast.result.vadSegments} stretches of speech${engineHasVad ? ', the detector beside the engine' : ', the detector from .whisper-dev'}`);
     check('the captions arrive on a new track on top, named Captions 1', clips.length > 5 && await window.evaluate((trackId) => {
       const { project } = window.__scfStore.getState();
       const track = project.tracks.find((candidate) => candidate.id === trackId);
@@ -433,7 +444,9 @@ async function main() {
         // over it with the next caption 2 frames away is speech that is itself that fast.
         const next0 = list[index + 1];
         const room = next0 ? next0.start - (clip.start + clip.duration) > 2 : false;
-        if (!result.readingSpeed) (room ? out.fastWithRoom : out.fast).push(`${(lines.join('').length / (cue.end - cue.start)).toFixed(1)}`);
+        const speed = (lines.join('').length / (cue.end - cue.start)).toFixed(1);
+        if (!result.readingSpeed && room) out.fastWithRoom.push(`${speed} with ${next0.start - (clip.start + clip.duration)} frames before the next (${clip.start}+${clip.duration}: ${lines.join(' / ')})`);
+        else if (!result.readingSpeed) out.fast.push(speed);
         if (lines.length === 2 && isWeak(lines[0].split(' ').pop(), 'es')) out.weak.push(lines[0]);
         const next = list[index + 1];
         if (next) {
@@ -449,7 +462,7 @@ async function main() {
     check('no line ends on an article, a preposition or a conjunction', rules.weak.length === 0, rules.weak.join(' | '));
     // Speech faster than 17 characters a second cannot be slowed down: those are counted, not failed.
     check('no caption is over 17 characters a second while it has room to stay up longer', rules.fastWithRoom.length === 0 && rules.fast.every((speed) => Number(speed) < 20),
-      `${rules.fast.length} of ${clips.length} are over because the speech itself is that fast, with the next caption 2 frames away: ${rules.fast.join(', ')} characters a second`);
+      `${rules.fast.length} of ${clips.length} are over because the speech itself is that fast, with the next caption 2 frames away: ${rules.fast.join(', ')} characters a second${rules.fastWithRoom.length ? `; with room: ${rules.fastWithRoom.join(', ')}` : ''}`);
 
     console.log('5. the Precise model, and undo');
     await window.evaluate(() => window.__scfStore.getState().undo());
@@ -516,7 +529,7 @@ async function main() {
     await window.evaluate((id) => window.__scfStore.getState().selectClips([id]), target.id);
     await sleep(300);
     const tabs = await window.getByTestId('inspector-panel').getByRole('tab').allInnerTexts();
-    check('a selected caption opens the Caption tab: Caption, Info', tabs.join('|') === 'Caption|Info'
+    check('a selected caption opens the Caption tab: Caption, Style, Info', tabs.join('|') === 'Caption|Style|Info'
       && (await window.getByTestId('inspector-panel').getByRole('tab', { name: 'Caption' }).getAttribute('aria-selected')) === 'true', tabs.join(' / '));
     const shown = await window.getByTestId('caption-text').inputValue();
     const stats = await window.evaluate(() => ['caption-lines', 'caption-length', 'caption-speed'].map((id) => document.querySelector(`[data-testid="${id}"]`).textContent));
@@ -527,18 +540,26 @@ async function main() {
     const text = window.getByTestId('caption-text');
     await text.click();
     await text.press('Control+A');
-    await text.pressSequentially('Hola a todas y a todos, bienvenidos a este canal de edición de vídeo');
+    const sentence = 'Hola a todas y a todos, bienvenidos a este canal de edición de vídeo';
+    await text.pressSequentially(sentence);
     const typed = await window.evaluate((id) => {
       const clip = window.__scfStore.getState().project.clips[id];
       return { text: clip.caption.text, name: clip.name, depth: window.__scfHistory.getState().undoStack.length };
     }, target.id);
-    check('typing changes the caption and its name on the timeline, as one undo step',
-      typed.text === 'Hola a todas y a todos, bienvenidos a este canal de edición de vídeo' && typed.name === typed.text && typed.depth === undoDepth + 1, JSON.stringify(typed));
+    // 68 characters: more than a line holds, so it is laid out in two as it is typed.
+    check('typing changes the caption and its name on the timeline, as one undo step; its lines are laid out again as it is typed',
+      typed.text.replace(/\n/g, ' ') === sentence && typed.text.split('\n').length === 2 && typed.text.split('\n').every((line) => line.length <= 42)
+        && typed.name === sentence && typed.depth === undoDepth + 1, JSON.stringify(typed));
     const warned = await window.evaluate(() => ({
       over: document.querySelector('[data-testid="caption-length"]').dataset.over,
+      fast: document.querySelector('[data-testid="caption-speed"]').dataset.over,
       warning: document.querySelector('[data-testid="caption-warning"]')?.textContent ?? '',
     }));
-    check('a line over 42 characters is marked, and it says what to do', warned.over === 'true' && /Break it with Enter|Too much to read/.test(warned.warning), JSON.stringify(warned));
+    // Whether 68 characters are too many for the time this caption is up depends on the caption.
+    const tooFast = sentence.length / (target.duration / FPS) > 17;
+    check('no line is over 42 characters, and too much to read for its time is marked and says what to do',
+      warned.over === 'false' && warned.fast === String(tooFast) && (tooFast ? /Too much to read.*Fix timing/.test(warned.warning) : warned.warning === ''),
+      `${(sentence.length / (target.duration / FPS)).toFixed(1)} characters a second - ${JSON.stringify(warned)}`);
     await window.evaluate(() => window.__scfStore.getState().undo());
     check('undo brings the transcribed text back', (await window.evaluate((id) => window.__scfStore.getState().project.clips[id].caption.text, target.id)) === target.text);
     await window.evaluate(() => document.activeElement?.blur());
@@ -641,7 +662,8 @@ async function main() {
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, exportDir);
     const exportOnce = async (name, burn, file) => {
       await window.evaluate(([start, end]) => window.__scfStore.getState().setExportSettings({ format: 'mp4-h264', width: 960, height: 540, startFrame: start, endFrame: end }), range);
-      await window.getByRole('button', { name: 'Export' }).click();
+      // Exactly "Export": a caption in the Captions list can have the word in it.
+      await window.getByRole('button', { name: 'Export', exact: true }).click();
       const exportDialog = window.getByRole('dialog', { name: 'Export' });
       await exportDialog.getByRole('button', { name: 'Start export' }).waitFor({ state: 'visible', timeout: 10_000 });
       await exportDialog.getByLabel('Start frame').fill(String(range[0]));
@@ -731,7 +753,7 @@ async function main() {
     await sleep(600);
     const tabsEs = await window.getByTestId('inspector-panel').getByRole('tab').allInnerTexts();
     const statsEs = await window.evaluate(() => document.querySelector('[data-testid="caption-length"]').textContent);
-    check('the Inspector: Subtítulo, Info, and the one-line limit of 28', tabsEs.join('|') === 'Subtítulo|Info' && /de 28 caracteres$/.test(statsEs), `${tabsEs.join(' / ')} - ${statsEs}`);
+    check('the Inspector: Subtítulo, Estilo, Info, and the one-line limit of 28', tabsEs.join('|') === 'Subtítulo|Estilo|Info' && /de 28 caracteres$/.test(statsEs), `${tabsEs.join(' / ')} - ${statsEs}`);
     await shot(window, 'captions-social-es.png');
     await window.evaluate(() => window.__scfStore.getState().undo());
 

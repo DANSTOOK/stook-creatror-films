@@ -37,7 +37,8 @@ import { _electron as electron } from 'playwright';
  *
  * CAPTIONS_WHISPER_DIR (default build/whisper), CAPTIONS_MODELS_DIR
  * (.whisper-dev/models), CAPTIONS_VAD (.whisper-dev/vad/ggml-silero-v6.2.0.bin).
- * CAPTIONS_MINUTES=10 measures a ten-minute recording instead, and only it.
+ * CAPTIONS_MINUTES=10 measures a ten-minute recording instead, and only it;
+ * CAPTIONS_ONLY=speech,gap only those recordings.
  */
 
 const require = createRequire(import.meta.url);
@@ -161,7 +162,8 @@ async function main() {
     { name: 'music', path: music, truth: null },
     { name: 'silence', path: silence, truth: null },
   ];
-  const files = minutes ? recordings.slice(0, 1) : recordings;
+  const only = process.env.CAPTIONS_ONLY ? process.env.CAPTIONS_ONLY.split(',') : null;
+  const files = (minutes ? recordings.slice(0, 1) : recordings).filter((file) => !only || only.includes(file.name));
   const report = { voice: truth.voice, seconds, gapAt: cut, runs: [] };
 
   for (const vad of [false, true]) {
@@ -230,7 +232,13 @@ async function main() {
               vadSegments: last ? last.result.vadSegments : null,
             };
           });
-          const run = { file: file.name, model, vad, elapsed, ran: outcome.ran, transcribeSeconds: outcome.transcribeSeconds, vadSegments: outcome.vadSegments, captions: outcome.captions.length, dropped: outcome.dropped };
+          // Over the reading speed with time left before the next caption: a caption that could have stayed up and did not.
+          const hurried = outcome.captions.filter((caption, at) => {
+            const next = outcome.captions[at + 1];
+            const speed = caption.text.replace(/\n/g, '').length / (caption.end - caption.start);
+            return speed > 17.05 && next && Math.round((next.start - caption.end) * FPS) > 2;
+          }).map((caption) => `${caption.start.toFixed(2)}-${caption.end.toFixed(2)} ${caption.text.replace(/\n/g, ' / ')}`);
+          const run = { file: file.name, model, vad, elapsed, hurried, list: outcome.captions, ran: outcome.ran, transcribeSeconds: outcome.transcribeSeconds, vadSegments: outcome.vadSegments, captions: outcome.captions.length, dropped: outcome.dropped };
           if (file.truth) {
             const reference = file.truth.map((word) => word.text);
             const hypothesis = outcome.captions.flatMap((caption) => fold(caption.text));
@@ -261,6 +269,7 @@ async function main() {
           const tail = file.truth
             ? `WER ${(run.wer * 100).toFixed(2)}% (${run.errors}/${run.words}); caption starts: median ${run.captionStarts?.medianMs} ms, worst ${run.captionStarts?.worstMs} ms, ${run.captionStarts?.within200}/${run.captionStarts?.count} within 200 ms, latest ${signed(run.captionStarts?.latestMs)} ms, earliest ${signed(run.captionStarts?.earliestMs)} ms; all words: median ${run.wordStarts?.medianMs} ms, worst ${run.wordStarts?.worstMs} ms, ${run.wordStarts?.within200}/${run.wordStarts?.count} within 200 ms${file.quiet ? `; where nobody speaks: ${run.inSilence.length} captions ${JSON.stringify(run.inSilence)}` : ''}`
             : `${run.captions} captions written over nothing said: ${JSON.stringify(run.invented)}`;
+          if (hurried.length > 0) console.log(`   over 17 characters a second with room to stay: ${JSON.stringify(hurried)}`);
           const differences = file.truth && run.errors > 0 ? `; said ${JSON.stringify(run.missed)}, written ${JSON.stringify(run.extra)}` : '';
           console.log(`${file.name} / ${model} / vad ${vad ? 'on' : 'off'}: ${elapsed.toFixed(1)} s (transcription ${run.transcribeSeconds?.toFixed(1) ?? '-'} s), ${run.ran ?? 'no captions'}${vad ? `, ${run.vadSegments ?? 'no'} stretches of speech` : ''}; ${tail}${differences}${run.dropped && run.dropped.length ? `; dropped by the filter: ${JSON.stringify(run.dropped)}` : ''}`);
         }
