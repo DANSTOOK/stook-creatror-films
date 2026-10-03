@@ -16,6 +16,8 @@ import { useCaptionJob } from './captions/captionJob';
 import { useCaptionModels } from './captions/captionModels';
 import { checkCue, isWeak, rulesFor } from './captions/rules';
 import { captionCues } from './captions/captionClips';
+import { captionWordLayout } from './captions/captionRender';
+import { glossarySuggestions } from './captions/glossary';
 import { parseSubtitles, writeSrt, writeVtt } from './captions/subtitleFiles';
 
 // Reduced motion, playing and exporting, as attributes on <html> for the CSS
@@ -44,7 +46,22 @@ prepareGhosts();
 
 // Captions are checked against their own rules, and their job watched from
 // outside: the tests ask the same code the app runs, not a copy of it.
-(window as { __scfCaptions?: object }).__scfCaptions = { job: useCaptionJob, models: useCaptionModels, rulesFor, checkCue, isWeak, captionCues, writeSrt, writeVtt, parseSubtitles };
+(window as { __scfCaptions?: object }).__scfCaptions = {
+  job: useCaptionJob,
+  models: useCaptionModels,
+  rulesFor,
+  checkCue,
+  isWeak,
+  captionCues,
+  writeSrt,
+  writeVtt,
+  parseSubtitles,
+  // Where a moving caption's words are, and how they stand at a frame.
+  wordLayout: (clipId: string, frame?: number) => captionWordLayout(useProjectStore.getState().project, clipId, frame),
+  glossarySuggestions,
+  // How many pictures of moving words have been drawn, for the cost of animated captions.
+  wordsDrawn: () => getActiveFrameRenderer()?.titles.drawn ?? 0,
+};
 
 // Streamed audio can only be checked in a real page - WebCodecs does not
 // exist under the unit tests - so the harness that compares it against a full

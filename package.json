@@ -37,6 +37,7 @@
     "test:bench:audio": "node ./tests/bench/audio-stream.mjs",
     "test:bench:captions": "node ./tests/bench/captions.mjs",
     "test:bench:captions-vad": "node ./tests/bench/captions-vad.mjs",
+    "test:bench:captions-glossary": "node ./tests/bench/captions-glossary.mjs",
     "test:stress": "node ./tests/stress/run.mjs",
     "test:stress:projects": "node ./tests/stress/projects.mjs",
     "test:motion": "node ./tests/stress/motion.mjs",

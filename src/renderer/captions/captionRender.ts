@@ -4,7 +4,8 @@ import { captionSettingsOf, isCaptionTrack } from './captionClips';
 import { rulesFor } from './rules';
 import { lookOf } from './look';
 import { captionTokens, wordAnimationFor } from './animation';
-import { setWordAnimation } from '@renderer/text/wordAnimation';
+import { setWordAnimation, wordAnimationOf, wordFrameAt } from '@renderer/text/wordAnimation';
+import { wordPagesFor } from '@renderer/text/words';
 import { speedOf } from '@renderer/timing/clipSpeed';
 
 /**
@@ -128,6 +129,29 @@ export function withCaptionTitles(project: ProjectState): ProjectState {
   const drawn = changed ? { ...project, clips } : project;
   projects.set(project, drawn);
   return drawn;
+}
+
+/**
+ * Where a moving caption's words are drawn, and how they stand at a frame:
+ * what the compositor draws from, for the tests to check the picture
+ * against. Null for a caption on a still track.
+ */
+export function captionWordLayout(project: ProjectState, clipId: string, frame = project.currentFrame) {
+  const clip = withCaptionTitles(project).clips[clipId];
+  const title = clip?.title;
+  const animation = title ? wordAnimationOf(title) : undefined;
+  if (!clip || !title || !animation) return null;
+  const pages = wordPagesFor(title, animation, { width: project.width, height: project.height }, 1);
+  const state = wordFrameAt(animation, captionSecondsAt(clip, frame, project.fps));
+  return {
+    kind: animation.kind,
+    times: animation.times,
+    pages: pages.map((page) => page.words.map(({ index, text, x, width, baseline, size, line }) => ({ index, text, x, width, baseline, size, line }))),
+    page: state.page,
+    active: state.active,
+    words: state.words,
+    box: state.box,
+  };
 }
 
 /**

@@ -7,9 +7,13 @@
 # spoken, and for every word the moment the voice started it (SpeakProgress's
 # AudioPosition), in milliseconds. The recording is synthetic: a clean voice
 # with no noise, music or accent, which is the easy case for any recogniser.
+#
+# -TextFile <path> speaks that text (UTF-8) instead of the paragraphs below:
+# the glossary bench uses it for sentences with names nobody has heard.
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [double]$Minutes = 0
+  [double]$Minutes = 0,
+  [string]$TextFile = ''
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Speech
@@ -30,6 +34,9 @@ $paragraphs = @(
 )
 
 $text = ($paragraphs -join ' ')
+if ($TextFile -ne '') {
+  $text = ([System.IO.File]::ReadAllText($TextFile, [System.Text.Encoding]::UTF8) -replace '\s+', ' ').Trim()
+}
 if ($Minutes -gt 0) {
   # Long enough for a speed test: the same paragraphs, again and again.
   $one = $text
