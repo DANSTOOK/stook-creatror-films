@@ -45,9 +45,11 @@ GitHub, pero no como la última versión.
    ```bash
    npm run test:captions:ui
    npm run test:captions-f2:ui
+   npm run test:captions-f3:ui
    ```
 
-   La primera necesita el motor en `build/whisper`, los dos modelos en
+   Las tres admiten `CAPTIONS_PACKAGED=1` para el ejecutable empaquetado.
+   La primera y la tercera necesitan el motor en `build/whisper`, los modelos en
    `.whisper-dev/models` y el detector de voz en `.whisper-dev/vad` (lo dice
    su cabecera); nunca en `.stress-tmp`, que la prueba de estrés vacía. El
    instalador lleva el motor que compila el propio workflow (whisper.cpp con

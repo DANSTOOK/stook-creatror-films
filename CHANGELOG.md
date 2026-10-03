@@ -7,12 +7,204 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1045 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1077 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.35.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## Sin publicar — Subtítulos, fase 3
+
+La última de las tres fases de los subtítulos: **palabra a palabra**, como en
+los vídeos de móvil; un **glosario** de nombres; **varias pistas** de
+subtítulos, cada una con su idioma; y lo que la fase 2 dejó pendiente.
+
+No hay instalador de esto todavía.
+
+### Añadido
+- **Subtítulos que se mueven palabra a palabra** (Estilo > Animación, para
+  toda la pista). Cinco tipos:
+  - **la palabra dicha toma el color**;
+  - **un recuadro** del color detrás de la palabra dicha, que va de una a otra;
+  - **karaoke**: el color llena las palabras según se dicen, la que se está
+    diciendo desde su borde izquierdo;
+  - **las palabras aparecen al decirse**, y se quedan;
+  - **pocas palabras a la vez, grandes** (1, 2 o 3; nunca pasan de un punto
+    a la frase siguiente).
+  - Se elige el color y si hay **rebote**: la palabra llega a su tamaño con
+    el rebote de la interfaz (el muelle `standardBounce`, el 0,25 que eligió
+    el usuario), con su duración contada en tiempo de vídeo.
+  - Se dibuja **en cada fotograma, dentro del compositor**, con el mismo
+    dibujo de texto de los títulos; nada es CSS. El visor y la exportación
+    piden lo mismo para el mismo fotograma, y salen iguales píxel a píxel.
+  - Los tiempos son los de la transcripción. Un subtítulo **escrito encima a
+    mano** no pierde el ritmo: una palabra corregida toma el tiempo de la
+    que sustituye; las que se añaden o se quitan se reparten el tiempo de
+    sus vecinas por su longitud; uno sin tiempos (escrito o importado)
+    reparte el tiempo que está en pantalla.
+  - **Lo que cuesta**: la colocación de cada subtítulo se calcula una vez;
+    en cada fotograma solo se vuelve a dibujar si algo cambió (una palabra
+    nueva, un muelle o un relleno en marcha). Entre palabra y palabra, nada.
+- **Glosario de nombres y términos**, guardado con el proyecto:
+  - en *Generar subtítulos* y en la lista de *Subtítulos*;
+  - se le da a Whisper como texto inicial (`--prompt`), para inclinar la
+    ortografía hacia esos nombres;
+  - si una palabra de los subtítulos está **a una letra** de un nombre del
+    glosario («Kratonis» y «Kratonix»), o igual salvo mayúsculas o tildes,
+    la lista lo ofrece con **Reemplazar en todas** (palabras enteras, un
+    solo paso de deshacer). Los nombres de menos de cuatro letras no se
+    buscan («Ana» y «una»), ni una palabra en minúsculas a una letra de un
+    nombre propio («para» no es «Mara»).
+- **Varias pistas de subtítulos**, por ejemplo el español generado y el
+  inglés escrito a mano:
+  - **Nueva pista de subtítulos** (vacía) y **Añadir un subtítulo en el
+    cursor**, en la lista de *Subtítulos*; cada pista con su estilo y su
+    **idioma**, que se cambia en la lista o en Estilo;
+  - al **exportar**: se elige qué pistas se graban en la imagen; dentro del
+    vídeo, **cada pista es una pista propia**, con su idioma y su nombre; y
+    junto al vídeo, **un archivo por pista**: `nombre.es.srt`,
+    `nombre.en.srt` (y `nombre.es-2.srt` para una segunda en español).
+    Con una sola pista todo es como antes.
+- **Generar subtítulos** pregunta, cuando aplica:
+  - **qué se escucha**: toda la línea de tiempo, **entre las marcas de
+    entrada y salida**, o **los clips seleccionados** (solo esos clips);
+  - **dónde ponerlos**: una pista nueva o una que ya tiene subtítulos, cuyos
+    subtítulos de ese tramo se sustituyen. Si el tramo partiría uno de ellos,
+    el tramo crece para escucharlo entero: no se pierden palabras entre lo
+    viejo y lo nuevo;
+  - **Escuchar solo donde se habla**: el detector de voz se puede apagar
+    desde aquí (encendido de serie; se recuerda). Antes solo con una
+    variable de entorno.
+- **La prueba de la fase 2 sobre el ejecutable empaquetado**:
+  `CAPTIONS_PACKAGED=1 npm run test:captions-f2:ui`, como ya tenía la de la
+  fase 1.
+
+### Arreglado
+- **El nombre de cada pista de subtítulos dentro de un MP4.** ffmpeg guarda
+  el nombre de una pista de MP4 y MOV como su `handler_name`, no como su
+  título: ahora se escriben los dos, y el nombre se ve también en MP4.
+
+### Cómo se comprobó
+- **`npm run test:captions-f3:ui`: 36/36** en la app real, ventana oculta,
+  red cortada; y **36/36 también sobre el ejecutable empaquetado**:
+  - **en la imagen**, midiendo píxeles de un color conocido (cian) contra
+    dónde colocó cada palabra el dibujo de texto:
+    - resaltado: en el fotograma de cada una de las 4 palabras, el color está
+      sobre esa palabra y en ninguna otra;
+    - el rebote: 1,10 a los 3 fotogramas, 1,12 al asentarse;
+    - karaoke: el color empieza en el borde izquierdo de la palabra y llega
+      a 1 px de donde debe (relleno del 51 % a mitad de la palabra);
+    - aparecer: 0 píxeles de una palabra el fotograma antes de decirse,
+      448 después;
+    - pocas a la vez: solo se dibuja la página de la palabra dicha, a 96 px;
+    - recuadro: detrás de la palabra dicha;
+    - escrito encima («editar» → «montar»): la palabra nueva se colorea
+      cuando se decía la vieja;
+  - **visor = exportación**: 15 fotogramas en pleno movimiento, de los cinco
+    tipos, idénticos píxel a píxel; y una **exportación PNG real** de 6
+    fotogramas de un rebote, cada uno idéntico al visor (diferencia 0);
+  - **coste**: un subtítulo de 4 palabras sin rebote se dibujó 4 veces en
+    sus 61 fotogramas;
+  - **dos pistas**: la inglesa creada y escrita desde la lista; el MP4 tiene
+    dos pistas `mov_text`, `eng` y `spa`, con los nombres de sus pistas
+    («Captions 2», «Captions 1»), y cada una, leída de vuelta con ffmpeg,
+    tiene exactamente sus subtítulos; junto al vídeo,
+    `two-tracks.en.srt` y `two-tracks.es.srt`; solo la española grabada en
+    la imagen (0 píxeles arriba, donde el visor muestra la inglesa);
+  - **glosario**: guardado, sugerencia «Kratonis» → «Kratonix» (2),
+    reemplazar en todas en un paso, deshacer;
+  - **generar el tramo marcado** (20 a 40 s) sobre la pista española, con
+    el glosario y el detector: 20,0 s escuchados, los subtítulos nuevos
+    solo entre las marcas, los de fuera intactos, 5 errores en 49 palabras,
+    un paso de deshacer; y otra vez con el detector apagado (no lo usa y se
+    recuerda);
+  - **en español**: la sección Animación, la lista, el diálogo y la
+    exportación con dos pistas.
+- **¿Ayuda el glosario?** (`npm run test:bench:captions-glossary`): catorce
+  frases inventadas con ocho nombres que no existen (un pueblo, una marca,
+  dos personas, un río…), dichas por la voz de Windows, transcritas con
+  cada modelo sin y con el glosario. 30 palabras de nombre en 160, una
+  pasada:
+
+  | Modelo  | Nombres bien escritos     | Tras aceptar las sugerencias | Resto de palabras (error) |
+  |---------|---------------------------|------------------------------|---------------------------|
+  | Rápido  | 8 → **22** de 30          | 17 → **29** de 30            | 2,31 % → 2,31 %           |
+  | Preciso | 18 → **21** de 30         | 27 → 27 de 30                | 1,54 % → 1,54 %           |
+
+  Ayuda **mucho al Rápido** y **poco al Preciso**, y no cambió ni una
+  palabra del resto. Con el Preciso también **empeoró un nombre**:
+  «Vantorio», que sin glosario salía «Bantorio» (a una letra, lo arregla la
+  sugerencia), con glosario salió «Torio», que ninguna sugerencia alcanza.
+- **¿Se resiente la reproducción?** (`npm run test:bench:captions-cadence`):
+  10 minutos de vídeo 1080p30 con un subtítulo cada 3 s de principio a fin
+  (199), reproducidos 8 s al principio, en medio y al final; tiempo entre
+  fotogramas mostrados (la pantalla refresca cada 5,6 ms):
+
+  | Modo                       | p95    | p99    | Peor    | Más de un fotograma | Dibujos por segundo |
+  |----------------------------|--------|--------|---------|---------------------|---------------------|
+  | Sin subtítulos             | 5,9 ms | 6,0 ms | 11,1 ms | 0                   | 0                   |
+  | Quietos (como hoy)         | 5,9 ms | 6,1 ms | 33,3 ms | 0                   | 0                   |
+  | Resaltado con rebote       | 5,9 ms | 6,1 ms | 27,7 ms | 0                   | 20,4                |
+  | Recuadro con rebote        | 5,9 ms | 6,1 ms | 6,6 ms  | 0                   | 23,7                |
+  | Karaoke                    | 5,9 ms | 6,1 ms | 6,5 ms  | 0                   | 22,6                |
+  | Aparecer con rebote        | 5,9 ms | 6,1 ms | 6,5 ms  | 0                   | 22,6                |
+  | Pocas a la vez con rebote  | 5,9 ms | 6,1 ms | 11,2 ms | 0                   | 22,5                |
+
+  El cursor mantuvo 29,87 fps en todos. Los fotogramas sueltos lentos
+  salieron igual con subtítulos quietos que con resaltado.
+- **1077 pruebas unitarias**, 32 nuevas: cuándo se dice cada palabra
+  (corregida, añadida, quitada, sin tiempos, nunca hacia atrás), las
+  páginas, qué hace cada tipo en momentos dados, fotogramas que comparten
+  dibujo; el glosario (orden, prompt, distancia, sugerencias, guardado); los
+  argumentos de ffmpeg para dos pistas, qué pistas se entregan, los nombres
+  de archivo y grabar solo unas.
+- **Lo que esto toca, vuelto a pasar**: subtítulos de la fase 1 **74/74**
+  (con la GPU y el detector); de la fase 2 **72/72** en desarrollo y
+  **72/72 sobre el ejecutable empaquetado**; extremo a extremo 21/21;
+  títulos 33/33 (el dibujo de títulos recibe ahora el fotograma); interfaz
+  127/127; los dos chequeos de tipos.
+
+### Sin verificar
+- **Voces reales.** Las animaciones siguen los tiempos de la transcripción,
+  medidos en la fase 1 con voz sintética; el glosario está medido con una
+  voz sintética y nombres inventados, en una sola pasada por caso.
+- **Un reproductor de verdad con dos pistas**: leídas de vuelta con ffmpeg,
+  no abiertas en VLC, en el reproductor de Windows ni en un móvil. Tampoco
+  hay `ffprobe` en este equipo (ffmpeg-static solo trae ffmpeg): las pistas
+  y sus idiomas se leyeron con `ffmpeg -i`, que usa el mismo lector.
+- **MOV y WebM con varias pistas**: solo los argumentos.
+- **El inglés transcrito**: las pistas inglesas de las pruebas están
+  escritas a mano.
+- **Animaciones con fuentes del sistema** y con el rebote en fotogramas por
+  segundo distintos de 30.
+
+### Problemas conocidos
+- **En MP4 y MOV la primera pista de subtítulos sale «activada».** La fase 2
+  decía que la pista quedaba apagada: ffmpeg marca de todos modos la
+  primera pista de cada tipo de un MP4 como activada si ninguna lo está, y
+  no hay opción para evitarlo. Qué hace un reproductor con eso no está
+  comprobado.
+- **El aspecto sigue siendo de la pista**, no de cada subtítulo.
+- **Pocas palabras a la vez**: la palabra dicha, un 12 % más grande, deja
+  muy junto el espacio con la siguiente («cortosobre» casi se toca).
+- **El glosario con el modelo Preciso** ayuda poco y puede empeorar un
+  nombre (ver la tabla).
+- Los idiomas siguen siendo español e inglés.
+- **Varias pistas abajo se pisan** en la imagen si se graban las dos: hay
+  que poner una arriba (Estilo > Posición).
+
+### Lo descargado
+Nada a propósito. Pero al empaquetar la app para la prueba empaquetada,
+electron-builder descargó por su cuenta su herramienta de firma
+`winCodeSign-2.6.0.7z` (5,6 MB, de
+`github.com/electron-userland/electron-builder-binaries`), cuatro veces: no
+puede descomprimirla en este equipo (le faltan permisos para crear enlaces
+simbólicos), lo reintenta, y por eso el empaquetado termina con error
+aunque la app queda completa. Lo más probable es que ocurra en cada
+empaquetado en este equipo; se empaquetó una sola vez.
 
 ---
 

@@ -504,15 +504,44 @@ swept at start-up.
   dialog offers three ways out, which combine: burnt into the picture, a
   subtitle track inside the file (`mov_text` in MP4/MOV, WebVTT in WebM,
   tagged with the language - a temporary .srt handed to ffmpeg as a third
-  input, `EncoderPipeline.buildArgs`), and a file beside the video.
+  input, `EncoderPipeline.buildArgs`), and a file beside the video. Several
+  captions tracks are several streams (`subtitleStreams`, named after their
+  tracks) and several files (`name.es.srt`, `name.en.srt`); which tracks are
+  burnt in is chosen per track (`withoutCaptions(project, keep)`).
+- **Word by word** (`track.captions.animation`, `captions/animation.ts`):
+  the word said takes a colour, a box follows it, karaoke, words appearing,
+  or a few words at a time. `captionRender` hands the compositor each
+  caption as a title with its words' times beside it
+  (`text/wordAnimation.ts`, a WeakMap on the title object, never saved);
+  `TitleLayers.sourceFor` gets the frame being drawn, works out how the
+  words stand then (`wordFrameAt`, pure, in the caption's own seconds) and
+  draws (`text/words.ts`, Canvas2D through the titles' layout) only when
+  that differs from the texture it has. Pages are laid out once per title
+  object. Springs are the motion tokens' `standardBounce`, in seconds of
+  video. A caption typed over keeps its words' times by matching what is
+  left against what was heard (`timedWords`).
+- **Glossary** (`project.glossary`, `captions/glossary.ts`): names and
+  terms, sent as whisper-cli's `--prompt` (one argument, no shell) and
+  looked for one edit away in the captions, offered as replace-everywhere
+  in the Captions list.
+- **What is heard**: the whole timeline, the in/out range or the selected
+  clips (`captionJobSpan`), onto a new track or an existing one, whose
+  captions in that stretch are replaced; the voice detector can be switched
+  off per job.
 
 `npm run test:captions:ui` transcribes a recording with a known text in the
 running app; it needs the engine in `build/whisper`, both models in
 `.whisper-dev/models` and the voice detector (see its header).
 `npm run test:captions-f2:ui` is the editing: the list, find and replace,
 split and merge, the look, the three exports and following the edit, with no
-engine needed. `npm run test:bench:captions` times ten minutes of speech and
-measures the preview's cadence meanwhile.
+engine needed. `npm run test:captions-f3:ui` is phase 3: the animations
+measured in the picture, viewer against export, two tracks out of one
+export, the glossary, and generating for a range (it needs the engine and
+the Fast model). Both take `CAPTIONS_PACKAGED=1` for the packaged app.
+`npm run test:bench:captions` times ten minutes of speech and measures the
+preview's cadence meanwhile; `test:bench:captions-cadence` measures playback
+with moving captions, and `test:bench:captions-glossary` whether the
+glossary helps.
 
 ## Copy, cut and paste
 
