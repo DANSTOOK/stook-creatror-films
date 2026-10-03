@@ -1,5 +1,6 @@
 import type { CaptionContent, CaptionLink, CaptionTrackSettings, CaptionWord } from '@shared/types';
 import { normalizeLook } from './look';
+import { normalizeCaptionAnimation } from './animation';
 
 /**
  * Captions read from a project file: whatever is missing or out of range
@@ -42,9 +43,11 @@ function normalizeLink(raw: unknown): CaptionLink | null {
 export function normalizeCaptionSettings(raw: unknown): CaptionTrackSettings {
   const source = (raw ?? {}) as Partial<Record<keyof CaptionTrackSettings, unknown>>;
   const preset = source.preset === 'social' ? 'social' : 'classic';
+  const animation = normalizeCaptionAnimation(source.animation);
   return {
     preset,
     language: source.language === 'en' ? 'en' : 'es',
     ...(source.look ? { look: normalizeLook(source.look, preset) } : {}),
+    ...(animation ? { animation } : {}),
   };
 }

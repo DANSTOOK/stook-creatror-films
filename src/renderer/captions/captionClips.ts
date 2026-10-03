@@ -29,6 +29,7 @@ export function captionSettingsOf(track: Track | undefined): CaptionTrackSetting
     preset: saved?.preset === 'social' ? 'social' : 'classic',
     language: saved?.language === 'en' ? 'en' : 'es',
     ...(saved?.look ? { look: saved.look } : {}),
+    ...(saved?.animation ? { animation: saved.animation } : {}),
   };
 }
 

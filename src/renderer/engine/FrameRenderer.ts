@@ -338,7 +338,7 @@ export class FrameRenderer {
       project.currentFrame,
       (clip, sourceFrame) => {
         // A title has no file: its picture is drawn from its text.
-        if (clip.title) return this.titles.sourceFor(clip, project.width, project.height);
+        if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: project.currentFrame, fps: project.fps });
         // The preview - and only the preview - draws the proxy when there
         // is one and proxies are on.
         // A transition's incoming side, cut from the same file as its
@@ -496,8 +496,8 @@ export class FrameRenderer {
   private exactLanes = new Map<string, string>();
 
   /** The texture for a clip in an exact render: its decoded frame, or the element. */
-  private exactUploadFor(clip: Clip, fps: number, project: ProjectState): ClipSource | null {
-    if (clip.title) return this.titles.sourceFor(clip, project.width, project.height);
+  private exactUploadFor(clip: Clip, fps: number, project: ProjectState, timelineFrame: number): ClipSource | null {
+    if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: timelineFrame, fps: project.fps });
     const frame = this.decodedFrames.get(clip.id);
     if (!frame) return this.uploadFor(clip, fps, false, this.exactLanes.get(clip.id) ?? clip.sourceUri);
 
@@ -523,7 +523,7 @@ export class FrameRenderer {
     this.compositor.renderFrame(
       project,
       frame,
-      (clip) => this.exactUploadFor(clip, project.fps, project),
+      (clip) => this.exactUploadFor(clip, project.fps, project, frame),
       false,
     );
 
@@ -548,7 +548,7 @@ export class FrameRenderer {
       this.compositor.renderFrame(
         project,
         frame,
-        (clip) => this.exactUploadFor(clip, project.fps, project),
+        (clip) => this.exactUploadFor(clip, project.fps, project, frame),
         true,
       );
     } finally {

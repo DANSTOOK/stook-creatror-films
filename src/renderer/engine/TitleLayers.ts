@@ -2,7 +2,10 @@ import type { Clip, TitleContent } from '@shared/types';
 import { loadTitleFonts, titleFontsReady } from '@renderer/text/fonts';
 import { rasterizeTitle } from '@renderer/text/render';
 import type { Rect } from '@renderer/text/layout';
-import { titleGeometry, type TitleGeometry } from '@renderer/text/geometry';
+import { geometryFromLayout, titleGeometry, type TitleGeometry } from '@renderer/text/geometry';
+import { wordAnimationOf, wordFrameAt, type WordAnimation } from '@renderer/text/wordAnimation';
+import { rasterizeWords } from '@renderer/text/words';
+import { speedOf } from '@renderer/timing/clipSpeed';
 import type { ClipSource } from './Compositor';
 import type { TextureManager } from './TextureManager';
 
@@ -61,11 +64,18 @@ export class TitleLayers {
   /**
    * The texture for a title clip, drawing it if it changed. Null while its
    * fonts load and nothing was drawn for it before.
+   *
+   * `at` is the frame being drawn. A title whose words move (a caption with
+   * an animation, text/wordAnimation) is drawn as it stands at that frame -
+   * but only when that differs from what the texture already holds: between
+   * one word and the next, once its spring has settled, nothing is drawn.
    */
-  sourceFor(clip: Clip, width: number, height: number): ClipSource | null {
+  sourceFor(clip: Clip, width: number, height: number, at?: { frame: number; fps: number }): ClipSource | null {
     const title = clip.title;
     if (!title) return null;
     const scale = largestScale(clip);
+    const animation = at ? wordAnimationOf(title) : undefined;
+    if (animation && at) return this.animatedSourceFor(clip, title, animation, width, height, scale, at);
     const key = this.keyFor(title, width, height, scale);
     const textureKey = TitleLayers.textureKey(clip);
     const resident = this.resident.get(clip.id);
@@ -89,6 +99,43 @@ export class TitleLayers {
     this.resident.set(clip.id, { key, rect: raster.rect, geometry });
     return { texture, flipY: true, rect: raster.rect, title: geometry };
   }
+
+  private animatedSourceFor(
+    clip: Clip,
+    title: TitleContent,
+    animation: WordAnimation,
+    width: number,
+    height: number,
+    scale: number,
+    at: { frame: number; fps: number },
+  ): ClipSource | null {
+    const seconds = (clip.sourceOffsetFrames + (at.frame - clip.startFrame) * speedOf(clip)) / at.fps;
+    const state = wordFrameAt(animation, seconds);
+    const key = `${this.keyFor(title, width, height, scale)}|${animation.key}|${state.key}`;
+    const textureKey = TitleLayers.textureKey(clip);
+    const resident = this.resident.get(clip.id);
+
+    if (resident?.key === key) {
+      const texture = this.textures.get(textureKey);
+      if (texture) return { texture, flipY: true, rect: resident.rect, title: resident.geometry };
+    }
+    if (!titleFontsReady(title)) {
+      void loadTitleFonts(title);
+      const held = resident ? this.textures.get(textureKey) : undefined;
+      return held && resident ? { texture: held, flipY: true, rect: resident.rect, title: resident.geometry } : null;
+    }
+
+    const raster = rasterizeWords(title, animation, state, { width, height }, scale);
+    const texture = this.textures.upload(textureKey, raster.canvas, key);
+    // The words on screen are what the viewer picks the caption by.
+    const geometry = raster.page ? geometryFromLayout(raster.page.layout, title, { width, height }) : titleGeometry(title, { width, height });
+    this.resident.set(clip.id, { key, rect: raster.rect, geometry });
+    this.drawn += 1;
+    return { texture, flipY: true, rect: raster.rect, title: geometry };
+  }
+
+  /** Pictures of moving words drawn so far: for measuring what animated captions cost. */
+  drawn = 0;
 
   /** Where a title's picture sits on the frame, as last drawn. */
   rectOf(clipId: string): Rect | null {

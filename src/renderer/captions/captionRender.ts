@@ -3,6 +3,9 @@ import { REFERENCE_HEIGHT, TITLE_SAFE } from '@renderer/text/titleStyle';
 import { captionSettingsOf, isCaptionTrack } from './captionClips';
 import { rulesFor } from './rules';
 import { lookOf } from './look';
+import { captionTokens, wordAnimationFor } from './animation';
+import { setWordAnimation } from '@renderer/text/wordAnimation';
+import { speedOf } from '@renderer/timing/clipSpeed';
 
 /**
  * Captions drawn by the titles' text renderer (renderer/text).
@@ -24,14 +27,23 @@ import { lookOf } from './look';
 /** Average advance of a character of Inter at these weights, as a share of the size. */
 const AVERAGE_ADVANCE = 0.56;
 
+/**
+ * A few words at a time are drawn large: up to 96 px of a 1080-line frame,
+ * less where sixteen letters would not fit across - on a tall frame that is
+ * still more than half again a caption's size.
+ */
+const PAGE_SIZE = 96;
+const PAGE_LETTERS = 16;
+
 export function captionStyle(settings: CaptionTrackSettings, frame: { width: number; height: number }): TitleStyle {
   const rules = rulesFor(settings.preset, frame);
   const unit = frame.height / REFERENCE_HEIGHT;
   const social = settings.preset === 'social';
   const look = lookOf(settings);
-  const wanted = social ? 64 : 46;
+  const paged = settings.animation?.kind === 'words';
+  const wanted = paged ? PAGE_SIZE : social ? 64 : 46;
   // The largest size at which a full line fits the safe width.
-  const fitting = (frame.width * TITLE_SAFE) / (rules.maxCharsPerLine * AVERAGE_ADVANCE) / unit;
+  const fitting = (frame.width * TITLE_SAFE) / ((paged ? PAGE_LETTERS : rules.maxCharsPerLine) * AVERAGE_ADVANCE) / unit;
   const fontSize = look.fontSize ?? Math.max(12, Math.min(wanted, Math.floor(fitting)));
   return {
     fontFamily: look.fontFamily,
@@ -63,11 +75,27 @@ export function captionTitle(text: string, style: TitleStyle): TitleContent {
  */
 const drawnAs = new WeakMap<Clip, { key: string; clip: Clip }>();
 
-function asTitleClip(clip: Clip, settings: CaptionTrackSettings, frame: { width: number; height: number }): Clip {
-  const key = `${settings.preset}|${frame.width}x${frame.height}|${settings.look ? JSON.stringify(settings.look) : ''}`;
+/** The stretch of a caption's content seconds it is on screen for. */
+export function captionSpan(clip: Clip, fps: number): { from: number; to: number } {
+  const from = clip.sourceOffsetFrames / fps;
+  return { from, to: from + (clip.durationFrames * speedOf(clip)) / fps };
+}
+
+/** The second of a caption's content shown at a timeline frame. */
+export const captionSecondsAt = (clip: Clip, frame: number, fps: number): number => (clip.sourceOffsetFrames + (frame - clip.startFrame) * speedOf(clip)) / fps;
+
+function asTitleClip(clip: Clip, settings: CaptionTrackSettings, frame: { width: number; height: number }, fps: number): Clip {
+  const key = `${settings.preset}|${frame.width}x${frame.height}@${fps}|${settings.look ? JSON.stringify(settings.look) : ''}|${settings.animation ? JSON.stringify(settings.animation) : ''}`;
   const known = drawnAs.get(clip);
   if (known && known.key === key) return known.clip;
-  const drawn: Clip = { ...clip, title: captionTitle(clip.caption?.text ?? '', captionStyle(settings, frame)) };
+  const text = clip.caption?.text ?? '';
+  const title = captionTitle(text, captionStyle(settings, frame));
+  // Moving word by word: when each word is said goes beside the title, for
+  // the compositor to draw each frame from (text/words).
+  if (settings.animation && captionTokens(text).length > 0) {
+    setWordAnimation(title, wordAnimationFor(settings.animation, text, clip.caption?.words, captionSpan(clip, fps)));
+  }
+  const drawn: Clip = { ...clip, title };
   drawnAs.set(clip, { key, clip: drawn });
   return drawn;
 }
@@ -93,7 +121,7 @@ export function withCaptionTitles(project: ProjectState): ProjectState {
   for (const [id, clip] of Object.entries(project.clips)) {
     const settings = captionTracks.get(clip.trackId);
     if (settings && clip.caption) {
-      clips[id] = asTitleClip(clip, settings, frame);
+      clips[id] = asTitleClip(clip, settings, frame, project.fps);
       changed = true;
     } else clips[id] = clip;
   }
