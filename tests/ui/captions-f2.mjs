@@ -29,6 +29,8 @@ import { _electron as electron } from 'playwright';
  *   and no request leaves the computer.
  *
  * The window is never shown (SCF_BACKGROUND). Screenshots go to CAPTIONS_SHOTS.
+ * CAPTIONS_PACKAGED=1 runs the packaged app (release/win-unpacked), as an
+ * installed copy would, instead of the development build.
  */
 
 const require = createRequire(import.meta.url);
@@ -39,6 +41,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(here, '../..');
 const workDir = join(projectRoot, '.ui-tmp', 'captions-f2');
 const shotsDir = process.env.CAPTIONS_SHOTS ?? '';
+const packagedExe = process.env.CAPTIONS_PACKAGED === '1' ? join(projectRoot, 'release/win-unpacked/STOOK CREATOR FILMS.exe') : null;
 
 const W = 1920;
 const H = 1080;
@@ -173,8 +176,14 @@ async function main() {
   await execFileAsync(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', `color=c=0x606060:s=${W}x${H}:r=${FPS}:d=20`, '-f', 'lavfi', '-i', 'sine=frequency=330:sample_rate=48000:duration=20',
     '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-g', '15', '-c:a', 'aac', '-b:a', '128k', '-shortest', talk]);
 
+  if (packagedExe && !existsSync(packagedExe)) {
+    console.error(`Missing ${packagedExe}: pack the app first (CAPTIONS_PACKAGED=1).`);
+    process.exit(2);
+  }
+  const profileArg = `--user-data-dir=${join(workDir, 'profile')}`;
+  console.log(packagedExe ? `the packaged app: ${packagedExe}` : 'the development build');
   const app = await electron.launch({
-    args: [`--user-data-dir=${join(workDir, 'profile')}`, join(projectRoot, 'dist-electron/main/index.js')],
+    ...(packagedExe ? { executablePath: packagedExe, args: [profileArg] } : { args: [profileArg, join(projectRoot, 'dist-electron/main/index.js')] }),
     cwd: projectRoot,
     env: {
       ...process.env,
@@ -439,8 +448,8 @@ async function main() {
     await inspector.getByRole('tab', { name: 'Style' }).click();
     const scope = await window.getByTestId('caption-style-scope').innerText();
     const sections = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
-    check('Style says whose look it is, and groups it: Preset, Font, Outline, Background, Position',
-      /every caption on “Captions 1”/.test(scope) && sections.join('|') === 'Preset|Font|Outline|Background|Position', `${scope} | ${sections.join(' / ')}`);
+    check('Style says whose look it is, and groups it: Preset, Font, Outline, Background, Position, Animation',
+      /every caption on “Captions 1”/.test(scope) && sections.join('|') === 'Preset|Font|Outline|Background|Position|Animation', `${scope} | ${sections.join(' / ')}`);
     await shot(window, 'f2-style-en.png');
     const fonts = await window.getByTestId('caption-style-font').locator('optgroup').first().locator('option').allInnerTexts();
     check('the fonts that come with the app are offered: Inter, Source Serif 4, Oswald', fonts.join('|') === 'Inter|Source Serif 4|Oswald', fonts.join(' / '));
@@ -689,7 +698,7 @@ async function main() {
       captionEs.slice(0, 160));
     await inspector.getByRole('tab', { name: 'Estilo' }).click();
     const sectionsEs = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
-    check('la pestaña Estilo: Estilo base, Fuente, Contorno, Fondo, Posición', sectionsEs.join('|') === 'Estilo base|Fuente|Contorno|Fondo|Posición'
+    check('la pestaña Estilo: Estilo base, Fuente, Contorno, Fondo, Posición, Animación', sectionsEs.join('|') === 'Estilo base|Fuente|Contorno|Fondo|Posición|Animación'
       && /todos los subtítulos de «Captions 1»/.test(await window.getByTestId('caption-style-scope').innerText()), sectionsEs.join(' / '));
     await shot(window, 'f2-style-es.png');
     await window.getByTestId('transcript-find-toggle').click();
