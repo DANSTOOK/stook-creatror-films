@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import type { CaptionLook, CaptionTrackSettings, Track } from '@shared/types';
+import type { CaptionAnimation, CaptionAnimationKind, CaptionLook, CaptionTrackSettings, Track } from '@shared/types';
 import { useT, type MessageKey } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { BUNDLED_FONTS, isBundledFamily, isFamilyMissing } from '@renderer/text/fonts';
@@ -7,6 +7,7 @@ import { FALLBACK_FAMILY } from '@renderer/text/titleStyle';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { captionStyle } from '@renderer/captions/captionRender';
 import { lookOf, MAX_CAPTION_SIZE, MIN_CAPTION_SIZE, presetLook } from '@renderer/captions/look';
+import { CAPTION_ANIMATION_KINDS, defaultAnimation, MAX_PER_PAGE, MIN_PER_PAGE } from '@renderer/captions/animation';
 import { ColorRow, FieldRow } from './TitleTab';
 import { Section, SliderRow, type SectionProps } from './rows';
 
@@ -23,7 +24,20 @@ import { Section, SliderRow, type SectionProps } from './rows';
  * come with the app, or any on this computer), the size (automatic until a
  * number is asked for), the colour, an outline, a band behind the text, and
  * the bottom or the top of the title-safe area.
+ *
+ * Then how the words move as they are said (captions/animation): the word
+ * said takes a colour, a box follows it, the colour fills them like
+ * karaoke, they come on one by one, or a few at a time fill the screen -
+ * with the colour, a bounce, and how many at a time.
  */
+const ANIMATION_NAMES: Record<CaptionAnimationKind, MessageKey> = {
+  highlight: 'captionStyle.animationHighlight',
+  box: 'captionStyle.animationBox',
+  karaoke: 'captionStyle.animationKaraoke',
+  appear: 'captionStyle.animationAppear',
+  words: 'captionStyle.animationWords',
+};
+
 const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
 export interface CaptionStyleTabProps {
@@ -37,6 +51,11 @@ export function CaptionStyleTab({ track, settings, frame, sectionProps }: Captio
   const t = useT();
   const setCaptionLook = useProjectStore((state) => state.setCaptionLook);
   const setCaptionPreset = useProjectStore((state) => state.setCaptionPreset);
+  const setCaptionAnimation = useProjectStore((state) => state.setCaptionAnimation);
+  const setCaptionLanguage = useProjectStore((state) => state.setCaptionLanguage);
+  const languageId = useId();
+  const animationId = useId();
+  const bounceId = useId();
   const families = useLocalFamilies();
   const presetId = useId();
   const familyId = useId();
@@ -49,6 +68,9 @@ export function CaptionStyleTab({ track, settings, frame, sectionProps }: Captio
   const drawnSize = captionStyle(settings, frame).fontSize;
   const change = (patch: Partial<CaptionLook>, control: string | false): void =>
     setCaptionLook(track.id, patch, control ? `caption-look:${track.id}:${control}` : undefined);
+  const animation = settings.animation ?? null;
+  const animate = (patch: Partial<CaptionAnimation>, control: string | false): void =>
+    setCaptionAnimation(track.id, { ...(animation ?? defaultAnimation('highlight', settings.preset)), ...patch }, control ? `caption-animation:${track.id}:${control}` : undefined);
 
   const missing = isFamilyMissing(look.fontFamily);
   const bundled = BUNDLED_FONTS.find((font) => font.family === look.fontFamily);
@@ -76,6 +98,19 @@ export function CaptionStyleTab({ track, settings, frame, sectionProps }: Captio
           </select>
         </FieldRow>
         <p className="text-2xs leading-relaxed text-slate-400">{t(settings.preset === 'social' ? 'captionStyle.presetSocialHint' : 'captionStyle.presetClassicHint')}</p>
+        <FieldRow label={t('captionStyle.language')} htmlFor={languageId}>
+          <select
+            id={languageId}
+            data-testid="caption-style-language"
+            className="numeric-input h-control-dense min-w-0 flex-1"
+            value={settings.language}
+            onChange={(event) => setCaptionLanguage(track.id, event.target.value === 'en' ? 'en' : 'es')}
+          >
+            <option value="es">{t('captions.languageNameEs')}</option>
+            <option value="en">{t('captions.languageNameEn')}</option>
+          </select>
+        </FieldRow>
+        <p className="text-2xs leading-relaxed text-slate-400">{t('captionStyle.languageHint')}</p>
       </Section>
 
       <Section
@@ -231,6 +266,83 @@ export function CaptionStyleTab({ track, settings, frame, sectionProps }: Captio
           </span>
         </FieldRow>
         <p className="text-2xs leading-relaxed text-slate-400">{t('captionStyle.positionHint')}</p>
+      </Section>
+
+      <Section
+        {...sectionProps('captionAnimation')}
+        title={t('captionStyle.sectionAnimation')}
+        enabled={animation !== null}
+        onEnabledChange={(enabled) => setCaptionAnimation(track.id, enabled ? (animation ?? defaultAnimation('highlight', settings.preset)) : null)}
+        onReset={animation ? () => setCaptionAnimation(track.id, defaultAnimation(animation.kind, settings.preset)) : undefined}
+      >
+        <FieldRow label={t('captionStyle.animationKind')} htmlFor={animationId}>
+          <select
+            id={animationId}
+            data-testid="caption-style-animation"
+            className="numeric-input h-control-dense min-w-0 flex-1"
+            value={animation?.kind ?? 'none'}
+            onChange={(event) => {
+              const kind = CAPTION_ANIMATION_KINDS.find((candidate) => candidate === event.target.value);
+              // A kind keeps the colour and the count chosen; its bounce starts as the kind's own.
+              setCaptionAnimation(track.id, kind ? { ...defaultAnimation(kind, settings.preset), ...(animation ? { color: animation.color, perPage: animation.perPage } : {}) } : null);
+            }}
+          >
+            <option value="none">{t('captionStyle.animationNone')}</option>
+            {CAPTION_ANIMATION_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {t(ANIMATION_NAMES[kind])}
+              </option>
+            ))}
+          </select>
+        </FieldRow>
+        {animation && (
+          <>
+            <ColorRow
+              label={t('captionStyle.animationColor')}
+              name={t('captionStyle.animationColorName')}
+              testId="caption-style-animation-color"
+              value={animation.color}
+              onChange={(color) => animate({ color }, 'color')}
+            />
+            {animation.kind !== 'karaoke' && (
+              <label htmlFor={bounceId} className="grid grid-cols-[76px_1fr] items-start gap-2 text-xs text-slate-300">
+                <span className="field-label truncate">{t('captionStyle.bounce')}</span>
+                <span className="flex items-start gap-2 text-2xs leading-relaxed text-slate-400">
+                  <input
+                    id={bounceId}
+                    type="checkbox"
+                    role="switch"
+                    className="mt-px"
+                    data-testid="caption-style-bounce"
+                    checked={animation.bounce}
+                    onChange={(event) => animate({ bounce: event.target.checked }, false)}
+                  />
+                  {t('captionStyle.bounceHint')}
+                </span>
+              </label>
+            )}
+            {animation.kind === 'words' && (
+              <FieldRow label={t('captionStyle.perPage')}>
+                <span role="group" aria-label={t('captionStyle.perPage')} className="flex gap-0.5">
+                  {Array.from({ length: MAX_PER_PAGE - MIN_PER_PAGE + 1 }, (_, index) => MIN_PER_PAGE + index).map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      data-testid={`caption-style-per-page-${count}`}
+                      aria-pressed={animation.perPage === count}
+                      aria-label={t('captionStyle.perPageCount', { count })}
+                      className={`tool-button tool-button-dense w-7 px-0 text-2xs ${animation.perPage === count ? 'tool-button-active' : ''}`}
+                      onClick={() => animate({ perPage: count }, false)}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </span>
+              </FieldRow>
+            )}
+          </>
+        )}
+        <p className="text-2xs leading-relaxed text-slate-400">{t('captionStyle.animationHint')}</p>
       </Section>
     </>
   );
