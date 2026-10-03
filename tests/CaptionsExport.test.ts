@@ -93,9 +93,11 @@ describe('a subtitle track inside the export', () => {
     expect(pairs).toEqual([
       '-metadata:s:s:0 language=spa',
       '-metadata:s:s:0 title=Subtítulos 1',
+      '-metadata:s:s:0 handler_name=Subtítulos 1',
       '-disposition:s:0 0',
       '-metadata:s:s:1 language=eng',
       '-metadata:s:s:1 title=English',
+      '-metadata:s:s:1 handler_name=English',
       '-disposition:s:1 0',
     ]);
     expect(args.lastIndexOf('-i')).toBeLessThan(args.indexOf('-map'));

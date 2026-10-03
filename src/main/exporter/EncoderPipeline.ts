@@ -118,7 +118,10 @@ export class EncoderPipeline {
           ...streams.flatMap((stream, index) => [
             `-metadata:s:s:${index}`,
             `language=${stream.language}`,
-            ...(streams.length > 1 && stream.title ? [`-metadata:s:s:${index}`, `title=${stream.title}`] : []),
+            // MKV and WebM keep a stream's name as its title; MP4 and MOV as its handler name.
+            ...(streams.length > 1 && stream.title
+              ? [`-metadata:s:s:${index}`, `title=${stream.title}`, `-metadata:s:s:${index}`, `handler_name=${stream.title}`]
+              : []),
             `-disposition:s:${index}`,
             '0',
           ]),
