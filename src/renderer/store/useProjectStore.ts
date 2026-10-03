@@ -354,6 +354,12 @@ interface ProjectStore {
   setCaptionLook(trackId: string, patch: Partial<CaptionLook> | null, mergeKey?: string): void;
   /** A track's preset - its line rules and, with them, its look. */
   setCaptionPreset(trackId: string, preset: CaptionPreset): void;
+  /**
+   * Transcribed captions onto a captions track that has some already: those
+   * it has between `range.from` and `range.to` (timeline frames) go, these
+   * come. One undo step.
+   */
+  addCaptionsToTrack(trackId: string, source: { cues: Cue[]; offsetFrame: number; sourceTrackId?: string }, range: { from: number; to: number }): void;
   /** How a track's captions move word by word, or null for not at all. */
   setCaptionAnimation(trackId: string, animation: CaptionAnimation | null, mergeKey?: string): void;
   /** The language a track's captions are in: its tag in an export, and its line rules. */
@@ -1512,6 +1518,25 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // How the words move is not part of it, and stays.
       const captions: CaptionTrackSettings = { preset, language: settings.language, ...(settings.animation ? { animation: settings.animation } : {}) };
       return { ...project, tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions } : candidate)) };
+    });
+  },
+
+  addCaptionsToTrack(trackId, source, range) {
+    get().transact('Add captions', (current) => {
+      const track = current.tracks.find((candidate) => candidate.id === trackId);
+      if (!track || track.type !== 'captions') return current;
+      const clips = Object.fromEntries(
+        Object.entries(current.clips).filter(
+          ([, clip]) => !(clip.trackId === trackId && clip.caption && clip.startFrame < range.to && clip.startFrame + clip.durationFrames > range.from),
+        ),
+      );
+      // The last may stay up past the stretch, but never into the caption after it.
+      const after = Math.min(Infinity, ...Object.values(clips).filter((clip) => clip.trackId === trackId && clip.caption && clip.startFrame >= range.to).map((clip) => clip.startFrame));
+      const made = cuesToClips(source.cues, trackId, current.fps, source.offsetFrame).map((clip) =>
+        clip.startFrame + clip.durationFrames > after ? { ...clip, durationFrames: Math.max(1, after - clip.startFrame) } : clip,
+      );
+      for (const clip of made) clips[clip.id] = clip;
+      return linkCaptions({ ...current, clips }, made.map((clip) => clip.id), soundOfAssets(get().assets), source.sourceTrackId ?? null);
     });
   },
 

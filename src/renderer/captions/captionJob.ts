@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CaptionLanguage, CaptionPreset, ProjectState } from '@shared/types';
+import type { CaptionLanguage, CaptionPreset, Clip, ProjectState } from '@shared/types';
 import type { CaptionModelId, CaptionTranscribeResult } from '@shared/types/ipc';
 import { streamTimelineAudio } from '@renderer/audio/renderMix';
 import { projectContentLength } from '@renderer/components/Timeline/timelineOps';
@@ -33,6 +33,65 @@ export interface CaptionJobOptions {
   source: 'mix' | string;
   model: CaptionModelId;
   preset: CaptionPreset;
+  /** What stretch to listen to: the whole timeline (the default), the marked range, or some clips. */
+  scope?: CaptionScope;
+  /** A captions track to put them on - replacing what it has in that stretch - instead of a new one. */
+  intoTrackId?: string | null;
+  /** Names and terms to lean the spelling towards (glossary.ts). */
+  prompt?: string;
+  /** The voice detector, when the build has it. Absent: on. */
+  vad?: boolean;
+}
+
+export type CaptionScope = { kind: 'all' } | { kind: 'range'; from: number; to: number } | { kind: 'clips'; clipIds: string[] };
+
+/**
+ * The stretch a job listens to, and the project it hears there.
+ *
+ * - all: the whole timeline;
+ * - range: the frames between the in and out marks;
+ * - clips: from the first of them to the end of the last, hearing those
+ *   clips alone.
+ *
+ * When the captions go onto a track that already has some, the stretch
+ * grows to take in whole any caption of that track it would cut into - its
+ * words are heard again, rather than lost between the old and the new.
+ */
+export function captionJobSpan(
+  project: ProjectState,
+  scope: CaptionScope,
+  intoTrackId: string | null,
+  endFrame: number,
+): { from: number; to: number; heard: ProjectState } {
+  let from = 0;
+  let to = endFrame;
+  let heard = project;
+  if (scope.kind === 'range') {
+    from = Math.max(0, Math.min(scope.from, endFrame));
+    to = Math.max(from, Math.min(scope.to, endFrame));
+  } else if (scope.kind === 'clips') {
+    const chosen = scope.clipIds.map((id) => project.clips[id]).filter((clip): clip is Clip => Boolean(clip) && !clip.caption && !clip.title);
+    if (chosen.length === 0) return { from: 0, to: 0, heard: project };
+    from = Math.min(...chosen.map((clip) => clip.startFrame));
+    to = Math.max(...chosen.map((clip) => clip.startFrame + clip.durationFrames));
+    const kept = new Set(chosen.map((clip) => clip.id));
+    heard = { ...project, clips: Object.fromEntries(Object.entries(project.clips).filter(([id]) => kept.has(id))) };
+  }
+  if (intoTrackId) {
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const clip of Object.values(project.clips)) {
+        if (clip.trackId !== intoTrackId || !clip.caption) continue;
+        const end = clip.startFrame + clip.durationFrames;
+        if (clip.startFrame < to && end > from && (clip.startFrame < from || end > to)) {
+          from = Math.min(from, clip.startFrame);
+          to = Math.max(to, end);
+          grew = true;
+        }
+      }
+    }
+  }
+  return { from, to, heard };
 }
 
 /** How much of the bar the mix takes; the transcription takes the rest. */
@@ -83,7 +142,8 @@ export const useCaptionJob = create<JobState>((set, get) => ({
     }
     const startedAt = performance.now();
     const { project, assets } = useProjectStore.getState();
-    const endFrame = projectContentLength(project);
+    const into = options.intoTrackId && project.tracks.some((track) => track.id === options.intoTrackId && track.type === 'captions') ? options.intoTrackId : null;
+    const { from, to, heard } = captionJobSpan(project, options.scope ?? { kind: 'all' }, into, projectContentLength(project));
     // To know, at the end, that the project on screen is still this one.
     const tracksAtStart = new Set(project.tracks.map((track) => track.id));
     const job = { jobId: null as string | null, cancelled: false };
@@ -102,12 +162,12 @@ export const useCaptionJob = create<JobState>((set, get) => ({
       job.jobId = jobId;
       if (job.cancelled) throw new Cancelled();
 
-      const mix = endFrame > 0
+      const mix = to > from
         ? await streamTimelineAudio(
-            projectForSource(project, options.source),
+            projectForSource(heard, options.source),
             assets,
-            0,
-            endFrame,
+            from,
+            to,
             async (samples) => {
               if (job.cancelled) throw new Cancelled();
               await api.captionsAudioAppend?.(jobId, samples.buffer as ArrayBuffer);
@@ -125,7 +185,7 @@ export const useCaptionJob = create<JobState>((set, get) => ({
       if (job.cancelled) throw new Cancelled();
 
       set({ phase: 'transcribing', fraction: MIX_SHARE });
-      const result = await api.captionsTranscribe(jobId, { model: options.model, language: options.language });
+      const result = await api.captionsTranscribe(jobId, { model: options.model, language: options.language, prompt: options.prompt ?? '', vad: options.vad !== false });
       if (result.cancelled || job.cancelled) throw new Cancelled();
 
       // On the project as it is now: its size and rate decide lines and frames.
@@ -143,9 +203,9 @@ export const useCaptionJob = create<JobState>((set, get) => ({
         return null;
       }
       // Heard on one track: tied to that track's clips. Heard in the mix: to whichever clip carries the speech.
-      useProjectStore
-        .getState()
-        .addCaptionTrack({ cues, offsetFrame: 0, ...(options.source !== 'mix' ? { sourceTrackId: options.source } : {}) }, { preset: options.preset, language: options.language });
+      const made = { cues, offsetFrame: from, ...(options.source !== 'mix' ? { sourceTrackId: options.source } : {}) };
+      if (into && useProjectStore.getState().project.tracks.some((track) => track.id === into)) useProjectStore.getState().addCaptionsToTrack(into, made, { from, to });
+      else useProjectStore.getState().addCaptionTrack(made, { preset: options.preset, language: options.language });
       // The list of what was just written comes forward.
       showLibraryTab('captions');
       const summary: CaptionJobSummary = { captions: cues.length, words: result.words.length, result, totalSeconds: (performance.now() - startedAt) / 1000 };
