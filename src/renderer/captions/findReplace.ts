@@ -10,6 +10,8 @@
 
 export interface FindOptions {
   matchCase?: boolean;
+  /** Only where the query is a whole word (or words): "Ana" not inside "Anabel". */
+  wholeWord?: boolean;
 }
 
 export interface CaptionMatch {
@@ -31,7 +33,8 @@ export function findPattern(query: string, options: FindOptions = {}): RegExp | 
     .filter((part) => part !== '')
     .map(escapeRegExp)
     .join('\\s+');
-  return new RegExp(body, options.matchCase ? 'gu' : 'giu');
+  const bounded = options.wholeWord ? `(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])` : body;
+  return new RegExp(bounded, options.matchCase ? 'gu' : 'giu');
 }
 
 /** Every match, caption by caption in the order given. */

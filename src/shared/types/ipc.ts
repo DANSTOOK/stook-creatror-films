@@ -140,6 +140,13 @@ export interface CaptionModelProgress {
 export interface CaptionTranscribeRequest {
   model: CaptionModelId;
   language: 'es' | 'en';
+  /**
+   * Names and terms to lean the spelling towards: Whisper's initial prompt
+   * (renderer/captions/glossary.ts). Empty or absent: none.
+   */
+  prompt?: string;
+  /** Listen only to what the voice detector hears as speech. Absent: yes, when the build has it. */
+  vad?: boolean;
 }
 
 export interface CaptionTranscribeResult {

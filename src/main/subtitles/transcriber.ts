@@ -182,7 +182,14 @@ export class Transcriber {
    * Transcribe the job's audio. Always resolves with the job's folder gone:
    * with the words, or as cancelled; a failure is thrown.
    */
-  async transcribe(id: string, model: CaptionModel, modelFile: string, language: 'es' | 'en', onProgress: (fraction: number) => void): Promise<TranscriptionOutcome> {
+  async transcribe(
+    id: string,
+    model: CaptionModel,
+    modelFile: string,
+    language: 'es' | 'en',
+    onProgress: (fraction: number) => void,
+    options: { prompt?: string; vad?: boolean } = {},
+  ): Promise<TranscriptionOutcome> {
     const job = this.jobs.get(id);
     if (!job) throw new TranscriptionError('no-job', id);
     const started = Date.now();
@@ -195,7 +202,8 @@ export class Transcriber {
       if (job.cancelled) return cancelled();
 
       let gpu = await this.chooseGpu();
-      let vadModel = engine.vadModel;
+      // The voice detector when the build has it and it was not switched off.
+      let vadModel = options.vad === false ? null : engine.vadModel;
       const output = join(job.dir, 'out');
       for (;;) {
         const { args, env } = whisperCommand({
@@ -207,6 +215,7 @@ export class Transcriber {
           threads: threadsFor(cpus().length, gpu !== null && gpu !== 'auto'),
           gpu,
           vadModel,
+          prompt: options.prompt,
         });
         if (job.cancelled) return cancelled();
         const child = spawn(engine.cli, args, { cwd: engine.dir, env: { ...process.env, ...env }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

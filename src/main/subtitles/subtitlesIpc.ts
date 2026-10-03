@@ -167,8 +167,13 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
       throw new Error(mt('captions.errorNoModel'));
     }
     try {
-      return await transcriber.transcribe(jobId, model, modelPath(modelsDir(), model), language, (fraction) =>
-        send(IPC.captionsProgress, { jobId, fraction } satisfies CaptionProgressEvent),
+      return await transcriber.transcribe(
+        jobId,
+        model,
+        modelPath(modelsDir(), model),
+        language,
+        (fraction) => send(IPC.captionsProgress, { jobId, fraction } satisfies CaptionProgressEvent),
+        { prompt: typeof request.prompt === 'string' ? request.prompt : '', vad: request.vad !== false },
       );
     } catch (error) {
       if (error instanceof TranscriptionError) {

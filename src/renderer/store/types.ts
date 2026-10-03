@@ -27,6 +27,7 @@ import { neutralCurves } from '@renderer/color/curves';
 import { migrateTitleOrigin, normalizeTitle } from '@renderer/text/titleStyle';
 import { normalizeTransitions, tidyTransitions, type TransitionPreset } from '@renderer/timing/transitions';
 import { normalizeCaption, normalizeCaptionSettings } from '@renderer/captions/normalize';
+import { normalizeGlossary } from '@renderer/captions/glossary';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -389,7 +390,15 @@ function normalizeAudio(audio: unknown): ProjectAudioState {
  * when it was saved, or the mixer has quietly re-mixed somebody's edit.
  */
 export function normalizeProject(project: ProjectState): ProjectState {
-  return withParkedCaptions(withTransitions(normalizeClipsAndTracks(project), project.transitions), project.parkedCaptions);
+  return withGlossary(withParkedCaptions(withTransitions(normalizeClipsAndTracks(project), project.transitions), project.parkedCaptions), project.glossary);
+}
+
+/** The glossary read from a file (captions/glossary.ts): tidied; none, no field. */
+function withGlossary(project: ProjectState, raw: unknown): ProjectState {
+  const { glossary: _dropped, ...rest } = project;
+  void _dropped;
+  const glossary = normalizeGlossary(raw);
+  return glossary.length > 0 ? { ...rest, glossary } : rest;
 }
 
 /**

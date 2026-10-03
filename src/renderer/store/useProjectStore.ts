@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type {
+  CaptionAnimation,
+  CaptionLanguage,
   CaptionLook,
   CaptionPreset,
   CaptionTrackSettings,
@@ -37,7 +39,9 @@ import {
   presetKind,
 } from '@renderer/timing/transitions';
 import { t as translateNow } from '@renderer/i18n';
-import { captionName, captionSettingsOf, captionTrack, cuesToClips, mergeCaptionClips, splitCaption, subtitleCuesToClips } from '@renderer/captions/captionClips';
+import { captionName, captionSettingsOf, captionTrack, createCaptionClip, cuesToClips, mergeCaptionClips, splitCaption, subtitleCuesToClips } from '@renderer/captions/captionClips';
+import { normalizeCaptionAnimation } from '@renderer/captions/animation';
+import { normalizeGlossary } from '@renderer/captions/glossary';
 import { fixTiming, reflowText, rulesFor, type Cue } from '@renderer/captions/rules';
 import { followCaptions, linkCaptions, unlinkCaptions, type SoundOf } from '@renderer/captions/follow';
 import { replaceInText, type FindOptions } from '@renderer/captions/findReplace';
@@ -350,6 +354,20 @@ interface ProjectStore {
   setCaptionLook(trackId: string, patch: Partial<CaptionLook> | null, mergeKey?: string): void;
   /** A track's preset - its line rules and, with them, its look. */
   setCaptionPreset(trackId: string, preset: CaptionPreset): void;
+  /** How a track's captions move word by word, or null for not at all. */
+  setCaptionAnimation(trackId: string, animation: CaptionAnimation | null, mergeKey?: string): void;
+  /** The language a track's captions are in: its tag in an export, and its line rules. */
+  setCaptionLanguage(trackId: string, language: CaptionLanguage): void;
+  /** A captions track with nothing on it yet, for captions typed by hand. One undo step; returns its id. */
+  addEmptyCaptionTrack(settings: CaptionTrackSettings): string;
+  /**
+   * A caption typed by hand on a track at a frame: it fills the free time
+   * there, up to a few seconds. Returns its id, or null if a caption is
+   * already at that frame or the track is locked.
+   */
+  addCaptionAt(trackId: string, frame: number, text: string): string | null;
+  /** The project's names and terms (captions/glossary.ts). */
+  setGlossary(terms: readonly string[]): void;
   /** Tie captions to the footage under them, so they follow it (captions/follow.ts). */
   linkCaptionsToClips(clipIds: readonly string[]): number;
   /** Set captions free of their clips: they stay where they are. */
@@ -1491,10 +1509,79 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const settings = captionSettingsOf(track);
       if (settings.preset === preset && !settings.look) return project;
       // A preset is its rules and its look: choosing one starts from both.
-      return {
-        ...project,
-        tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions: { preset, language: settings.language } } : candidate)),
-      };
+      // How the words move is not part of it, and stays.
+      const captions: CaptionTrackSettings = { preset, language: settings.language, ...(settings.animation ? { animation: settings.animation } : {}) };
+      return { ...project, tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions } : candidate)) };
+    });
+  },
+
+  setCaptionAnimation(trackId, animation, mergeKey) {
+    get().transact(
+      'Caption animation',
+      (project) => {
+        const track = project.tracks.find((candidate) => candidate.id === trackId);
+        if (!track || track.type !== 'captions') return project;
+        const { animation: _was, ...settings } = captionSettingsOf(track);
+        void _was;
+        const next = animation ? normalizeCaptionAnimation(animation) : null;
+        const captions: CaptionTrackSettings = { ...settings, ...(next ? { animation: next } : {}) };
+        if (JSON.stringify(captions) === JSON.stringify(captionSettingsOf(track))) return project;
+        return { ...project, tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions } : candidate)) };
+      },
+      mergeKey,
+    );
+  },
+
+  setCaptionLanguage(trackId, language) {
+    get().transact('Caption language', (project) => {
+      const track = project.tracks.find((candidate) => candidate.id === trackId);
+      if (!track || track.type !== 'captions') return project;
+      const settings = captionSettingsOf(track);
+      if (settings.language === language) return project;
+      return { ...project, tracks: project.tracks.map((candidate) => (candidate.id === trackId ? { ...candidate, captions: { ...settings, language } } : candidate)) };
+    });
+  },
+
+  addEmptyCaptionTrack(settings) {
+    let trackId = '';
+    get().transact('Add captions track', (current) => {
+      const rows = timelineRows(current.tracks);
+      const track = captionTrack(createTrack('captions', 0, nextTrackName(current.tracks, 'captions')), settings.preset, settings.language);
+      trackId = track.id;
+      rows.splice(insertionRow(rows, 'captions'), 0, track);
+      return { ...current, tracks: withRowOrders(rows) };
+    });
+    set({ ui: { ...get().ui, selectedTrackId: trackId } });
+    return trackId;
+  },
+
+  addCaptionAt(trackId, frame, text) {
+    const { project } = get();
+    const track = project.tracks.find((candidate) => candidate.id === trackId);
+    if (!track || track.type !== 'captions' || track.locked) return null;
+    const row = Object.values(project.clips).filter((clip) => clip.trackId === trackId && clip.caption);
+    const at = Math.max(0, Math.round(frame));
+    if (row.some((clip) => at >= clip.startFrame && at < clip.startFrame + clip.durationFrames)) return null;
+    // Up to three seconds, and never into the next caption.
+    const next = Math.min(Infinity, ...row.filter((clip) => clip.startFrame > at).map((clip) => clip.startFrame));
+    const end = Math.min(at + Math.round(project.fps * 3), next);
+    if (end <= at) return null;
+    const clip = createCaptionClip(trackId, at, end, text);
+    get().transact('Add caption', (current) => ({ ...current, clips: { ...current.clips, [clip.id]: clip } }));
+    set({ ui: { ...get().ui, selectedClipIds: [clip.id] } });
+    return clip.id;
+  },
+
+  setGlossary(terms) {
+    get().transact('Glossary', (project) => {
+      const glossary = normalizeGlossary(terms);
+      if (JSON.stringify(glossary) === JSON.stringify(project.glossary ?? [])) return project;
+      if (glossary.length === 0) {
+        const { glossary: _gone, ...rest } = project;
+        void _gone;
+        return rest;
+      }
+      return { ...project, glossary };
     });
   },
 

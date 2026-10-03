@@ -172,6 +172,8 @@ export interface WhisperRun {
    */
   gpu: VulkanDevice | 'auto' | null;
   vadModel: string | null;
+  /** Text taken as said just before: a glossary's names, to lean the spelling towards. */
+  prompt?: string;
 }
 
 /**
@@ -202,6 +204,8 @@ export function whisperCommand(run: WhisperRun): { args: string[]; env: Record<s
     '-nfa',
   ];
   if (run.vadModel) args.push('--vad', '-vm', run.vadModel);
+  const prompt = cleanPrompt(run.prompt);
+  if (prompt) args.push('--prompt', prompt);
   const env: Record<string, string> = {};
   if (run.gpu === null) {
     args.push('-ng');
@@ -211,6 +215,16 @@ export function whisperCommand(run: WhisperRun): { args: string[]; env: Record<s
     args.push('-dev', '0');
   }
   return { args, env };
+}
+
+/**
+ * A prompt fit to pass as one argument: one line, no control characters,
+ * no longer than Whisper reads. The process is started without a shell, so
+ * nothing in it is ever interpreted.
+ */
+export function cleanPrompt(prompt: string | undefined): string {
+  if (!prompt) return '';
+  return prompt.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 600);
 }
 
 /**
