@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CaseSensitive, ChevronDown, ChevronUp, Link2, Merge, Replace, ReplaceAll, Scissors, Search, Trash2, TriangleAlert, Unlink, WandSparkles } from 'lucide-react';
+import { CaseSensitive, ChevronDown, ChevronUp, Link2, ListPlus, Merge, Plus, Replace, ReplaceAll, Scissors, Search, SpellCheck, Trash2, TriangleAlert, Unlink, WandSparkles } from 'lucide-react';
 import type { CaptionLanguage, Clip } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
@@ -12,6 +12,7 @@ import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { findInCaptions, type CaptionMatch } from '@renderer/captions/findReplace';
 import { captionIssues, hasIssues, readingSpeed, rulesFor, type CaptionIssues, type CaptionRules } from '@renderer/captions/rules';
 import { isLineBreakInput, useKeptCaret } from '@renderer/captions/useKeptCaret';
+import { glossarySuggestions, normalizeGlossary } from '@renderer/captions/glossary';
 
 /**
  * The Transcript: every caption of a track as a list - its times, its text,
@@ -30,6 +31,12 @@ import { isLineBreakInput, useKeptCaret } from '@renderer/captions/useKeptCaret'
  * its text (or press Enter on it) and it is typed into in place, its lines
  * laid out by the rules as it changes. Enter finishes; Shift+Enter breaks
  * the line where the author wants it; Tab goes on to the next caption.
+ *
+ * A track can be started empty and typed - another language beside the one
+ * transcribed - and each track says which language it is in. The project's
+ * names and terms (its glossary) are kept here too, and a word in the
+ * captions one letter away from one of them is offered for replacing
+ * everywhere, in one undo step.
  */
 
 interface RowData {
@@ -193,6 +200,7 @@ export function TranscriptPanel(): JSX.Element {
   const width = useProjectStore((state) => state.project.width);
   const height = useProjectStore((state) => state.project.height);
   const selectedId = useProjectStore((state) => (state.ui.selectedClipIds.length === 1 ? state.ui.selectedClipIds[0] : null));
+  const glossary = useProjectStore((state) => state.project.glossary);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const captionTracks = useMemo(() => tracks.filter((track) => track.type === 'captions').sort((a, b) => b.order - a.order), [tracks]);
@@ -215,6 +223,12 @@ export function TranscriptPanel(): JSX.Element {
       .map((clip, index) => ({ clip, index, issues: captionIssues(clip.caption?.text ?? '', clip.durationFrames / fps, rules) }));
   }, [clips, trackId, fps, rules]);
   const parkedCount = useMemo(() => Object.values(parked ?? {}).filter((clip) => clip.trackId === trackId).length, [parked, trackId]);
+  const suggestions = useMemo(() => glossarySuggestions(rows.map((row) => row.clip), glossary ?? []), [rows, glossary]);
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const [glossaryText, setGlossaryText] = useState('');
+  useEffect(() => {
+    if (!glossaryOpen) setGlossaryText((glossary ?? []).join('\n'));
+  }, [glossary, glossaryOpen]);
   const warnings = rows.filter((row) => hasIssues(row.issues)).length;
 
   // The caption under the playhead. Asked of the store with the rows at
@@ -339,6 +353,31 @@ export function TranscriptPanel(): JSX.Element {
     notify(t(left > 0 ? 'transcript.fixedSome' : 'transcript.fixedAll', { count: fixed, left }), 'success');
   };
 
+  /** A new, empty captions track, in the language of the interface; it becomes the one shown. */
+  const newTrack = (): void => {
+    const id = useProjectStore.getState().addEmptyCaptionTrack({ preset: settings.preset, language: uiLanguage === 'en' ? 'en' : 'es' });
+    setChosenTrack(id);
+  };
+
+  /** A caption at the playhead, typed into straight away. */
+  const addCaption = (): void => {
+    if (!trackId) return;
+    const store = useProjectStore.getState();
+    const id = store.addCaptionAt(trackId, store.project.currentFrame, '');
+    if (!id) {
+      notify(t('transcript.addCaptionBusy'), 'info');
+      return;
+    }
+    setEditingId(id);
+    window.setTimeout(() => reveal(id), 0);
+  };
+
+  const takeSuggestion = (term: string, found: string): void => {
+    if (!trackId) return;
+    const done = useProjectStore.getState().replaceInCaptions(trackId, found, term, { matchCase: true, wholeWord: true });
+    if (done > 0) notify(t('transcript.glossaryReplaced', { count: done, found, term }), 'success');
+  };
+
   const rowMenu = useCallback(
     (event: React.MouseEvent, id: string) => {
       const store = useProjectStore.getState();
@@ -380,6 +419,9 @@ export function TranscriptPanel(): JSX.Element {
           </button>
           <button type="button" className="tool-button h-control border border-panel-600 px-3" data-testid="transcript-import" onClick={() => menuCommand('importCaptions')}>
             {t('menu.importCaptions')}
+          </button>
+          <button type="button" className="tool-button h-control border border-panel-600 px-3" data-testid="transcript-new-track" onClick={newTrack} {...tip(t('transcript.newTrack'), { hint: t('transcript.newTrackHint') })}>
+            {t('transcript.newTrack')}
           </button>
         </div>
       </div>
@@ -443,6 +485,19 @@ export function TranscriptPanel(): JSX.Element {
           <WandSparkles size={13} />
           {warnings > 0 && <span data-testid="transcript-warnings">{warnings}</span>}
         </button>
+        <button type="button" className="tool-button tool-button-dense w-6 px-0" data-testid="transcript-add" onClick={addCaption} {...tip(t('transcript.addCaption'))}>
+          <Plus size={13} />
+        </button>
+        <button
+          type="button"
+          className={`tool-button tool-button-dense w-6 px-0 ${glossaryOpen ? 'tool-button-active' : ''}`}
+          data-testid="transcript-glossary-toggle"
+          aria-pressed={glossaryOpen}
+          onClick={() => setGlossaryOpen((value) => !value)}
+          {...tip(t('transcript.glossary'), { hint: t('transcript.glossaryHint') })}
+        >
+          <SpellCheck size={13} />
+        </button>
         <button
           type="button"
           className={`tool-button tool-button-dense w-6 px-0 ${finding ? 'tool-button-active' : ''}`}
@@ -457,6 +512,57 @@ export function TranscriptPanel(): JSX.Element {
           <Search size={13} />
         </button>
       </div>
+
+      <div className="flex shrink-0 items-center gap-1 border-b border-panel-800 px-2 py-1">
+        <select
+          className="numeric-input h-control-dense min-w-0 flex-1 text-2xs"
+          data-testid="transcript-language"
+          aria-label={t('transcript.language')}
+          value={settings.language}
+          onChange={(event) => useProjectStore.getState().setCaptionLanguage(trackId, event.target.value === 'en' ? 'en' : 'es')}
+        >
+          <option value="es">{t('captions.languageNameEs')}</option>
+          <option value="en">{t('captions.languageNameEn')}</option>
+        </select>
+        <button type="button" className="tool-button tool-button-dense w-6 px-0" data-testid="transcript-new-track" onClick={newTrack} {...tip(t('transcript.newTrack'), { hint: t('transcript.newTrackHint') })}>
+          <ListPlus size={13} />
+        </button>
+      </div>
+
+      {glossaryOpen && (
+        <div className="shrink-0 space-y-1 border-b border-panel-800 px-2 py-1.5" data-testid="transcript-glossary">
+          <textarea
+            data-testid="transcript-glossary-text"
+            aria-label={t('transcript.glossary')}
+            rows={3}
+            spellCheck={false}
+            className="numeric-input min-h-[52px] w-full resize-y py-1 text-xs leading-snug"
+            value={glossaryText}
+            onChange={(event) => setGlossaryText(event.target.value)}
+            onBlur={() => useProjectStore.getState().setGlossary(normalizeGlossary(glossaryText))}
+            onKeyDown={(event) => event.stopPropagation()}
+          />
+          <p className="text-2xs leading-relaxed text-slate-400">{t('transcript.glossaryHint')}</p>
+          {suggestions.length === 0 && (glossary ?? []).length > 0 && (
+            <p className="text-2xs leading-relaxed text-slate-400" data-testid="transcript-glossary-none" role="status">
+              {t('transcript.glossaryNone')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {suggestions.length > 0 && (
+        <ul className="shrink-0 space-y-0.5 border-b border-panel-800 px-2 py-1" data-testid="transcript-suggestions" aria-label={t('transcript.glossary')}>
+          {suggestions.slice(0, 5).map((suggestion) => (
+            <li key={`${suggestion.term}|${suggestion.found}`} className="flex items-center gap-1 text-2xs text-slate-300" data-testid="transcript-glossary-suggestion">
+              <span className="min-w-0 flex-1 truncate">{t('transcript.glossarySuggestion', { found: suggestion.found, term: suggestion.term, count: suggestion.count })}</span>
+              <button type="button" className="tool-button tool-button-dense shrink-0 px-1.5 text-2xs" data-testid="transcript-glossary-replace" onClick={() => takeSuggestion(suggestion.term, suggestion.found)}>
+                {t('transcript.glossaryReplace')}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {finding && (
         <div className="shrink-0 space-y-1 border-b border-panel-800 px-2 py-1.5" data-testid="transcript-findbar" role="search">
@@ -541,6 +647,11 @@ export function TranscriptPanel(): JSX.Element {
           }
         }}
       >
+        {rows.length === 0 && (
+          <li className="px-3 py-4 text-center text-2xs leading-relaxed text-slate-400" data-testid="transcript-empty-track">
+            {t('transcript.emptyTrack')}
+          </li>
+        )}
         {rows.map((row) => (
           <Row
             key={row.clip.id}

@@ -1465,7 +1465,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     for (const clip of Object.values(project.clips)) {
       if (clip.trackId !== trackId || !clip.caption) continue;
       if (options.only && options.only.clipId !== clip.id) continue;
-      const result = replaceInText(clip.caption.text, query, replacement, { matchCase: options.matchCase, ...(options.only ? { occurrence: options.only.occurrence } : {}) });
+      const result = replaceInText(clip.caption.text, query, replacement, {
+        matchCase: options.matchCase,
+        wholeWord: options.wholeWord,
+        ...(options.only ? { occurrence: options.only.occurrence } : {}),
+      });
       if (result.count === 0) continue;
       count += result.count;
       // Laid out again, unless its breaks are its author's.
