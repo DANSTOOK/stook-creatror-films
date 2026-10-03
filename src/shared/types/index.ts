@@ -349,12 +349,40 @@ export interface CaptionLook {
   position: 'bottom' | 'top';
 }
 
+/**
+ * How the captions of a track move, word by word, as the words are said:
+ *
+ * - `highlight`: every word is there; the one being said takes the colour;
+ * - `box`: every word is there; a box in the colour sits behind the one
+ *   being said and moves from word to word;
+ * - `karaoke`: every word is there; the colour fills them in as they are
+ *   said, the one being said from its left edge to its right;
+ * - `appear`: each word comes on as it is said, and stays;
+ * - `words`: a few words at a time, large - the look of phone video.
+ */
+export type CaptionAnimationKind = 'highlight' | 'box' | 'karaoke' | 'appear' | 'words';
+
+export interface CaptionAnimation {
+  kind: CaptionAnimationKind;
+  /** The colour of the word being said: its letters, its fill, or the box behind it. sRGB `#rrggbb`. */
+  color: string;
+  /**
+   * The word being said springs to its size, with the bounce the interface
+   * uses (motion tokens, `standardBounce`); for `box`, the box springs across.
+   */
+  bounce: boolean;
+  /** `words` only: how many are on screen at a time, 1 to 3. */
+  perPage: number;
+}
+
 /** What a captions track says about all of its captions. */
 export interface CaptionTrackSettings {
   preset: CaptionPreset;
   language: CaptionLanguage;
   /** Absent: the preset's own look. */
   look?: CaptionLook;
+  /** Absent: the captions stand still, as subtitles do. */
+  animation?: CaptionAnimation;
 }
 
 /**
@@ -584,6 +612,12 @@ export interface ProjectState {
    * renderer/captions/follow.ts.
    */
   parkedCaptions?: Record<string, Clip>;
+  /**
+   * Names and terms this project says, spelled as they should be written:
+   * given to the speech-to-text engine as a hint, and looked for in what it
+   * wrote. See renderer/captions/glossary.ts.
+   */
+  glossary?: string[];
 }
 
 /* -------------------------------------------------------------------------- */
