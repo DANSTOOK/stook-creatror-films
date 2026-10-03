@@ -1,4 +1,4 @@
-import type { ExportFormat } from '../types';
+import type { ExportFormat, ExportSettings, SubtitleStream } from '../types';
 
 /**
  * A subtitle track inside the exported file: which containers take one, and
@@ -25,6 +25,12 @@ export function subtitleCodecFor(format: ExportFormat): 'mov_text' | 'webvtt' | 
     default:
       return null;
   }
+}
+
+/** The streams an export carries: several, or the one, or none. */
+export function subtitleStreamsOf(settings: Pick<ExportSettings, 'subtitles' | 'subtitleStreams'>): SubtitleStream[] {
+  if (settings.subtitleStreams && settings.subtitleStreams.length > 0) return settings.subtitleStreams;
+  return settings.subtitles ? [settings.subtitles] : [];
 }
 
 /** The ISO 639-2 code a container tags a subtitle track with. */

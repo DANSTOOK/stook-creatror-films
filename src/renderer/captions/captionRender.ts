@@ -130,8 +130,11 @@ export function withCaptionTitles(project: ProjectState): ProjectState {
   return drawn;
 }
 
-/** The project with its captions left out: an export that does not burn them in. */
-export function withoutCaptions(project: ProjectState): ProjectState {
-  if (!project.tracks.some(isCaptionTrack)) return project;
-  return { ...project, tracks: project.tracks.map((track) => (isCaptionTrack(track) ? { ...track, visible: false } : track)) };
+/**
+ * The project with its captions left out: an export that does not burn them
+ * in - or, given `keep`, burns in only those tracks.
+ */
+export function withoutCaptions(project: ProjectState, keep: ReadonlySet<string> = new Set()): ProjectState {
+  if (!project.tracks.some((track) => isCaptionTrack(track) && !keep.has(track.id))) return project;
+  return { ...project, tracks: project.tracks.map((track) => (isCaptionTrack(track) && !keep.has(track.id) ? { ...track, visible: false } : track)) };
 }

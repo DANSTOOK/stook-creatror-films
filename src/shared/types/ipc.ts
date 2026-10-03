@@ -586,7 +586,8 @@ export interface FilmoraApi {
   /** Ask where to save a subtitle file; the extension chosen picks which of the two is written. */
   captionsSaveFile?(suggestedName: string, srt: string, vtt: string): Promise<string | null>;
   /** Write the subtitle file that goes with a video this session exported; returns its path. */
-  captionsWriteSidecar?(videoPath: string, format: 'srt' | 'vtt', contents: string): Promise<string>;
+  /** `tag`, a language code (es, en, es-2), goes into the name when there are several files: name.es.srt. */
+  captionsWriteSidecar?(videoPath: string, format: 'srt' | 'vtt', contents: string, tag?: string): Promise<string>;
   /**
    * Stash an .srt as a temporary file and return its path, to be passed as
    * `ExportSettings.subtitles.path`: ffmpeg takes the subtitle track as a

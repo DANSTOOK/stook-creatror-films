@@ -201,7 +201,7 @@ const api: FilmoraApi = {
   },
   captionsOpenFile: () => ipcRenderer.invoke(IPC.captionsOpenFile) as Promise<{ path: string; contents: string } | null>,
   captionsSaveFile: (suggestedName, srt, vtt) => ipcRenderer.invoke(IPC.captionsSaveFile, suggestedName, srt, vtt) as Promise<string | null>,
-  captionsWriteSidecar: (videoPath, format, contents) => ipcRenderer.invoke(IPC.captionsWriteSidecar, videoPath, format, contents) as Promise<string>,
+  captionsWriteSidecar: (videoPath, format, contents, tag) => ipcRenderer.invoke(IPC.captionsWriteSidecar, videoPath, format, contents, tag) as Promise<string>,
   captionsWriteTemp: (srt) => ipcRenderer.invoke(IPC.captionsWriteTemp, srt) as Promise<string>,
 };
 

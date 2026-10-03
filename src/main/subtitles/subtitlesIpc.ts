@@ -223,9 +223,12 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
    * name. Only for a file this session rendered to the end, so the page
    * cannot write anywhere it likes.
    */
-  ipcMain.handle(IPC.captionsWriteSidecar, async (_event, videoPath: unknown, format: unknown, contents: unknown): Promise<string> => {
+  ipcMain.handle(IPC.captionsWriteSidecar, async (_event, videoPath: unknown, format: unknown, contents: unknown, tag: unknown): Promise<string> => {
     if (typeof videoPath !== 'string' || !isFinishedExport(videoPath) || typeof contents !== 'string') throw new Error(mt('main.onlyExported'));
-    const extension = format === 'vtt' ? '.vtt' : '.srt';
+    // With several tracks, each file says its language: name.es.srt, name.en.srt.
+    // Only a language code, perhaps numbered: nothing that could reach another folder.
+    const label = typeof tag === 'string' && /^[a-z]{2,3}(-\d{1,2})?$/.test(tag) ? `.${tag}` : '';
+    const extension = `${label}${format === 'vtt' ? '.vtt' : '.srt'}`;
     const base = videoPath.slice(0, videoPath.length - extname(videoPath).length);
     // A PNG sequence is a folder: the file goes inside it.
     const target = extname(videoPath) === '' ? join(videoPath, `captions${extension}`) : `${base}${extension}`;

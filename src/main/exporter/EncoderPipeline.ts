@@ -3,7 +3,7 @@ import { mkdir, rename, rm } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ExportProgress, ExportSettings } from '@shared/types';
-import { subtitleCodecFor } from '@shared/utils/subtitleStream';
+import { subtitleCodecFor, subtitleStreamsOf } from '@shared/utils/subtitleStream';
 import { lastLines, mt } from '../language';
 import {
   FORMAT_SUPPORTS_ALPHA,
@@ -106,12 +106,24 @@ export class EncoderPipeline {
      * default, so a file that also has them burnt in does not show them twice
      * unasked.
      */
-    const subtitleCodec = settings.subtitles ? subtitleCodecFor(settings.format) : null;
-    const subtitleInput = settings.subtitles && subtitleCodec ? ['-i', settings.subtitles.path] : [];
-    const subtitleOutput =
-      settings.subtitles && subtitleCodec
-        ? ['-c:s', subtitleCodec, '-metadata:s:s:0', `language=${settings.subtitles.language}`, '-disposition:s:0', '0']
-        : [];
+    // Several captions tracks are several streams, one input each, in order;
+    // a stream gets a name only when there are several to tell apart.
+    const streams = subtitleStreamsOf(settings);
+    const subtitleCodec = streams.length > 0 ? subtitleCodecFor(settings.format) : null;
+    const subtitleInput = subtitleCodec ? streams.flatMap((stream) => ['-i', stream.path]) : [];
+    const subtitleOutput = subtitleCodec
+      ? [
+          '-c:s',
+          subtitleCodec,
+          ...streams.flatMap((stream, index) => [
+            `-metadata:s:s:${index}`,
+            `language=${stream.language}`,
+            ...(streams.length > 1 && stream.title ? [`-metadata:s:s:${index}`, `title=${stream.title}`] : []),
+            `-disposition:s:${index}`,
+            '0',
+          ]),
+        ]
+      : [];
 
     const audioArgs =
       withAudio || subtitleInput.length > 0
@@ -121,7 +133,7 @@ export class EncoderPipeline {
             '-map',
             '0:v:0',
             ...(withAudio ? ['-map', '1:a:0'] : []),
-            ...(subtitleInput.length > 0 ? ['-map', `${withAudio ? 2 : 1}:0`] : []),
+            ...(subtitleCodec ? streams.flatMap((_, index) => ['-map', `${(withAudio ? 2 : 1) + index}:0`]) : []),
             ...(withAudio ? ['-c:a', 'aac', '-b:a', `${settings.audioBitrateKbps ?? 256}k`, '-ar', '48000'] : []),
             ...subtitleOutput,
           ]
@@ -256,7 +268,7 @@ export class EncoderPipeline {
         this.jobs.delete(id);
         // The mix was written to temp purely to be an ffmpeg input.
         if (settings.audioPath) void rm(settings.audioPath, { force: true });
-        if (settings.subtitles) void rm(settings.subtitles.path, { force: true });
+        for (const stream of subtitleStreamsOf(settings)) void rm(stream.path, { force: true });
         // A cancelled or failed encode leaves a half-written sidecar. It is
         // never the destination, so removing it loses nothing.
         const discardPartial = (): void => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ChevronRight,
   CircleCheck,
@@ -12,11 +12,11 @@ import {
 } from 'lucide-react';
 import type {
   ExportFormat,
-  ExportSettings,
   ExportProgress,
   GpuPreference,
   GpuReport,
   HardwareEncoder,
+  SubtitleStream,
 } from '@shared/types';
 import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPlan';
 import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
@@ -39,7 +39,7 @@ import { setExporting } from '@renderer/motion/environment';
 import { isFamilyMissing, missingFamilies } from '@renderer/text/fonts';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
 import { FALLBACK_FAMILY } from '@renderer/text/titleStyle';
-import { captionCues, captionSettingsOf } from '@renderer/captions/captionClips';
+import { captionCues, captionSettingsOf, captionTracksToDeliver, sidecarTags } from '@renderer/captions/captionClips';
 import { subtitleCodecFor, subtitleLanguageCode } from '@shared/utils/subtitleStream';
 import { writeSrt } from '@renderer/captions/subtitleFiles';
 import { lookOf } from '@renderer/captions/look';
@@ -319,13 +319,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const [captionFile, setCaptionFile] = useState<SubtitleFormat | 'none'>('none');
   // And as a track inside the file, which the viewer switches on in the player.
   const [embedCaptions, setEmbedCaptions] = useState(false);
-  const captionCount = captionCues(project).length;
-  // The language the track is tagged with: that of the topmost captions track on show.
-  const captionTrack = [...project.tracks].filter((track) => track.type === 'captions' && track.visible).sort((a, b) => b.order - a.order)[0];
-  const captionLanguage = subtitleLanguageCode(captionSettingsOf(captionTrack).language);
+  // The captions tracks that have captions, top first: each can be burnt in
+  // or not, and each is its own stream inside the file and its own file
+  // beside it, tagged with its language.
+  const deliverTracks = useMemo(() => captionTracksToDeliver(project), [project]);
+  const captionCount = deliverTracks.reduce((sum, track) => sum + track.count, 0);
+  // Burnt in: what the viewer shows - the tracks on show - until changed here.
+  const [burnOff, setBurnOff] = useState<ReadonlySet<string>>(() => new Set(deliverTracks.filter((track) => !track.visible).map((track) => track.id)));
+  const burnTrackIds = useMemo(() => new Set(deliverTracks.filter((track) => !burnOff.has(track.id)).map((track) => track.id)), [deliverTracks, burnOff]);
+  const several = deliverTracks.length > 1;
   const canEmbed = subtitleCodecFor(settings.format) !== null;
   // A captions font this computer lacks is drawn in the fallback, as a title's is: said before the render.
-  const captionFontsMissing = [...new Set(project.tracks.filter((track) => track.type === 'captions' && track.visible).map((track) => lookOf(captionSettingsOf(track)).fontFamily))].filter(isFamilyMissing);
+  const captionFontsMissing = [...new Set(project.tracks.filter((track) => burnTrackIds.has(track.id)).map((track) => lookOf(captionSettingsOf(track)).fontFamily))].filter(isFamilyMissing);
   const [thumbnailPath, setThumbnailPath] = useState<string | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
   const coverArt = COVER_ART_FORMATS.has(settings.format);
@@ -434,7 +439,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     if (!(window as { __scfSeekExport?: boolean }).__scfSeekExport) renderer.startSequentialDecode();
 
     // Captions not burnt in are simply not drawn; everything else is.
-    const drawn = burnCaptions ? project : withoutCaptions(project);
+    const drawn = withoutCaptions(project, burnCaptions ? burnTrackIds : new Set());
 
     try {
       await renderer.ensureLUTs(project);
@@ -495,15 +500,17 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       setMessage(t('export.renderingWith', { encoder: jobPlan.label }));
       // The track inside the file: the captions of the range, as an .srt
       // ffmpeg reads beside the picture and the sound.
-      let subtitles: ExportSettings['subtitles'];
+      // One stream a captions track, in order, named after it.
+      const subtitleStreams: SubtitleStream[] = [];
       if (embedCaptions && subtitleCodecFor(settings.format) !== null && window.filmora.captionsWriteTemp) {
-        const cues = captionCues(project, { fromFrame: settings.startFrame, toFrame: settings.endFrame });
-        if (cues.length > 0) {
-          try {
-            subtitles = { path: await window.filmora.captionsWriteTemp(writeSrt(cues)), language: captionLanguage };
-          } catch (error) {
-            notify(t('export.captionsEmbedFailed', { detail: errorText(error) }), 'error');
+        try {
+          for (const track of deliverTracks) {
+            const cues = captionCues(project, { trackId: track.id, fromFrame: settings.startFrame, toFrame: settings.endFrame });
+            if (cues.length === 0) continue;
+            subtitleStreams.push({ path: await window.filmora.captionsWriteTemp(writeSrt(cues)), language: subtitleLanguageCode(track.language), title: track.name });
           }
+        } catch (error) {
+          notify(t('export.captionsEmbedFailed', { detail: errorText(error) }), 'error');
         }
       }
       const jobSettings = {
@@ -513,7 +520,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         ...(streamColour ? { streamColour } : {}),
         ...(audioPath ? { audioPath, audioBitrateKbps, audioRawFormat } : {}),
         ...(thumbnailPath && coverArt ? { thumbnailPath } : {}),
-        ...(subtitles ? { subtitles } : {}),
+        ...(subtitleStreams.length === 1 ? { subtitles: { path: subtitleStreams[0].path, language: subtitleStreams[0].language } } : {}),
+        ...(subtitleStreams.length > 1 ? { subtitleStreams } : {}),
       };
 
       const started = await window.filmora.exportStart(jobSettings);
@@ -565,17 +573,22 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       await window.filmora.exportFinish(activeJobId);
       const fps = settings.fps || project.fps;
       // The subtitle file: the captions in the range rendered, counted from its start.
+      // One file a track; with several, each named with its language (name.es.srt).
       let captionsFile: string | undefined;
       if (captionFile !== 'none' && window.filmora.captionsWriteSidecar) {
-        const cues = captionCues(project, { fromFrame: settings.startFrame, toFrame: settings.endFrame });
-        if (cues.length > 0) {
-          try {
-            const written = await window.filmora.captionsWriteSidecar(settings.outputPath, captionFile, writeSubtitles(captionFile, cues));
-            captionsFile = splitPath(written).name;
-          } catch (error) {
-            notify(t('export.captionsFailed', { detail: errorText(error) }), 'error');
+        const written: string[] = [];
+        const tags = sidecarTags(deliverTracks);
+        try {
+          for (const track of deliverTracks) {
+            const cues = captionCues(project, { trackId: track.id, fromFrame: settings.startFrame, toFrame: settings.endFrame });
+            if (cues.length === 0) continue;
+            const path = await window.filmora.captionsWriteSidecar(settings.outputPath, captionFile, writeSubtitles(captionFile, cues), several ? tags.get(track.id) : undefined);
+            written.push(splitPath(path).name);
           }
+        } catch (error) {
+          notify(t('export.captionsFailed', { detail: errorText(error) }), 'error');
         }
+        if (written.length > 0) captionsFile = written.join(', ');
       }
       setResult({
         path: settings.outputPath,
@@ -586,7 +599,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         encoder: jobPlan.label,
         fps,
         ...(captionsFile ? { captionsFile } : {}),
-        ...(subtitles ? { captionsEmbedded: subtitles.language } : {}),
+        ...(subtitleStreams.length > 0 ? { captionsEmbedded: subtitleStreams.map((stream) => stream.language).join(', ') } : {}),
       });
       // The result card says all of it; a status line repeating it is noise.
       setMessage(null);
@@ -602,7 +615,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, embedCaptions, captionLanguage, t]);
+  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, embedCaptions, deliverTracks, burnTrackIds, several, t]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const renderFps = settings.fps || project.fps;
@@ -1167,6 +1180,30 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         <span className="block text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnHint2')}</span>
                       </span>
                     </label>
+                    {several && burnCaptions && (
+                      <fieldset className="ml-6 flex flex-col gap-1" data-testid="export-captions-burn-tracks" aria-label={t('export.captionsBurn')}>
+                        {deliverTracks.map((track) => (
+                          <label key={track.id} className="flex items-center gap-2 text-xs text-slate-200">
+                            <input
+                              type="checkbox"
+                              data-testid="export-captions-burn-track"
+                              data-track={track.id}
+                              checked={burnTrackIds.has(track.id)}
+                              onChange={(event) =>
+                                setBurnOff((off) => {
+                                  const next = new Set(off);
+                                  if (event.target.checked) next.delete(track.id);
+                                  else next.add(track.id);
+                                  return next;
+                                })
+                              }
+                            />
+                            {t('export.captionsTrackLabel', { name: track.name, language: t(track.language === 'en' ? 'captions.languageNameEn' : 'captions.languageNameEs') })}
+                          </label>
+                        ))}
+                        <span className="text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnTracks')}</span>
+                      </fieldset>
+                    )}
                     <label className={`flex items-start gap-2 text-xs ${canEmbed ? 'text-slate-200' : 'text-slate-400'}`}>
                       <input
                         type="checkbox"
@@ -1179,7 +1216,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       <span>
                         {t('export.captionsEmbed')}
                         <span className="block text-2xs leading-relaxed text-slate-400">
-                          {canEmbed ? t('export.captionsEmbedHint') : t('export.captionsEmbedUnsupported', { format: formatLabel(selectedFormat?.value) })}
+                          {canEmbed ? t(several ? 'export.captionsEmbedHintMany' : 'export.captionsEmbedHint') : t('export.captionsEmbedUnsupported', { format: formatLabel(selectedFormat?.value) })}
                         </span>
                       </span>
                     </label>
@@ -1195,14 +1232,14 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                         <option value="srt">{t('export.captionsFileSrt')}</option>
                         <option value="vtt">{t('export.captionsFileVtt')}</option>
                       </select>
-                      <span className="text-2xs leading-relaxed text-slate-400">{t('export.captionsFileHint')}</span>
+                      <span className="text-2xs leading-relaxed text-slate-400">{several ? t('export.captionsFileHintMany', { name: fileName || 'video' }) : t('export.captionsFileHint')}</span>
                     </label>
-                    {burnCaptions && embedCaptions && canEmbed && (
+                    {burnCaptions && burnTrackIds.size > 0 && embedCaptions && canEmbed && (
                       <p role="status" className="text-2xs leading-relaxed text-amber-200" data-testid="export-captions-twice">
                         {t('export.captionsTwice')}
                       </p>
                     )}
-                    {captionFontsMissing.length > 0 && burnCaptions && (
+                    {captionFontsMissing.length > 0 && burnCaptions && burnTrackIds.size > 0 && (
                       <p role="status" data-testid="export-caption-fonts-missing" className="text-2xs text-amber-300">
                         {t('export.missingFonts', { fonts: captionFontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
                       </p>

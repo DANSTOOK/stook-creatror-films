@@ -1016,6 +1016,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (settings.audioPath) assertAllowed(settings.audioPath);
     if (settings.thumbnailPath) assertAllowed(settings.thumbnailPath);
     if (settings.subtitles) assertAllowed(settings.subtitles.path);
+    for (const stream of settings.subtitleStreams ?? []) assertAllowed(stream.path);
     const jobId = await pipeline.start(settings);
     jobTargets.set(jobId, settings.outputPath);
     return { jobId };

@@ -375,6 +375,13 @@ export interface CaptionAnimation {
   perPage: number;
 }
 
+/** A subtitle stream put inside an export: a temporary .srt, its language (ISO 639-2) and, with several, a name. */
+export interface SubtitleStream {
+  path: string;
+  language: 'spa' | 'eng';
+  title?: string;
+}
+
 /** What a captions track says about all of its captions. */
 export interface CaptionTrackSettings {
   preset: CaptionPreset;
@@ -814,7 +821,13 @@ export interface ExportSettings {
    * on and off (MP4 and MOV: mov_text; WebM: WebVTT), with its language as
    * an ISO 639-2 code. A temporary .srt written before the encoder starts.
    */
-  subtitles?: { path: string; language: 'spa' | 'eng' };
+  subtitles?: SubtitleStream;
+  /**
+   * Several captions tracks, each its own stream in this order, tagged with
+   * its language and named after its track. When present, `subtitles` is not
+   * used.
+   */
+  subtitleStreams?: SubtitleStream[];
   /**
    * Image embedded as the file's cover (MP4 / MOV), the thumbnail players and
    * Explorer show. Added after the encode by a stream-copy pass.

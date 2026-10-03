@@ -113,6 +113,41 @@ export function captionCues(project: ProjectState, options: { trackId?: string; 
     .filter((cue) => cue.text.trim() !== '' && cue.endMs > cue.startMs);
 }
 
+/** A captions track an export can deliver: one with captions on it. */
+export interface DeliveredTrack {
+  id: string;
+  name: string;
+  language: CaptionLanguage;
+  visible: boolean;
+  count: number;
+}
+
+/** The captions tracks that have captions, top first - the order their streams go into a file. */
+export function captionTracksToDeliver(project: ProjectState): DeliveredTrack[] {
+  const counts = new Map<string, number>();
+  for (const clip of Object.values(project.clips)) if (clip.caption && clip.caption.text.trim() !== '') counts.set(clip.trackId, (counts.get(clip.trackId) ?? 0) + 1);
+  return project.tracks
+    .filter((track) => isCaptionTrack(track) && (counts.get(track.id) ?? 0) > 0)
+    .sort((a, b) => b.order - a.order)
+    .map((track) => ({ id: track.id, name: track.name, language: captionSettingsOf(track).language, visible: track.visible, count: counts.get(track.id) ?? 0 }));
+}
+
+/**
+ * What each track's subtitle file is called after the video's name: its
+ * language - `es`, `en` - and a number for a second track in the same
+ * language (`es-2`).
+ */
+export function sidecarTags(tracks: readonly Pick<DeliveredTrack, 'id' | 'language'>[]): Map<string, string> {
+  const used = new Map<string, number>();
+  const tags = new Map<string, string>();
+  for (const track of tracks) {
+    const seen = (used.get(track.language) ?? 0) + 1;
+    used.set(track.language, seen);
+    tags.set(track.id, seen === 1 ? track.language : `${track.language}-${seen}`);
+  }
+  return tags;
+}
+
 /** A new captions track's settings. */
 export function captionTrack(base: Track, preset: CaptionPreset, language: CaptionLanguage): Track {
   return { ...base, type: 'captions', captions: { preset, language } };
