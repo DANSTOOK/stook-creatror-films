@@ -323,8 +323,9 @@ async function main() {
     console.log('1. the dialog');
     const dialog = await openDialog(window);
     const fields = await dialog.locator('label.field-label').allInnerTexts();
-    check('Timeline > Generate captions opens it: Spoken language, Sound to listen to, Quality, Style',
-      fields.join('|') === 'Spoken language|Sound to listen to|Quality|Style', fields.join(' / '));
+    // Names and terms since phase 3; with no captions track yet, nothing asks where to put them.
+    check('Timeline > Generate captions opens it: Spoken language, Sound to listen to, Quality, Style, Names and terms',
+      fields.join('|') === 'Spoken language|Sound to listen to|Quality|Style|Names and terms', fields.join(' / '));
     const defaults = await window.evaluate(() => ({
       language: document.querySelector('[data-testid="captions-language"]').value,
       source: document.querySelector('[data-testid="captions-source"]').value,
@@ -724,8 +725,9 @@ async function main() {
     const dialogEs = await openDialog(window, 'Línea de tiempo', /^Generar subtítulos/);
     const fieldsEs = await dialogEs.locator('label.field-label').allInnerTexts();
     const languageEs = await dialogEs.getByTestId('captions-language').inputValue();
-    check('Línea de tiempo > Generar subtítulos: Idioma hablado, Sonido que se escucha, Calidad, Estilo; el idioma empieza en español',
-      fieldsEs.join('|') === 'Idioma hablado|Sonido que se escucha|Calidad|Estilo' && languageEs === 'es', `${fieldsEs.join(' / ')} - ${languageEs}`);
+    // The project has a captions track by now: it also asks where to put them.
+    check('Línea de tiempo > Generar subtítulos: Idioma hablado, Sonido que se escucha, Calidad, Estilo, Dónde ponerlos, Nombres y términos; el idioma empieza en español',
+      fieldsEs.join('|') === 'Idioma hablado|Sonido que se escucha|Calidad|Estilo|Dónde ponerlos|Nombres y términos' && languageEs === 'es', `${fieldsEs.join(' / ')} - ${languageEs}`);
     await shot(window, 'captions-dialog-es.png');
     await dialogEs.getByTestId('captions-model').selectOption('fast');
     await dialogEs.getByTestId('captions-preset').selectOption('social');
