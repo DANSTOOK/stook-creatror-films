@@ -5,6 +5,8 @@ import { hasSoloedTrack, isTrackAudible } from '@renderer/audio/mixRouting';
 import { dbLabel, panLabel } from '@renderer/audio/levels';
 import { getAudioEngine, type MeterReading } from '@renderer/audio/AudioEngine';
 import { SCALE_MARKS_DB, dbToPosition, gainToDb, gainToPosition, positionToGain } from '@renderer/audio/faderLaw';
+import { ValueField } from './ValueField';
+import { gainFromText, numberFromText, panFromText } from './values';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { TRACK_TYPE_COLORS } from '@renderer/components/Timeline/TimelineCanvas';
 import { useT } from '@renderer/i18n';
@@ -34,6 +36,12 @@ import { timelineRows } from '@renderer/components/Timeline/trackRows';
 
 /** A fader's travel, in keyboard steps. */
 const FADER_STEPS = 200;
+
+/** A time typed in milliseconds, as the seconds the project stores. */
+function msToSeconds(text: string, minMs: number, maxMs: number): number | null {
+  const ms = numberFromText(text, minMs, maxMs);
+  return ms === null ? null : ms / 1000;
+}
 
 /** Peak hold: how long the line stays before it falls. */
 const HOLD_MS = 1200;
@@ -192,13 +200,28 @@ function TrackStrip({
         onDoubleClick={() => updateTrack(track.id, { pan: 0 })}
         {...tip(`${t('mixer.pan')} ${panLabel(track.pan)}`, { named: false })}
       />
+      <ValueField
+        label={t('mixer.trackPan', { name: track.name })}
+        testId={`track-pan-${track.id}`}
+        value={track.pan}
+        format={panLabel}
+        parse={panFromText}
+        onCommit={(pan) => updateTrack(track.id, { pan })}
+      />
       <div className={`flex min-h-0 w-full flex-1 items-stretch justify-center gap-1 ${audible ? '' : 'opacity-50'}`}>
         <Scale />
         <Fader label={t('mixer.trackLevel', { name: track.name })} gain={track.volume} onChange={(volume) => updateTrack(track.id, { volume })} />
         <Meter register={registerMeter} />
       </div>
-      <span className="text-2xs tabular-nums text-slate-300" title={ducked ? t('mixer.ducked') : undefined}>
-        {dbLabel(track.volume).replace(' dB', '')}
+      <span className="flex w-full items-center justify-center" title={ducked ? t('mixer.ducked') : undefined}>
+        <ValueField
+          label={t('mixer.trackLevel', { name: track.name })}
+          testId={`track-level-${track.id}`}
+          value={track.volume}
+          format={(gain) => dbLabel(gain).replace(' dB', '')}
+          parse={gainFromText}
+          onCommit={(volume) => updateTrack(track.id, { volume })}
+        />
         {ducked && <span className="ml-0.5 text-sky-300">↓</span>}
       </span>
       <span className="flex gap-1">
@@ -267,17 +290,27 @@ function DuckingPopover({ tracks, onClose, anchor }: { tracks: Track[]; onClose(
 
   const slider = (
     label: string,
-    readout: string,
+    format: (value: number) => string,
     value: number,
     min: number,
     max: number,
     step: number,
     onChange: (value: number) => void,
+    // What the readout shows is what a person types back: the times are
+    // printed in milliseconds and stored in seconds, so they convert here.
+    parse: (text: string) => number | null = (text) => numberFromText(text, min, max),
   ): JSX.Element => (
     <label className="flex flex-col gap-0.5">
-      <span className="field-label flex items-center justify-between">
+      <span className="field-label flex items-center justify-between gap-1">
         <span>{label}</span>
-        <span className="timecode text-slate-300">{readout}</span>
+        <ValueField
+          label={label}
+          value={value}
+          format={format}
+          parse={parse}
+          onCommit={onChange}
+          className="w-16 rounded-control bg-transparent px-1 text-right text-2xs tabular-nums text-slate-300 hover:bg-panel-700 focus:bg-panel-950 focus:text-slate-100 focus:outline-none focus:ring-1 focus:ring-accent"
+        />
       </span>
       <input
         type="range"
@@ -313,10 +346,10 @@ function DuckingPopover({ tracks, onClose, anchor }: { tracks: Track[]; onClose(
         </p>
       )}
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-        {slider(t('mixer.threshold'), `${ducking.thresholdDb.toFixed(0)} dB`, ducking.thresholdDb, -60, 0, 1, (thresholdDb) => setDucking({ thresholdDb }))}
-        {slider(t('mixer.range'), `-${ducking.rangeDb.toFixed(0)} dB`, ducking.rangeDb, 0, 40, 1, (rangeDb) => setDucking({ rangeDb }))}
-        {slider(t('mixer.attack'), `${Math.round(ducking.attackSeconds * 1000)} ms`, ducking.attackSeconds, 0.005, 0.5, 0.005, (attackSeconds) => setDucking({ attackSeconds }))}
-        {slider(t('mixer.release'), `${Math.round(ducking.releaseSeconds * 1000)} ms`, ducking.releaseSeconds, 0.05, 2, 0.05, (releaseSeconds) => setDucking({ releaseSeconds }))}
+        {slider(t('mixer.threshold'), (value) => `${value.toFixed(0)} dB`, ducking.thresholdDb, -60, 0, 1, (thresholdDb) => setDucking({ thresholdDb }))}
+        {slider(t('mixer.range'), (value) => `-${value.toFixed(0)} dB`, ducking.rangeDb, 0, 40, 1, (rangeDb) => setDucking({ rangeDb }))}
+        {slider(t('mixer.attack'), (value) => `${Math.round(value * 1000)} ms`, ducking.attackSeconds, 0.005, 0.5, 0.005, (attackSeconds) => setDucking({ attackSeconds }), (text) => msToSeconds(text, 5, 500))}
+        {slider(t('mixer.release'), (value) => `${Math.round(value * 1000)} ms`, ducking.releaseSeconds, 0.05, 2, 0.05, (releaseSeconds) => setDucking({ releaseSeconds }), (text) => msToSeconds(text, 50, 2000))}
       </div>
       <div className="space-y-1 border-t border-panel-700 pt-2">
         <p className="text-2xs font-semibold text-slate-200">{t('mixer.roles')}</p>
