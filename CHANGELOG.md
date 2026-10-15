@@ -16,6 +16,62 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.37.0-beta.1 — Paneles en varias pantallas, márgenes seguros y el espacio que no reproducía
+2026-10-14 · pre-release para probar
+
+### Arreglado
+- **El espacio dejaba de reproducir hasta cambiar de proyecto o reiniciar.**
+  Pasaba con el cursor al final de la línea de tiempo: la reproducción
+  arrancaba y el reloj la detenía en el mismo instante, porque ya no quedaba
+  nada que mostrar, y nada en pantalla lo decía. Ahora, darle play desde el
+  final rebobina y reproduce, como en cualquier editor; el bucle se deja en
+  paz, que ya da la vuelta solo.
+  - *Comprobado:* 6 casos en `PlayFromEnd.test.ts` y, en la app, 6/6 estados
+    reproducen con el espacio (editor recién abierto, cursor al final, foco en
+    un botón, tras cerrar un diálogo, tras el diálogo de exportación y tras
+    pulsar en la línea de tiempo). Antes de dar con la causa medí y descarté
+    otra sospecha: con la ventana minimizada la reproducción sí avanza.
+
+### Añadido
+- **Paneles en ventanas propias, para un segundo monitor.** El visualizador,
+  el carrete, el inspector y el mezclador tienen un botón en su cabecera que
+  los abre en su propia ventana, que puedes llevar a otra pantalla. Al
+  cerrarla, el panel vuelve. Recuerda tamaño y posición de cada una, y si
+  cierras la app con paneles fuera, al volver siguen fuera.
+  - La ventana la abre la propia página, así que comparte proceso y estado
+    con el editor: el panel desprendido **es el mismo React y el mismo
+    proyecto**, sin sincronizar nada. El proceso principal solo admite esas
+    ventanas y sigue rechazando cualquier otra.
+  - Las teclas pulsadas sobre un panel desprendido se entregan a la ventana
+    principal, para que los atajos sigan funcionando.
+  - *Comprobado:* 5 pruebas en `WorkspaceStore.test.ts` y 11/11 en la app
+    (se abre, se dibuja de verdad allí, sigue al editor sin sincronización,
+    el lienzo WebGL del visor sigue vivo, el editor avisa dónde fue el panel,
+    se acopla al cerrar la ventana y se recuerda tras reiniciar). Dos cosas se
+    midieron antes de darlas por buenas: un lienzo WebGL **sobrevive** a
+    mudarse de ventana (87 → 358 fotogramas durante el cambio) y la app
+    **cierra en 0,3 s** con un panel desprendido.
+- **Márgenes seguros en el visualizador.** Un botón en la barra del
+  reproductor dibuja los dos recuadros: acción al 93 % y títulos al 90 %
+  (SMPTE ST 2046-1, los mismos que muestran Premiere y Final Cut). Apagados
+  por defecto. La app ya conocía el de títulos, pero solo lo dibujaba mientras
+  arrastrabas un título.
+  - *Comprobado:* 6 pruebas en `SafeAreas.test.ts` y 8/8 en la app, con
+    captura del visor.
+- **Valores escritos a mano en el mezclador.** Cada número es ahora un campo:
+  el nivel de cada pista, el panorama y los cuatro del ducking. Aceptan lo que
+  muestran ("-6.0", "L30", "-18 dB", "80 ms") y lo que uno teclea ("-6", "50",
+  "0,25"); Enter aplica, Escape o un texto inválido devuelve el valor
+  anterior. Los tiempos se muestran en milisegundos y se guardan en segundos.
+  - *Comprobado:* 14 pruebas en `MixerValues.test.ts`, incluida la vuelta
+    completa de cada etiqueta que imprime el mezclador, y 7/7 en la app.
+
+### Problemas conocidos
+- Cortar un clip descarta los fotogramas guardados para arrastrar hacia atrás
+  en ese clip; se vuelven a llenar al arrastrar.
+
+---
+
 ## v1.36.0-beta.1 — Subtítulos animados palabra a palabra, glosario y varias pistas
 
 Instalador de prueba que cierra los subtítulos. Antes de publicarla pasó la
