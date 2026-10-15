@@ -16,6 +16,53 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.38.0-beta.1 — Superposición de capas
+2026-10-15 · pre-release para probar
+
+### Añadido
+- **Modos de fusión por clip.** Doce modos del estándar W3C *Compositing and
+  Blending Level 1* —los mismos nombres y las mismas cuentas que ofrecen
+  Photoshop, Premiere y Resolve—: normal, multiplicar, oscurecer, subexponer
+  color, trama, aclarar, sobreexponer color, superponer, luz fuerte, luz
+  suave, diferencia y exclusión. Se eligen en el inspector, junto a la
+  opacidad, y se guardan con el clip.
+  - Las fórmulas están escritas dos veces a propósito: una en TypeScript, que
+    las pruebas comparan contra el estándar, y otra en el shader que corre en
+    la gráfica. Una comprobación dibuja el shader en 1200 combinaciones de
+    fondo, capa, alfa y opacidad y compara **píxel a píxel** con la versión en
+    TypeScript, para que las dos no puedan separarse sin que salte: la
+    diferencia máxima es de 2/255, que es el redondeo a 8 bits de las propias
+    texturas.
+  - Fusionar obliga a leer lo ya dibujado, y un búfer no se puede leer y
+    escribir en la misma pasada, así que un clip con modo cuesta una pasada
+    extra. **Solo la pagan los clips que usan uno**; los que están en normal
+    se componen igual que antes.
+  - *Comprobado:* 20 pruebas unitarias, la comparación de 1200 casos en la
+    gráfica y 12/12 en la app con dos copias del mismo plano una sobre otra
+    (diferencia da negro puro, multiplicar oscurece, trama aclara, oscurecer y
+    aclarar devuelven el plano tal cual, y el modo sobrevive al guardado). Un
+    modo que invente una versión futura se abre como normal en vez de negarse
+    a dibujar.
+
+### Arreglado
+- **Una segunda copia de la app abría una ventana muerta.** Al perder el
+  bloqueo de instancia única, la app pedía salir —pero el aviso de salida no
+  detiene el arranque, así que seguía construyendo su ventana. Esa ventana
+  cargaba la interfaz y no volvía a pintar nunca, porque el programa se estaba
+  cerrando por debajo: una ventana inerte delante de la que sí funciona. Ahora
+  la copia que pierde el bloqueo no abre ninguna ventana.
+- **En las pruebas automáticas la ventana podía esperarse a sí misma.** Se
+  mostraba al primer dibujado, y una ventana aparcada fuera de pantalla y sin
+  mostrar puede no dibujar nunca: cada uno esperaba al otro. Un arranque
+  normal sigue esperando el dibujado, así que no hay destello blanco.
+  - *Comprobado:* `tests/e2e/single-instance.mjs`, 5/5 (la segunda copia no
+    abre ventana, y la primera sigue pintando y sigue respondiendo a un clic).
+    Salió a la luz porque la suite de interfaz se quedaba 30 s colgada en su
+    primer clic: el botón estaba ahí, en su sitio y bajo el puntero, pero no
+    había fotograma que esperar. Vuelve a dar **127/127**.
+
+---
+
 ## v1.37.0-beta.1 — Paneles en varias pantallas, márgenes seguros y el espacio que no reproducía
 2026-10-14 · pre-release para probar
 
