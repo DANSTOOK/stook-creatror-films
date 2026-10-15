@@ -37,9 +37,13 @@ fotogramas exportados correctos).
   - Cada fila dice **dónde vive** la función y **qué tecla** la ejecuta, para
     que enseñe el menú y el teclado en vez de sustituirlos. Si es una casilla,
     dice cómo está puesta, para que elegirla no sea adivinar.
-  - *Comprobado:* 15 pruebas unitarias y 14/14 en la app, incluyendo que las
-    **35 funciones del menú real** se encuentran escribiendo y que Enter abre
-    de verdad el mezclador.
+  - *Comprobado:* 15 pruebas unitarias y 17/17 en la app, incluyendo que las
+    **35 funciones del menú real** se encuentran escribiendo, que Enter abre
+    de verdad el mezclador, y lo mismo con la app en español: «mezcl»
+    encuentra *Mezclador* y «titulo» sin acento encuentra las cuatro
+    funciones con *título*. (Las tres comprobaciones en español se añadieron
+    justo después de etiquetar la versión, así que las notas publicadas en
+    GitHub dicen 14/14.)
 - **Una lista de las LUTs de esta máquina.** La LUT que cargas queda
   apuntada, y aplicarla a otro clip es un clic en su nombre en vez de volver a
   buscar el `.cube` por el disco. La que está puesta en el clip se marca, y
