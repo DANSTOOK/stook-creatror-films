@@ -24,13 +24,39 @@ export interface Transport {
   scrub(frame: number): void;
 }
 
+/**
+ * Where playback begins when the transport is asked to play.
+ *
+ * Pressing play with the playhead at the end used to start playback and stop
+ * it in the same instant: there is nothing left to show, so the clock reported
+ * "stopped" on its first tick. On screen that reads as a dead space bar, and
+ * it stays dead until the project changes and the playhead goes back - which
+ * is exactly how the user met it. Play from the end means play again.
+ *
+ * Looping is left alone: the clock wraps by itself, so moving the playhead
+ * here would only fight it.
+ */
+export function playStartFrame(currentFrame: number, durationFrames: number, loop: boolean): number {
+  if (loop || durationFrames <= 0) return currentFrame;
+  return currentFrame >= durationFrames - 1 ? 0 : currentFrame;
+}
+
+/** Start playback, rewinding first when the playhead has nothing left to play. */
+function startPlaying(): void {
+  const { project, ui, setCurrentFrame, setPlaying } = useProjectStore.getState();
+  const from = playStartFrame(project.currentFrame, project.durationFrames, ui.loopPlayback);
+  if (from !== project.currentFrame) setCurrentFrame(from);
+  setPlaying(true);
+}
+
 /** Commands only. No effects, no timers - safe to call anywhere. */
 export function useTransport(): Transport {
-  const play = useCallback(() => useProjectStore.getState().setPlaying(true), []);
+  const play = useCallback(() => startPlaying(), []);
   const pause = useCallback(() => useProjectStore.getState().setPlaying(false), []);
   const toggle = useCallback(() => {
     const { ui, setPlaying } = useProjectStore.getState();
-    setPlaying(!ui.isPlaying);
+    if (ui.isPlaying) setPlaying(false);
+    else startPlaying();
   }, []);
   const seek = useCallback((frame: number) => useProjectStore.getState().setCurrentFrame(frame), []);
   const step = useCallback((delta: number) => {
