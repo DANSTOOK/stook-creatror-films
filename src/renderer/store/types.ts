@@ -76,6 +76,11 @@ export interface EditorUiState {
   pixelArtViewport: boolean;
   showTransparencyGrid: boolean;
   /**
+   * The broadcast safe areas over the picture: action at 93% of the frame
+   * and title at 90%. Off by default - they are a check, not scenery.
+   */
+  showSafeAreas: boolean;
+  /**
    * The transform handles in the viewer.
    *
    * Off until asked for, as in Final Cut: a box drawn over the picture
@@ -160,6 +165,7 @@ export const DEFAULT_UI_STATE: EditorUiState = {
   loopPlayback: false,
   pixelArtViewport: false,
   showTransparencyGrid: true,
+  showSafeAreas: false,
   transformMode: false,
   fullscreenViewer: false,
   gradeBypass: false,

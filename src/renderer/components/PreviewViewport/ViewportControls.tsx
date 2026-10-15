@@ -5,6 +5,7 @@ import type { Clip, ResolvedTransform } from '@shared/types';
 import { titleGeometry, titleLayout, titleTransformAt } from '@renderer/text/geometry';
 import type { TitleAnimationState } from '@renderer/text/animation';
 import { TITLE_SAFE } from '@renderer/text/titleStyle';
+import { safeAreaRects } from './safeAreas';
 import {
   CORNER_HANDLES,
   EDGE_HANDLES,
@@ -101,6 +102,7 @@ export function ViewportControls(): JSX.Element | null {
   const project = useProjectStore((state) => state.project);
   const selectedClipIds = useProjectStore((state) => state.ui.selectedClipIds);
   const transformMode = useProjectStore((state) => state.ui.transformMode);
+  const showSafeAreas = useProjectStore((state) => state.ui.showSafeAreas);
   const snapping = useProjectStore((state) => state.ui.snappingEnabled);
   const editingTitleId = useProjectStore((state) => state.ui.editingTitleId);
   const playing = useProjectStore((state) => state.ui.isPlaying);
@@ -117,6 +119,7 @@ export function ViewportControls(): JSX.Element | null {
   const [fontsLoaded, setFontsLoaded] = useState(0);
 
   const frame = useMemo(() => ({ width: project.width, height: project.height }), [project.width, project.height]);
+  const safeAreas = useMemo(() => safeAreaRects(project.width, project.height), [project.width, project.height]);
   const currentFrame = project.currentFrame;
 
   useEffect(() => {
@@ -399,6 +402,29 @@ export function ViewportControls(): JSX.Element | null {
             pointerEvents="none"
           />
         )}
+
+        {/*
+          The safe areas, while they are switched on: what a cropping player
+          keeps (93%) and where text stays legible (90%). Thin, dashed and
+          unclickable - something to judge the shot against, not part of it.
+        */}
+        {showSafeAreas &&
+          (Object.entries(safeAreas) as [keyof typeof safeAreas, (typeof safeAreas)['action']][]).map(([name, rect]) => (
+            <rect
+              key={name}
+              data-testid={`viewport-safe-${name}`}
+              x={rect.x}
+              y={rect.y}
+              width={rect.width}
+              height={rect.height}
+              fill="none"
+              stroke="rgba(255, 255, 255, 0.45)"
+              strokeWidth={stroke}
+              strokeDasharray={name === 'title' ? `${4 * projectPxPerCssPx} ${4 * projectPxPerCssPx}` : undefined}
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          ))}
 
         {/* Guides, drawn only while a drag is held against them. */}
         {dragging && guides.vertical && (

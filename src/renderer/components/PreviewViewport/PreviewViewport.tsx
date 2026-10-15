@@ -4,6 +4,7 @@ import {
   ChevronFirst,
   ChevronLast,
   CircleSlash2,
+  Frame,
   Maximize2,
   Minimize2,
   Move,
@@ -218,6 +219,16 @@ export function PreviewViewport(): JSX.Element {
         {...tip(t('viewer.loop'))}
       >
         <Repeat size={16} />
+      </button>
+      <button
+        type="button"
+        data-testid="toggle-safe-areas"
+        aria-pressed={ui.showSafeAreas}
+        className={`tool-button w-7 px-0 ${ui.showSafeAreas ? 'tool-button-active' : ''}`}
+        onClick={() => setUi({ showSafeAreas: !ui.showSafeAreas })}
+        {...tip(t('viewer.safeAreas'))}
+      >
+        <Frame size={16} />
       </button>
     </div>
   );

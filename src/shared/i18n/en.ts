@@ -833,6 +833,7 @@ export const en = {
   'viewer.nextFrame': 'Next frame',
   'viewer.toEnd': 'Go to end',
   'viewer.loop': 'Loop playback',
+  'viewer.safeAreas': 'Safe areas (93% action, 90% title)',
   'viewer.lengthHint': 'Length of the edit: up to the end of the last clip',
   'viewer.playhead': 'Playhead',
   'viewer.alpha': 'alpha',

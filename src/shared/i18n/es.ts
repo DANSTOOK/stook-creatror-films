@@ -833,6 +833,7 @@ export const es: Messages = {
   'viewer.nextFrame': 'Fotograma siguiente',
   'viewer.toEnd': 'Ir al final',
   'viewer.loop': 'Reproducir en bucle',
+  'viewer.safeAreas': 'Márgenes seguros (93 % acción, 90 % títulos)',
   'viewer.lengthHint': 'Duración del montaje: hasta el final del último clip',
   'viewer.playhead': 'Cursor de reproducción',
   'viewer.alpha': 'alfa',
