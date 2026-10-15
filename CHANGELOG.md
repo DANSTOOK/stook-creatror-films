@@ -16,6 +16,57 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.39.0-beta.1 — Buscar funciones y una lista de LUTs
+2026-10-15 · pre-release para probar
+
+### Añadido
+- **Buscar una función por su nombre.** **Ctrl+Mayús+P** abre un campo:
+  escribe lo que quieras hacer, mira lo que sale y pulsa Enter. También está
+  en *Ayuda*, al lado de la lista de atajos, porque las dos responden a la
+  misma pregunta.
+  - No es una lista nueva de funciones: **es el propio menú de la
+    aplicación**, aplanado. Así que sale en el idioma que tengas puesto, con
+    el atajo de verdad, lo que no se puede usar en ese momento se atenúa y se
+    va al final, y cualquier función que se añada al menú aparece aquí sin que
+    nadie tenga que acordarse de nada.
+  - Busca **sin acentos y en cualquier orden**: «anadir titulo» encuentra
+    *Añadir título*, y «sub exportar» encuentra *Exportar subtítulos*. El
+    nombre pesa más que el menú donde vive, el principio del nombre más que el
+    medio, y entre dos que coinciden gana el más corto —así «guardar» ofrece
+    *Guardar* antes que *Guardar como*.
+  - Cada fila dice **dónde vive** la función y **qué tecla** la ejecuta, para
+    que enseñe el menú y el teclado en vez de sustituirlos. Si es una casilla,
+    dice cómo está puesta, para que elegirla no sea adivinar.
+  - *Comprobado:* 15 pruebas unitarias y 14/14 en la app, incluyendo que las
+    **35 funciones del menú real** se encuentran escribiendo y que Enter abre
+    de verdad el mezclador.
+- **Una lista de las LUTs de esta máquina.** La LUT que cargas queda
+  apuntada, y aplicarla a otro clip es un clic en su nombre en vez de volver a
+  buscar el `.cube` por el disco. La que está puesta en el clip se marca, y
+  cada una se puede quitar de la lista con la ✕ (el archivo no se toca).
+  - Guarda **nombres y rutas, no los archivos**: el `.cube` se queda donde
+    está, con la misma ruta que guarda un proyecto, así que una LUT apuntada
+    aquí y una guardada en un proyecto son el mismo archivo. Se lee del disco
+    cada vez, de modo que si la editas fuera se aplica como está ahora.
+  - Si el archivo ya no está donde estaba, lo dice **en claro** —no con el
+    error del sistema— y el clip se queda con el look que tenía.
+  - *Comprobado:* 15 pruebas unitarias y 14/14 en la app con dos clips y dos
+    `.cube` distintos, leyendo los píxeles para no fiarse del nombre: cargar
+    cambia la imagen (rojo 57,9 → 81,7 y azul 81,8 → 57,9 con una LUT que
+    intercambia los dos), aplicar desde la lista al segundo clip **sin pasar
+    por el diálogo** cambia la imagen igual, el mismo archivo se lista una
+    sola vez, la que está en uso se marca, y la ruta se guarda en el clip para
+    que el look sobreviva al guardado.
+
+### Sin verificar
+- **Aplicar una LUT a varios clips de golpe.** Lo escribí y lo quité antes de
+  publicarlo: el inspector solo muestra los controles cuando hay **un** clip
+  seleccionado, así que ese camino no se podía recorrer desde la interfaz.
+  Hace falta un inspector para selecciones múltiples, que no existe todavía;
+  preferí no dejar código que nadie puede alcanzar.
+
+---
+
 ## v1.38.0-beta.1 — Superposición de capas
 2026-10-15 · pre-release para probar
 
