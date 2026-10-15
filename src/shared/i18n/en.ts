@@ -199,6 +199,12 @@ export const en = {
   'inspector.lutLoaded': 'LUT loaded',
   'inspector.lutNotSaved': '(not saved with the project)',
   'inspector.noLut': 'No LUT loaded',
+  // The LUTs this machine has to hand (store/useLutLibrary).
+  'inspector.lutLibrary': 'Your LUTs',
+  'inspector.lutLibraryEmpty': 'A LUT you load is kept here, to use on other clips.',
+  'inspector.applyLut': 'Apply {name}',
+  'inspector.lutMissing': '{name} is not where it was. Load it again, or take it off the list.',
+  'inspector.forgetLut': 'Take {name} off the list',
   'inspector.chromaKey': 'Chroma key',
   'inspector.similarity': 'Similarity',
   'inspector.smoothness': 'Smoothness',

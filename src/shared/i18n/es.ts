@@ -199,6 +199,12 @@ export const es: Messages = {
   'inspector.lutLoaded': 'LUT cargada',
   'inspector.lutNotSaved': '(no se guarda con el proyecto)',
   'inspector.noLut': 'Sin LUT',
+  // Las LUTs que esta máquina tiene a mano (store/useLutLibrary).
+  'inspector.lutLibrary': 'Tus LUTs',
+  'inspector.lutLibraryEmpty': 'La LUT que cargues se guarda aquí, para usarla en otros clips.',
+  'inspector.applyLut': 'Aplicar {name}',
+  'inspector.lutMissing': '{name} ya no está donde estaba. Vuelve a cargarla o quítala de la lista.',
+  'inspector.forgetLut': 'Quitar {name} de la lista',
   'inspector.chromaKey': 'Croma',
   'inspector.similarity': 'Similitud',
   'inspector.smoothness': 'Suavidad',

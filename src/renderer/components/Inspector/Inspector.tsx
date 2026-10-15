@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Diamond, FolderOpen, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Diamond, FolderOpen, Palette, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
 import { evaluateNumber, evaluateVector } from '@renderer/engine/KeyframeEvaluator';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
+import { useLutLibrary, type LibraryLut } from '@renderer/store/useLutLibrary';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { fitScale } from '@renderer/media/fitToFrame';
 import { dbLabel, panLabel, signedDb } from '@renderer/audio/levels';
@@ -154,6 +155,8 @@ export function Inspector(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const assets = useProjectStore((state) => state.assets);
   const selectedIds = useProjectStore((state) => state.ui.selectedClipIds);
+  const library = useLutLibrary((state) => state.luts);
+  const forgetLut = useLutLibrary((state) => state.forget);
   const selectedTransition = useProjectStore((state) =>
     state.ui.selectedTransitionId ? state.project.transitions?.[state.ui.selectedTransitionId] ?? null : null,
   );
@@ -236,10 +239,39 @@ export function Inspector(): JSX.Element {
           ...(sourcePath ? { lutSourcePath: sourcePath } : {}),
         },
       });
+      // Only a look with a path can be offered again later; one dropped in
+      // from the browser has nowhere to come back from.
+      if (sourcePath) useLutLibrary.getState().remember(sourcePath, name);
     } catch (error) {
       setLutError(error instanceof Error ? error.message : String(error));
     }
   }, []);
+
+  /**
+   * A look from the list: read the file it points at and apply it.
+   *
+   * The file stays on disk and is read again each time, so a LUT edited
+   * outside applies as it is now, and one that has been moved or deleted
+   * says so where the dialog's errors are shown.
+   */
+  const applyFromLibrary = useCallback(
+    async (clipId: string, lut: LibraryLut) => {
+      setLutError(null);
+      let contents: string;
+      try {
+        contents = await window.filmora.readTextFile(lut.path);
+      } catch {
+        // Whatever the file system said, in whatever language, wrapped in the
+        // IPC call's own words: not a sentence to put in front of anyone. The
+        // only thing that has gone wrong is the file not being there.
+        setLutError(t('inspector.lutMissing', { name: lut.name }));
+        return;
+      }
+      // A malformed .cube is a different matter, and applyLut reports it.
+      await applyLut(clipId, lut.name, contents, lut.path);
+    },
+    [applyLut, t],
+  );
 
   /** Native dialog when it exists, so the LUT keeps a path it can be restored from. */
   const pickLut = useCallback(
@@ -770,7 +802,8 @@ export function Inspector(): JSX.Element {
             {lutError}
           </p>
         )}
-        <p className="truncate text-2xs text-slate-400">
+        {/* Which look is on this clip, as opposed to which are on the list. */}
+        <p data-testid="lut-current" className="truncate text-2xs text-slate-400">
           {grading.lutUri
             ? `${grading.lutName ?? t('inspector.lutLoaded')}${grading.lutSourcePath ? '' : ` ${t('inspector.lutNotSaved')}`}`
             : t('inspector.noLut')}
@@ -778,6 +811,43 @@ export function Inspector(): JSX.Element {
         {grading.lutUri && (
           <SliderRow label={t('inspector.lutIntensity')} value={grading.lutIntensity} format={percent} onChange={(lutIntensity) => setGrading({ lutIntensity })} />
         )}
+
+        {/* The looks this machine has to hand, most recent first. */}
+        <div className="space-y-1 border-t border-panel-700 pt-2">
+          <span className="section-title">{t('inspector.lutLibrary')}</span>
+          {library.length === 0 ? (
+            <p className="text-2xs text-slate-500">{t('inspector.lutLibraryEmpty')}</p>
+          ) : (
+            <ul className="space-y-0.5" data-testid="lut-library">
+              {library.map((lut) => {
+                const applied = grading.lutSourcePath === lut.path;
+                return (
+                  <li key={lut.path} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      data-testid={`lut-apply-${lut.name}`}
+                      className={`tool-button h-control-dense min-w-0 flex-1 justify-start ${applied ? 'text-accent-hover' : ''}`}
+                      onClick={() => void applyFromLibrary(clip.id, lut)}
+                      {...tip(t('inspector.applyLut', { name: lut.name }))}
+                    >
+                      <Palette size={12} className="shrink-0" />
+                      <span className="truncate text-2xs">{lut.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`lut-forget-${lut.name}`}
+                      className="tool-button h-control-dense w-6 px-0 hover:text-red-400"
+                      onClick={() => forgetLut(lut.path)}
+                      {...tip(t('inspector.forgetLut', { name: lut.name }))}
+                    >
+                      <X size={11} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </Section>
 
       {/* The vignette, after the look, as Lumetri orders them. */}

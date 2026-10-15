@@ -707,7 +707,10 @@ async function main() {
     await window.getByRole('tab', { name: 'Color' }).click();
     // By its whole name: the Color tab also has a section called LUT.
     await window.getByRole('button', { name: /Load .cube LUT/ }).click();
-    await window.getByText('identity.cube', { exact: false })
+    // The line that says which look is on THIS clip, by its own test id: the
+    // name also appears in the list of LUTs this machine has to hand, and
+    // matching the text alone finds both.
+    await window.getByTestId('lut-current').filter({ hasText: 'identity.cube' })
       .waitFor({ state: 'visible', timeout: 15_000 });
     check('LUT loads through the native dialog', true, 'identity.cube');
 
@@ -728,7 +731,7 @@ async function main() {
     // Reopening clears the selection, so the clip has to be picked again.
     await surface.click({ position: { x: 60, y: VIDEO1_ROW_Y } });
     await window.getByRole('tab', { name: 'Color' }).click();
-    const lutSurvived = await window.getByText('identity.cube', { exact: false })
+    const lutSurvived = await window.getByTestId('lut-current').filter({ hasText: 'identity.cube' })
       .isVisible().catch(() => false);
     check('LUT survives saving and reopening the project', lutSurvived);
 
