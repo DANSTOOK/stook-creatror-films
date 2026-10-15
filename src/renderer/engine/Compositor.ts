@@ -1,4 +1,4 @@
-﻿import type { Clip, ProjectState, Track, Transition } from '@shared/types';
+﻿import type { BlendMode, Clip, ProjectState, Track, Transition } from '@shared/types';
 import { activeTransitionsAt, extendedSourceFrame } from '@renderer/timing/transitions';
 import { parseColor } from '@shared/utils/contrast';
 import { sourceFrameFor } from '@renderer/timing/clipSpeed';
@@ -18,6 +18,8 @@ import maskingFragmentSource from './shaders/MaskingSDF.glsl?raw';
 import colorGradingFragmentSource from './shaders/ColorGrading.glsl?raw';
 import chromaKeyFragmentSource from './shaders/ChromaKey.glsl?raw';
 import pixelArtFragmentSource from './shaders/PixelArtFilter.glsl?raw';
+import blendFragmentSource from './shaders/Blend.glsl?raw';
+import { BLEND_MODE_INDEX } from './blending';
 
 /**
  * Ping-pong FBO render loop.
@@ -75,6 +77,26 @@ void main() {
     vec4 texColor = texture(u_inputTexture, v_texCoord);
     float alpha = texColor.a * u_opacity;
     fragColor = vec4(texColor.rgb * alpha, alpha);
+}
+`;
+
+/**
+ * A straight copy of one premultiplied buffer into another.
+ *
+ * The composite shader above multiplies the alpha in, which is right for a
+ * layer arriving straight and wrong for something already composited - a
+ * blended layer, say. This moves pixels without touching them.
+ */
+const COPY_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+
+in vec2 v_texCoord;
+out vec4 fragColor;
+
+uniform sampler2D u_inputTexture;
+
+void main() {
+    fragColor = texture(u_inputTexture, v_texCoord);
 }
 `;
 
@@ -327,6 +349,8 @@ export class Compositor {
   private readonly compositeProgram: GLProgram;
   private readonly resolveProgram: GLProgram;
   private readonly transitionProgram: GLProgram;
+  private readonly blendProgram: GLProgram;
+  private readonly copyProgram: GLProgram;
   /** A transition's two sides, while one is on screen; given back otherwise. */
   private transitionFrom: RenderTarget | null = null;
   private transitionTo: RenderTarget | null = null;
@@ -348,6 +372,8 @@ export class Compositor {
   private presentSplit = -1;
   /** Straight-alpha result, the surface `readPixels` reads back. */
   private output: RenderTarget;
+  /** Where a blended layer and the scene under it meet; made on first use. */
+  private blended: RenderTarget | null = null;
 
   /**
    * 1x1x1 identity stand-in for the LUT sampler.
@@ -404,6 +430,8 @@ export class Compositor {
     this.compositeProgram = program(COMPOSITE_FRAGMENT_SOURCE, 'composite');
     this.resolveProgram = program(RESOLVE_FRAGMENT_SOURCE, 'resolve');
     this.transitionProgram = program(TRANSITION_FRAGMENT_SOURCE, 'transition');
+    this.blendProgram = program(blendFragmentSource, 'blend');
+    this.copyProgram = program(COPY_FRAGMENT_SOURCE, 'copy');
 
     // Half-float intermediates keep grading headroom; 8-bit is the fallback for
     // drivers without float render targets.
@@ -538,6 +566,7 @@ export class Compositor {
     this.before?.resize(w, h);
     this.transitionFrom?.resize(w, h);
     this.transitionTo?.resize(w, h);
+    this.blended?.resize(w, h);
   }
 
   /** Swap the ping-pong pair after a pass has written into `pong`. */
@@ -825,7 +854,7 @@ export class Compositor {
         const opacity = this.renderLayer(layer.clip, frame, layer.source);
         if (opacity <= 0) continue;
         this.applyEffectChain(layer.clip, skipGrade, frame);
-        this.compositeLayer(opacity, into);
+        this.compositeLayer(opacity, into, layer.clip.blendMode);
         if (!skipGrade) this.stats.clipsDrawn += 1;
         continue;
       }
@@ -887,8 +916,17 @@ export class Compositor {
   }
 
   /** Blend the finished layer in `ping` onto the premultiplied scene buffer. */
-  private compositeLayer(opacity: number, into: RenderTarget = this.scene): void {
+  private compositeLayer(
+    opacity: number,
+    into: RenderTarget = this.scene,
+    blendMode: BlendMode = 'normal',
+  ): void {
     const { gl } = this;
+
+    if (blendMode !== 'normal') {
+      this.blendLayer(opacity, into, blendMode);
+      return;
+    }
 
     into.bind();
     gl.enable(gl.BLEND);
@@ -903,6 +941,45 @@ export class Compositor {
     this.drawQuad(this.compositeProgram);
 
     gl.disable(gl.BLEND);
+  }
+
+  /**
+   * A layer with a blend mode.
+   *
+   * Blending needs what is already there, and a buffer cannot be read and
+   * written in the same pass - so the scene and the layer meet in a buffer
+   * of their own, and the result replaces the scene. Two passes instead of
+   * one, paid only by clips that are not set to 'normal'.
+   */
+  private blendLayer(opacity: number, into: RenderTarget, mode: BlendMode): void {
+    const { gl } = this;
+    this.blended ??= new RenderTarget(gl, into.width, into.height, this.scene.internalFormat, 'blended');
+    if (this.blended.width !== into.width || this.blended.height !== into.height) {
+      this.blended.resize(into.width, into.height);
+    }
+
+    this.blended.bind();
+    gl.disable(gl.BLEND);
+    this.blendProgram.use();
+    this.blendProgram.set('u_transform', FULLSCREEN_MATRIX);
+    this.blendProgram.set('u_flipY', false);
+    this.blendProgram.set('u_opacity', opacity);
+    this.blendProgram.setInt('u_mode', BLEND_MODE_INDEX[mode]);
+    this.blendProgram.setTexture('u_backdrop', into.texture, 0);
+    this.blendProgram.setTexture('u_source', this.ping.texture, 1);
+    this.drawQuad(this.blendProgram);
+    this.stats.passes += 1;
+
+    // Straight back onto the scene: the blend has already composited it,
+    // so this copies rather than blends.
+    into.bind();
+    gl.disable(gl.BLEND);
+    this.copyProgram.use();
+    this.copyProgram.set('u_transform', FULLSCREEN_MATRIX);
+    this.copyProgram.set('u_flipY', false);
+    this.copyProgram.setTexture('u_inputTexture', this.blended.texture, 0);
+    this.drawQuad(this.copyProgram);
+    this.stats.passes += 1;
   }
 
   /**

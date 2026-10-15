@@ -448,6 +448,31 @@ export interface CaptionContent {
   link?: CaptionLink;
 }
 
+/**
+ * How a clip mixes with the picture under it.
+ *
+ * The separable set from W3C Compositing and Blending Level 1, which is
+ * what Photoshop, Premiere and Resolve offer under these names. In the
+ * order the inspector lists them: normal, then the ones that darken, the
+ * ones that lighten, the contrast pair, and the two that compare.
+ */
+export const BLEND_MODES = [
+  'normal',
+  'multiply',
+  'darken',
+  'color-burn',
+  'screen',
+  'lighten',
+  'color-dodge',
+  'overlay',
+  'hard-light',
+  'soft-light',
+  'difference',
+  'exclusion',
+] as const;
+
+export type BlendMode = (typeof BLEND_MODES)[number];
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -457,6 +482,11 @@ export interface Clip {
   durationFrames: number; // In Timeline space
   sourceOffsetFrames: number; // In Source Media space
   hasAlphaChannel: boolean; // Support for transparent PNG/WebM sprites
+  /**
+   * How it mixes with what is under it. Absent means 'normal', which is
+   * what every clip made before blend modes existed meant.
+   */
+  blendMode?: BlendMode;
   transform: ClipTransform;
   mask: MaskConfig;
   colorGrading: ColorGradingConfig;

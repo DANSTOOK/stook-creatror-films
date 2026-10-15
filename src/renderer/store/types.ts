@@ -18,6 +18,7 @@ import {
   NEUTRAL_EQ,
 } from '@shared/types';
 import { createId } from '@shared/utils/id';
+import { BLEND_MODES, type BlendMode } from '@shared/types';
 import { recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { tidyLinkGroups } from '@renderer/components/Timeline/linkGroups';
@@ -358,6 +359,10 @@ export function createEmptyProject(
 /* Migration                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/** A blend mode this build knows; anything else opens as normal rather than refusing to draw. */
+const isBlendMode = (value: unknown): value is BlendMode =>
+  typeof value === 'string' && (BLEND_MODES as readonly string[]).includes(value);
+
 const finite = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
@@ -491,6 +496,9 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             volume: finite(clip.volume, 1),
             pan: finite(clip.pan, 0),
             eq: normalizeEq(clip.eq),
+            // Written plainly, not spread in: a mode this build does not know
+            // has to be cleared, not merely left unset.
+            blendMode: isBlendMode(clip.blendMode) && clip.blendMode !== 'normal' ? clip.blendMode : undefined,
             // A grade saved before the wheels opens with them neutral, so it
             // looks exactly as it did.
             colorGrading: normalizeGrading(clip.colorGrading),

@@ -26,6 +26,7 @@ import { CaptionStyleTab } from './CaptionStyleTab';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
+import { BLEND_MODES, type BlendMode } from '@shared/types';
 
 /**
  * Property inspector for the selected clip.
@@ -414,6 +415,27 @@ export function Inspector(): JSX.Element {
           typed={{ factor: 100, unit: '%', step: 1 }}
           onChange={(value) => setNumberKeyframe(clip.id, 'opacity', frame, value)}
         />
+        {/* How this clip mixes with the picture under it. */}
+        <label className="flex items-center justify-between gap-2">
+          <span className="text-2xs text-slate-400">{t('blend.title')}</span>
+          <select
+            data-testid="clip-blend-mode"
+            className="numeric-input h-control-dense w-36"
+            value={clip.blendMode ?? 'normal'}
+            onChange={(event) => {
+              // 'normal' is the absence of a blend mode, so it is stored as one:
+              // a project then reads the same whether it was ever touched or not.
+              const chosen = event.target.value as BlendMode;
+              updateClip(clip.id, { blendMode: chosen === 'normal' ? undefined : chosen });
+            }}
+          >
+            {BLEND_MODES.map((mode) => (
+              <option key={mode} value={mode}>
+                {t(`blend.${mode}` as MessageKey)}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="flex items-center justify-between gap-2">
           <p className="text-2xs text-slate-400">{t('inspector.keyframeHint', { frame })}</p>
           {keyframeCount > 0 && (
