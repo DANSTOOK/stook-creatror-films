@@ -41,10 +41,17 @@ let documentState = { dirty: false, name: 'Untitled project' };
 /** Set once closing has been answered, so the second close goes through. */
 let closeApproved = false;
 
-// A single instance keeps two windows from fighting over the same project file.
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-}
+/**
+ * A single instance keeps two windows from fighting over the same project file.
+ *
+ * `app.quit()` only asks the process to stop; this module keeps running, so a
+ * second copy went on to build a window anyway. That window loads the page and
+ * then never paints, because Chromium is shutting down underneath it - a real
+ * window, in the taskbar and in front of anything automating the app, showing
+ * nothing and answering no clicks. So the second copy makes no window at all.
+ */
+const isOnlyInstance = app.requestSingleInstanceLock();
+if (!isOnlyInstance) app.quit();
 
 // Chromium reads its switches once, before `ready`. Anything appended later is
 // silently ignored - which is where the HEVC switch used to live, inside
@@ -142,6 +149,24 @@ function createWindow(): void {
   keepOffScreen(mainWindow);
   mainWindow.once('ready-to-show', () => (BACKGROUND ? mainWindow?.showInactive() : mainWindow?.show()));
 
+  /*
+    Background mode cannot wait for that event alone.
+
+    'ready-to-show' arrives with the renderer's first paint, and a window that
+    has never been shown - parked off every display, as background mode parks
+    it - may produce no paint at all. Each then waits for the other: the window
+    stays invisible, nothing is ever drawn, and the page still answers
+    questions, which makes it look alive while every click waits for ever.
+
+    So the moment the page has loaded, show it. Showing twice is harmless, and
+    a normal launch still waits for the paint, with no white flash.
+  */
+  if (BACKGROUND) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.showInactive();
+    });
+  }
+
   // External links open in the user's browser, never inside the editor shell.
   // Only web links reach the OS: file:, ms-settings: or any other registered
   // protocol handler would let a compromised renderer launch local programs.
@@ -224,6 +249,10 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // The copy that lost the lock is on its way out; it must not register
+  // handlers or open a window on the way.
+  if (!isOnlyInstance) return;
+
   registerMediaProtocolHandler();
   pipeline = registerFileSystemHandlers(() => mainWindow);
   registerYouTubeHandlers(() => mainWindow);
