@@ -4,6 +4,8 @@ import { Home } from './components/Home/Home';
 import { Inspector } from './components/Inspector';
 import { Splitter } from './components/Layout/Splitter';
 import { PanelSlot, markEditorShown } from './components/Layout/PanelSlot';
+import { PanelWindow } from './components/Layout/PanelWindow';
+import { useWorkspaceStore } from './store/useWorkspaceStore';
 import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
@@ -99,6 +101,10 @@ export default function App(): JSX.Element {
     the Edit page, and whether it is out is remembered on this machine.
     Showing it brings the timeline back if that was put away.
   */
+  // Panels that are open in a window of their own, for a second monitor.
+  const detached = useWorkspaceStore((state) => state.detached);
+  const setDetached = useWorkspaceStore((state) => state.setDetached);
+
   const [mixerOpen, setMixerOpenState] = useState(() => {
     try {
       return window.localStorage.getItem(MIXER_OPEN_KEY) === '1';
@@ -539,8 +545,8 @@ export default function App(): JSX.Element {
                 with it - a splitter for something that is not there is a
                 handle that does nothing.
               */}
-              <div data-panel="media" data-state={hidden.media ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
-                {!hidden.media && (
+              <div data-panel="media" data-state={hidden.media || detached.media ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
+                {!hidden.media && !detached.media && (
                   <>
                     <PanelSlot edge="left" className="flex min-h-0 shrink-0">
                       <div className="flex min-h-0 shrink-0" style={{ width: fitted.mediaWidth }}>
@@ -551,9 +557,15 @@ export default function App(): JSX.Element {
                   </>
                 )}
               </div>
-              <PreviewViewport />
-              <div data-panel="inspector" data-state={hidden.inspector ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
-                {!hidden.inspector && (
+              {detached.viewer ? (
+                <section className="panel grid min-w-0 flex-1 place-items-center text-xs text-slate-400">
+                  {t('panel.inOwnWindow')}
+                </section>
+              ) : (
+                <PreviewViewport />
+              )}
+              <div data-panel="inspector" data-state={hidden.inspector || detached.inspector ? 'closed' : 'open'} className="flex min-h-0 shrink-0">
+                {!hidden.inspector && !detached.inspector && (
                   <>
                     {border('inspectorWidth', t('layout.resizeInspector'), 'vertical', -1)}
                     <PanelSlot edge="right" className="flex min-h-0 shrink-0">
@@ -575,7 +587,7 @@ export default function App(): JSX.Element {
                       <div className="min-w-0 flex-1">
                         <Timeline />
                       </div>
-                      {mixerOpen && (
+                      {mixerOpen && !detached.mixer && (
                         <PanelSlot edge="right" className="flex min-h-0 max-w-[55%] shrink-0">
                           <Mixer onClose={() => setMixerOpen(false)} />
                         </PanelSlot>
@@ -587,6 +599,55 @@ export default function App(): JSX.Element {
             </div>
           </div>
 
+          {/*
+            A detached panel renders here, into a window of its own. It is
+            the same React tree and the same store - the window is opened
+            by the page, so it shares this process (Layout/PanelWindow).
+          */}
+          {view === 'editor' && detached.viewer && (
+            <PanelWindow
+              name="viewer"
+              title={t('panel.windowTitle', { name: t('panel.viewer') })}
+              onClose={() => setDetached('viewer', false)}
+              width={1100}
+              height={720}
+            >
+              <PreviewViewport />
+            </PanelWindow>
+          )}
+          {view === 'editor' && detached.media && (
+            <PanelWindow
+              name="media"
+              title={t('panel.windowTitle', { name: t('titlebar.media') })}
+              onClose={() => setDetached('media', false)}
+              width={520}
+              height={760}
+            >
+              <MediaLibrary />
+            </PanelWindow>
+          )}
+          {view === 'editor' && detached.inspector && (
+            <PanelWindow
+              name="inspector"
+              title={t('panel.windowTitle', { name: t('titlebar.inspector') })}
+              onClose={() => setDetached('inspector', false)}
+              width={520}
+              height={820}
+            >
+              <Inspector />
+            </PanelWindow>
+          )}
+          {view === 'editor' && mixerOpen && detached.mixer && (
+            <PanelWindow
+              name="mixer"
+              title={t('panel.windowTitle', { name: t('mixer.title') })}
+              onClose={() => setDetached('mixer', false)}
+              width={720}
+              height={560}
+            >
+              <Mixer onClose={() => setMixerOpen(false)} />
+            </PanelWindow>
+          )}
           {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}

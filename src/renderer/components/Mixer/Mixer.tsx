@@ -12,6 +12,7 @@ import { TRACK_TYPE_COLORS } from '@renderer/components/Timeline/TimelineCanvas'
 import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { timelineRows } from '@renderer/components/Timeline/trackRows';
+import { DetachButton } from '@renderer/components/Layout/DetachButton';
 
 /**
  * The mixer, docked beside the timeline.
@@ -471,6 +472,7 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
       <header className="panel-header gap-1.5">
         <Headphones size={14} className="shrink-0 text-slate-400" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{t('mixer.title')}</span>
+        <DetachButton panel="mixer" />
         {anySolo && (
           <span className="rounded bg-yellow-300/15 px-1.5 text-2xs font-normal text-yellow-200" {...tip(t('mixer.soloWarning'), { named: false })}>
             {t('mixer.soloChip')}

@@ -47,6 +47,7 @@ import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
 import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
+import { DetachButton } from '@renderer/components/Layout/DetachButton';
 
 /**
  * The media library: asset import, bins, and the transparent-asset toggle.
@@ -480,6 +481,7 @@ export function MediaLibrary(): JSX.Element {
       <header className="panel-header">
         {/* The panel's name; which of its three is open, the tabs below say. */}
         <span className="min-w-0 flex-1 truncate">{tr('library.tabs')}</span>
+        <DetachButton panel="media" />
         {/* Import and the + menu add files: only where the files are. */}
         {tab === 'media' && (
         <div className="flex shrink-0 items-center gap-1 font-normal">

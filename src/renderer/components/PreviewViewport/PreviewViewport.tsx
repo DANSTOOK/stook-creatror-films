@@ -30,6 +30,7 @@ import { useCompositor } from './useCompositor';
 import { ViewportControls } from './ViewportControls';
 import { ScopesPanel } from './ScopesPanel';
 import { CompareCurtain } from './CompareCurtain';
+import { DetachButton } from '@renderer/components/Layout/DetachButton';
 
 /**
  * The viewer: the picture, what is being shown, and the transport.
@@ -261,6 +262,7 @@ export function PreviewViewport(): JSX.Element {
             {projectName}
           </span>
           <div className="flex shrink-0 items-center gap-1 font-normal">
+            <DetachButton panel="viewer" />
             <span className="timecode mr-1 hidden text-2xs text-slate-400 lg:inline" data-testid="viewer-format">
               {project.width}×{project.height} · {project.fps} fps{project.hasAlphaBackground ? ` · ${t('viewer.alpha')}` : ''}
             </span>

@@ -145,8 +145,26 @@ function createWindow(): void {
   // External links open in the user's browser, never inside the editor shell.
   // Only web links reach the OS: file:, ms-settings: or any other registered
   // protocol handler would let a compromised renderer launch local programs.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isWebUrl(url)) void shell.openExternal(url);
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    if (isWebUrl(url)) {
+      void shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    // A panel detached to its own window, for a second monitor. Same origin
+    // and same process as the editor, so the panel keeps rendering from the
+    // editor's own React tree (components/Layout/PanelWindow.tsx). Only these:
+    // anything else a page asks to open is still refused.
+    if (url === 'about:blank' && frameName.startsWith('scf-panel-')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          backgroundColor: '#0d0f14',
+          autoHideMenuBar: true,
+          minWidth: 320,
+          minHeight: 240,
+        },
+      };
+    }
     return { action: 'deny' };
   });
 

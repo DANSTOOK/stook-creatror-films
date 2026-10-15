@@ -25,6 +25,7 @@ import { CaptionTab } from './CaptionTab';
 import { CaptionStyleTab } from './CaptionStyleTab';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
+import { DetachButton } from '@renderer/components/Layout/DetachButton';
 
 /**
  * Property inspector for the selected clip.
@@ -279,7 +280,10 @@ export function Inspector(): JSX.Element {
   if (!clip || !resolved) {
     return (
       <aside data-testid="inspector-panel" className="panel w-full">
-        <header className="panel-header">{t('inspector.title')}</header>
+        <header className="panel-header">
+          <span className="min-w-0 flex-1 truncate">{t('inspector.title')}</span>
+          <DetachButton panel="inspector" />
+        </header>
         <p className="p-4 text-xs text-slate-400">
           {selectedIds.length > 1 ? t('inspector.manySelected', { count: selectedIds.length }) : t('inspector.noneSelected')}
         </p>
@@ -775,9 +779,10 @@ export function Inspector(): JSX.Element {
     <aside data-testid="inspector-panel" className="panel w-full">
       {/* The name as the file has it. */}
       <header className="panel-header">
-        <span className="truncate" title={clip.name}>
+        <span className="min-w-0 flex-1 truncate" title={clip.name}>
           {clip.name}
         </span>
+        <DetachButton panel="inspector" />
       </header>
 
       {/* Only the tabs that apply; a segmented control, as Resolve's are. */}
