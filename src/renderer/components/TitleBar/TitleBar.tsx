@@ -3,7 +3,9 @@ import { ChevronDown, Headphones, Home as HomeIcon, PanelBottom, PanelLeft, Pane
 import type { AppMenuEntry } from '@shared/types/ipc';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
-import { keyLabel, useT, type MessageKey } from '@renderer/i18n';
+import { useT, type MessageKey } from '@renderer/i18n';
+// Shared with the palette, so both show the same key beside the same command.
+import { acceleratorLabel } from '@renderer/components/CommandPalette/commands';
 import { NotificationsButton } from '@renderer/notifications/Toaster';
 
 /**
@@ -45,13 +47,6 @@ export interface TitleBarProps {
   onHome(): void;
   onExport(): void;
   nativeAvailable: boolean;
-}
-
-/** An Electron accelerator as the keys read in this language: "CmdOrCtrl+Shift+S" to "Ctrl+Mayús+S". */
-function acceleratorLabel(accelerator: string | undefined): string | undefined {
-  if (!accelerator) return undefined;
-  const plain = accelerator.replace(/CommandOrControl|CmdOrCtrl/g, 'Ctrl').replace(/^Shift\+\/$/, '?');
-  return keyLabel(plain);
 }
 
 /** The main process's menu as the page's menu items, each clicking the real item by id. */

@@ -227,6 +227,7 @@ export type MenuCommand =
   | 'resetLayout'
   | 'mixer'
   | 'shortcuts'
+  | 'commandPalette'
   | 'preferences'
   | 'addTitle'
   | 'addLowerThird'

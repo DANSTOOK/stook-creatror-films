@@ -35,6 +35,7 @@ export const en = {
   'menu.minimize': 'Minimize',
   'menu.close': 'Close',
   'menu.shortcuts': 'Keyboard shortcuts',
+  'menu.commandPalette': 'Find a function…',
   'menu.about': 'About {app}',
   'menu.aboutDetail': 'Version {version}',
   'main.fileGone': '"{name}" is not where the project says any more: it was moved, renamed or deleted.',
@@ -412,6 +413,13 @@ export const en = {
   'keys.search': 'Search the keys',
   'keys.searchLabel': 'Search shortcuts',
   'keys.nothing': 'Nothing here answers to that.',
+
+  // Finding a function by name (components/CommandPalette).
+  'palette.title': 'Find a function',
+  'palette.placeholder': 'Type what you want to do',
+  'palette.nothing': 'Nothing by that name.',
+  'palette.on': 'on',
+  'palette.off': 'off',
   'keys.groupPlaying': 'Playing and moving',
   'keys.groupEditing': 'Editing',
   'keys.groupTools': 'Tools',

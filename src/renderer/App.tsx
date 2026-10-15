@@ -10,6 +10,7 @@ import { MediaLibrary } from './components/MediaLibrary';
 import { Mixer } from './components/Mixer';
 import { ProjectSettings } from './components/ProjectSettings';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { CommandPalette } from './components/CommandPalette/CommandPalette';
 import { FontLicensesDialog } from './components/FontLicensesDialog';
 import { TransitionDialog } from './components/TransitionDialog';
 import { SHOW_INSPECTOR_EVENT } from './components/Timeline/Timeline';
@@ -126,6 +127,7 @@ export default function App(): JSX.Element {
   };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [licensesOpen, setLicensesOpen] = useState(false);
 
   // Which fonts this computer has, asked once, so a title whose font is
@@ -273,6 +275,13 @@ export default function App(): JSX.Element {
       else if (key === 'i' && editing) run = () => runMenuCommand.current('import');
       else if (key === 'e' && editing && hasNativeBridge()) run = () => setExportOpen(true);
       // Final Cut's browser, timeline and inspector keys.
+      // Find a function by name, on the key VS Code, Resolve and Artcraft
+      // all use for it. Allowed while it is itself the open dialog, so the
+      // same key closes it again.
+      else if (key === 'p' && event.shiftKey && view === 'editor'
+        && (!modal || document.querySelector('[data-testid="command-palette"]') !== null)) {
+        run = () => setPaletteOpen((open) => !open);
+      }
       else if (key === '1' && editing) run = () => togglePanelRef.current('media');
       else if (key === '2' && editing) run = () => togglePanelRef.current('timeline');
       else if (key === '4' && editing) run = () => togglePanelRef.current('inspector');
@@ -478,6 +487,10 @@ export default function App(): JSX.Element {
       case 'shortcuts':
         setShortcutsOpen(true);
         return;
+      case 'commandPalette':
+        // A second press closes it, as the key that opened it would.
+        setPaletteOpen((open) => !open);
+        return;
       case 'preferences':
         setPreferencesOpen(true);
         return;
@@ -650,6 +663,7 @@ export default function App(): JSX.Element {
           )}
           {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+          {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
           {preferencesPresence.mounted && (
             <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />

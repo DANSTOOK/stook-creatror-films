@@ -185,6 +185,7 @@ export function buildMenuTemplate(
   const help: MenuItemConstructorOptions = {
     label: t('menu.help'),
     submenu: [
+      command('menu.commandPalette', 'commandPalette', { accelerator: 'CmdOrCtrl+Shift+P', enabled: inEditor }),
       command('menu.shortcuts', 'shortcuts', { accelerator: 'Shift+/', enabled: inEditor }),
       { type: 'separator' },
       { id: 'about', label: t('menu.about', { app: APP_NAME }), click: options.about },

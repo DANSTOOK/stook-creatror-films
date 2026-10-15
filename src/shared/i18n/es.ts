@@ -35,6 +35,7 @@ export const es: Messages = {
   'menu.minimize': 'Minimizar',
   'menu.close': 'Cerrar',
   'menu.shortcuts': 'Atajos de teclado',
+  'menu.commandPalette': 'Buscar una función…',
   'menu.about': 'Acerca de {app}',
   'menu.aboutDetail': 'Versión {version}',
   'main.fileGone': '«{name}» ya no está donde dice el proyecto: se movió, se cambió de nombre o se borró.',
@@ -412,6 +413,13 @@ export const es: Messages = {
   'keys.search': 'Buscar un atajo',
   'keys.searchLabel': 'Buscar atajos',
   'keys.nothing': 'Ningún atajo coincide.',
+
+  // Buscar una función por su nombre (components/CommandPalette).
+  'palette.title': 'Buscar una función',
+  'palette.placeholder': 'Escribe qué quieres hacer',
+  'palette.nothing': 'Nada con ese nombre.',
+  'palette.on': 'activado',
+  'palette.off': 'desactivado',
   'keys.groupPlaying': 'Reproducir y moverse',
   'keys.groupEditing': 'Edición',
   'keys.groupTools': 'Herramientas',
