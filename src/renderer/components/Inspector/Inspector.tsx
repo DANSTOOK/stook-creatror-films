@@ -26,6 +26,7 @@ import { CaptionTab } from './CaptionTab';
 import { CaptionStyleTab } from './CaptionStyleTab';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
+import { MultiInspector } from './MultiInspector';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
 
@@ -311,15 +312,15 @@ export function Inspector(): JSX.Element {
   }
 
   if (!clip || !resolved) {
+    // Several clips: the settings they can share, set on all of them at once.
+    if (selectedIds.length > 1) return <MultiInspector ids={selectedIds} />;
     return (
       <aside data-testid="inspector-panel" className="panel w-full">
         <header className="panel-header">
           <span className="min-w-0 flex-1 truncate">{t('inspector.title')}</span>
           <DetachButton panel="inspector" />
         </header>
-        <p className="p-4 text-xs text-slate-400">
-          {selectedIds.length > 1 ? t('inspector.manySelected', { count: selectedIds.length }) : t('inspector.noneSelected')}
-        </p>
+        <p className="p-4 text-xs text-slate-400">{t('inspector.noneSelected')}</p>
       </aside>
     );
   }

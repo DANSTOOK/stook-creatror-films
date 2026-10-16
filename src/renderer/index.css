@@ -232,6 +232,22 @@
   }
 
   /*
+    A slider over several clips that differ: no knob, because a knob would
+    say one value. A click on the track sets that value on all of them, and
+    the knob comes back. Focused, the ring goes round the whole track
+    instead of the knob it cannot show.
+  */
+  input[type='range'][data-mixed]::-webkit-slider-thumb {
+    opacity: 0;
+  }
+
+  input[type='range'][data-mixed]:focus-visible {
+    outline: 2px solid theme('colors.accent.hover');
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /*
     Number fields without the spin arrows. They took 15px of every field -
     enough to clip "100" in the inspector's X/Y pairs - for something the
     arrow keys, the wheel and dragging the label all do better.
