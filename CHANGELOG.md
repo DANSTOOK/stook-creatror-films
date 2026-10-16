@@ -16,6 +16,100 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.40.0-beta.1 — Quitar fondo, varios clips a la vez y paneles en otra pantalla de verdad
+2026-10-16 · pre-release para probar
+
+Una beta grande a propósito: en vez de una versión por cambio, todo lo de
+estos días junto. Tres partes se hicieron en paralelo, cada una en su rama, y
+se integraron y probaron juntas antes de publicar.
+
+### Añadido
+- **Quitar fondo sin croma.** Un efecto por clip, junto al croma, que separa
+  al sujeto de un fondo cualquiera —lo que Resolve llama *Magic Mask*— en
+  metraje que no se grabó contra una pantalla verde. Dos modos, como los
+  subtítulos:
+  - **Preciso** (BiRefNet-lite, licencia MIT): recorta cualquier sujeto. Con
+    el metraje de Kratos saca limpios a Kratos, Thor y Odín, con la lanza y el
+    escudo. **Es lento:** ~0,75–1 s por fotograma en una RTX 4060, ~5,6 s en
+    un equipo solo con procesador. Un minuto de vídeo son unos 30 minutos de
+    cálculo, que se hacen una vez y quedan guardados. Pensado para planos
+    cortos.
+  - **Rápido** (MODNet, Apache-2.0): ~30 ms por fotograma, pero **solo para
+    personas**; en metraje de videojuego deja agujeros.
+  - Los modelos **no van en el instalador**: se descargan cuando los pides,
+    con un aviso que dice de dónde vienen, cuánto pesan y su licencia (114,5 MB
+    el preciso, 25,9 MB el rápido), y se comprueban con SHA-256.
+  - El cálculo va en la **gráfica** cuando de verdad es más rápida que el
+    procesador (la Intel integrada nunca se elige), y si la gráfica falla a
+    mitad sigue en el procesador. Se puede cancelar y borrar el análisis.
+  - **Sin parpadeo:** entre fotogramas el recorte se suaviza. Medido con el
+    suavizado encendido y apagado: el parpadeo baja un **88–95 %**.
+  - La exportación usa exactamente el mismo recorte que la vista previa, y se
+    niega a exportar un clip sin analizar diciéndolo, en vez de exportarlo
+    con el fondo.
+  - Se descartaron dos modelos más conocidos por su licencia:
+    RobustVideoMatting es GPL-3.0 (obligaría a liberar toda la app) y
+    RMBG-1.4 es solo para uso no comercial.
+  - *Comprobado:* 35 pruebas unitarias; 31/31 en la app con 3 s del vídeo de
+    Kratos (sin el efecto, 100 % de píxeles opacos; con él, 89,6 % se vuelven
+    transparentes y los que quedan conservan su color exacto; vista previa y
+    exportación coinciden píxel a píxel); el ejecutable empaquetado carga el
+    motor y calcula en la gráfica (15/15).
+- **El inspector edita varios clips a la vez.** Con varios seleccionados ya
+  puedes cambiarles juntos la **opacidad**, el **modo de fusión**, la **LUT**
+  (cargarla, aplicarla desde tu lista, quitarla, su intensidad) y el
+  **volumen**. Si los valores difieren, el control dice **«Varios»** en vez de
+  enseñar el de un clip como si fuera de todos. Cada cambio se deshace con
+  **un solo Ctrl+Z**, aunque arrastres un deslizador sobre todos.
+  - Un fundido (opacidad animada) no se pisa al cambiar la opacidad en grupo,
+    y el panel dice cuántos clips se quedaron igual.
+  - Posición y escala quedan fuera a propósito: un mismo valor apilaría todas
+    las tomas en el mismo sitio.
+  - Esto es lo que hace posible aplicar una LUT a toda una secuencia, que en
+    la v1.39 quedó fuera porque no había forma de llegar a ello.
+  - *Comprobado:* 17 pruebas unitarias y 35/35 en la app con tres clips,
+    leyendo los píxeles: la LUT invierte los tres y un Ctrl+Z los devuelve a
+    la vez.
+
+### Arreglado
+- **Los paneles en otra ventana salían vacíos, feos y cortados.** El panel no
+  llenaba su ventana: el inspector medía 86 px de alto en una ventana de 781,
+  y el visor se salía por abajo y cortaba la barra de reproducción. Ahora cada
+  ventana se llena, con su barra propia, su nombre y un «Volver al editor», y
+  se adapta desde 400×300 hasta pantalla completa.
+  - **La línea de tiempo ya se puede separar**, igual que el visor, los
+    medios, el inspector y el mezclador.
+  - La ventana principal **se reorganiza** al quitar un panel en vez de dejar
+    un hueco, y la barra de título dice qué paneles están fuera, con un botón
+    para traer cada uno al frente y otro para devolverlos todos.
+  - En una ventana ancha, el inspector **reparte sus secciones en columnas**:
+    la pestaña Color queda como una página de color, con ruedas, curvas, LUT y
+    viñeta lado a lado.
+  - De paso: en una ventana separada no salían los tooltips, los menús no se
+    cerraban al hacer clic fuera, y la pantalla completa del visor separado
+    ponía a pantalla completa la ventana principal. Arreglado.
+  - Una ventana guardada en un monitor que ya no está se recoloca en uno que
+    sí.
+  - *Comprobado:* 25/25 en la app (en la ventana de la línea de tiempo se
+    selecciona, se arrastra un clip, se mueve el cursor y Espacio reproduce;
+    el visor sigue dibujando; la app cierra en ~90 ms con paneles fuera) y
+    capturas de cada panel a 420×320, a su tamaño normal y a 1600×900.
+
+### Sin verificar
+- Arrastrar medios desde la ventana principal a una línea de tiempo separada.
+- La recolocación de una ventana cuando se desconecta un monitor de verdad
+  (solo está probada la geometría).
+- Con la ventana principal minimizada y paneles fuera, si la reproducción
+  podría frenarse.
+- En archivos de velocidad de fotogramas variable, el recorte puede ir
+  desfasado un fotograma.
+
+Cifras de esta versión, sobre todo lo integrado: **1216 pruebas unitarias**,
+**127/127** de interfaz (dos pasadas seguidas), **21/21** de extremo a
+extremo y **5/5** de instancia única.
+
+---
+
 ## v1.39.0-beta.1 — Buscar funciones y una lista de LUTs
 2026-10-15 · pre-release para probar
 
