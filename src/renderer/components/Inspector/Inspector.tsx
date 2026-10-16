@@ -914,7 +914,9 @@ export function Inspector(): JSX.Element {
         ))}
       </div>
 
-      <div ref={tabPanelRef} id="inspector-tabpanel" role="tabpanel" aria-labelledby={tabId(current)} data-tab={current} className="min-h-0 flex-1 overflow-y-auto">
+      <div ref={tabPanelRef} id="inspector-tabpanel" role="tabpanel" aria-labelledby={tabId(current)} data-tab={current} className="inspector-flow min-h-0 flex-1 overflow-y-auto">
+        {/* One column docked; columns of a readable width in a wide window (index.css). */}
+        <div className="inspector-flow-columns">
         {current === 'title' && (
           <TitleTab
             clip={clip}
@@ -943,6 +945,7 @@ export function Inspector(): JSX.Element {
         {current === 'audio' && audioTab}
         {current === 'color' && colorTab}
         {current === 'info' && <InfoRows clip={clip} asset={asset} fps={project.fps} />}
+        </div>
       </div>
 
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}

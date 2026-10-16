@@ -256,7 +256,9 @@ export function MultiInspector({ ids }: { ids: readonly string[] }): JSX.Element
         <DetachButton panel="inspector" />
       </header>
 
-      <div data-testid="multi-inspector" className="min-h-0 flex-1 overflow-y-auto">
+      <div data-testid="multi-inspector" className="inspector-flow min-h-0 flex-1 overflow-y-auto">
+        {/* Columns in a wide window, as in the single-clip inspector (index.css). */}
+        <div className="inspector-flow-columns">
         <p className="border-b border-panel-800 px-3 py-2 text-2xs leading-relaxed text-slate-400">
           {t(nothing ? 'inspector.multiNothing' : 'inspector.multiHint')}
         </p>
@@ -412,6 +414,7 @@ export function MultiInspector({ ids }: { ids: readonly string[] }): JSX.Element
             />
           </Section>
         )}
+        </div>
       </div>
     </aside>
   );

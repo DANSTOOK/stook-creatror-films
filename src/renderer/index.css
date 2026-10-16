@@ -441,6 +441,29 @@
     }
   }
 
+  /*
+    The inspector's body in a wide window - detached to a second monitor and
+    maximised. Stretched, its rows put a label at one edge and a number field
+    1500 px away at the other, and everything below the last section is a
+    void. Wide, the sections flow into columns of a readable width instead,
+    each kept whole. Docked, the inspector is far narrower than the threshold
+    and lays out exactly as before.
+  */
+  .inspector-flow {
+    container-type: inline-size;
+  }
+
+  @container (min-width: 760px) {
+    .inspector-flow-columns {
+      column-width: 360px;
+      column-gap: 0;
+    }
+
+    .inspector-flow-columns > * {
+      break-inside: avoid;
+    }
+  }
+
   .media-tile-selected {
     @apply bg-panel-800;
   }
