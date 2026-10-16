@@ -3,6 +3,7 @@ import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { installAppMenu, menuLanguage } from './appMenu';
 import { BACKGROUND, OFF_SCREEN, applyBackgroundSwitches, keepOffScreen } from './background';
+import { placePanelWindow } from './panelPlacement';
 import { translate } from '@shared/i18n';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
@@ -39,10 +40,11 @@ const TITLE_BAR_SYMBOLS = '#cbd5e1';
 const PANEL_BAR_HEIGHT = 36;
 
 /**
- * The smallest a panel's window may be made, by panel. Each is the size at
- * which everything the panel has still fits and works - the viewer keeps its
- * transport, the timeline its toolbar and a track or two - measured in the
- * running app (.bench-tmp/panel-shots.mjs). Anything else gets the default.
+ * The smallest a panel's window may be made, by panel: about the size at
+ * which what the panel has still fits and works - the viewer keeps its
+ * transport, the timeline its tools and a couple of tracks - as photographed
+ * in the running app at 420x320 (560x320 for the timeline, whose header row
+ * needs the room). Anything else gets the default.
  */
 const PANEL_MIN_SIZE: Record<string, [number, number]> = {
   viewer: [400, 300],
@@ -52,30 +54,14 @@ const PANEL_MIN_SIZE: Record<string, [number, number]> = {
   mixer: [360, 300],
 };
 
-/**
- * A remembered position can be on a monitor that is no longer there - the
- * laptop is off its dock - and a window opened there is lost off every
- * screen. If the window's title bar does not land on a display, it goes to
- * the middle of the one the editor is on.
- */
+/** A panel's window opened off every screen goes to the middle of the editor's. */
 function keepOnSomeDisplay(window: BrowserWindow, near: BrowserWindow | null): void {
   const bounds = window.getBounds();
-  const bar = { x: bounds.x + 8, y: bounds.y + 4, width: Math.max(1, bounds.width - 16), height: PANEL_BAR_HEIGHT - 8 };
-  const visible = screen.getAllDisplays().some(({ workArea: area }) =>
-    bar.x < area.x + area.width && bar.x + bar.width > area.x && bar.y < area.y + area.height && bar.y + bar.height > area.y,
-  );
-  if (visible) return;
-  const display = near && !near.isDestroyed() ? screen.getDisplayMatching(near.getBounds()) : screen.getPrimaryDisplay();
-  const area = display.workArea;
-  const width = Math.min(bounds.width, area.width);
-  const height = Math.min(bounds.height, area.height);
-  window.setBounds({
-    x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(area.y + (area.height - height) / 2),
-    width,
-    height,
-  });
+  const fallback = (near && !near.isDestroyed() ? screen.getDisplayMatching(near.getBounds()) : screen.getPrimaryDisplay()).workArea;
+  const placed = placePanelWindow(bounds, PANEL_BAR_HEIGHT, screen.getAllDisplays().map((display) => display.workArea), fallback);
+  if (placed !== bounds) window.setBounds(placed);
 }
+
 let pipeline: EncoderPipeline | null = null;
 let transcriber: Transcriber | null = null;
 
