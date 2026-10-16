@@ -43,7 +43,13 @@ win:
   # onnxruntime-node carries every platform's binaries (about 300 MB); a
   # Windows installer needs only its own, 64 MB of them. The matting models
   # are not here either: they are downloaded when the person asks.
+  # The whole file set is repeated: a platform list of exclusions alone is
+  # read as "everything except", and packed the whole checkout.
   files:
+    - dist/**
+    - dist-electron/**
+    - package.json
+    - node_modules/**
     - '!node_modules/onnxruntime-node/bin/napi-v6/{linux,darwin}/**'
     - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
 mac:

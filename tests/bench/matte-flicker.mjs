@@ -72,6 +72,8 @@ async function analyse(profile, clips, smoothing) {
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       ELECTRON_RUN_AS_NODE: undefined,
       SCF_BACKGROUND: '1',
+      // The imported project is unsaved: closing must not wait on the prompt.
+      SCF_NO_CLOSE_PROMPT: '1',
       SCF_MATTE_MODELS_DIR: modelsDir,
       SCF_MATTE_SMOOTHING: smoothing ? 'on' : 'off',
     },
