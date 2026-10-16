@@ -20,6 +20,10 @@ files:
 # app.asar.unpacked, which only works if it is actually unpacked here.
 asarUnpack:
   - node_modules/ffmpeg-static/**
+  # Remove background (src/main/matting): onnxruntime-node is a native addon
+  # whose DLLs (onnxruntime, DirectML) must sit beside it on disk for Windows
+  # to load them - nothing inside an asar can be loaded as a library.
+  - node_modules/onnxruntime-node/bin/**
 
 # The speech-to-text engine behind captions (whisper.cpp), compiled by the
 # release workflow into build/whisper and found by the app in
@@ -36,6 +40,12 @@ extraResources:
 
 win:
   target: [nsis]
+  # onnxruntime-node carries every platform's binaries (about 300 MB); a
+  # Windows installer needs only its own, 64 MB of them. The matting models
+  # are not here either: they are downloaded when the person asks.
+  files:
+    - '!node_modules/onnxruntime-node/bin/napi-v6/{linux,darwin}/**'
+    - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64/**'
 mac:
   target: [dmg]
   category: public.app-category.video

@@ -131,6 +131,24 @@ export interface ChromaKeyConfig {
   spill: number; // 0.0 to 1.0 - desaturation of the key hue in edge pixels
 }
 
+/**
+ * The models that can remove a background: 'precise' (BiRefNet-lite, any
+ * subject, slow) or 'fast' (MODNet, people only). See main/matting/catalog.
+ */
+export type MatteModelId = 'precise' | 'fast';
+
+export const MATTE_MODEL_IDS: readonly MatteModelId[] = ['precise', 'fast'];
+
+/**
+ * Remove background: the subject kept, everything else made transparent,
+ * from mattes a model computed ahead of time for the clip's file (they are
+ * kept in a cache by file and model, not in the project).
+ */
+export interface BackgroundRemovalConfig {
+  enabled: boolean;
+  model: MatteModelId;
+}
+
 /** Nearest-neighbour / pixelization pass used for sprite authoring. */
 export interface PixelArtConfig {
   enabled: boolean;
@@ -491,6 +509,7 @@ export interface Clip {
   mask: MaskConfig;
   colorGrading: ColorGradingConfig;
   chromaKey: ChromaKeyConfig;
+  backgroundRemoval: BackgroundRemovalConfig;
   pixelArt: PixelArtConfig;
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;

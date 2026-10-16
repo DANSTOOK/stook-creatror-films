@@ -7,6 +7,7 @@ import { translate } from '@shared/i18n';
 import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
 import { registerSubtitleHandlers } from './subtitles/subtitlesIpc';
+import { registerMattingHandlers } from './matting/mattingIpc';
 import type { Transcriber } from './subtitles/transcriber';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
 import { registerMediaProtocolHandler, registerMediaSchemeAsPrivileged } from './ipc/mediaProtocol';
@@ -257,6 +258,10 @@ app.whenReady().then(() => {
   pipeline = registerFileSystemHandlers(() => mainWindow);
   registerYouTubeHandlers(() => mainWindow);
   transcriber = registerSubtitleHandlers(() => mainWindow);
+  // An analysis left running stops with the app; what it had half written is
+  // swept away at the next start (matting/matteStore.ts).
+  const matting = registerMattingHandlers(() => mainWindow);
+  app.on('will-quit', () => matting.cancelAll());
 
   ipcMain.on(IPC.documentState, (_event, state: unknown) => {
     if (!state || typeof state !== 'object') return;

@@ -1,0 +1,55 @@
+import type { MatteModel } from './catalog';
+import type { MatteDevice } from './device';
+
+/**
+ * What the main process and the matting worker say to each other. The worker
+ * is an Electron utility process (worker.ts), one per analysis: a model that
+ * runs out of GPU memory, or a driver that crashes, takes that process down
+ * and not the editor.
+ */
+
+export interface MatteJob {
+  ffmpeg: string;
+  source: string;
+  /** A still: one frame, no frame rate. */
+  still: boolean;
+  /** The rate frames are taken at: the file's own. */
+  fps: number;
+  /** How many frames to expect, for the progress bar only. */
+  expectedFrames: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  matteWidth: number;
+  matteHeight: number;
+  model: MatteModel;
+  modelPath: string;
+  /** Written here as it goes, renamed to `target` only when complete. */
+  part: string;
+  target: string;
+  /** The device to use; null to measure and choose (device.ts). */
+  device: MatteDevice | null;
+  threads: number;
+  /** Turn the temporal smoothing off: only for measuring what it does. */
+  noSmoothing?: boolean;
+}
+
+export type ToWorker = { type: 'start'; job: MatteJob } | { type: 'cancel' };
+
+export type FromWorker =
+  | { type: 'device'; device: MatteDevice; probe?: { cpuMs: number; gpus: Array<{ index: number; ms: number }> } }
+  | { type: 'progress'; done: number; total: number; msPerFrame: number }
+  | { type: 'done'; frames: number; bytes: number; msPerFrame: number }
+  | { type: 'cancelled' }
+  | { type: 'error'; message: string };
+
+/**
+ * ffmpeg's arguments to hand the worker every frame as raw RGB, already at
+ * the size the model takes: scaling in ffmpeg is far cheaper than in
+ * JavaScript. The frame rate is fixed to the file's own (`fps`), so a file
+ * with a variable rate still gives one picture per frame of the timeline's
+ * clock, the picture that is on screen at that moment.
+ */
+export function matteFfmpegArgs(source: string, size: { width: number; height: number }, fps: number, still: boolean): string[] {
+  const filters = [...(still ? [] : [`fps=${Number(fps.toFixed(6))}`]), `scale=${size.width}:${size.height}:flags=bilinear`, 'format=rgb24'];
+  return ['-v', 'error', '-nostdin', '-i', source, '-an', '-sn', '-dn', '-vf', filters.join(','), '-f', 'rawvideo', 'pipe:1'];
+}

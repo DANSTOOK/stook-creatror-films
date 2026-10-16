@@ -1,4 +1,4 @@
-﻿import type { Clip, MediaAsset, ProjectState } from '@shared/types';
+import type { Clip, MediaAsset, ProjectState } from '@shared/types';
 import { Compositor, type ClipSource, type CompositorOptions, type ViewerCompare } from './Compositor';
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
@@ -10,6 +10,9 @@ import { TitleLayers } from './TitleLayers';
 import { activeTransitionsAt } from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { withCaptionTitles } from '@renderer/captions/captionRender';
+import { matteUrlFor, useMattes } from '@renderer/matting/mattes';
+import { t } from '@renderer/i18n';
+import { MatteTextures } from './MatteTextures';
 
 /**
  * Bundles the compositor with the caches it needs, and offers the two ways a
@@ -73,6 +76,33 @@ export class FrameRenderer {
     this.compositor.lutLoader = this.lutLoader;
     this.textures = new TextureManager(this.compositor.context);
     this.titles = new TitleLayers(this.textures);
+    this.mattes = new MatteTextures(this.compositor.context);
+    // Mattes deleted or made again come with a new URL: let the old go.
+    this.stopRetainingMattes = useMattes.subscribe((state) => {
+      this.mattes.retain(new Set(Object.values(state.urls).filter((url): url is string => url !== null)));
+    });
+  }
+
+  /** Remove background: each clip's matte for the frame drawn. */
+  readonly mattes: MatteTextures;
+  private readonly stopRetainingMattes: () => void;
+
+  /**
+   * The mattes a clip is drawn with: undefined when Remove background is off
+   * (or it is a title), null when it is on and its file has none yet.
+   */
+  private matteUrl(clip: Clip): string | null | undefined {
+    if (clip.title || !clip.backgroundRemoval?.enabled) return undefined;
+    const path = this.assets.get(clip.sourceUri)?.sourcePath;
+    return path ? matteUrlFor(path, clip.backgroundRemoval.model) : null;
+  }
+
+  /** The viewer's source with its matte, when there is one to hand. */
+  private withViewportMatte(clip: Clip, source: ClipSource | null, sourceFrame: number, fps: number): ClipSource | null {
+    const url = source ? this.matteUrl(clip) : undefined;
+    if (!source || !url) return source;
+    const matte = this.mattes.textureFor(url, sourceFrame, fps);
+    return matte ? { ...source, matte } : source;
   }
 
   /** Title clips, drawn as text into textures of their own. */
@@ -363,7 +393,7 @@ export class FrameRenderer {
           const wanted = `${uri}:${sourceFrame}`;
           if (shown === wanted || shown === `${wanted}:preview`) stats.exact += 1;
         }
-        return source;
+        return this.withViewportMatte(clip, source, sourceFrame, project.fps);
       },
       true,
       // The before/after is the viewer's alone: no export path passes it.
@@ -462,6 +492,12 @@ export class FrameRenderer {
           await this.titles.prepare(clip);
           return;
         }
+        // Remove background: the export waits for this frame's own matte,
+        // and refuses a clip that has none rather than export it whole.
+        const matte = this.matteUrl(clip);
+        if (matte === null || (matte && !(await this.mattes.prepare(matte, sourceFrame, project.fps)))) {
+          throw new Error(t('mattes.notAnalysedExport', { name: clip.name }));
+        }
         if (this.sequential && this.media.get(clip.sourceUri) instanceof HTMLVideoElement) {
           let reader = this.sequential.get(clip.id);
           if (!reader) {
@@ -496,8 +532,16 @@ export class FrameRenderer {
   private exactLanes = new Map<string, string>();
 
   /** The texture for a clip in an exact render: its decoded frame, or the element. */
-  private exactUploadFor(clip: Clip, fps: number, project: ProjectState, timelineFrame: number): ClipSource | null {
+  private exactUploadFor(clip: Clip, fps: number, project: ProjectState, timelineFrame: number, sourceFrame: number): ClipSource | null {
     if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: timelineFrame, fps: project.fps });
+    const source = this.exactPictureFor(clip, fps);
+    // seekSources has made this frame's matte ready, or refused the frame.
+    const url = this.matteUrl(clip);
+    const matte = source && url ? this.mattes.exactTextureFor(url, sourceFrame, fps) : null;
+    return source && matte ? { ...source, matte } : source;
+  }
+
+  private exactPictureFor(clip: Clip, fps: number): ClipSource | null {
     const frame = this.decodedFrames.get(clip.id);
     if (!frame) return this.uploadFor(clip, fps, false, this.exactLanes.get(clip.id) ?? clip.sourceUri);
 
@@ -523,7 +567,7 @@ export class FrameRenderer {
     this.compositor.renderFrame(
       project,
       frame,
-      (clip) => this.exactUploadFor(clip, project.fps, project, frame),
+      (clip, sourceFrame) => this.exactUploadFor(clip, project.fps, project, frame, sourceFrame),
       false,
     );
 
@@ -548,7 +592,7 @@ export class FrameRenderer {
       this.compositor.renderFrame(
         project,
         frame,
-        (clip) => this.exactUploadFor(clip, project.fps, project, frame),
+        (clip, sourceFrame) => this.exactUploadFor(clip, project.fps, project, frame, sourceFrame),
         true,
       );
     } finally {
@@ -557,6 +601,8 @@ export class FrameRenderer {
   }
 
   dispose(): void {
+    this.stopRetainingMattes();
+    this.mattes.dispose();
     this.closeScrubbers();
     this.stopSequentialDecode();
     this.textures.dispose();
