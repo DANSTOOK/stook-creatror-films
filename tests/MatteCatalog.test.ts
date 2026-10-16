@@ -60,6 +60,8 @@ describe('matte cache keys', () => {
 
   it('says how the mattes were made, so a new recipe is not read as the old', () => {
     expect(matteKey(stamp, 'fast')).toContain(`.${MATTE_RECIPE}`);
+    // Unsmoothed mattes, made only to measure the smoothing, are never found as the real ones.
+    expect(matteKey(stamp, 'fast', false)).not.toBe(matteKey(stamp, 'fast'));
   });
 });
 

@@ -41,7 +41,9 @@ interface Running {
 }
 
 export function registerMattingHandlers(getWindow: () => BrowserWindow | null): { cancelAll(): void } {
-  const folder = new MatteFolder(join(app.getPath('userData'), 'scf', 'mattes'));
+  // SCF_MATTE_SMOOTHING=off keeps the model's own output, for measuring the smoothing (matteStore.ts).
+  const smoothing = process.env.SCF_MATTE_SMOOTHING !== 'off';
+  const folder = new MatteFolder(join(app.getPath('userData'), 'scf', 'mattes'), smoothing);
   void folder.sweepLeftovers();
 
   const send = (channel: string, payload: unknown): void => {
@@ -230,6 +232,7 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
           device,
           // Half the processor at most, as captions do: the editor has to stay usable.
           threads: Math.max(1, Math.floor(cpus().length / 2)),
+          smoothing,
         };
         const outcome = await runWorker(
           job,
@@ -240,7 +243,7 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
             } else if (message.type === 'progress') {
               progress(message.done, message.total, message.msPerFrame);
             } else if (message.type === 'done') {
-              console.info(`[matte] ${message.frames} frames, ${message.bytes} bytes, ${message.msPerFrame.toFixed(1)} ms/frame`);
+              console.info(`[matte] ${message.frames} frames, ${message.bytes} bytes, ${message.msPerFrame.toFixed(1)} ms/frame in the model; ${JSON.stringify(message.timings)}`);
             }
           },
           (cancel) => {

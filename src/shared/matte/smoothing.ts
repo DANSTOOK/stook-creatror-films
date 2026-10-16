@@ -83,7 +83,13 @@ export class MatteSmoother {
   private current: Uint8Array | null = null;
   private previousOut: Uint8Array | null = null;
 
-  constructor(private readonly options: SmoothingOptions = DEFAULT_SMOOTHING) {}
+  private readonly options: SmoothingOptions;
+
+  // A plain field rather than a parameter property: tests/bench/matte-flicker.mjs
+  // loads this file with Node's own TypeScript stripping, which has no such thing.
+  constructor(options: SmoothingOptions = DEFAULT_SMOOTHING) {
+    this.options = options;
+  }
 
   push(next: Uint8Array): Uint8Array | null {
     if (!this.current) {

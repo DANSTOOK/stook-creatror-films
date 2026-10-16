@@ -29,8 +29,8 @@ export interface MatteJob {
   /** The device to use; null to measure and choose (device.ts). */
   device: MatteDevice | null;
   threads: number;
-  /** Turn the temporal smoothing off: only for measuring what it does. */
-  noSmoothing?: boolean;
+  /** Smooth the mattes over time (shared/matte/smoothing.ts); off only to measure what that does. */
+  smoothing: boolean;
 }
 
 export type ToWorker = { type: 'start'; job: MatteJob } | { type: 'cancel' };
@@ -38,7 +38,7 @@ export type ToWorker = { type: 'start'; job: MatteJob } | { type: 'cancel' };
 export type FromWorker =
   | { type: 'device'; device: MatteDevice; probe?: { cpuMs: number; gpus: Array<{ index: number; ms: number }> } }
   | { type: 'progress'; done: number; total: number; msPerFrame: number }
-  | { type: 'done'; frames: number; bytes: number; msPerFrame: number }
+  | { type: 'done'; frames: number; bytes: number; msPerFrame: number; timings: { probeMs: number; loadMs: number; framesMs: number } }
   | { type: 'cancelled' }
   | { type: 'error'; message: string };
 

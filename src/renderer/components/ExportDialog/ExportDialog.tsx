@@ -355,6 +355,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       if (!blob) return;
       setThumbnailPath(await window.filmora.writeThumbnail(await blob.arrayBuffer()));
       setThumbnailPreview(canvas.toDataURL('image/jpeg', 0.7));
+    } catch (error) {
+      // A frame the export would refuse (a background not yet removed) says why.
+      notify(errorText(error), 'error');
     } finally {
       renderer.endExclusive();
     }

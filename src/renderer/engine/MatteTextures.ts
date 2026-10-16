@@ -31,6 +31,8 @@ import { rangeReader } from './rangeFetch';
 const BLOCK = 16;
 /** Decoded mattes kept, across every clip: about a second of 1024 x 576 at 30 fps. */
 const KEEP_FRAMES = 48;
+/** Matte textures kept on the GPU: enough for every clip a frame can show at once. */
+const KEEP_TEXTURES = 8;
 
 interface OpenMatte {
   header: MatteHeader;
@@ -44,8 +46,10 @@ export class MatteTextures {
   /** Decoded frames by `url#index`, the most recently used last. */
   private readonly frames = new Map<string, Uint8Array>();
   private readonly loading = new Map<string, Promise<void>>();
-  /** One texture per file, and which frame it holds. */
-  private readonly textures = new Map<string, { texture: WebGLTexture; frame: number }>();
+  /** Matte textures by url#frame, the most recently used last. */
+  private readonly textures = new Map<string, WebGLTexture>();
+  /** The texture each file last showed, held while the next frame loads. */
+  private readonly lastShown = new Map<string, string>();
 
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -96,33 +100,49 @@ export class MatteTextures {
     return pending;
   }
 
+  /**
+   * The texture holding this frame's matte, uploaded if it is not yet. One
+   * per frame, not per file: two clips of one file drawn together - the two
+   * sides of a dissolve within a shot - each need their own.
+   */
   private upload(url: string, open: OpenMatte, frame: number, pixels: Uint8Array): WebGLTexture {
     const { gl } = this;
-    let entry = this.textures.get(url);
-    if (entry?.frame === frame) return entry.texture;
+    const key = `${url}#${frame}`;
+    this.lastShown.set(url, key);
+    const kept = this.textures.get(key);
+    if (kept) {
+      this.textures.delete(key);
+      this.textures.set(key, kept);
+      return kept;
+    }
+    // The least recently used texture is reused once there are enough.
+    let texture: WebGLTexture | null = null;
+    if (this.textures.size >= KEEP_TEXTURES) {
+      const [oldest, recycled] = this.textures.entries().next().value as [string, WebGLTexture];
+      this.textures.delete(oldest);
+      texture = recycled;
+    }
     // On a unit of its own, as the curve textures are: binding on the active
     // unit could replace a pass's input mid-setup.
     gl.activeTexture(gl.TEXTURE3);
-    if (!entry) {
-      const texture = gl.createTexture();
+    if (!texture) {
+      texture = gl.createTexture();
       if (!texture) throw new Error('Failed to allocate a matte texture');
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      entry = { texture, frame: -1 };
-      this.textures.set(url, entry);
     }
-    gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, open.header.width, open.header.height, 0, gl.RED, gl.UNSIGNED_BYTE, pixels);
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.activeTexture(gl.TEXTURE0);
-    entry.frame = frame;
-    return entry.texture;
+    this.textures.set(key, texture);
+    return texture;
   }
 
   /** The viewer's matte for this frame: now, or the last one this file showed while it loads. */
@@ -140,7 +160,8 @@ export class MatteTextures {
       return this.upload(url, open, frame, pixels);
     }
     void this.load(url, open, frame).catch(() => undefined);
-    return this.textures.get(url)?.texture ?? null;
+    const held = this.lastShown.get(url);
+    return held ? this.textures.get(held) ?? null : null;
   }
 
   /** The export's: resolves once this frame's matte is ready, false when the file cannot be read. */
@@ -167,9 +188,12 @@ export class MatteTextures {
       if (urls.has(url)) continue;
       this.files.delete(url);
       this.opened.delete(url);
-      const entry = this.textures.get(url);
-      if (entry) this.gl.deleteTexture(entry.texture);
-      this.textures.delete(url);
+      this.lastShown.delete(url);
+      for (const [key, texture] of [...this.textures]) {
+        if (!key.startsWith(`${url}#`)) continue;
+        this.gl.deleteTexture(texture);
+        this.textures.delete(key);
+      }
       for (const key of [...this.frames.keys()]) if (key.startsWith(`${url}#`)) this.frames.delete(key);
     }
   }

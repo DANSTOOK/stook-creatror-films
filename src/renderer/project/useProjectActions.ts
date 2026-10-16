@@ -95,7 +95,9 @@ let pendingRecord: Promise<void> = Promise.resolve();
 async function recordRecent(path: string, withThumbnail: boolean): Promise<void> {
   if (!hasNativeBridge()) return;
   const { project } = useProjectStore.getState();
-  const thumbnail = withThumbnail ? await captureThumbnail() : undefined;
+  // A frame the exact render refuses (a clip whose background removal is not
+  // analysed yet) costs the thumbnail, not the place in the list.
+  const thumbnail = withThumbnail ? await captureThumbnail().catch(() => undefined) : undefined;
   await window.filmora
     .projectsRecord(
       {

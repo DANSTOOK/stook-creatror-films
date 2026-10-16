@@ -20,8 +20,14 @@ export const MATTE_RECIPE = 1;
 
 export const MATTE_EXTENSION = '.scfmatte';
 
-export function matteKey(stamp: SourceStamp, model: MatteModelId): string {
-  return `${proxyKey(stamp)}-${model}-v${MATTE_FORMAT_VERSION}.${MATTE_RECIPE}`;
+/**
+ * With `smoothed` false the mattes are the model's own output, frame by frame, kept only for
+ * measuring what the smoothing does (SCF_MATTE_SMOOTHING=off, see
+ * tests/bench/matte-flicker.mjs) - and kept under a name of its own, so it is
+ * never taken for the real thing.
+ */
+export function matteKey(stamp: SourceStamp, model: MatteModelId, smoothed = true): string {
+  return `${proxyKey(stamp)}-${model}-v${MATTE_FORMAT_VERSION}.${MATTE_RECIPE}${smoothed ? '' : '-raw'}`;
 }
 
 export interface MatteRecord {
@@ -31,7 +37,10 @@ export interface MatteRecord {
 }
 
 export class MatteFolder {
-  constructor(readonly folder: string) {}
+  constructor(
+    readonly folder: string,
+    readonly smoothed = true,
+  ) {}
 
   fileFor(key: string): string {
     return join(this.folder, `${key}${MATTE_EXTENSION}`);
@@ -50,7 +59,7 @@ export class MatteFolder {
 
   async keyFor(path: string, model: MatteModelId): Promise<string | null> {
     const stamp = await this.stampFor(path);
-    return stamp ? matteKey(stamp, model) : null;
+    return stamp ? matteKey(stamp, model, this.smoothed) : null;
   }
 
   /** The finished mattes for this file and model, or null. */

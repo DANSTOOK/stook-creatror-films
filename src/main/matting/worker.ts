@@ -164,6 +164,7 @@ function frameReader(child: ChildProcess, frameBytes: number): { next(): Promise
 /* The job -------------------------------------------------------------------- */
 
 async function run(job: MatteJob): Promise<void> {
+  const jobStarted = performance.now();
   let device = job.device;
   if (!device) {
     const measured = await measureDevice();
@@ -173,7 +174,9 @@ async function run(job: MatteJob): Promise<void> {
     send({ type: 'device', device });
   }
 
+  const probed = performance.now();
   let session = await loadModel(job, device);
+  const loaded = performance.now();
   const inputSize = modelInputSize(job.model, job.sourceWidth, job.sourceHeight);
   const pixels = inputSize.width * inputSize.height;
   const planar = new Float32Array(pixels * 3);
@@ -187,7 +190,7 @@ async function run(job: MatteJob): Promise<void> {
   let position = MATTE_HEADER_BYTES;
   await file.write(new Uint8Array(MATTE_HEADER_BYTES), 0, MATTE_HEADER_BYTES, 0);
 
-  const smoother = job.noSmoothing ? null : new MatteSmoother();
+  const smoother = job.smoothing ? new MatteSmoother() : null;
   const write = async (matte: Uint8Array): Promise<void> => {
     const coded = encodeMatteFrame(matte);
     offsets.push(position);
@@ -252,7 +255,13 @@ async function run(job: MatteJob): Promise<void> {
     await file.close();
     file = null;
     await rename(job.part, job.target);
-    send({ type: 'done', frames: offsets.length - 1, bytes: position + index.length, msPerFrame: inferenceMs / Math.max(1, decoded) });
+    send({
+      type: 'done',
+      frames: offsets.length - 1,
+      bytes: position + index.length,
+      msPerFrame: inferenceMs / Math.max(1, decoded),
+      timings: { probeMs: probed - jobStarted, loadMs: loaded - probed, framesMs: performance.now() - loaded },
+    });
   } catch (error) {
     ffmpeg?.kill();
     await file?.close().catch(() => undefined);
