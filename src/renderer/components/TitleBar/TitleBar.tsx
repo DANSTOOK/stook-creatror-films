@@ -7,6 +7,7 @@ import { useT, type MessageKey } from '@renderer/i18n';
 // Shared with the palette, so both show the same key beside the same command.
 import { acceleratorLabel } from '@renderer/components/CommandPalette/commands';
 import { NotificationsButton } from '@renderer/notifications/Toaster';
+import { DetachedPanelsTray } from '@renderer/components/Layout/DetachedPanelsTray';
 
 /**
  * The window's title bar, with the editor's toolbar in it.
@@ -226,6 +227,10 @@ export function TitleBar({
           </div>
 
           <div className="min-w-4 flex-1" />
+
+          {/* Panels that are out in windows of their own, beside the buttons
+              for the ones that are here. */}
+          <DetachedPanelsTray />
 
           <div role="group" aria-label={t('titlebar.panels')} className="flex items-center gap-0.5">
             {panelToggle('media', PanelLeft, 'Ctrl+1')}

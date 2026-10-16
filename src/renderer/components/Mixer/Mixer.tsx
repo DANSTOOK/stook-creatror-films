@@ -515,7 +515,9 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
             registerMeter={register(track.id)}
           />
         ))}
-        <span aria-hidden className="w-px shrink-0 bg-panel-700" />
+        {/* The master at the right-hand end, as on a desk, however wide the
+            mixer's own window is made. */}
+        <span aria-hidden className="ml-auto w-px shrink-0 bg-panel-700" />
         <Strip name={t('mixer.master')} master>
           <span className="h-3" aria-hidden />
           <label className="flex min-h-0 w-full flex-1 items-stretch justify-center gap-1">

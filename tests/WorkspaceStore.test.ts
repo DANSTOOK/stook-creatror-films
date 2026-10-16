@@ -41,7 +41,7 @@ beforeEach(() => {
 describe('the workspace', () => {
   it('starts with every panel in the main window', async () => {
     const store = (await loadStore()).getState();
-    expect(store.detached).toEqual({ viewer: false, media: false, inspector: false, mixer: false });
+    expect(store.detached).toEqual({ viewer: false, media: false, inspector: false, mixer: false, timeline: false });
   });
 
   it('remembers a panel sent to its own window', async () => {
@@ -68,7 +68,7 @@ describe('the workspace', () => {
 
     store.getState().dockAll();
 
-    expect(store.getState().detached).toEqual({ viewer: false, media: false, inspector: false, mixer: false });
+    expect(store.getState().detached).toEqual({ viewer: false, media: false, inspector: false, mixer: false, timeline: false });
     expect((await loadStore()).getState().isDetached('viewer')).toBe(false);
   });
 
@@ -79,6 +79,21 @@ describe('the workspace', () => {
     storage.setItem('scf.detachedPanels', '{"viewer":"yes","nonsense":true}');
     const store = (await loadStore()).getState();
     expect(store.detached.viewer).toBe(false);
-    expect(Object.keys(store.detached).sort()).toEqual(['inspector', 'media', 'mixer', 'viewer']);
+    expect(Object.keys(store.detached).sort()).toEqual(['inspector', 'media', 'mixer', 'timeline', 'viewer']);
+  });
+
+  it('lets the timeline have a window of its own too', async () => {
+    (await loadStore()).getState().setDetached('timeline', true);
+
+    const reopened = (await loadStore()).getState();
+    expect(reopened.isDetached('timeline')).toBe(true);
+    expect(reopened.isDetached('viewer')).toBe(false);
+  });
+
+  it('reads a layout saved before the timeline could leave, with the timeline docked', async () => {
+    // What a version that knew only four panels wrote.
+    storage.setItem('scf.detachedPanels', '{"viewer":true,"media":false,"inspector":false,"mixer":true}');
+    const store = (await loadStore()).getState();
+    expect(store.detached).toEqual({ viewer: true, media: false, inspector: false, mixer: true, timeline: false });
   });
 });

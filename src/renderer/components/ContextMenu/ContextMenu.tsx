@@ -64,20 +64,24 @@ interface Level {
 
 const MARGIN = 8;
 
-/** Keeps a menu fully on screen when opened near an edge. */
-function place(anchor: Level['anchor'], width: number, height: number): { left: number; top: number; origin: string } {
+/**
+ * Keeps a menu fully on screen when opened near an edge - of `view`, the
+ * window it is open in, which is a panel's own window when the panel has been
+ * moved to another screen (Layout/PanelWindow).
+ */
+function place(anchor: Level['anchor'], width: number, height: number, view: Window): { left: number; top: number; origin: string } {
   if (anchor instanceof DOMRect) {
     // Beside the item, its first entry level with it; to the left when the
     // right has no room, as Windows does.
     const right = anchor.right - 2;
-    const left = right + width + MARGIN > window.innerWidth ? Math.max(MARGIN, anchor.left - width + 2) : right;
-    const top = Math.max(MARGIN, Math.min(anchor.top - 5, window.innerHeight - height - MARGIN));
+    const left = right + width + MARGIN > view.innerWidth ? Math.max(MARGIN, anchor.left - width + 2) : right;
+    const top = Math.max(MARGIN, Math.min(anchor.top - 5, view.innerHeight - height - MARGIN));
     return { left, top, origin: `top ${left < anchor.left ? 'right' : 'left'}` };
   }
   const { x, y } = anchor;
-  const left = Math.max(MARGIN, Math.min(x, window.innerWidth - width - MARGIN));
+  const left = Math.max(MARGIN, Math.min(x, view.innerWidth - width - MARGIN));
   // Near the bottom the menu flips above the cursor rather than being clipped.
-  const flipped = y + height + MARGIN > window.innerHeight;
+  const flipped = y + height + MARGIN > view.innerHeight;
   const top = flipped ? Math.max(MARGIN, y - height) : y;
   const horizontal = left < x ? 'right' : 'left';
   return { left, top, origin: `${flipped ? 'bottom' : 'top'} ${horizontal}` };
@@ -128,7 +132,7 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
     levels.forEach((level, index) => {
       const element = panelRefs.current[index];
       if (!element) return;
-      const spot = place(level.anchor, element.offsetWidth, element.offsetHeight);
+      const spot = place(level.anchor, element.offsetWidth, element.offsetHeight, element.ownerDocument.defaultView ?? window);
       element.style.left = `${spot.left}px`;
       element.style.top = `${spot.top}px`;
       element.style.transformOrigin = spot.origin;
@@ -153,7 +157,7 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
 
   /** Open the submenu of item `index` in level `depth`, measured from its row. */
   const openSubmenu = useCallback((depth: number, index: number, fromKeyboard: boolean) => {
-    const row = document.getElementById(`${idPrefix}-${depth}-${index}`);
+    const row = (panelRefs.current[depth]?.ownerDocument ?? document).getElementById(`${idPrefix}-${depth}-${index}`);
     setLevels((current) => {
       const item = current[depth]?.items[index];
       if (!item?.submenu || !row) return current;
@@ -249,17 +253,19 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
     };
 
     // Any scroll or resize invalidates the anchor point, so close rather than
-    // leaving a menu floating over unrelated content.
-    window.addEventListener('mousedown', onPointerDown, true);
-    window.addEventListener('keydown', onKeyDown, true);
-    window.addEventListener('resize', onClose);
-    window.addEventListener('wheel', onClose, { passive: true });
+    // leaving a menu floating over unrelated content. Listened for in the
+    // window the menu is in: a panel on another screen has a window of its own.
+    const view = panelRefs.current[0]?.ownerDocument.defaultView ?? window;
+    view.addEventListener('mousedown', onPointerDown, true);
+    view.addEventListener('keydown', onKeyDown, true);
+    view.addEventListener('resize', onClose);
+    view.addEventListener('wheel', onClose, { passive: true });
 
     return () => {
-      window.removeEventListener('mousedown', onPointerDown, true);
-      window.removeEventListener('keydown', onKeyDown, true);
-      window.removeEventListener('resize', onClose);
-      window.removeEventListener('wheel', onClose);
+      view.removeEventListener('mousedown', onPointerDown, true);
+      view.removeEventListener('keydown', onKeyDown, true);
+      view.removeEventListener('resize', onClose);
+      view.removeEventListener('wheel', onClose);
     };
   }, [levels, focusLevel, onClose, openSubmenu, restoreFocus, run, setActive]);
 

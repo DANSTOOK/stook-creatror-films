@@ -40,6 +40,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { dismissNotification, notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
+import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { MAX_PIXELS_PER_FRAME, MIN_PIXELS_PER_FRAME } from './zoom';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
@@ -1473,8 +1474,12 @@ export function Timeline(): JSX.Element {
         segmented control, since exactly one is always chosen.
       */}
       <header className="timeline-toolbar panel-header gap-0 !px-0">
-        <span className="flex shrink-0 items-center px-3" style={{ width: HEADER_WIDTH }}>
-          {tr('timeline.title')}
+        <span className="flex shrink-0 items-center gap-1 pl-3 pr-2" style={{ width: HEADER_WIDTH }}>
+          <span className="min-w-0 flex-1 truncate">{tr('timeline.title')}</span>
+          {/* Off to a screen of its own, as Resolve's dual-screen layout gives it. */}
+          <span className="font-normal">
+            <DetachButton panel="timeline" />
+          </span>
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2 font-normal">
           <div ref={toolIndicator.containerRef} role="radiogroup" aria-label={tr('timeline.tools')} className="toolbar-group relative">

@@ -87,6 +87,10 @@ function exitFrames(kind: GhostExit, from: Keyframe): Keyframe[] {
  */
 export function leaveGhost(element: HTMLElement | null, kind: GhostExit, options: { duration?: number } = {}): void {
   if (!element || !element.isConnected || motionQuiet()) return;
+  // The ghosts are drawn in the editor's own page. Something in a panel's
+  // window on another screen (Layout/PanelWindow) would leave its copy over
+  // the editor instead, at that window's coordinates, so it simply goes.
+  if (element.ownerDocument !== document) return;
   if (typeof element.animate !== 'function') return;
   const target = ghostLayer();
   if (!target) return;

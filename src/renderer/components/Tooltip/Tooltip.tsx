@@ -61,7 +61,12 @@ interface Shown {
   instant: boolean;
 }
 
-export function TooltipLayer(): JSX.Element | null {
+/**
+ * `view` is the window whose controls it labels: the editor's by default, or
+ * a panel's own window on another screen (Layout/PanelWindow), which renders a
+ * layer of its own - a tip is drawn in the window the pointer is in.
+ */
+export function TooltipLayer({ view = window }: { view?: Window } = {}): JSX.Element | null {
   const [shown, setShown] = useState<Shown | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -127,28 +132,29 @@ export function TooltipLayer(): JSX.Element | null {
 
     // A press means the tip has been read or is not wanted; a scroll moves
     // what it points at.
-    document.addEventListener('pointerover', onOver, true);
+    const page = view.document;
+    page.addEventListener('pointerover', onOver, true);
     const onDown = (event: PointerEvent): void => {
       pressed = (event.target as Element | null)?.closest?.('[data-tooltip]') as HTMLElement | null;
       hide();
     };
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('focusin', onFocus, true);
-    document.addEventListener('focusout', hide, true);
-    document.addEventListener('keydown', onKey, true);
-    window.addEventListener('wheel', hide, { passive: true });
-    window.addEventListener('blur', hide);
+    page.addEventListener('pointerdown', onDown, true);
+    page.addEventListener('focusin', onFocus, true);
+    page.addEventListener('focusout', hide, true);
+    page.addEventListener('keydown', onKey, true);
+    view.addEventListener('wheel', hide, { passive: true });
+    view.addEventListener('blur', hide);
     return () => {
       window.clearTimeout(timer);
-      document.removeEventListener('pointerover', onOver, true);
-      document.removeEventListener('pointerdown', onDown, true);
-      document.removeEventListener('focusin', onFocus, true);
-      document.removeEventListener('focusout', hide, true);
-      document.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('wheel', hide);
-      window.removeEventListener('blur', hide);
+      page.removeEventListener('pointerover', onOver, true);
+      page.removeEventListener('pointerdown', onDown, true);
+      page.removeEventListener('focusin', onFocus, true);
+      page.removeEventListener('focusout', hide, true);
+      page.removeEventListener('keydown', onKey, true);
+      view.removeEventListener('wheel', hide);
+      view.removeEventListener('blur', hide);
     };
-  }, []);
+  }, [view]);
 
   // Below the control, centred; above it when there is no room; always on screen.
   useLayoutEffect(() => {
@@ -158,10 +164,10 @@ export function TooltipLayer(): JSX.Element | null {
     const width = bubble.offsetWidth;
     const height = bubble.offsetHeight;
     let top = box.bottom + GAP_PX;
-    if (top + height + MARGIN_PX > window.innerHeight) top = box.top - GAP_PX - height;
-    const left = Math.max(MARGIN_PX, Math.min(box.left + box.width / 2 - width / 2, window.innerWidth - width - MARGIN_PX));
+    if (top + height + MARGIN_PX > view.innerHeight) top = box.top - GAP_PX - height;
+    const left = Math.max(MARGIN_PX, Math.min(box.left + box.width / 2 - width / 2, view.innerWidth - width - MARGIN_PX));
     setPosition({ left, top: Math.max(MARGIN_PX, top) });
-  }, [shown]);
+  }, [shown, view]);
 
   if (!shown) return null;
   return (
