@@ -18,7 +18,18 @@ import { CAPTION_MODELS, type CaptionModel } from './catalog';
  * Nothing here needs Electron: the download takes the `fetch` to use, so
  * the app passes Chromium's (which honours the system proxy) and the tests
  * pass their own.
+ *
+ * The matting models (main/matting/catalog.ts) are kept the same way, by the
+ * same functions: everything but importing takes any `ModelFile`.
  */
+
+/** What these functions need to know of a model. */
+export interface ModelFile {
+  file: string;
+  bytes: number;
+  sha256: string;
+  url: string;
+}
 
 export class ChecksumError extends Error {
   constructor(
@@ -30,9 +41,9 @@ export class ChecksumError extends Error {
   }
 }
 
-export const modelPath = (dir: string, model: CaptionModel): string => join(dir, model.file);
-const markerPath = (dir: string, model: CaptionModel): string => `${modelPath(dir, model)}.verified`;
-const partPath = (dir: string, model: CaptionModel): string => `${modelPath(dir, model)}.part`;
+export const modelPath = (dir: string, model: ModelFile): string => join(dir, model.file);
+const markerPath = (dir: string, model: ModelFile): string => `${modelPath(dir, model)}.verified`;
+const partPath = (dir: string, model: ModelFile): string => `${modelPath(dir, model)}.part`;
 
 export async function sha256OfFile(path: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash('sha256');
@@ -41,7 +52,7 @@ export async function sha256OfFile(path: string, signal?: AbortSignal): Promise<
   return hash.digest('hex');
 }
 
-async function writeMarker(dir: string, model: CaptionModel): Promise<void> {
+async function writeMarker(dir: string, model: ModelFile): Promise<void> {
   const info = await stat(modelPath(dir, model));
   await writeFile(markerPath(dir, model), JSON.stringify({ sha256: model.sha256, size: info.size, mtimeMs: info.mtimeMs }), 'utf8');
 }
@@ -50,7 +61,7 @@ async function writeMarker(dir: string, model: CaptionModel): Promise<void> {
  * Whether the model is here and is the real one. Cheap when it was checked
  * before and has not changed since; otherwise the file is hashed.
  */
-export async function isModelReady(dir: string, model: CaptionModel): Promise<boolean> {
+export async function isModelReady(dir: string, model: ModelFile): Promise<boolean> {
   const path = modelPath(dir, model);
   let info;
   try {
@@ -81,7 +92,7 @@ export interface DownloadOptions {
  * takes its real name once the hash has matched; anything else - a wrong
  * hash, a cancel, a dropped connection - leaves nothing behind.
  */
-export async function downloadModel(dir: string, model: CaptionModel, options: DownloadOptions): Promise<void> {
+export async function downloadModel(dir: string, model: ModelFile, options: DownloadOptions): Promise<void> {
   await mkdir(dir, { recursive: true });
   const part = partPath(dir, model);
   const hash = createHash('sha256');
@@ -149,11 +160,11 @@ export async function importModel(dir: string, source: string): Promise<CaptionM
   return model;
 }
 
-export async function deleteModel(dir: string, model: CaptionModel): Promise<void> {
+export async function deleteModel(dir: string, model: ModelFile): Promise<void> {
   await rm(modelPath(dir, model), { force: true });
   await rm(markerPath(dir, model), { force: true });
   await rm(partPath(dir, model), { force: true });
 }
 
 /** Whether a download left half a file behind (a crash, the power going). */
-export const hasLeftover = (dir: string, model: CaptionModel): boolean => existsSync(partPath(dir, model));
+export const hasLeftover = (dir: string, model: ModelFile): boolean => existsSync(partPath(dir, model));

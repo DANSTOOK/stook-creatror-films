@@ -1071,3 +1071,6 @@ export const isFinishedExport = (path: string): boolean => finishedExports.has(p
 export const allowPath = (path: string): void => {
   allowedPaths.add(path);
 };
+
+/** For the other handlers that take a path from the page (matting): only files the person opened. */
+export const assertAllowedPath = (path: string): void => assertAllowed(path);

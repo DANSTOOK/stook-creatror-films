@@ -103,7 +103,63 @@ export const IPC = {
   captionsSaveFile: 'captions:save-file',
   captionsWriteSidecar: 'captions:write-sidecar',
   captionsWriteTemp: 'captions:write-temp',
+  mattesStatus: 'mattes:status',
+  mattesModelDownload: 'mattes:model-download',
+  mattesModelCancel: 'mattes:model-cancel',
+  mattesModelProgress: 'mattes:model-progress',
+  mattesFind: 'mattes:find',
+  mattesBuild: 'mattes:build',
+  mattesCancel: 'mattes:cancel',
+  mattesDelete: 'mattes:delete',
+  mattesProgress: 'mattes:progress',
 } as const;
+
+/* Remove background ------------------------------------------------------------ */
+
+export interface MatteModelStatus {
+  id: import('./index').MatteModelId;
+  bytes: number;
+  /** On this computer and verified against its fixed SHA-256. */
+  present: boolean;
+  /** Where it would be downloaded from, and its licence. */
+  source: string;
+  licence: string;
+}
+
+export interface MatteEngineStatus {
+  /** The runtime (onnxruntime) loads in this build. */
+  available: boolean;
+  /** What the last analysis ran on, once one has run this session. */
+  device: 'gpu' | 'cpu' | null;
+  models: MatteModelStatus[];
+}
+
+export interface MatteModelProgress {
+  id: import('./index').MatteModelId;
+  received: number;
+  total: number;
+}
+
+/** One file to analyse: what the page knows of it from the import. */
+export interface MatteBuildRequest {
+  path: string;
+  model: import('./index').MatteModelId;
+  width: number;
+  height: number;
+  /** Its own frame rate; ignored for a still. */
+  fps: number;
+  seconds: number;
+  still: boolean;
+}
+
+export interface MatteProgressEvent {
+  path: string;
+  model: import('./index').MatteModelId;
+  done: number;
+  total: number;
+  msPerFrame: number;
+  device: 'gpu' | 'cpu' | null;
+}
 
 /* Captions ------------------------------------------------------------------ */
 
@@ -602,6 +658,29 @@ export interface FilmoraApi {
    * file input. The export deletes it when it ends.
    */
   captionsWriteTemp?(srt: string): Promise<string>;
+
+  /* Remove background: mattes computed on this computer. Optional, like captions. */
+  mattesStatus?(): Promise<MatteEngineStatus>;
+  /**
+   * Download a matting model from its pinned source and verify it. Uses the
+   * network: ask the person first. Resolves with the new status - the model
+   * absent if the download was cancelled.
+   */
+  mattesModelDownload?(id: import('./index').MatteModelId): Promise<MatteEngineStatus>;
+  mattesModelCancel?(id: import('./index').MatteModelId): Promise<void>;
+  onMatteModelProgress?(listener: (progress: MatteModelProgress) => void): () => void;
+  /** The finished mattes of this file for this model, as a URL the page can read by range, or null. */
+  mattesFind?(path: string, model: import('./index').MatteModelId): Promise<string | null>;
+  /**
+   * Analyse a file: resolves with the mattes' URL, or null when cancelled.
+   * One analysis runs at a time; asking again for the same file and model
+   * waits for the one already running.
+   */
+  mattesBuild?(request: MatteBuildRequest): Promise<string | null>;
+  mattesCancel?(path: string, model: import('./index').MatteModelId): Promise<void>;
+  /** Throw away this file's mattes for this model. */
+  mattesDelete?(path: string, model: import('./index').MatteModelId): Promise<void>;
+  onMatteProgress?(listener: (progress: MatteProgressEvent) => void): () => void;
 }
 
 declare global {

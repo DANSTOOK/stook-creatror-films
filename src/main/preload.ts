@@ -14,6 +14,9 @@ import {
   type CaptionModelProgress,
   type CaptionProgressEvent,
   type CaptionTranscribeResult,
+  type MatteEngineStatus,
+  type MatteModelProgress,
+  type MatteProgressEvent,
   type MenuCommand,
   type PickedFile,
   type ProjectBackup,
@@ -204,6 +207,28 @@ const api: FilmoraApi = {
   captionsSaveFile: (suggestedName, srt, vtt) => ipcRenderer.invoke(IPC.captionsSaveFile, suggestedName, srt, vtt) as Promise<string | null>,
   captionsWriteSidecar: (videoPath, format, contents, tag) => ipcRenderer.invoke(IPC.captionsWriteSidecar, videoPath, format, contents, tag) as Promise<string>,
   captionsWriteTemp: (srt) => ipcRenderer.invoke(IPC.captionsWriteTemp, srt) as Promise<string>,
+
+  mattesStatus: () => ipcRenderer.invoke(IPC.mattesStatus) as Promise<MatteEngineStatus>,
+  mattesModelDownload: (id) => ipcRenderer.invoke(IPC.mattesModelDownload, id) as Promise<MatteEngineStatus>,
+  mattesModelCancel: (id) => ipcRenderer.invoke(IPC.mattesModelCancel, id) as Promise<void>,
+  onMatteModelProgress(listener) {
+    const handler = (_event: unknown, progress: MatteModelProgress): void => listener(progress);
+    ipcRenderer.on(IPC.mattesModelProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.mattesModelProgress, handler);
+    };
+  },
+  mattesFind: (path, model) => ipcRenderer.invoke(IPC.mattesFind, path, model) as Promise<string | null>,
+  mattesBuild: (request) => ipcRenderer.invoke(IPC.mattesBuild, request) as Promise<string | null>,
+  mattesCancel: (path, model) => ipcRenderer.invoke(IPC.mattesCancel, path, model) as Promise<void>,
+  mattesDelete: (path, model) => ipcRenderer.invoke(IPC.mattesDelete, path, model) as Promise<void>,
+  onMatteProgress(listener) {
+    const handler = (_event: unknown, progress: MatteProgressEvent): void => listener(progress);
+    ipcRenderer.on(IPC.mattesProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.mattesProgress, handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('filmora', api);

@@ -50,6 +50,12 @@ uniform sampler2D u_inputTexture;
 // with u_reveal far past the right edge, where this multiplies by exactly 1.
 uniform float u_reveal;
 uniform float u_revealSoftness;
+// Remove background: the clip's matte for this frame (engine/MatteTextures),
+// one channel, laid out like the picture itself, so it is read at the same
+// place. Applied here, before the transform has moved anything, the matte
+// follows the clip wherever it is put and however it is scaled.
+uniform bool u_useMatte;
+uniform sampler2D u_matte;
 
 void main() {
     // Sampling outside the quad must not smear edge texels across the frame.
@@ -59,7 +65,8 @@ void main() {
     }
     vec4 texColor = texture(u_inputTexture, v_texCoord);
     float shown = clamp((u_reveal - v_texCoord.x) / u_revealSoftness, 0.0, 1.0);
-    fragColor = vec4(texColor.rgb, texColor.a * shown);
+    float kept = u_useMatte ? texture(u_matte, v_texCoord).r : 1.0;
+    fragColor = vec4(texColor.rgb, texColor.a * shown * kept);
 }
 `;
 
@@ -252,6 +259,12 @@ export interface ClipSource {
    * turns it about the pivot and plays its animation on top of its keyframes.
    */
   title?: TitleGeometry;
+  /**
+   * Remove background: the matte for this frame, a one-channel texture
+   * stored the same way up as `texture` (see engine/MatteTextures). Absent:
+   * the clip is drawn whole.
+   */
+  matte?: WebGLTexture;
 }
 
 /**
@@ -674,6 +687,9 @@ export class Compositor {
     this.transferProgram.setTexture('u_inputTexture', source.texture, 0);
     this.transferProgram.set('u_reveal', reveal);
     this.transferProgram.set('u_revealSoftness', WIPE_SOFTNESS);
+    this.transferProgram.set('u_useMatte', source.matte !== undefined);
+    // Unit 3 either way: an unbound sampler would share unit 0 with the picture.
+    this.transferProgram.setTexture('u_matte', source.matte ?? source.texture, 3);
     this.drawQuad(this.transferProgram);
 
     // A fade at either end of the clip rides on top of whatever opacity the

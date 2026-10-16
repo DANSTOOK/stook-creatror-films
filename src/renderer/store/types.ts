@@ -1,6 +1,8 @@
 import type {
   AudioBus,
+  BackgroundRemovalConfig,
   Clip,
+  MatteModelId,
   EqSettings,
   ExportSettings,
   Marker,
@@ -15,6 +17,7 @@ import {
   DEFAULT_DUCKING,
   DEFAULT_MARKER_COLOR,
   DEFAULT_PROJECT_AUDIO,
+  MATTE_MODEL_IDS,
   NEUTRAL_EQ,
 } from '@shared/types';
 import { createId } from '@shared/utils/id';
@@ -318,6 +321,7 @@ export function createClip(input: CreateClipInput): Clip {
       smoothness: 0.1,
       spill: 0.3,
     },
+    backgroundRemoval: { enabled: false, model: 'precise' },
     pixelArt: {
       enabled: false,
       pixelSize: 4,
@@ -365,6 +369,20 @@ const isBlendMode = (value: unknown): value is BlendMode =>
 
 const finite = (value: unknown, fallback: number): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+/**
+ * Remove background as read from a file. A project from before it existed
+ * has none and opens with it off; a model this build does not know - a file
+ * from a later version, say - falls back to the precise one rather than
+ * leaving a clip that cannot be analysed.
+ */
+export function normalizeBackgroundRemoval(value: unknown): BackgroundRemovalConfig {
+  const source = (value && typeof value === 'object' ? value : {}) as Partial<BackgroundRemovalConfig>;
+  return {
+    enabled: source.enabled === true,
+    model: (MATTE_MODEL_IDS as readonly unknown[]).includes(source.model) ? (source.model as MatteModelId) : 'precise',
+  };
+}
 
 function normalizeEq(eq: unknown): EqSettings {
   const source = (eq ?? {}) as Partial<EqSettings>;
@@ -502,6 +520,7 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             // A grade saved before the wheels opens with them neutral, so it
             // looks exactly as it did.
             colorGrading: normalizeGrading(clip.colorGrading),
+            backgroundRemoval: normalizeBackgroundRemoval(clip.backgroundRemoval),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
             ...(clip.caption ? { caption: normalizeCaption(clip.caption) } : {}),

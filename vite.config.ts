@@ -21,12 +21,17 @@ export default defineConfig({
     react(),
     electron({
       main: {
-        entry: 'src/main/index.ts',
+        // The matting worker is a program of its own, run as an Electron
+        // utility process (src/main/matting/worker.ts), so it is a second
+        // entry: dist-electron/main/matteWorker.js beside index.js.
+        entry: { index: 'src/main/index.ts', matteWorker: 'src/main/matting/worker.ts' },
         vite: {
           resolve: { alias },
           build: {
             outDir: 'dist-electron/main',
-            rollupOptions: { external: ['electron', 'ffmpeg-static'] },
+            // onnxruntime-node is a native addon with its DLLs beside it: it is
+            // loaded from node_modules, never bundled (electron-builder.yml).
+            rollupOptions: { external: ['electron', 'ffmpeg-static', 'onnxruntime-node'] },
           },
         },
       },

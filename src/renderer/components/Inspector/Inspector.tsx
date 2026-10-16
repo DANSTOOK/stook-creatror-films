@@ -27,6 +27,7 @@ import { CaptionStyleTab } from './CaptionStyleTab';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
 import { MultiInspector } from './MultiInspector';
+import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
 
@@ -56,7 +57,7 @@ import { BLEND_MODES, type BlendMode } from '@shared/types';
  */
 
 type Tab = 'title' | 'caption' | 'captionStyle' | 'video' | 'audio' | 'color' | 'info';
-type Effect = 'mask' | 'chromaKey' | 'pixelArt';
+type Effect = 'mask' | 'chromaKey' | 'backgroundRemoval' | 'pixelArt';
 
 const TAB_LABELS: Record<Tab, MessageKey> = {
   title: 'inspector.tabTitle',
@@ -407,6 +408,7 @@ export function Inspector(): JSX.Element {
   const EFFECTS: Array<{ id: Effect; label: MessageKey }> = [
     { id: 'mask', label: 'inspector.mask' },
     { id: 'chromaKey', label: 'inspector.chromaKey' },
+    { id: 'backgroundRemoval', label: 'inspector.backgroundRemoval' },
     { id: 'pixelArt', label: 'inspector.pixelArt' },
   ];
   const shownEffects = EFFECTS.filter((effect) => effectShown(clip, effect.id, added));
@@ -544,6 +546,19 @@ export function Inspector(): JSX.Element {
           <SliderRow label={t('inspector.similarity')} value={clip.chromaKey.similarity} onChange={(similarity) => setEffect('chromaKey', { similarity })} />
           <SliderRow label={t('inspector.smoothness')} value={clip.chromaKey.smoothness} onChange={(smoothness) => setEffect('chromaKey', { smoothness })} />
           <SliderRow label={t('inspector.spill')} value={clip.chromaKey.spill} onChange={(spill) => setEffect('chromaKey', { spill })} />
+        </Section>
+      )}
+
+      {shownEffects.some((effect) => effect.id === 'backgroundRemoval') && (
+        <Section
+          {...sectionProps('backgroundRemoval')}
+          title={t('inspector.backgroundRemoval')}
+          enabled={clip.backgroundRemoval.enabled}
+          onEnabledChange={(enabled) => setEffect('backgroundRemoval', { enabled }, false)}
+          onReset={() => resetEffect('backgroundRemoval')}
+          onRemove={() => removeEffect('backgroundRemoval')}
+        >
+          <BackgroundRemovalRows clip={clip} asset={asset} onModelChange={(model) => setEffect('backgroundRemoval', { model }, false)} />
         </Section>
       )}
 
