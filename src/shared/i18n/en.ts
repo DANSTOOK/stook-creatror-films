@@ -115,7 +115,16 @@ export const en = {
 
   /* Inspector ------------------------------------------------------------- */
   'inspector.title': 'Inspector',
-  'inspector.manySelected': '{count} clips selected. Select a single clip to edit its properties.',
+  'inspector.manySelected': '{count} clips selected',
+  // Several clips at once (Inspector/MultiInspector).
+  'inspector.multiHint': 'A change here applies to every selected clip it can. Mixed means the clips differ.',
+  'inspector.multiNothing': 'Nothing here can be set on all of these clips at once. Select one to edit it.',
+  'inspector.multiAppliesTo': 'Applies to {count} of the {total} selected.',
+  'inspector.multiOpacityAnimated': 'Clips with animated opacity are left as they are: {count} of {total}.',
+  'inspector.mixed': 'Mixed',
+  'inspector.composite': 'Composite',
+  'inspector.lutOnSome': 'LUT on {count} of {total} clips',
+  'inspector.lutDifferent': 'A different LUT on each',
   'inspector.noneSelected': 'Select a clip on the timeline to edit its properties.',
   'inspector.volume': 'Volume',
   'inspector.pan': 'Pan',

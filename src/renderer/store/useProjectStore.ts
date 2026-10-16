@@ -273,6 +273,13 @@ interface ProjectStore {
   /** Put the asset at the playhead on a brand new track of its own. */
   addAssetOnNewTrack(asset: MediaAsset): string | null;
   updateClip(clipId: string, patch: Partial<Clip>, mergeKey?: string): void;
+  /**
+   * The same edit on several clips, as one undo step however many it
+   * touches. `patch` is asked for each clip and returns what changes on it,
+   * or null to leave that one alone. With a merge key, a slider dragged
+   * across the whole selection is one step too.
+   */
+  updateClips(clipIds: readonly string[], patch: (clip: Clip) => Partial<Clip> | null, mergeKey?: string): void;
 
   /* Titles --------------------------------------------------------------- */
   /**
@@ -1151,6 +1158,26 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const clip = project.clips[clipId];
         if (!clip) return project;
         return { ...project, clips: { ...project.clips, [clipId]: { ...clip, ...patch } } };
+      },
+      mergeKey,
+    );
+  },
+
+  updateClips(clipIds, patch, mergeKey) {
+    get().transact(
+      'Edit clips',
+      (project) => {
+        const clips = { ...project.clips };
+        let changed = false;
+        for (const id of clipIds) {
+          const clip = clips[id];
+          const change = clip ? patch(clip) : null;
+          if (!clip || !change) continue;
+          clips[id] = { ...clip, ...change };
+          changed = true;
+        }
+        // Nothing to change is not a step: Ctrl+Z must not land on it.
+        return changed ? { ...project, clips } : project;
       },
       mergeKey,
     );

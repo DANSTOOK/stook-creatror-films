@@ -115,7 +115,16 @@ export const es: Messages = {
 
   /* Inspector ------------------------------------------------------------- */
   'inspector.title': 'Inspector',
-  'inspector.manySelected': '{count} clips seleccionados. Selecciona uno solo para editar sus propiedades.',
+  'inspector.manySelected': '{count} clips seleccionados',
+  // Varios clips a la vez (Inspector/MultiInspector).
+  'inspector.multiHint': 'Lo que cambies aquí se aplica a todos los clips seleccionados a los que corresponda. «Varios» indica que no coinciden.',
+  'inspector.multiNothing': 'Nada de esto se puede ajustar en todos a la vez. Selecciona uno para editarlo.',
+  'inspector.multiAppliesTo': 'Se aplica a {count} de los {total} seleccionados.',
+  'inspector.multiOpacityAnimated': 'Los clips con la opacidad animada se quedan como están: {count} de {total}.',
+  'inspector.mixed': 'Varios',
+  'inspector.composite': 'Composición',
+  'inspector.lutOnSome': 'LUT en {count} de {total} clips',
+  'inspector.lutDifferent': 'Una LUT distinta en cada uno',
   'inspector.noneSelected': 'Selecciona un clip en la línea de tiempo para editar sus propiedades.',
   'inspector.volume': 'Volumen',
   'inspector.pan': 'Panorama',
