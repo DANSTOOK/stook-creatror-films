@@ -49,6 +49,7 @@ export const IPC = {
   appMenuModel: 'app:menu-model',
   appMenuInvoke: 'app:menu-invoke',
   windowFullScreen: 'app:window-full-screen',
+  focusPanelWindow: 'app:focus-panel-window',
   openLut: 'dialog:open-lut',
   saveProjectAs: 'dialog:save-project-as',
   chooseExportPath: 'dialog:choose-export-path',
@@ -470,6 +471,12 @@ export interface FilmoraApi {
   appMenuInvoke(id: string): void;
   /** The whole screen for the picture (the full-screen viewer), or back. */
   setWindowFullScreen(on: boolean): void;
+  /**
+   * Bring a detached panel's own window to the front (and out of the taskbar
+   * if it was minimised). The page's own `window.focus()` on it does nothing
+   * in Electron, so the main process does it.
+   */
+  focusPanelWindow(panel: string): void;
   /**
    * Windows' "Animation effects" is off (Settings > Accessibility > Visual
    * effects), read once as the window opened. The page also follows the

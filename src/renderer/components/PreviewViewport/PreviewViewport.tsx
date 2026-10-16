@@ -96,14 +96,29 @@ export function PreviewViewport(): JSX.Element {
   const timecode = framesToTimecode(project.currentFrame, project.fps);
   const duration = framesToTimecode(length, project.fps);
   const fullscreen = ui.fullscreenViewer;
+  const sectionRef = useRef<HTMLElement>(null);
 
   // The full-screen viewer takes the screen, not just the window, as Final
-  // Cut's Play Full Screen and Resolve's Cinema Viewer do.
+  // Cut's Play Full Screen and Resolve's Cinema Viewer do. The screen it is
+  // on: a viewer moved to its own window on a second monitor fills that
+  // monitor, and the editor stays where it is.
   useEffect(() => {
+    const view = sectionRef.current?.ownerDocument.defaultView ?? window;
+    if (view !== window) {
+      const page = view.document;
+      if (fullscreen && !page.fullscreenElement) void page.documentElement.requestFullscreen().catch(() => undefined);
+      if (!fullscreen && page.fullscreenElement) void page.exitFullscreen().catch(() => undefined);
+      // Left with Escape, which the window handles itself: the viewer follows.
+      const left = (): void => {
+        if (!page.fullscreenElement && useProjectStore.getState().ui.fullscreenViewer) setUi({ fullscreenViewer: false });
+      };
+      page.addEventListener('fullscreenchange', left);
+      return () => page.removeEventListener('fullscreenchange', left);
+    }
     if (!hasNativeBridge()) return undefined;
     window.filmora.setWindowFullScreen(fullscreen);
     return undefined;
-  }, [fullscreen]);
+  }, [fullscreen, setUi]);
 
   /*
     Going full screen, paused, the viewer grows out of where it sat in the
@@ -113,7 +128,6 @@ export function PreviewViewport(): JSX.Element {
     back at once. Playing, it is instant: the picture is what is being
     watched.
   */
-  const sectionRef = useRef<HTMLElement>(null);
   const dockedBox = useRef<DOMRect | null>(null);
   useEffect(() => {
     const section = sectionRef.current;
@@ -133,7 +147,8 @@ export function PreviewViewport(): JSX.Element {
     const section = sectionRef.current;
     const docked = dockedBox.current;
     if (!section || !docked || useProjectStore.getState().ui.isPlaying || motionQuiet() || motionReduced()) return;
-    const whole = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+    const view = section.ownerDocument.defaultView ?? window;
+    const whole = new DOMRect(0, 0, view.innerWidth, view.innerHeight);
     const from = fullscreen ? docked : whole;
     const to = section.getBoundingClientRect();
     if (to.width === 0 || to.height === 0) return;
@@ -169,14 +184,16 @@ export function PreviewViewport(): JSX.Element {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setControlsShown(false), CONTROLS_IDLE_MS);
     };
-    window.addEventListener('pointermove', wake);
-    window.addEventListener('pointerdown', wake);
-    window.addEventListener('keydown', wake);
+    // The window the viewer is in, which may be its own on another screen.
+    const view = sectionRef.current?.ownerDocument.defaultView ?? window;
+    view.addEventListener('pointermove', wake);
+    view.addEventListener('pointerdown', wake);
+    view.addEventListener('keydown', wake);
     return () => {
       window.clearTimeout(timer);
-      window.removeEventListener('pointermove', wake);
-      window.removeEventListener('pointerdown', wake);
-      window.removeEventListener('keydown', wake);
+      view.removeEventListener('pointermove', wake);
+      view.removeEventListener('pointerdown', wake);
+      view.removeEventListener('keydown', wake);
     };
   }, [fullscreen]);
 

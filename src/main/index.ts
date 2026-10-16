@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell, systemPreferences } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { installAppMenu, menuLanguage } from './appMenu';
@@ -28,11 +28,54 @@ const PRELOAD = join(DIST_ELECTRON, 'preload/preload.js');
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow: BrowserWindow | null = null;
+/** The panels' own windows (renderer/components/Layout/PanelWindow), by panel. */
+const panelWindows = new Map<string, BrowserWindow>();
 
 /** The page's title bar: its height and colours, for the caption buttons drawn over it. */
 const TITLE_BAR_HEIGHT = 40;
 const TITLE_BAR_COLOR = '#0e0f11';
 const TITLE_BAR_SYMBOLS = '#cbd5e1';
+/** A panel's own window has a slimmer bar: it holds a name and one button. */
+const PANEL_BAR_HEIGHT = 36;
+
+/**
+ * The smallest a panel's window may be made, by panel. Each is the size at
+ * which everything the panel has still fits and works - the viewer keeps its
+ * transport, the timeline its toolbar and a track or two - measured in the
+ * running app (.bench-tmp/panel-shots.mjs). Anything else gets the default.
+ */
+const PANEL_MIN_SIZE: Record<string, [number, number]> = {
+  viewer: [400, 300],
+  timeline: [560, 260],
+  media: [320, 300],
+  inspector: [320, 300],
+  mixer: [360, 300],
+};
+
+/**
+ * A remembered position can be on a monitor that is no longer there - the
+ * laptop is off its dock - and a window opened there is lost off every
+ * screen. If the window's title bar does not land on a display, it goes to
+ * the middle of the one the editor is on.
+ */
+function keepOnSomeDisplay(window: BrowserWindow, near: BrowserWindow | null): void {
+  const bounds = window.getBounds();
+  const bar = { x: bounds.x + 8, y: bounds.y + 4, width: Math.max(1, bounds.width - 16), height: PANEL_BAR_HEIGHT - 8 };
+  const visible = screen.getAllDisplays().some(({ workArea: area }) =>
+    bar.x < area.x + area.width && bar.x + bar.width > area.x && bar.y < area.y + area.height && bar.y + bar.height > area.y,
+  );
+  if (visible) return;
+  const display = near && !near.isDestroyed() ? screen.getDisplayMatching(near.getBounds()) : screen.getPrimaryDisplay();
+  const area = display.workArea;
+  const width = Math.min(bounds.width, area.width);
+  const height = Math.min(bounds.height, area.height);
+  window.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height,
+  });
+}
 let pipeline: EncoderPipeline | null = null;
 let transcriber: Transcriber | null = null;
 
@@ -180,17 +223,41 @@ function createWindow(): void {
     // editor's own React tree (components/Layout/PanelWindow.tsx). Only these:
     // anything else a page asks to open is still refused.
     if (url === 'about:blank' && frameName.startsWith('scf-panel-')) {
+      const [minWidth, minHeight] = PANEL_MIN_SIZE[frameName.slice('scf-panel-'.length)] ?? [320, 240];
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          backgroundColor: '#0d0f14',
+          backgroundColor: TITLE_BAR_COLOR,
           autoHideMenuBar: true,
-          minWidth: 320,
-          minHeight: 240,
+          minWidth,
+          minHeight,
+          icon: join(RENDERER_DIST, 'icon.ico'),
+          // The same frame as the editor: the page draws the bar (the panel's
+          // name and the way back) and Windows draws its buttons over it.
+          titleBarStyle: 'hidden',
+          titleBarOverlay: { color: TITLE_BAR_COLOR, symbolColor: TITLE_BAR_SYMBOLS, height: PANEL_BAR_HEIGHT },
         },
       };
     }
     return { action: 'deny' };
+  });
+
+  // A panel's window opens where it was last, if that is still on a screen;
+  // automated runs park it off-screen with the editor.
+  mainWindow.webContents.on('did-create-window', (window, { frameName }) => {
+    if (frameName.startsWith('scf-panel-')) {
+      const panel = frameName.slice('scf-panel-'.length);
+      panelWindows.set(panel, window);
+      window.once('closed', () => {
+        if (panelWindows.get(panel) === window) panelWindows.delete(panel);
+      });
+    }
+    if (BACKGROUND) {
+      window.setPosition(OFF_SCREEN, OFF_SCREEN, false);
+      keepOffScreen(window);
+      return;
+    }
+    keepOnSomeDisplay(window, mainWindow);
   });
 
   // The editor never navigates. Chromium's default for a file dropped anywhere
@@ -269,6 +336,14 @@ app.whenReady().then(() => {
   ipcMain.on(IPC.windowFullScreen, (_event, on: unknown) => {
     // Not in background mode: full screen would put the window on a display.
     if (mainWindow && !mainWindow.isDestroyed() && !BACKGROUND) mainWindow.setFullScreen(on === true);
+  });
+
+  ipcMain.on(IPC.focusPanelWindow, (_event, panel: unknown) => {
+    const window = typeof panel === 'string' ? panelWindows.get(panel) : undefined;
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
   });
 
   ipcMain.handle(IPC.closeAfterSave, () => {

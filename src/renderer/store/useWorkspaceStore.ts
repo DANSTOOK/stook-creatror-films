@@ -4,24 +4,27 @@ import { create } from 'zustand';
  * Which panels are open in a window of their own.
  *
  * A machine with two monitors wants the viewer on one and the timeline on the
- * other; a colourist wants the scopes and the inspector where the picture is
- * not. So each of these panels can be put in its own window and dragged to
- * another screen, the way Premiere undocks a panel.
+ * other - Resolve's dual-screen layout gives the timeline a whole screen of its
+ * own - and a colourist wants the inspector where the picture is not. So every
+ * panel of the editor can be put in its own window and dragged to another
+ * screen, the way Premiere undocks a panel. The title bar is not a panel (it
+ * is the window's own frame and menu), and the dialogs are modal, so neither
+ * is on the list.
  *
  * A setting of this machine, not of a project - which screen somebody has is
  * not part of the edit - so it lives in localStorage beside the panel sizes
  * and the language.
  */
 
-export type DetachablePanel = 'viewer' | 'media' | 'inspector' | 'mixer';
+export type DetachablePanel = 'viewer' | 'media' | 'inspector' | 'mixer' | 'timeline';
 
-export const DETACHABLE_PANELS: readonly DetachablePanel[] = ['viewer', 'media', 'inspector', 'mixer'];
+export const DETACHABLE_PANELS: readonly DetachablePanel[] = ['viewer', 'timeline', 'media', 'inspector', 'mixer'];
 
 const STORAGE_KEY = 'scf.detachedPanels';
 
 type Detached = Record<DetachablePanel, boolean>;
 
-const NONE: Detached = { viewer: false, media: false, inspector: false, mixer: false };
+const NONE: Detached = { viewer: false, media: false, inspector: false, mixer: false, timeline: false };
 
 function load(): Detached {
   try {
