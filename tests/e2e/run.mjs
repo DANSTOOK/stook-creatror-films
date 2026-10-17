@@ -314,7 +314,7 @@ function runExactFrames() {
     child.stdout.on('data', relay);
     child.stderr.on('data', relay);
     child.on('close', (code) => {
-      const tally = /(d+)/(d+) checks passed/.exec(output);
+      const tally = /(\d+)\/(\d+) checks passed/.exec(output);
       resolvePromise({ code, summary: tally ? `${tally[1]}/${tally[2]} checks` : 'no result' });
     });
   });
