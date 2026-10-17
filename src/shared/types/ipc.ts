@@ -186,6 +186,8 @@ export interface MattePartial {
   fps: number;
   /** The offsets from the one asked for on: frame i is the bytes [offsets[i], offsets[i + 1]). */
   offsets: number[];
+  /** The finished frames' presentation times, in seconds, from the same frame on. */
+  times: number[];
 }
 
 /* Captions ------------------------------------------------------------------ */
@@ -710,7 +712,8 @@ export interface FilmoraApi {
   onMatteProgress?(listener: (progress: MatteProgressEvent) => void): () => void;
   /**
    * The frames an analysis still running has finished, for its `partialUrl`:
-   * the offsets from index `from` on (0 for all of them). Null once that
+   * the offsets from index `from` on (0 for all of them), and their times
+   * from frame `from` on. Null once that
    * analysis has ended; its finished file is then found with `mattesFind`.
    */
   mattesPartial?(url: string, from: number): Promise<MattePartial | null>;

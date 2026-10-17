@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { open, rename, rm, type FileHandle } from 'node:fs/promises';
 import * as ort from 'onnxruntime-node';
-import { MATTE_HEADER_BYTES, encodeMatteFrame, writeMatteHeader, writeMatteIndex } from '@shared/matte/format';
+import { MATTE_HEADER_BYTES, encodeMatteFrame, writeMatteHeader, writeMatteIndex, writeMatteTimes } from '@shared/matte/format';
 import { MatteSmoother } from '@shared/matte/smoothing';
 import { modelInputSize } from './catalog';
 import { MAX_DML_DEVICES, chooseDevice, describeDevice, matmulProbeModel, type DeviceTiming, type MatteDevice } from './device';
-import { matteFfmpegArgs, type FromWorker, type MatteJob, type ToWorker } from './job';
+import { ShowinfoTimes, matteFfmpegArgs, type FromWorker, type MatteJob, type ToWorker } from './job';
 import { outputToMatte, rgbToPlanar } from './pixels';
 
 /**
@@ -110,8 +110,16 @@ async function loadModel(job: MatteJob, device: MatteDevice): Promise<ort.Infere
 
 /* Frames from ffmpeg --------------------------------------------------------- */
 
-/** Raw frames of exactly `frameBytes`, one at a time, with ffmpeg paused while the model works. */
-function frameReader(child: ChildProcess, frameBytes: number): { next(): Promise<Uint8Array | null>; failure(): string } {
+/**
+ * Raw frames of exactly `frameBytes`, one at a time, with ffmpeg paused while
+ * the model works - and each frame's presentation time, from showinfo on
+ * stderr. The two come down different pipes, so a frame can arrive before
+ * its time does: `timeOf` waits for it.
+ */
+function frameReader(
+  child: ChildProcess,
+  frameBytes: number,
+): { next(): Promise<Uint8Array | null>; timeOf(frame: number): Promise<number | null>; failure(): string } {
   const stdout = child.stdout;
   if (!stdout) throw new Error('ffmpeg has no output');
   const chunks: Buffer[] = [];
@@ -119,8 +127,18 @@ function frameReader(child: ChildProcess, frameBytes: number): { next(): Promise
   let ended = false;
   let complaint = '';
   let wake: (() => void) | null = null;
+  const showinfo = new ShowinfoTimes();
+  let stderrEnded = false;
+  let wakeTime: (() => void) | null = null;
   child.stderr?.on('data', (chunk: Buffer) => {
-    complaint = `${complaint}${chunk.toString('utf8')}`.slice(-2000);
+    // Only ffmpeg's own complaints are worth repeating to the person.
+    const said = showinfo.push(chunk.toString('utf8')).filter((line) => /\[(error|fatal)\]/.test(line));
+    if (said.length > 0) complaint = `${complaint}\n${said.join('\n')}`.slice(-2000);
+    wakeTime?.();
+  });
+  child.stderr?.on('end', () => {
+    stderrEnded = true;
+    wakeTime?.();
   });
   stdout.on('data', (chunk: Buffer) => {
     chunks.push(chunk);
@@ -162,6 +180,15 @@ function frameReader(child: ChildProcess, frameBytes: number): { next(): Promise
       buffered -= frameBytes;
       if (buffered <= frameBytes * 3) stdout.resume();
       return frame;
+    },
+    async timeOf(frame) {
+      while (showinfo.times[frame] === undefined && !stderrEnded) {
+        await new Promise<void>((resolve) => {
+          wakeTime = resolve;
+        });
+        wakeTime = null;
+      }
+      return showinfo.times[frame] ?? null;
     },
     failure: () => complaint.trim(),
   };
@@ -207,7 +234,7 @@ async function run(job: MatteJob): Promise<void> {
   const pixels = inputSize.width * inputSize.height;
   const planar = new Float32Array(pixels * 3);
 
-  ffmpeg = spawn(job.ffmpeg, matteFfmpegArgs(job.source, inputSize, job.fps, job.still), { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  ffmpeg = spawn(job.ffmpeg, matteFfmpegArgs(job.source, inputSize, job.still), { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
   const exited = new Promise<number | null>((resolve) => ffmpeg?.on('close', (code) => resolve(code)));
   const frames = frameReader(ffmpeg, pixels * 3);
 
@@ -217,13 +244,19 @@ async function run(job: MatteJob): Promise<void> {
   await file.write(new Uint8Array(MATTE_HEADER_BYTES), 0, MATTE_HEADER_BYTES, 0);
 
   const smoother = job.smoothing ? new MatteSmoother() : null;
+  /** Each frame's presentation time, by the order ffmpeg gave the frames in. */
+  const times: number[] = [];
+  // The smoothing hands frames back one late, so a matte is written with the
+  // time of the frame it was made from, not of the one just decoded.
   const write = async (matte: Uint8Array): Promise<void> => {
+    const time = times[offsets.length];
     const coded = encodeMatteFrame(matte);
     offsets.push(position);
     await file?.write(coded, 0, coded.length, position);
     position += coded.length;
-    send({ type: 'written', end: position });
+    send({ type: 'written', end: position, time });
   };
+  let guessed = 0;
 
   let decoded = 0;
   let inferenceMs = 0;
@@ -233,6 +266,14 @@ async function run(job: MatteJob): Promise<void> {
       if (cancelled) break;
       const rgb = await frames.next();
       if (!rgb) break;
+      // A still has no time but 0. A frame showinfo said nothing of - never
+      // seen, but ffmpeg is not ours - is taken to follow the one before at
+      // the average rate, rather than the analysis failing on it. Times never
+      // go back, so finding the matte for a moment stays a search.
+      const said = job.still ? 0 : await frames.timeOf(decoded);
+      const previous = times.length > 0 ? times[times.length - 1] : 0;
+      if (said === null) guessed += 1;
+      times.push(said === null ? (times.length > 0 ? previous + 1 / job.fps : 0) : Math.max(previous, said));
       rgbToPlanar(rgb, pixels, job.model.mean, job.model.std, planar);
       const input = new ort.Tensor('float32', planar, [1, 3, inputSize.height, inputSize.width]);
       const started = performance.now();
@@ -274,10 +315,16 @@ async function run(job: MatteJob): Promise<void> {
       throw new Error(frames.failure() || `ffmpeg stopped (${String(code)}) after ${decoded} frames`);
     }
 
+    if (guessed > 0) console.warn(`[matte] ${guessed} of ${decoded} frames came without a time; placed at the average rate`);
     offsets.push(position);
     const index = writeMatteIndex(offsets);
     await file.write(index, 0, index.length, position);
-    const header = writeMatteHeader({ width: job.matteWidth, height: job.matteHeight, frames: offsets.length - 1, fps: job.fps, indexOffset: position });
+    const frameCount = offsets.length - 1;
+    // A still has one frame and no times: every moment is its moment.
+    const timesOffset = job.still ? 0 : position + index.length;
+    const timeTable = job.still ? new Uint8Array(0) : writeMatteTimes(times.slice(0, frameCount));
+    await file.write(timeTable, 0, timeTable.length, position + index.length);
+    const header = writeMatteHeader({ width: job.matteWidth, height: job.matteHeight, frames: frameCount, fps: job.fps, indexOffset: position, timesOffset });
     await file.write(header, 0, header.length, 0);
     await file.close();
     file = null;
@@ -285,7 +332,7 @@ async function run(job: MatteJob): Promise<void> {
     send({
       type: 'done',
       frames: offsets.length - 1,
-      bytes: position + index.length,
+      bytes: position + index.length + timeTable.length,
       msPerFrame: inferenceMs / Math.max(1, decoded),
       timings: { probeMs: probed - jobStarted, loadMs: loaded - probed, framesMs: performance.now() - loaded },
     });

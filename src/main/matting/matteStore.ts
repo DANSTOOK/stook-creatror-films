@@ -16,7 +16,10 @@ import { proxyKey, type SourceStamp } from '../media/proxies';
  * cache made the old way is not read as if it were the new.
  */
 
-export const MATTE_RECIPE = 1;
+// 2: every frame taken at its own time, with the times kept (main/matting/job.ts),
+// instead of resampled to the file's average rate - which put mattes a frame
+// out on files with a variable frame rate.
+export const MATTE_RECIPE = 2;
 
 export const MATTE_EXTENSION = '.scfmatte';
 

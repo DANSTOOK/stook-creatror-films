@@ -52,6 +52,8 @@ interface PartialFile {
   height: number;
   fps: number;
   offsets: number[];
+  /** The presentation time of each finished frame. */
+  times: number[];
 }
 
 /** A partial URL as the page holds it, with its revision and marks taken off. */
@@ -287,7 +289,7 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
           threads: Math.max(1, Math.floor(cpus().length / 2)),
           smoothing,
         };
-        partial = { url: mediaUrlFor(job.part), width: size.width, height: size.height, fps, offsets: [MATTE_HEADER_BYTES] };
+        partial = { url: mediaUrlFor(job.part), width: size.width, height: size.height, fps, offsets: [MATTE_HEADER_BYTES], times: [] };
         const outcome = await runWorker(
           job,
           (message) => {
@@ -296,6 +298,7 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
               console.info(`[matte] ${describeDevice(message.device)}${message.probe ? ` (probe ${JSON.stringify(message.probe)})` : ''}`);
             } else if (message.type === 'written') {
               partial?.offsets.push(message.end);
+              partial?.times.push(message.time);
             } else if (message.type === 'progress') {
               progress(message.done, message.total, message.msPerFrame);
             } else if (message.type === 'done') {
@@ -338,7 +341,7 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
       const file = job.partial();
       if (!file || file.url !== wanted) continue;
       const start = Math.max(0, Math.floor(Number(from) || 0));
-      return { width: file.width, height: file.height, fps: file.fps, offsets: file.offsets.slice(start) };
+      return { width: file.width, height: file.height, fps: file.fps, offsets: file.offsets.slice(start), times: file.times.slice(start) };
     }
     return null;
   });

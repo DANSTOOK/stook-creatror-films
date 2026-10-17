@@ -1,9 +1,11 @@
 import {
   MATTE_HEADER_BYTES,
   decodeMatteFrame,
+  matteFrameAt,
   matteFrameFor,
   readMatteHeader,
   readMatteIndex,
+  readMatteTimes,
   type MatteHeader,
 } from '@shared/matte/format';
 import type { MattePartial } from '@shared/types/ipc';
@@ -58,6 +60,8 @@ interface OpenMatte {
   /** For a file still being analysed, `frames` is how many are finished so far. */
   header: MatteHeader;
   offsets: number[];
+  /** Each frame's presentation time; null for a still, whose one matte is every moment's. */
+  times: number[] | null;
   read: ByteReader;
   /** Set while the file is still being analysed: when it was last asked after, and the question in flight. */
   partial: { refreshedAt: number; refreshing: Promise<void> | null } | null;
@@ -88,14 +92,17 @@ export class MatteTextures {
         if (isPartialMatteUrl(url)) {
           const described = await this.describePartial(url, 0);
           if (!described || described.offsets.length === 0) return null;
-          const { width, height, fps, offsets } = described;
-          const header = { width, height, fps, frames: offsets.length - 1, indexOffset: 0 };
-          return { header, offsets, read, partial: { refreshedAt: performance.now(), refreshing: null } };
+          const { width, height, fps, offsets, times } = described;
+          const header = { width, height, fps, frames: offsets.length - 1, indexOffset: 0, timesOffset: 0 };
+          return { header, offsets, times, read, partial: { refreshedAt: performance.now(), refreshing: null } };
         }
         const header = readMatteHeader(await read(0, MATTE_HEADER_BYTES));
         if (!header) return null;
         const offsets = readMatteIndex(await read(header.indexOffset, (header.frames + 1) * 8), header.frames);
-        return offsets ? { header, offsets, read, partial: null } : null;
+        if (!offsets) return null;
+        if (header.timesOffset === 0) return { header, offsets, times: null, read, partial: null };
+        const times = readMatteTimes(await read(header.timesOffset, header.frames * 8), header.frames);
+        return times ? { header, offsets, times, read, partial: null } : null;
       })().catch(() => null);
       void file.then((open) => this.opened.set(url, open));
       this.files.set(url, file);
@@ -113,11 +120,14 @@ export class MatteTextures {
     if (partial.refreshing) return partial.refreshing;
     if (!now && performance.now() - partial.refreshedAt < PARTIAL_REFRESH_MS) return Promise.resolve();
     partial.refreshing = (async () => {
-      const described = await this.describePartial(url, open.offsets.length).catch(() => null);
+      const known = open.offsets.length - 1;
+      const described = await this.describePartial(url, known).catch(() => null);
       // Null: the analysis has ended. Its finished file takes over under
-      // another URL; until then this one keeps the frames it had.
-      if (described) {
-        open.offsets.push(...described.offsets);
+      // another URL; until then this one keeps the frames it had. The first
+      // offset sent back is where frame `known` starts, already known.
+      if (described && open.offsets.length - 1 === known) {
+        open.offsets.push(...described.offsets.slice(1));
+        open.times?.push(...described.times);
         open.header = { ...open.header, frames: open.offsets.length - 1 };
       }
     })().finally(() => {
@@ -128,14 +138,17 @@ export class MatteTextures {
   }
 
   /**
-   * The frame of the file a source frame shows, and whether it is there to
-   * be read. A finished file has a matte for every frame (the last is held
-   * past its end); a file still being analysed only for those it has reached.
+   * The matte a source frame shows, found by time (matteFrameAt), and
+   * whether it is there to be read. A finished file has a matte for every
+   * moment (the last is held past its end). A file still being analysed is
+   * only sure of a frame whose successor is known too: until the next frame
+   * is finished, it may begin before this moment and be the one it needs.
    */
   private frameOf(open: OpenMatte, sourceFrame: number, fps: number): { frame: number; ready: boolean } {
-    if (!open.partial) return { frame: matteFrameFor(sourceFrame, fps, open.header.fps, open.header.frames), ready: true };
-    const frame = matteFrameFor(sourceFrame, fps, open.header.fps, Infinity);
-    return { frame, ready: frame < open.header.frames };
+    const available = open.header.frames;
+    if (!open.times) return { frame: matteFrameFor(sourceFrame, fps, open.header.fps, available), ready: !open.partial };
+    const frame = matteFrameAt(sourceFrame, fps, open.times, available);
+    return { frame, ready: !open.partial || frame < available - 1 };
   }
 
   private remember(key: string, pixels: Uint8Array): void {

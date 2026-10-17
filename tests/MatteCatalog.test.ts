@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MATTE_MODEL_IDS } from '@shared/types';
 import { MATTE_MODELS, matteModelById, modelInputSize } from '../src/main/matting/catalog';
 import { chooseDevice, deviceOverride, matmulProbeModel } from '../src/main/matting/device';
-import { matteFfmpegArgs } from '../src/main/matting/job';
+import { ShowinfoTimes, matteFfmpegArgs } from '../src/main/matting/job';
 import { MATTE_RECIPE, matteKey } from '../src/main/matting/matteStore';
 import { outputToMatte, rgbToPlanar } from '../src/main/matting/pixels';
 import { createClip, normalizeBackgroundRemoval, normalizeProject, createEmptyProject } from '@renderer/store/types';
@@ -99,16 +99,48 @@ describe('choosing the device', () => {
 });
 
 describe('frames to the model and back', () => {
-  it('asks ffmpeg for raw RGB at the model size, at the file rate', () => {
-    const args = matteFfmpegArgs('in.mp4', { width: 896, height: 512 }, 29.97002997, false);
-    expect(args[args.indexOf('-vf') + 1]).toBe('fps=29.97003,scale=896:512:flags=bilinear,format=rgb24');
+  it('asks ffmpeg for every frame as it is, raw RGB at the model size, with its time', () => {
+    const args = matteFfmpegArgs('in.mp4', { width: 896, height: 512 }, false);
+    expect(args[args.indexOf('-vf') + 1]).toBe('scale=896:512:flags=bilinear,format=rgb24,showinfo');
+    expect(args[args.indexOf('-fps_mode') + 1]).toBe('passthrough');
+    // Times as the file gives them, as the renderer's decoders read them.
+    expect(args).toContain('-copyts');
+    expect(args.join(' ')).not.toMatch(/fps=/);
     expect(args.slice(-3)).toEqual(['-f', 'rawvideo', 'pipe:1']);
     expect(args).toContain('-an');
   });
 
-  it('takes a still as its one picture, with no rate', () => {
-    const args = matteFfmpegArgs('in.png', { width: 1024, height: 1024 }, 1, true);
+  it('takes a still as its one picture, with no time', () => {
+    const args = matteFfmpegArgs('in.png', { width: 1024, height: 1024 }, true);
     expect(args[args.indexOf('-vf') + 1]).toBe('scale=1024:1024:flags=bilinear,format=rgb24');
+  });
+
+  it('reads each frame time from showinfo, exactly, and passes everything else on', () => {
+    const showinfo = new ShowinfoTimes();
+    const others = showinfo.push(
+      [
+        '[Parsed_showinfo_2 @ 000001] [info] config in time_base: 1/15360, frame_rate: 30/1',
+        '[Parsed_showinfo_2 @ 000001] [info] n:   0 pts:      0 pts_time:0       duration:    512',
+        '[Parsed_showinfo_2 @ 000001] [info]   side data - H.26[45] User Data Unregistered SEI message',
+        '[in#0/mov,mp4 @ 000002] [error] Invalid NAL unit size',
+        '[Parsed_showinfo_2 @ 000001] [info] n:   1 pts:    512 pts_time:0.0333',
+      ].join('\n') + '\n[Parsed_showinfo_2 @ 000001] [info] n:   2 pts: 19',
+    );
+    expect(others).toEqual(['[in#0/mov,mp4 @ 000002] [error] Invalid NAL unit size']);
+    expect(showinfo.times).toEqual([0, 512 / 15360]);
+    // A line cut in two by the pipe is read once it is whole.
+    showinfo.push('20000000 pts_time:1250.00\n');
+    // Twenty minutes in, the printed seconds have six digits; the timestamp is exact.
+    expect(showinfo.times[2]).toBe(19_200_000_00 / 15360);
+  });
+
+  it('times a frame exactly as the renderer does, so a tie is judged alike', () => {
+    // A 60 fps frame at 1.45 s is exactly the middle of frame 43 of a 30 fps
+    // timeline. Times by a rounded 1/90000 would put it a hair after.
+    const showinfo = new ShowinfoTimes();
+    showinfo.push('[Parsed_showinfo_0 @ 1] [info] config in time_base: 1/90000, frame_rate: 60/1\n[Parsed_showinfo_0 @ 1] [info] n:   0 pts: 130500 pts_time:1.45\n');
+    expect(showinfo.times[0]).toBe(43.5 / 30);
+    expect(130500 * (1 / 90000)).not.toBe(43.5 / 30);
   });
 
   it('normalises RGB into planes', () => {
