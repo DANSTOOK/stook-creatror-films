@@ -14,6 +14,7 @@ import { captionIssues, hasIssues, rulesFor } from '@renderer/captions/rules';
 import { transitionBoxes, type TransitionBox } from './transitionBoxes';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { stepZoomView, type DisplayedView } from './zoomMotion';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * Multi-track drawing surface.
@@ -1324,7 +1325,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     // Keep painting only while something is still on its way; a still
     // timeline costs nothing.
     if ((handleProgress > 0 && handleProgress < 1) || zoom.moving || sliding || flashing) {
-      animationFrame.current = requestAnimationFrame(paint);
+      animationFrame.current = requestFrame(paint);
     } else {
       lastPaintAt.current = 0;
     }
@@ -1334,10 +1335,10 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
-    if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
-    animationFrame.current = requestAnimationFrame(paint);
+    if (animationFrame.current !== null) cancelFrame(animationFrame.current);
+    animationFrame.current = requestFrame(paint);
     return () => {
-      if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
+      if (animationFrame.current !== null) cancelFrame(animationFrame.current);
     };
   }, [paint]);
 
