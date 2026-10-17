@@ -37,3 +37,19 @@ export function defaultNameNumber(key: MessageKey, name: string): number | null 
 }
 
 export const trackNameNumber = (type: TrackType, name: string): number | null => defaultNameNumber(TRACK_KEYS[type], name);
+
+/**
+ * A default name given another number, in the language it was written in -
+ * "Vídeo 3" becomes "Vídeo 2", never "Video 2" - or null when the name is
+ * not a default one (the user's own names are never touched).
+ */
+export function renumberedDefaultName(key: MessageKey, name: string, n: number): string | null {
+  for (const { id } of LANGUAGES) {
+    const [before, after = ''] = translate(id, key, { n: '\u0000' }).split('\u0000');
+    if (new RegExp(`^${escapeRegExp(before)}(\\d+)${escapeRegExp(after)}$`, 'i').test(name)) return translate(id, key, { n });
+  }
+  return null;
+}
+
+export const renumberedTrackName = (type: TrackType, name: string, n: number): string | null =>
+  renumberedDefaultName(TRACK_KEYS[type], name, n);

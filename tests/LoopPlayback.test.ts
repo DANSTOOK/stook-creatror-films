@@ -3,6 +3,7 @@ import type { Clip, ProjectState } from '@shared/types';
 import { currentLoopRange, insideLoop, loopRangeOf } from '@renderer/timing/loopRange';
 import { loopPassAt, wrapLoopSeconds } from '@renderer/audio/AudioEngine';
 import { advanceScheduled, planPlaybackSpans } from '@renderer/audio/playbackSchedule';
+import { audioClockAction, driftRoundLoop } from '@renderer/audio/audioClock';
 import { createClip, createEmptyProject } from '@renderer/store/types';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 
@@ -133,5 +134,19 @@ describe('the sound round the loop', () => {
     expect(pass[0].sourceFrom).toBe(1);
     for (let i = 1; i < pass.length; i += 1) expect(pass[i].atTimeline).toBeCloseTo(pass[i - 1].atTimeline + pass[i - 1].seconds, 12);
     expect(pass.at(-1)!.atTimeline + pass.at(-1)!.seconds).toBeCloseTo(3, 12);
+  });
+});
+
+describe('the resync check round a loop', () => {
+  it('takes the shorter way round: a frame either side of the join is a frame, not a whole loop', () => {
+    // Picture just wrapped to 1.00 s, sound still at 2.99 s of a 1-3 s loop.
+    expect(driftRoundLoop(1.0 - 2.99, 2)).toBeCloseTo(0.01, 12);
+    expect(driftRoundLoop(2.99 - 1.0, 2)).toBeCloseTo(-0.01, 12);
+    // A real move of the playhead stays a move.
+    expect(driftRoundLoop(0.8, 2)).toBe(0.8);
+    expect(driftRoundLoop(-1.9, null)).toBe(-1.9);
+    // And so a wrap is not read as a scrub, while a move still is.
+    expect(audioClockAction('running', driftRoundLoop(1.0 - 2.99, 2), 0, 0.35)).toBe('none');
+    expect(audioClockAction('running', driftRoundLoop(0.8, 2), 0, 0.35)).toBe('resync');
   });
 });

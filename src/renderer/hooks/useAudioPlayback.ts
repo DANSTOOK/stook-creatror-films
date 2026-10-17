@@ -6,6 +6,7 @@ import { DynamicDucking } from '@renderer/audio/DynamicDucking';
 import { mixSignature } from '@renderer/audio/mixRouting';
 import { GRAIN_INTERVAL_MS, onScrub, planScrubGrains } from '@renderer/audio/scrubAudio';
 import { AudioStream } from '@renderer/audio/AudioStream';
+import { audioClockAction, driftRoundLoop } from '@renderer/audio/audioClock';
 import {
   bucketsFor,
   PeakAccumulator,
@@ -282,10 +283,14 @@ export function useAudioPlayback(): void {
 
     const { project } = useProjectStore.getState();
     engine.play(project, project.currentFrame, loopWindowOf());
+    // play() has just asked a suspended context to resume.
+    let lastWake = performance.now();
 
     // The audio clock is authoritative for its own position; when the timeline
     // playhead diverges from it the user moved the playhead, so audio is
-    // rescheduled from the new position rather than left drifting.
+    // rescheduled from the new position rather than left drifting. A clock
+    // that is not running is asked to, rather than rescheduled against
+    // (audio/audioClock).
     const watch = (): void => {
       rafRef.current = requestFrame(watch);
 
@@ -293,13 +298,14 @@ export function useAudioPlayback(): void {
       if (!current.ui.isPlaying) return;
 
       const timelineSeconds = current.project.currentFrame / current.project.fps;
-      let apart = Math.abs(timelineSeconds - engine.positionSeconds);
-      // Round a loop, the two wrap a moment apart: the picture a frame at a
-      // time, the sound on its sample. Just either side of the join they
-      // read a whole loop apart while being a frame apart.
       const loop = engine.loopWindow;
-      if (loop) apart = Math.min(apart, Math.abs(apart - (loop.end - loop.start)));
-      if (apart > RESYNC_THRESHOLD_SECONDS) {
+      const drift = driftRoundLoop(timelineSeconds - engine.positionSeconds, loop ? loop.end - loop.start : null);
+      const now = performance.now();
+      const action = audioClockAction(engine.context.state, drift, now - lastWake, RESYNC_THRESHOLD_SECONDS);
+      if (action === 'wake') {
+        lastWake = now;
+        void engine.context.resume().catch(() => undefined);
+      } else if (action === 'resync') {
         engine.play(current.project, current.project.currentFrame, loopWindowOf());
       }
     };

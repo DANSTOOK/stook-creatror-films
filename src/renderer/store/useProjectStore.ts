@@ -95,8 +95,11 @@ import {
   timelineRows,
   clipKind,
   trackAccepts,
+  isPictureTrack,
+  withLayerNames,
   withRowOrders,
 } from '@renderer/components/Timeline/trackRows';
+import { trackAboveFor } from '@renderer/components/Timeline/layers';
 import { copyClips, pasteClips, type ClipboardContent } from '@renderer/components/Timeline/clipboard';
 import {
   clipsOnTrackExcept,
@@ -277,6 +280,12 @@ interface ProjectStore {
   removeTrack(trackId: string): void;
   /** Move a track one row up (-1) or down (+1) on screen, within its group. */
   moveTrack(trackId: string, delta: number): void;
+  /**
+   * Put picture clips on top of whatever overlaps them in time: each on the
+   * first free picture track above all of it, or a new one on top. Same
+   * frames; one undo step for all of them. See Timeline/layers.
+   */
+  moveClipsAbove(clipIds: readonly string[]): void;
 
   /* Clips ---------------------------------------------------------------- */
   addClip(input: CreateClipInput): string;
@@ -589,6 +598,17 @@ function withContentLength(project: ProjectState): ProjectState {
   return { ...project, durationFrames: Math.ceil(content + project.fps) };
 }
 
+/**
+ * A project as opened, with its default track names counting by layer
+ * (trackRows withLayerNames). A file saved before that can have "Video 3"
+ * under "Video 2"; it opens with the names its stacking has. The stacking,
+ * and so the picture, is exactly as saved.
+ */
+function withNamedLayers(project: ProjectState): ProjectState {
+  const tracks = withLayerNames(project.tracks);
+  return tracks.every((track, index) => track === project.tracks[index]) ? project : { ...project, tracks };
+}
+
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   project: createEmptyProject(),
   assets: [],
@@ -630,7 +650,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // `transact`; opening a file was the one that did not, so a document
       // whose stored duration was shorter than its clips opened with the
       // playhead unable to reach them.
-      project: withContentLength(normalizeProject(document.project)),
+      project: withContentLength(withNamedLayers(normalizeProject(document.project))),
       assets: document.assets,
       // Files from before bins have none; a damaged list is repaired, not trusted.
       bins: sanitizeBins(document.bins),
@@ -1100,6 +1120,46 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       };
     });
     set({ ui: { ...get().ui, selectedClipIds: [], selectedTrackId: null } });
+  },
+
+  moveClipsAbove(clipIds) {
+    get().transact('Move clip above', (current) => {
+      // Bottom first, so clips moved together keep their order among
+      // themselves: the lower one goes up first, and the higher one then
+      // goes above it as well.
+      const orderOf = new Map(current.tracks.map((track) => [track.id, track.order]));
+      const ids = clipIds
+        .filter((id) => current.clips[id])
+        .sort((a, b) => {
+          const clipA = current.clips[a];
+          const clipB = current.clips[b];
+          return (orderOf.get(clipA.trackId) ?? 0) - (orderOf.get(clipB.trackId) ?? 0) || clipA.startFrame - clipB.startFrame;
+        });
+      let project = current;
+      for (const id of ids) {
+        const clip = project.clips[id];
+        const own = project.tracks.find((track) => track.id === clip.trackId);
+        // A locked track keeps its clips, as every other edit respects it.
+        if (!own || !isPictureTrack(own) || own.locked || clip.caption) continue;
+        let rows = timelineRows(project.tracks);
+        let trackId = trackAboveFor(project, id);
+        if (trackId) {
+          // Only ever up: a free track below its own is no place to be seen from.
+          const target = project.tracks.find((track) => track.id === trackId);
+          if (!target || target.order <= own.order) continue;
+        } else {
+          const track = createTrack('video', 0, nextTrackName(rows, 'video'));
+          rows = [...rows];
+          rows.splice(insertionRow(rows, 'video'), 0, track);
+          trackId = track.id;
+        }
+        project = { ...project, tracks: withRowOrders(rows), clips: { ...project.clips, [id]: { ...clip, trackId } } };
+      }
+      return project;
+    });
+    // One clip moved: its new track is the one picked, as a click on it would.
+    const moved = clipIds.length === 1 ? get().project.clips[clipIds[0]] : undefined;
+    if (moved) set({ ui: { ...get().ui, selectedTrackId: moved.trackId } });
   },
 
   moveTrack(trackId, delta) {

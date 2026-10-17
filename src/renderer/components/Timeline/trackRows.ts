@@ -1,5 +1,5 @@
 import type { MediaAsset, Track, TrackType } from '@shared/types';
-import { trackName, trackNameNumber } from '@renderer/i18n/defaultNames';
+import { renumberedTrackName, trackName, trackNameNumber } from '@renderer/i18n/defaultNames';
 
 /**
  * How tracks are laid out on the timeline, and what may go on each.
@@ -36,7 +36,38 @@ export function withRowOrders(rows: readonly Track[]): Track[] {
   const orders = new Map<string, number>();
   visual.forEach((track, index) => orders.set(track.id, visual.length - 1 - index));
   audio.forEach((track, index) => orders.set(track.id, visual.length + index));
-  return rows.map((track) => ({ ...track, order: orders.get(track.id) ?? track.order }));
+  return withLayerNames(rows.map((track) => ({ ...track, order: orders.get(track.id) ?? track.order })));
+}
+
+/**
+ * Default track names count by layer: Video 1 is the bottom picture track and
+ * each one above it is one more; Audio 1 is the sound track nearest the
+ * picture. Premiere's V1, V2, V3 and Resolve's track numbers work the same
+ * way, which is what anybody reading "Video 3" expects to be on top.
+ *
+ * They used to be handed out once, as "one more than the highest", and kept.
+ * A track added above Video 1 was therefore called Video 3 while sitting
+ * under Video 2 - so a picture put on "Video 3" was hidden by the one on
+ * "Video 2" - and moving or deleting a track scrambled the numbers further
+ * (Video 5, Video 1, Video 4, Video 3, top to bottom). The stacking itself
+ * was right; the names said otherwise.
+ *
+ * Names the user typed are theirs and are left alone; a default name keeps
+ * the language it was made in. Captions tracks keep their own numbering.
+ * The order of the array is kept.
+ */
+export function withLayerNames(tracks: readonly Track[]): Track[] {
+  const rows = timelineRows(tracks);
+  const video = rows.filter((track) => track.type === 'video');
+  const audio = rows.filter((track) => track.type === 'audio');
+  const numbers = new Map<string, number>();
+  video.forEach((track, index) => numbers.set(track.id, video.length - index));
+  audio.forEach((track, index) => numbers.set(track.id, index + 1));
+  return tracks.map((track) => {
+    const number = numbers.get(track.id);
+    const name = number === undefined ? null : renumberedTrackName(track.type, track.name, number);
+    return name === null || name === track.name ? track : { ...track, name };
+  });
 }
 
 /** First and last row a track of this kind may occupy. */

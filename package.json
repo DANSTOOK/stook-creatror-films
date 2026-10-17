@@ -34,6 +34,7 @@
     "test:captions-f2:ui": "node ./tests/ui/captions-f2.mjs",
     "test:captions-f3:ui": "node ./tests/ui/captions-f3.mjs",
     "test:audio-edit:ui": "node ./tests/ui/audio-edit.mjs",
+    "test:playhead-layers:ui": "node ./tests/ui/playhead-layers.mjs",
     "test:gpu": "node ./tests/gpu/run.mjs",
     "test:long": "node ./tests/long/run.mjs",
     "test:bench": "node ./tests/bench/run.mjs",

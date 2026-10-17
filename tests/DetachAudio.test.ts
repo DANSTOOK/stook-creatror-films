@@ -13,7 +13,7 @@ import {
   syncOffsetLabel,
   syncOffsets,
 } from '@renderer/components/Timeline/detachAudio';
-import { clipKind, trackAccepts } from '@renderer/components/Timeline/trackRows';
+import { clipKind, timelineRows, trackAccepts } from '@renderer/components/Timeline/trackRows';
 import { splitClip } from '@renderer/components/Timeline/timelineOps';
 import { clipSounds, mixSignature } from '@renderer/audio/mixRouting';
 import { planPlaybackSpans } from '@renderer/audio/playbackSchedule';
@@ -92,6 +92,8 @@ describe('detaching', () => {
     [p] = withClip(p, { trackId: audioTrack(p).id, sourceUri: 'blob:song', startFrame: 10, durationFrames: 20 });
     const result = detachAudio(p, [a.id, b.id], kindOf);
     expect(result.project.tracks.filter((track) => track.type === 'audio')).toHaveLength(2);
+    // Named by layer, as every track is: the new one is the next down.
+    expect(timelineRows(result.project.tracks).filter((track) => track.type === 'audio').map((track) => track.name)).toEqual(['Audio 1', 'Audio 2']);
     const [soundA, soundB] = result.soundIds.map((id) => result.project.clips[id]);
     expect(soundA.trackId).not.toBe(audioTrack(p).id);
     // Back to back on one track, so a crossfade at their cut carries over.
