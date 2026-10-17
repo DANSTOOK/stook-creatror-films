@@ -5,6 +5,7 @@ import { TooltipLayer, tip } from '@renderer/components/Tooltip/Tooltip';
 import { useT } from '@renderer/i18n';
 import type { DetachablePanel } from '@renderer/store/useWorkspaceStore';
 import { hasNativeBridge } from '@renderer/media/importMedia';
+import { addFrameWindow } from '@renderer/timing/animationFrame';
 import { PANEL_ICON, PANEL_NAME } from './panelInfo';
 
 /**
@@ -233,6 +234,9 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
       mount.className = 'flex h-full w-full flex-col bg-panel-950';
       opened.document.body.appendChild(mount);
       openWindows.set(panel, opened);
+      // Playback keeps its frames while the editor is minimised and this
+      // window is the one on a screen (timing/animationFrame).
+      const stopFrames = addFrameWindow(opened);
       setPopout(opened);
       setHost(mount);
 
@@ -259,6 +263,7 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
 
       teardown = () => {
         remember();
+        stopFrames();
         stopMirroring();
         opened.removeEventListener('keydown', forward);
         opened.removeEventListener('resize', remember);
