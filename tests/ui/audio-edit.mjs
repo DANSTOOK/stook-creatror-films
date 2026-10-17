@@ -241,7 +241,9 @@ const RECORD = async ([seconds]) => {
   }
   const playing = copies.filter((copy) => copy.position !== null);
   const probes = playing.filter((_, index) => index % 3 === 1).map((copy) => ({ position: copy.position, data: Array.from(copy.data.subarray(SIZE - 8192)) }));
-  return { samples: Array.from(out), sampleRate: rate, playedAt, replayed, frames, schedule, missing, strips, stripKeys, probes };
+  // The audio clock time of the newest sample, near enough: to place a step in the recording against the schedule.
+  const endTime = copies[copies.length - 1].time;
+  return { samples: Array.from(out), sampleRate: rate, endTime, playedAt, replayed, frames, schedule, missing, strips, stripKeys, probes };
 };
 
 /**
@@ -297,11 +299,16 @@ function analyseJoins(recorded, frequency, sampleRate) {
   // sample to the next; a click is a step bigger than that.
   const steepest = 2 * Math.sin((Math.PI * frequency) / sampleRate) * peak;
   let atJoin = 0;
+  let atIndex = -1;
   for (let i = first + 1; i <= last; i += 1) {
     if (filled[i] || filled[i - 1]) continue;
-    atJoin = Math.max(atJoin, Math.abs(samples[i] - samples[i - 1]));
+    const step = Math.abs(samples[i] - samples[i - 1]);
+    if (step > atJoin) {
+      atJoin = step;
+      atIndex = i;
+    }
   }
-  return { peak, longest, steepest, atJoin };
+  return { peak, longest, steepest, atJoin, atIndex };
 }
 
 /** The playhead's trips round a loop: how many wraps, and the wall time between them. */
@@ -621,6 +628,13 @@ async function main() {
       const joins = analyseJoins(recording.samples, frequency, recording.sampleRate);
       const schedule = scheduledJoins(recording.schedule, recording.sampleRate);
       const trips = wrapsOf(recording.frames);
+      if (joins.atJoin > joins.steepest * 1.15) {
+        // Where the step was, against what was scheduled: the nearest edge of a span, in samples.
+        const at = recording.endTime - (recording.samples.length - 1 - joins.atIndex) / recording.sampleRate;
+        const edges = recording.schedule.flatMap((span) => [['start', span], ['end', span]].map(([edge, s]) => ({ edge, pass: s.pass, at: s.at, samples: Math.round((at - s.when - (edge === 'end' ? s.seconds : 0)) * recording.sampleRate) })));
+        edges.sort((a, b) => Math.abs(a.samples) - Math.abs(b.samples));
+        console.log(`      the step: ${at.toFixed(4)} s on the audio clock; nearest span edges ${JSON.stringify(edges.slice(0, 2))}`);
+      }
       console.log(`      ${label}: ${recording.samples.length} samples (${recording.missing} missed); longest near-silence ${joins.longest} samples; steepest step ${(joins.atJoin / joins.steepest).toFixed(2)}x the tone's own; `
         + `${schedule.passes} rounds scheduled, holes ${schedule.holes.map((hole) => hole.toFixed(3)).join(', ')} samples, rounds ${schedule.intervals.map((interval) => interval.toFixed(3)).join(', ')} samples apart; `
         + `playhead wrapped ${trips.wraps} times, every ${trips.periods.map((p) => p.toFixed(0)).join(', ')} ms; ${recording.strips} strips at the end; spans handed over late: ${recording.schedule.filter((span) => span.lateBy > 0).map((span) => `${span.at.toFixed(2)} s by ${(span.lateBy * 1000).toFixed(0)} ms`).join(', ') || 'none'}`);
