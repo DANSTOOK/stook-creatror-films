@@ -16,6 +16,82 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.42.0-beta.1 — Funciones rescatadas: separar audio, bucle, capas y bordes del cuadro
+2026-10-17 · pre-release para probar
+
+Cuatro funciones se terminaron a principios de octubre en ramas que nunca se
+integraron. Al revisar las copias de trabajo antiguas aparecieron, y se han
+traído a la versión actual: no copiadas tal cual, sino adaptadas a todo lo que
+ha cambiado desde entonces (clips enlazados, paneles en otra ventana, modos de
+fusión, el nuevo reloj de reproducción) y comprobadas de nuevo. De paso, al
+traerlas, salieron cuatro fallos que seguían en la versión actual.
+
+### Añadido
+- **Separar el audio de un clip de vídeo.** Ctrl+Alt+S, *Editar → Separar
+  audio* o el menú del clip: el sonido pasa a su propia pista como un clip
+  aparte, en el mismo sitio, con su nivel, panorámica, ecualización y
+  fundidos. Los dos quedan enlazados y se deshace en un paso.
+  - Si se desplazan, los dos muestran **marcas rojas de sincronía**, y el menú
+    ofrece *Mover a sincronía* y *Deslizar a sincronía*. *Volver a unir*
+    está en el menú y en el inspector.
+  - Un vídeo sin sonido no lo ofrece, y lo dice.
+  - Los subtítulos siguen al clip de sonido.
+  - *Comprobado:* el sonido separado suena **en el mismo sample** que el
+    original, al reproducir y en el archivo exportado (decodificado de nuevo
+    con ffmpeg), con el nivel igual a 0,1 dB; y la prueba sí detecta un
+    desplazamiento cuando lo hay (6 fotogramas → 200 ms).
+- **Reproducción en bucle.** Ctrl+/, *Ver → Bucle* o el botón del visor:
+  repite entre las marcas de entrada y salida; sin marcas, los clips
+  seleccionados; si no, toda la edición. Una barra verde en la regla muestra
+  el tramo, también con la línea de tiempo en otra ventana.
+  - *Comprobado:* el cursor da la vuelta cada 2,5 y 1,5 s (±2 ms) sin salirse
+    del tramo, y el audio no se corta en las uniones.
+- **En qué capa está un clip, y qué lo tapa.** Bajo la cabecera del
+  inspector: «Vídeo 1 · bajo Vídeo 2», y si algo de encima lo oculta, qué es
+  y en qué pista, con un botón **Mover encima**. Con varios clips
+  seleccionados dice cuántos no se ven y los sube todos en un paso.
+  - Solo cuenta como «tapar» lo que de verdad tapa: un clip en un modo de
+    fusión distinto de *Normal*, uno con quitar fondo, máscara, croma,
+    transparencia, opacidad por debajo del 100 % o más pequeño que el cuadro
+    no oculta lo de debajo, y no se avisa en falso.
+- **En el visor, mover y escalar se detienen en los bordes del cuadro, con
+  guías.** Al arrastrar un clip, sus bordes y su centro se quedan pegados a
+  los del cuadro, y al escalar se detiene donde llena el cuadro; aparece la
+  guía de la línea en la que se ha detenido. Alt, o el imán, lo desactivan.
+  Funciona también con el visor en otra ventana.
+
+### Arreglado
+- **Si algo fallaba una sola vez durante la reproducción, el cursor se
+  quedaba congelado para siempre** mientras la app seguía diciendo
+  «reproduciendo». Ahora ese fallo se informa una vez y la reproducción
+  sigue.
+- **«Añadir pista encima de Vídeo 1» dejaba «Vídeo 3» por debajo de
+  «Vídeo 2».** Los nombres por defecto ahora siguen el orden de las capas.
+  Solo se renumeran las pistas con nombre por defecto: una que hayas
+  renombrado tú no se toca nunca. (Si escribes a mano un nombre idéntico a
+  uno por defecto, como «Vídeo 7», no se puede distinguir y se renumera.)
+- **Espacio no reproducía con un deslizador enfocado** (por ejemplo, tras
+  tocar la opacidad en el inspector). Ahora sí; los campos de texto y número
+  conservan sus teclas.
+- **Con el audio del sistema suspendido, el motor de audio se reconstruía
+  sin parar** (6 veces en 2 s). Ahora pide despertar como mucho una vez por
+  segundo, y al volver el dispositivo el sonido queda a 7 ms de la imagen.
+
+### Problemas conocidos
+- **Un chasquido en el bucle, visto una vez en unas 14 pasadas** de la
+  prueba, que no se ha vuelto a reproducir y cuya causa no se ha encontrado.
+  La prueba ahora registra dónde cae si reaparece.
+- **Al empezar a reproducir con el equipo muy cargado** puede oírse un
+  chasquido: el audio que se lee en streaming llega tarde. Ya ocurría antes;
+  no es del bucle.
+- **El sonido del vídeo de Kratos se oye 23 ms antes** de como lo decodifica
+  ffmpeg (un bloque de audio AAC). Igual con o sin separar el audio: viene
+  de cómo se decodifica ese archivo. Pendiente de revisar.
+
+Cifras de esta versión, sobre todo lo integrado: **1330 pruebas unitarias**, **127/127** de interfaz (dos pasadas seguidas), **22/22** de extremo a extremo, **5/5** de instancia única, **35/35** de quitar fondo, y las dos pruebas nuevas: edición de audio **41/41** (43/43 con el vídeo de Kratos) y capas y bordes **20/20**.
+
+---
+
 ## v1.41.0-beta.1 — Paneles que aprovechan el espacio, y lo que quedó pendiente de la 1.40
 2026-10-17 · pre-release para probar
 
