@@ -734,7 +734,11 @@ export default function App(): JSX.Element {
                   <Timeline />
                 </div>
                 {mixerDocked && (
-                  <div className="flex min-h-0 max-w-[45%] shrink-0">
+                  // Never narrower than its header: that header shares the
+                  // window's title strip with Windows' caption buttons, and
+                  // squeezed under 300px its Ducking and close buttons went
+                  // beneath them. The strips scroll instead.
+                  <div className="flex min-h-0 min-w-[300px] max-w-[45%] shrink-0">
                     <Mixer onClose={() => setMixerOpen(false)} />
                   </div>
                 )}

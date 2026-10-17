@@ -275,7 +275,10 @@ export function PreviewViewport(): JSX.Element {
     >
       {!fullscreen && (
         <header className="panel-header">
-          <span className="min-w-0 flex-1 truncate" title={projectName}>
+          {/* In a viewer window made very narrow, the name would be cut to a
+              letter beside Windows' caption buttons; the window's own title
+              still names it there. */}
+          <span className="min-w-0 flex-1 truncate max-[479px]:invisible" title={projectName}>
             {projectName}
           </span>
           <div className="flex shrink-0 items-center gap-1 font-normal">
