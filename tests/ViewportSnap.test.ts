@@ -175,3 +175,29 @@ describe('scaling: the pulled edge stops at the frame', () => {
     expect(result.guides).toEqual([]);
   });
 });
+
+/*
+  Rescued onto v1.41: the cases the box "as drawn" is for - a picture turned
+  upside down or flipped has its grips and edges on the other side, and the
+  snapping has to follow the picture, not its numbers.
+*/
+describe('turned or flipped, the box as drawn is what lands', () => {
+  const half = (overrides: Partial<ResolvedTransform> = {}) => transform({ scale: { x: 0.5, y: 0.5 }, ...overrides });
+
+  it('a flipped picture moved near the right edge lands flush on it', () => {
+    const flipped = half({ scale: { x: -0.5, y: 0.5 } });
+    const snapped = snappedMove({ x: 476, y: 0 }, flipped, frame, tolerance);
+    expect(snapped.position.x).toBe(480);
+    expect(snapped.guides).toEqual([{ axis: 'x', at: 1920, kind: 'edge' }, { axis: 'y', at: 540, kind: 'centre' }]);
+  });
+
+  it('upside down, the right grip is on the left: pulled to the left edge, it stops there', () => {
+    const upsideDown = half({ rotation: 180 });
+    const result = snappedScale(upsideDown, 'right', { x: 8, y: 540 }, frame, {}, undefined, tolerance);
+    // The edge that stays put is the drawn right one, at 1440.
+    const box = quadCorners({ ...upsideDown, ...result }, frame).map((point) => point.x);
+    expect(Math.min(...box)).toBeCloseTo(0, 6);
+    expect(Math.max(...box)).toBeCloseTo(1440, 6);
+    expect(result.guides).toEqual([{ axis: 'x', at: 0, kind: 'edge' }]);
+  });
+});

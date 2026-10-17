@@ -10,6 +10,7 @@ import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { useT, type MessageKey } from '@renderer/i18n';
 import { ScrubLabel, Section, plain, type SectionProps } from './rows';
+import { LayerRow } from './LayerRow';
 import {
   blendOf,
   groupSelection,
@@ -255,6 +256,8 @@ export function MultiInspector({ ids }: { ids: readonly string[] }): JSX.Element
         <span className="min-w-0 flex-1 truncate">{t('inspector.manySelected', { count: groups.all.length })}</span>
         <DetachButton panel="inspector" />
       </header>
+      {/* Which tracks they are on, and how many something above hides. */}
+      <LayerRow project={project} clipIds={ids} />
 
       <div data-testid="multi-inspector" className="inspector-flow min-h-0 flex-1 overflow-y-auto">
         {/* Columns in a wide window, as in the single-clip inspector (index.css). */}
