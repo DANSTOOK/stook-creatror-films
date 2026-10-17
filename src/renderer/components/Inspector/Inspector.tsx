@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Diamond, FolderOpen, Palette, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -31,6 +31,8 @@ import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
+import { pairedClip } from '@renderer/components/Timeline/detachAudio';
+import { rejoinSelectionAudio } from '@renderer/hooks/useTransport';
 
 /**
  * Property inspector for the selected clip.
@@ -101,7 +103,8 @@ const degrees = (radians: number): string => `${Math.round((radians * 180) / Mat
 /** The clip's technical facts, like Final Cut's Info inspector. */
 function InfoRows({ clip, asset, fps }: { clip: Clip; asset: MediaAsset | undefined; fps: number }): JSX.Element {
   const t = useT();
-  const kind = clip.caption ? 'caption' : clip.title ? 'title' : asset?.kind ?? (clip.hasAlphaChannel ? 'image' : 'video');
+  // A video's sound detached onto a clip of its own is sound, whatever its file is.
+  const kind = clip.caption ? 'caption' : clip.title ? 'title' : clip.audioOnly ? 'audio' : asset?.kind ?? (clip.hasAlphaChannel ? 'image' : 'video');
   const rows: Array<[string, string]> = [
     [
       t('inspector.infoType'),
@@ -136,6 +139,8 @@ function InfoRows({ clip, asset, fps }: { clip: Clip; asset: MediaAsset | undefi
  * its media is an audio file wherever it sits.
  */
 export function isAudioClip(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): boolean {
+  // A video's sound detached onto a clip of its own (Detach audio).
+  if (clip.audioOnly) return true;
   const track = project.tracks.find((candidate) => candidate.id === clip.trackId);
   if (track?.type === 'audio') return true;
   return assets.find((asset) => asset.uri === clip.sourceUri)?.kind === 'audio';
@@ -613,7 +618,30 @@ export function Inspector(): JSX.Element {
 
   const eq = clip.eq;
   const setEq = (patch: Partial<typeof eq>): void => updateClip(clip.id, { eq: { ...eq, ...patch } }, `eq:${clip.id}`);
-  const audioTab = (
+  // A picture whose sound was detached has no sound of its own to set: it
+  // says where the sound went, and offers the way back.
+  const detachedSound = clip.audioDetached ? pairedClip(project.clips, clip.id) : undefined;
+  const detachedTab = (
+    <div className="space-y-2 p-3" data-testid="inspector-audio-detached">
+      <p className="text-2xs leading-relaxed text-slate-300">
+        {detachedSound
+          ? t('inspector.audioDetached', { track: project.tracks.find((track) => track.id === detachedSound.trackId)?.name ?? '' })
+          : t('inspector.audioDetachedAlone')}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {detachedSound && (
+          <button type="button" className="tool-button h-control border border-panel-600" onClick={() => useProjectStore.getState().selectClips([detachedSound.id], false, true)}>
+            {t('inspector.selectSound')}
+          </button>
+        )}
+        <button type="button" className="tool-button h-control border border-panel-600" onClick={() => rejoinSelectionAudio([clip.id])}>
+          <AudioLines size={13} />
+          {t('timeline.rejoinAudio')}
+        </button>
+      </div>
+    </div>
+  );
+  const audioTab = clip.audioDetached ? detachedTab : (
     <>
       <Section
         {...sectionProps('level')}

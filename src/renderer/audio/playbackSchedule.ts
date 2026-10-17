@@ -1,6 +1,6 @@
 import type { ProjectState } from '@shared/types';
-import { hasSoloedTrack, isTrackAudible } from './mixRouting';
-import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
+import { clipSounds, hasSoloedTrack, isTrackAudible } from './mixRouting';
+import { speedOf } from '@renderer/timing/clipSpeed';
 
 /**
  * What to decode and sound next, while playing.
@@ -42,6 +42,18 @@ export interface PlanOptions {
   scheduledUntil: ReadonlyMap<string, number>;
   /** Whether a source can be streamed at all (AAC in MP4, and has sound). */
   canStream: (uri: string) => boolean;
+  /**
+   * Timeline second nothing is planned at or past: the end of the loop, while
+   * playback loops. A clip running over it is cut there, and the pass that
+   * follows starts again from the loop's start.
+   */
+  endSeconds?: number;
+  /**
+   * Sources held whole in memory. There is nothing to decode for them, so a
+   * clip of one is planned in a single span to its end (or `endSeconds`)
+   * instead of a horizon at a time: one source node, no joins inside it.
+   */
+  whole?: (uri: string) => boolean;
 }
 
 /**
@@ -57,7 +69,8 @@ export function planPlaybackSpans(project: ProjectState, options: PlanOptions): 
   const { fps } = project;
   const anySolo = hasSoloedTrack(project);
   const tracks = new Map(project.tracks.map((track) => [track.id, track]));
-  const horizonEnd = fromSeconds + horizonSeconds;
+  const endSeconds = options.endSeconds ?? Infinity;
+  const horizonEnd = Math.min(fromSeconds + horizonSeconds, endSeconds);
 
   const spans: ScheduledSpan[] = [];
 
@@ -66,8 +79,9 @@ export function planPlaybackSpans(project: ProjectState, options: PlanOptions): 
     if (!track || !isTrackAudible(track, anySolo)) continue;
     if (!canStream(clip.sourceUri)) continue;
     // A clip played backwards has no sound yet: reading a stream
-    // back-to-front is not something a playback rate can express.
-    if (!audioFollowsSpeed(clip)) continue;
+    // back-to-front is not something a playback rate can express. Nor does
+    // a picture whose sound was separated: its sound clip plays it.
+    if (!clipSounds(clip)) continue;
 
     const rate = speedOf(clip);
 
@@ -78,10 +92,11 @@ export function planPlaybackSpans(project: ProjectState, options: PlanOptions): 
     // Never re-schedule what an earlier call already handed to the graph.
     const alreadyTo = scheduledUntil.get(clip.id) ?? -Infinity;
     let at = Math.max(clipStart, fromSeconds, alreadyTo);
-    const until = Math.min(clipEnd, horizonEnd);
+    const whole = options.whole?.(clip.sourceUri) === true;
+    const until = whole ? Math.min(clipEnd, endSeconds) : Math.min(clipEnd, horizonEnd);
 
     while (at < until - 1e-9) {
-      const seconds = Math.min(chunkSeconds, until - at);
+      const seconds = whole ? until - at : Math.min(chunkSeconds, until - at);
       spans.push({
         clipId: clip.id,
         sourceUri: clip.sourceUri,

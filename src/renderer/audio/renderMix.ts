@@ -1,8 +1,8 @@
-﻿import type { Clip, MediaAsset, ProjectState, Track } from '@shared/types';
+import type { Clip, MediaAsset, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { encodeWavFloat32 } from '@shared/utils/wav';
-import { clipGain, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
-import { audioFollowsSpeed, speedOf } from '@renderer/timing/clipSpeed';
+import { clipGain, clipSounds, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
+import { speedOf } from '@renderer/timing/clipSpeed';
 import { applyFadeEnvelope } from './fadeEnvelope';
 import { withAudioCrossfades } from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
@@ -177,7 +177,7 @@ async function renderClips(
     if (!track || (!stream && !whole)) continue;
     // Backwards is silent in the render too, so what is exported is what
     // was heard while editing.
-    if (!audioFollowsSpeed(clip)) continue;
+    if (!clipSounds(clip)) continue;
 
     const rate = speedOf(clip);
 
@@ -294,10 +294,12 @@ export async function renderTimelineAudio(
   const trackById = new Map(project.tracks.map((track) => [track.id, track]));
   const anySolo = hasSoloedTrack(project);
 
-  // Clips that overlap the export range at all, on tracks that are audible.
+  // Clips that overlap the export range at all, on tracks that are audible -
+  // and that sound at all: a picture whose sound was separated is left to
+  // its sound clip, so the export carries that sound once.
   const audible = Object.values(project.clips).filter((clip) => {
     const track = trackById.get(clip.trackId);
-    if (!track || !isTrackAudible(track, anySolo)) return false;
+    if (!track || !isTrackAudible(track, anySolo) || clip.audioDetached) return false;
     return clip.startFrame < endFrame && clip.startFrame + clip.durationFrames > startFrame;
   });
 
@@ -452,7 +454,7 @@ export async function streamTimelineAudio(
 
   const audible = Object.values(project.clips).filter((clip) => {
     const track = trackById.get(clip.trackId);
-    if (!track || !isTrackAudible(track, anySolo)) return false;
+    if (!track || !isTrackAudible(track, anySolo) || clip.audioDetached) return false;
     return clip.startFrame < endFrame && clip.startFrame + clip.durationFrames > startFrame;
   });
   if (audible.length === 0) return null;

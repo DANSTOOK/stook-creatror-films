@@ -15,6 +15,7 @@ import { transitionBoxes, type TransitionBox } from './transitionBoxes';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { stepZoomView, type DisplayedView } from './zoomMotion';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { syncOffsetLabel } from './detachAudio';
 
 /**
  * Multi-track drawing surface.
@@ -90,6 +91,10 @@ export interface TimelineCanvasProps {
   transitionShortfalls?: ReadonlyMap<string, { tail: number; head: number }>;
   /** What clips show inside: see ClipAppearance. */
   appearance?: ClipAppearance;
+  /** Detached picture and sound out of step, by clip: the frames each is off (detachAudio syncOffsets). */
+  syncOffsets?: ReadonlyMap<string, number>;
+  /** What loop playback goes round, while it is on: a bar along the ruler. */
+  loopRange?: { start: number; end: number } | null;
   /** Changes when a filmstrip frame has been decoded, to paint it. */
   contentVersion?: number;
   labels?: CanvasLabels;
@@ -224,11 +229,67 @@ export function rulerStep(pixelsPerFrame: number, fps: number): number {
   return candidates[candidates.length - 1] * fps;
 }
 
+/**
+ * The loop's bar: emerald, along the foot of the ruler, with a post at each
+ * end - where playback will go round, whichever of In-Out, the selection or
+ * the whole edit decided it. Under the In-Out shading rather than instead of
+ * it, so marks and loop read as two things when they are the same range.
+ * Emerald-400 on the ruler is 9.6:1, and apart from the playhead's red, the
+ * marks' blue and the selection's yellow.
+ */
+export const LOOP_COLOUR = '#34d399';
+
+function drawLoopBar(context: CanvasRenderingContext2D, range: { start: number; end: number }, ui: EditorUiState, width: number): void {
+  const from = frameToPixel(range.start, ui.pixelsPerFrame, ui.scrollLeftPx);
+  const to = frameToPixel(range.end, ui.pixelsPerFrame, ui.scrollLeftPx);
+  const left = Math.max(-2, from);
+  const right = Math.min(width + 2, to);
+  if (right <= left) return;
+  context.save();
+  context.fillStyle = LOOP_COLOUR;
+  context.fillRect(left, RULER_HEIGHT - 4, right - left, 3);
+  for (const x of [from, to]) {
+    if (x < -4 || x > width + 4) continue;
+    context.fillRect(Math.round(x) - 1, MARKER_LANE_HEIGHT + 1, 2, RULER_HEIGHT - MARKER_LANE_HEIGHT - 2);
+  }
+  context.restore();
+}
+
+/**
+ * Premiere's out-of-sync mark: the frames this part of a detached pair is off
+ * from the other, white on red at the foot of the clip's start. Red-600 under
+ * white is 4.8:1.
+ */
+function drawSyncMark(context: CanvasRenderingContext2D, clip: Clip, top: number, ui: EditorUiState, fps: number, frames: number, canvasWidth: number): void {
+  const x = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
+  const clipWidth = clip.durationFrames * ui.pixelsPerFrame;
+  if (clipWidth < 24 || x + clipWidth < 0 || x > canvasWidth) return;
+  const text = syncOffsetLabel(frames, fps);
+  context.save();
+  context.font = LABEL_FONT;
+  const width = context.measureText(text).width + 8;
+  const left = Math.max(x, 0) + 3;
+  if (left + width > x + clipWidth - 2) {
+    context.restore();
+    return;
+  }
+  const chipTop = top + TRACK_HEIGHT - 2 - 16;
+  context.fillStyle = '#dc2626';
+  context.beginPath();
+  context.roundRect(left, chipTop, width, 14, 3);
+  context.fill();
+  context.fillStyle = '#ffffff';
+  context.textBaseline = 'middle';
+  context.fillText(text, left + 4, chipTop + 7.5);
+  context.restore();
+}
+
 function drawRuler(
   context: CanvasRenderingContext2D,
   project: ProjectState,
   ui: EditorUiState,
   width: number,
+  loopRange: { start: number; end: number } | null = null,
 ): void {
   context.fillStyle = '#1d2025';
   context.fillRect(0, 0, width, RULER_HEIGHT);
@@ -290,6 +351,8 @@ function drawRuler(
     context.fillStyle = '#94a3b8';
     context.fillText(framesToShortLabel(frame, project.fps), x + 4, MARKER_LANE_HEIGHT + (RULER_HEIGHT - MARKER_LANE_HEIGHT) / 2);
   }
+
+  if (loopRange) drawLoopBar(context, loopRange, ui, width);
 }
 
 /**
@@ -1080,6 +1143,8 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   const filmstrips = props.filmstrips;
   const offlineUris = props.offlineUris;
   const transitionShortfalls = props.transitionShortfalls;
+  const syncMarks = props.syncOffsets;
+  const loopRange = props.loopRange ?? null;
   const appearance = props.appearance ?? 'both';
   const contentVersion = props.contentVersion ?? 0;
   const labels = props.labels ?? DEFAULT_LABELS;
@@ -1224,7 +1289,9 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           ui,
           selected.has(clip.id),
           {
-            peaks: waveforms[clip.sourceUri],
+            // A picture whose sound was detached shows only pictures: its
+            // wave is drawn on the sound clip, where the sound now is.
+            peaks: clip.audioDetached ? undefined : waveforms[clip.sourceUri],
             filmstrip: filmstrips?.[clip.sourceUri],
             offline: offlineUris?.has(clip.sourceUri) ?? false,
             fontMissing: clip.title ? isFamilyMissing(clip.title.style.fontFamily) : false,
@@ -1236,6 +1303,9 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           hover?.clipId === clip.id || activeTrim?.clipId === clip.id,
           labels,
         );
+
+        const drift = syncMarks?.get(clip.id);
+        if (drift !== undefined) drawSyncMark(context, clip, top, ui, project.fps, drift, width);
 
         const held = activeTrim?.clipId === clip.id;
         if (held || hover?.clipId === clip.id) {
@@ -1318,7 +1388,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       snapFlash.current = null;
     }
 
-    drawRuler(context, project, ui, width);
+    drawRuler(context, project, ui, width, loopRange);
     drawMarkerFlags(context, project, ui, width);
     drawPlayhead(context, project, ui, height);
 
@@ -1332,7 +1402,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     // contentVersion is not read in the paint: it changes when a filmstrip
     // frame has been decoded, and that is exactly when to paint again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
+  }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, syncMarks, loopRange, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
 
   useEffect(() => {
     if (animationFrame.current !== null) cancelFrame(animationFrame.current);

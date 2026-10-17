@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
+import { currentLoopRange } from '@renderer/timing/loopRange';
+import { notify } from '@renderer/notifications/notifications';
+import { t } from '@renderer/i18n';
 import { shuttleRate } from './shuttle';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
@@ -95,6 +98,12 @@ export function advancePlayhead(
     durationFrames: number;
     fps: number;
     loop: boolean;
+    /**
+     * What a loop goes round (timing/loopRange): `start` included, `end` not.
+     * Without one, the whole canvas, as it always was.
+     */
+    loopStart?: number;
+    loopEnd?: number;
     /** Speed and direction; 1 is ordinary play, negative runs backwards. */
     rate?: number;
   },
@@ -111,17 +120,38 @@ export function advancePlayhead(
   }
 
   const remainder = carried - wholeFrames;
-  const next = options.currentFrame + wholeFrames;
+  const current = options.currentFrame;
+  const next = current + wholeFrames;
+
+  if (options.loop) {
+    const start = Math.max(0, Math.round(options.loopStart ?? 0));
+    const end = Math.max(start + 1, Math.round(options.loopEnd ?? options.durationFrames));
+    const length = end - start;
+    /*
+      The wrap is exact: the frames that ran past the end carry on from the
+      start, as the sound does (the audio engine lays the next time round
+      on its clock ahead of the join). Snapping to the start dropped them,
+      so every time round the picture lost up to a frame against the sound.
+    */
+    if (wholeFrames > 0) {
+      // Put somewhere past the loop while it plays: back to its start.
+      if (current >= end) return { frame: start, accumulator: remainder, stopped: false };
+      if (next >= end) return { frame: start + ((next - start) % length), accumulator: remainder, stopped: false };
+      return { frame: next, accumulator: remainder, stopped: false };
+    }
+    // Backwards: round the other way, from the start to the last frame.
+    if (current < start) return { frame: end - 1, accumulator: remainder, stopped: false };
+    if (next < start) return { frame: end - 1 - ((start - 1 - next) % length), accumulator: remainder, stopped: false };
+    return { frame: next, accumulator: remainder, stopped: false };
+  }
 
   if (wholeFrames < 0) {
     if (next > 0) return { frame: next, accumulator: remainder, stopped: false };
-    // Back at the head: round again when looping, otherwise stand there.
-    if (options.loop) return { frame: Math.max(0, options.durationFrames - 1), accumulator: remainder, stopped: false };
+    // Back at the head: stand there.
     return { frame: 0, accumulator: 0, stopped: true };
   }
 
   if (next >= options.durationFrames) {
-    if (options.loop) return { frame: 0, accumulator: remainder, stopped: false };
     return { frame: options.durationFrames, accumulator: 0, stopped: true };
   }
 
@@ -181,13 +211,16 @@ export function usePlaybackClock(): void {
       const { project, ui, setCurrentFrame, setPlaying } = useProjectStore.getState();
       const elapsedSeconds = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
+      const loop = ui.loopPlayback ? currentLoopRange(project, ui) : null;
 
       const result = advancePlayhead(
         {
           currentFrame: project.currentFrame,
           durationFrames: project.durationFrames,
           fps: project.fps,
-          loop: ui.loopPlayback,
+          loop: loop !== null,
+          loopStart: loop?.start,
+          loopEnd: loop?.end,
           rate: ui.playbackRate,
         },
         elapsedSeconds,
@@ -212,6 +245,24 @@ export function usePlaybackClock(): void {
       rafRef.current = null;
     };
   }, [isPlaying]);
+}
+
+/**
+ * Detach the sound of the selected clips, and say so when there was nothing
+ * to detach - a key that does nothing silently reads as a key that is broken.
+ * Shared by the key, the menu and the timeline's right-click menu.
+ */
+export function detachSelectionAudio(clipIds?: string[]): void {
+  const store = useProjectStore.getState();
+  const made = store.detachAudio(clipIds);
+  if (made.length === 0) notify(t('detach.nothing'), 'warning');
+}
+
+/** Rejoin, with a word when some sound had been moved apart and was left alone. */
+export function rejoinSelectionAudio(clipIds?: string[]): void {
+  const { joined, apart } = useProjectStore.getState().rejoinAudio(clipIds);
+  if (apart > 0) notify(t('detach.apart', { count: apart }), 'warning');
+  else if (joined === 0) notify(t('detach.nothingToJoin'), 'warning');
 }
 
 /** Global editing shortcuts, matching the layout Filmora users expect. */
@@ -243,6 +294,16 @@ export function useEditorShortcuts(): void {
       if (modifier && event.altKey && event.code === 'KeyT') {
         event.preventDefault();
         store.addTitle(event.shiftKey ? 'lowerThird' : 'title');
+        return;
+      }
+
+      // Detach audio: Ctrl+Alt+S. Final Cut's Control-Shift-S, and CapCut's
+      // Ctrl+Shift+S, is Save As here, as in Premiere and every Windows app;
+      // Alt is the next modifier over, and S still says Separate. By physical
+      // key, since Ctrl+Alt is AltGr on many layouts.
+      if (modifier && event.altKey && !event.shiftKey && event.code === 'KeyS') {
+        event.preventDefault();
+        detachSelectionAudio();
         return;
       }
 
@@ -305,6 +366,13 @@ export function useEditorShortcuts(): void {
             // Link the selection: from here on it moves and trims as one.
             event.preventDefault();
             store.linkSelection();
+            return;
+          case '/':
+            // Loop playback on or off: Ctrl+/, Resolve's Loop/Unloop. (On a
+            // Spanish keyboard / is Shift+7, and Ctrl+Shift+7 arrives here.)
+            // Final Cut's Command-L is Link here, as in Premiere.
+            event.preventDefault();
+            store.setLoopPlayback(!store.ui.loopPlayback);
             return;
           case 't':
           case 'd':

@@ -30,7 +30,7 @@ import { useAudioPlayback } from './hooks/useAudioPlayback';
 import { useClipContent } from './media/useClipContent';
 import { useMatteLookups } from './matting/mattes';
 import { usePresence } from './hooks/usePresence';
-import { useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
+import { detachSelectionAudio, rejoinSelectionAudio, useEditorShortcuts, usePlaybackClock } from './hooks/useTransport';
 import {
   DEFAULT_LAYOUT,
   LAYOUT_LIMITS,
@@ -422,6 +422,7 @@ export default function App(): JSX.Element {
   // grey out, and it names the action back when an item is chosen.
   const language = useLanguageStore((state) => state.language);
   const fullscreenViewer = useProjectStore((state) => state.ui.fullscreenViewer);
+  const loopPlayback = useProjectStore((state) => state.ui.loopPlayback);
   useEffect(() => {
     if (!hasNativeBridge()) return;
     window.filmora.menuState({
@@ -433,8 +434,9 @@ export default function App(): JSX.Element {
       inspectorShown: !hidden.inspector,
       timelineShown: !hidden.timeline,
       fullscreenViewer,
+      loopPlayback,
     });
-  }, [language, view, canUndo, canRedo, hidden.media, hidden.inspector, hidden.timeline, fullscreenViewer]);
+  }, [language, view, canUndo, canRedo, hidden.media, hidden.inspector, hidden.timeline, fullscreenViewer, loopPlayback]);
 
   // Kept in a ref so the listener is registered once and always runs the
   // current actions.
@@ -543,6 +545,15 @@ export default function App(): JSX.Element {
         return;
       case 'exportCaptions':
         if (nativeAvailable) void exportCaptionsToDialog();
+        return;
+      case 'detachAudio':
+        detachSelectionAudio();
+        return;
+      case 'rejoinAudio':
+        rejoinSelectionAudio();
+        return;
+      case 'loopPlayback':
+        store.setLoopPlayback(!store.ui.loopPlayback);
         return;
       default:
         return;

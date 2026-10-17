@@ -49,6 +49,9 @@ export function planScrubGrains(
     if (!track || !isTrackAudible(track, anySolo)) continue;
     if (frame < clip.startFrame || frame >= clip.startFrame + clip.durationFrames) continue;
     if (!hasAudio(clip.sourceUri)) continue;
+    // A picture whose sound was separated is heard through its sound clip,
+    // which is under the playhead too: one grain, not two.
+    if (clip.audioDetached) continue;
 
     const intoClipSeconds = (frame - clip.startFrame) / fps;
     const remainingSeconds = (clip.startFrame + clip.durationFrames - frame) / fps;

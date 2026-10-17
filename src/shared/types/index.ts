@@ -548,6 +548,19 @@ export interface Clip {
    */
   linkGroup?: string;
   /**
+   * On a picture clip whose sound was separated onto a clip of its own
+   * (Detach audio): its own sound is not played, scrubbed or exported - the
+   * separated clip plays it instead, so it is heard exactly once. Absent on
+   * every clip that still carries its sound, which is every clip made before
+   * the feature. See components/Timeline/detachAudio.ts.
+   */
+  audioDetached?: boolean;
+  /**
+   * On that separated sound: a clip of a video file that is only its sound,
+   * and so belongs on an audio track. Absent on every other clip.
+   */
+  audioOnly?: boolean;
+  /**
    * Present on a title: the text and how it looks. Absent on every clip that
    * comes from a file, which is every clip made before titles existed.
    */

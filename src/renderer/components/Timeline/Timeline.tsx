@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
+  AudioLines,
   AudioWaveform,
   Film,
   GalleryHorizontal,
@@ -45,6 +46,9 @@ import { MAX_PIXELS_PER_FRAME, MIN_PIXELS_PER_FRAME } from './zoom';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
 import { isLinked } from './linkGroups';
+import { assetHasSound, canDetachAudio, pairedClip, rejoinState, syncOffset, syncOffsetLabel, syncOffsets } from './detachAudio';
+import { detachSelectionAudio, rejoinSelectionAudio } from '@renderer/hooks/useTransport';
+import { currentLoopRange } from '@renderer/timing/loopRange';
 import { SpeedDialog } from './SpeedDialog';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
 import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
@@ -197,6 +201,14 @@ export function Timeline(): JSX.Element {
     }
     return result;
   }, [assets, project]);
+
+  // Detached picture and sound that have drifted apart: the frames each is
+  // off by, drawn on both (Premiere's red sync marks).
+  const syncMarks = useMemo(() => syncOffsets(project.clips), [project.clips]);
+  // What loop playback goes round, shown on the ruler while it is on.
+  const loopRange = ui.loopPlayback
+    ? currentLoopRange(project, ui)
+    : null;
 
   // The installed fonts arriving is a change to what the canvas says: a
   // title whose font is missing gets its note then.
@@ -429,6 +441,62 @@ export function Timeline(): JSX.Element {
     [store, tracks],
   );
 
+  /**
+   * A clip's sound, apart from its picture: detach it, rejoin it, and - when
+   * the two have drifted - Premiere's Move into Sync and Slip into Sync, on
+   * the part that was right-clicked.
+   */
+  const soundItems = useCallback(
+    (clip: Clip, selected: readonly string[]): ContextMenuItem[] => {
+      const state = store.getState();
+      const { project, assets } = state;
+      const kindOf = (uri: string) => assets.find((asset) => asset.uri === uri)?.kind;
+      const trackOf = (id: string) => project.tracks.find((track) => track.id === project.clips[id]?.trackId);
+      const detachable = selected.filter(
+        (id) => canDetachAudio(project.clips[id], trackOf(id), kindOf) && assetHasSound(assets.find((asset) => asset.uri === project.clips[id].sourceUri)),
+      );
+      const items: ContextMenuItem[] = [];
+      const partner = pairedClip(project.clips, clip.id);
+      const picture = clip.audioDetached ? clip : partner;
+      const sound = clip.audioDetached ? partner : clip.audioOnly ? clip : undefined;
+      const offset = picture && sound ? syncOffset(picture, sound) : null;
+      if (offset !== null && offset !== 0) {
+        // The amount this part is off, as the badge on it says.
+        const label = syncOffsetLabel(clip.id === sound?.id ? offset : -offset, project.fps);
+        items.push(
+          {
+            label: t('timeline.moveIntoSync', { offset: label }),
+            onSelect: () => {
+              if (!state.bringIntoSync(clip.id, 'move')) notify(t('timeline.syncBlocked'), 'warning');
+            },
+          },
+          {
+            label: t('timeline.slipIntoSync', { offset: label }),
+            onSelect: () => {
+              if (!state.bringIntoSync(clip.id, 'slip')) notify(t('timeline.slipBlocked'), 'warning');
+            },
+          },
+        );
+      }
+      if (detachable.length > 0) {
+        items.push({
+          label: t('timeline.detachAudio'),
+          icon: AudioLines,
+          shortcut: keyLabel('Ctrl+Alt+S'),
+          onSelect: () => detachSelectionAudio(detachable),
+        });
+      } else if (rejoinState(project.clips, clip.id) !== 'none') {
+        items.push({
+          label: t('timeline.rejoinAudio'),
+          icon: AudioLines,
+          onSelect: () => rejoinSelectionAudio(selected.includes(clip.id) ? [...selected] : [clip.id]),
+        });
+      }
+      return items;
+    },
+    [store],
+  );
+
   const clipMenuItems = useCallback(
     (clip: Clip, frame: number): ContextMenuItem[] => {
       const state = store.getState();
@@ -508,6 +576,7 @@ export function Timeline(): JSX.Element {
             else state.linkSelection();
           },
         },
+        ...soundItems(clip, selected),
         { separator: true },
         {
           label: t('timeline.cut'),
@@ -591,7 +660,7 @@ export function Timeline(): JSX.Element {
         },
       ];
     },
-    [store],
+    [store, soundItems],
   );
 
   const emptyAreaMenuItems = useCallback((): ContextMenuItem[] => {
@@ -1797,6 +1866,8 @@ export function Timeline(): JSX.Element {
                 onContextMenu={onCanvasContextMenu}
                 onDoubleClick={onCanvasDoubleClick}
                 transitionShortfalls={transitionShortfalls}
+                syncOffsets={syncMarks}
+                loopRange={loopRange}
               />
             </div>
 

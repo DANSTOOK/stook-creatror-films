@@ -1354,6 +1354,27 @@ export const en = {
   'export.captionsTwice': 'Burnt in and as a track: a player showing the track will draw them twice.',
   'export.captionsEmbedded': 'inside the video ({language})',
   'export.captionsEmbedFailed': 'The subtitles could not be prepared for the video. {detail}',
+  /* Detach audio, loops, typed values ------------------------------------ */
+  'menu.detachAudio': 'Detach audio',
+  'menu.rejoinAudio': 'Rejoin audio',
+  'menu.loopPlayback': 'Loop playback',
+  'detach.nothing': 'Select a video clip with sound to detach its audio.',
+  'detach.apart': 'Left as it was ({count}): the sound was moved or trimmed apart from its picture. Move it into sync first.',
+  'detach.nothingToJoin': 'Select a clip whose audio was detached to rejoin it.',
+  'timeline.detachAudio': 'Detach audio',
+  'timeline.rejoinAudio': 'Rejoin audio',
+  'timeline.moveIntoSync': 'Move into sync ({offset})',
+  'timeline.slipIntoSync': 'Slip into sync ({offset})',
+  'timeline.syncBlocked': 'There is no room to move it into sync: another clip is in the way. Slip it into sync instead.',
+  'timeline.slipBlocked': 'The file does not reach that far, so it cannot be slipped into sync. Move it instead.',
+  'inspector.audioDetached': 'This clip’s sound was detached onto its own clip, on {track}. Its level, pan and EQ are there.',
+  'inspector.audioDetachedAlone': 'This clip’s sound was detached, and its sound clip is gone. Rejoin to hear it again.',
+  'inspector.selectSound': 'Select its sound',
+  'keys.detachKeys': 'Ctrl+Alt+S',
+  'keys.detach': 'Detach the audio of the selected video clips (Edit menu: rejoin)',
+  'keys.loopKeys': 'Ctrl+/',
+  'keys.loop': 'Loop playback on or off: In to Out, else the selected clips, else the whole edit',
+  'viewer.loopHint': 'Goes round In to Out when marked, else the selected clips, else the whole edit. The ruler shows what.',
 };
 
 export type Messages = typeof en;
