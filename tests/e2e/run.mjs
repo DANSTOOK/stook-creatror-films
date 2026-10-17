@@ -294,6 +294,32 @@ async function readPngHeader(file) {
   };
 }
 
+/**
+ * The exact-frame check (exact-frames.mjs), in the real app: every frame an
+ * export renders is the source frame the decoders' rule picks, read off the
+ * bar code each test frame carries. A run of its own, since it needs the app
+ * build rather than this harness; its output is passed through.
+ */
+function runExactFrames() {
+  return new Promise((resolvePromise) => {
+    const child = spawn(process.execPath, [join(here, 'exact-frames.mjs')], {
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    const relay = (chunk) => {
+      output += chunk;
+      process.stdout.write(String(chunk).replace(/^(?=.)/gm, '   | '));
+    };
+    child.stdout.on('data', relay);
+    child.stderr.on('data', relay);
+    child.on('close', (code) => {
+      const tally = /(\d+)\/(\d+) checks passed/.exec(output);
+      resolvePromise({ code, summary: tally ? `${tally[1]}/${tally[2]} checks` : 'no result' });
+    });
+  });
+}
+
 function runElectron() {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(electronBinary, [join(projectRoot, 'dist-e2e/main/main.js')], {
@@ -517,6 +543,13 @@ async function main() {
     check('sprite kept soft alpha edges', result.render.spriteAlphaPixels > 0,
       `${result.render.spriteAlphaPixels} partially transparent pixels`);
   }
+
+  /* Exact frames --------------------------------------------------------- */
+  console.log('');
+  console.log('5. exact frames, in the app (exact-frames.mjs)');
+  const exact = await runExactFrames();
+  check('every rendered and exported frame is the source frame the rule picks',
+    exact.code === 0, exact.summary);
 
   /* Report --------------------------------------------------------------- */
   console.log('');
