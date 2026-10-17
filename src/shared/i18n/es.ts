@@ -225,6 +225,8 @@ export const es: Messages = {
   'mattes.modelFast': 'Rápido: solo personas',
   'mattes.namePrecise': 'Preciso',
   'mattes.nameFast': 'Rápido',
+  'mattes.invert': 'Invertir',
+  'mattes.invertHint': 'Invertido: se conserva el fondo y se quita el sujeto.',
   'mattes.preciseHint': 'Preciso tarda alrededor de un segundo por fotograma con una GPU dedicada, y varios con el procesador: va mejor con planos cortos.',
   'mattes.needsModel': 'El modelo «{name}» todavía no está en este equipo.',
   'mattes.downloadShort': 'Descargar ({size})…',

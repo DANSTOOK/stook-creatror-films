@@ -106,7 +106,7 @@ export class FrameRenderer {
     const url = source ? this.matteUrl(clip) : undefined;
     if (!source || !url) return source;
     const matte = this.mattes.textureFor(url, sourceFrame, fps);
-    return matte ? { ...source, matte } : source;
+    return matte ? { ...source, matte, matteInvert: clip.backgroundRemoval.invert } : source;
   }
 
   /** Title clips, drawn as text into textures of their own. */
@@ -543,7 +543,7 @@ export class FrameRenderer {
     // seekSources has made this frame's matte ready, or refused the frame.
     const url = this.matteUrl(clip);
     const matte = source && url ? this.mattes.exactTextureFor(url, sourceFrame, fps) : null;
-    return source && matte ? { ...source, matte } : source;
+    return source && matte ? { ...source, matte, matteInvert: clip.backgroundRemoval.invert } : source;
   }
 
   private exactPictureFor(clip: Clip, fps: number): ClipSource | null {

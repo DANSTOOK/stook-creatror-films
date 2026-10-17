@@ -53,8 +53,10 @@ uniform float u_revealSoftness;
 // Remove background: the clip's matte for this frame (engine/MatteTextures),
 // one channel, laid out like the picture itself, so it is read at the same
 // place. Applied here, before the transform has moved anything, the matte
-// follows the clip wherever it is put and however it is scaled.
+// follows the clip wherever it is put and however it is scaled. Inverted, it
+// keeps the background and takes the subject away.
 uniform bool u_useMatte;
+uniform bool u_invertMatte;
 uniform sampler2D u_matte;
 
 void main() {
@@ -65,7 +67,8 @@ void main() {
     }
     vec4 texColor = texture(u_inputTexture, v_texCoord);
     float shown = clamp((u_reveal - v_texCoord.x) / u_revealSoftness, 0.0, 1.0);
-    float kept = u_useMatte ? texture(u_matte, v_texCoord).r : 1.0;
+    float matte = texture(u_matte, v_texCoord).r;
+    float kept = u_useMatte ? (u_invertMatte ? 1.0 - matte : matte) : 1.0;
     fragColor = vec4(texColor.rgb, texColor.a * shown * kept);
 }
 `;
@@ -265,6 +268,8 @@ export interface ClipSource {
    * the clip is drawn whole.
    */
   matte?: WebGLTexture;
+  /** With `matte`: keep what it takes away, and take away what it keeps. */
+  matteInvert?: boolean;
 }
 
 /**
@@ -688,6 +693,7 @@ export class Compositor {
     this.transferProgram.set('u_reveal', reveal);
     this.transferProgram.set('u_revealSoftness', WIPE_SOFTNESS);
     this.transferProgram.set('u_useMatte', source.matte !== undefined);
+    this.transferProgram.set('u_invertMatte', source.matte !== undefined && source.matteInvert === true);
     // Unit 3 either way: an unbound sampler would share unit 0 with the picture.
     this.transferProgram.setTexture('u_matte', source.matte ?? source.texture, 3);
     this.drawQuad(this.transferProgram);

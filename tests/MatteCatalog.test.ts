@@ -126,7 +126,7 @@ describe('frames to the model and back', () => {
 
 describe('Remove background in a project', () => {
   it('starts off, on the precise model', () => {
-    expect(createClip({ trackId: 't', name: 'c', sourceUri: 'u', startFrame: 0, durationFrames: 10 }).backgroundRemoval).toEqual({ enabled: false, model: 'precise' });
+    expect(createClip({ trackId: 't', name: 'c', sourceUri: 'u', startFrame: 0, durationFrames: 10 }).backgroundRemoval).toEqual({ enabled: false, model: 'precise', invert: false });
   });
 
   it('opens a project from before it existed with it off', () => {
@@ -135,14 +135,25 @@ describe('Remove background in a project', () => {
     const { backgroundRemoval: _dropped, ...old } = clip;
     void _dropped;
     const opened = normalizeProject({ ...project, clips: { [clip.id]: old as typeof clip } });
-    expect(opened.clips[clip.id].backgroundRemoval).toEqual({ enabled: false, model: 'precise' });
+    expect(opened.clips[clip.id].backgroundRemoval).toEqual({ enabled: false, model: 'precise', invert: false });
+  });
+
+  it('opens a project from before Invert existed keeping the subject', () => {
+    const project = createEmptyProject();
+    const clip = createClip({ trackId: project.tracks[0].id, name: 'v1.40', sourceUri: 'u', startFrame: 0, durationFrames: 10 });
+    const saved = { ...clip, backgroundRemoval: { enabled: true, model: 'fast' } };
+    const opened = normalizeProject({ ...project, clips: { [clip.id]: saved as unknown as typeof clip } });
+    expect(opened.clips[clip.id].backgroundRemoval).toEqual({ enabled: true, model: 'fast', invert: false });
+    const inverted = { ...clip, backgroundRemoval: { enabled: true, model: 'fast' as const, invert: true } };
+    expect(normalizeProject({ ...project, clips: { [clip.id]: inverted } }).clips[clip.id].backgroundRemoval.invert).toBe(true);
   });
 
   it('keeps what it knows and mends what it does not', () => {
-    expect(normalizeBackgroundRemoval({ enabled: true, model: 'fast' })).toEqual({ enabled: true, model: 'fast' });
-    expect(normalizeBackgroundRemoval({ enabled: true, model: 'rvm' })).toEqual({ enabled: true, model: 'precise' });
-    expect(normalizeBackgroundRemoval({ enabled: 'yes', model: 7 })).toEqual({ enabled: false, model: 'precise' });
-    expect(normalizeBackgroundRemoval(null)).toEqual({ enabled: false, model: 'precise' });
-    expect(normalizeBackgroundRemoval('on')).toEqual({ enabled: false, model: 'precise' });
+    expect(normalizeBackgroundRemoval({ enabled: true, model: 'fast' })).toEqual({ enabled: true, model: 'fast', invert: false });
+    expect(normalizeBackgroundRemoval({ enabled: true, model: 'fast', invert: true })).toEqual({ enabled: true, model: 'fast', invert: true });
+    expect(normalizeBackgroundRemoval({ enabled: true, model: 'rvm' })).toEqual({ enabled: true, model: 'precise', invert: false });
+    expect(normalizeBackgroundRemoval({ enabled: 'yes', model: 7, invert: 'yes' })).toEqual({ enabled: false, model: 'precise', invert: false });
+    expect(normalizeBackgroundRemoval(null)).toEqual({ enabled: false, model: 'precise', invert: false });
+    expect(normalizeBackgroundRemoval('on')).toEqual({ enabled: false, model: 'precise', invert: false });
   });
 });

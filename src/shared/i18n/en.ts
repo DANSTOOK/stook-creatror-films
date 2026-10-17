@@ -225,6 +225,8 @@ export const en = {
   'mattes.modelFast': 'Fast: people only',
   'mattes.namePrecise': 'Precise',
   'mattes.nameFast': 'Fast',
+  'mattes.invert': 'Invert',
+  'mattes.invertHint': 'Inverted: the background stays and the subject is taken away.',
   'mattes.preciseHint': 'Precise takes about a second per frame on a dedicated GPU, and several on the processor: best for short shots.',
   'mattes.needsModel': 'The “{name}” model is not on this computer yet.',
   'mattes.downloadShort': 'Download ({size})…',

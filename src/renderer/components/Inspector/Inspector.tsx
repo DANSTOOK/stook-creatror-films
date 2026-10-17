@@ -558,7 +558,7 @@ export function Inspector(): JSX.Element {
           onReset={() => resetEffect('backgroundRemoval')}
           onRemove={() => removeEffect('backgroundRemoval')}
         >
-          <BackgroundRemovalRows clip={clip} asset={asset} onModelChange={(model) => setEffect('backgroundRemoval', { model }, false)} />
+          <BackgroundRemovalRows clip={clip} asset={asset} onChange={(patch) => setEffect('backgroundRemoval', patch, false)} />
         </Section>
       )}
 
