@@ -176,9 +176,13 @@ const RECORD = async ([seconds]) => {
   engine.master.connect(analyser);
   const schedule = [];
   const scheduleSpan = engine.scheduleSpan;
-  engine.scheduleSpan = function logged(project, span, pass) {
-    schedule.push({ pass, at: span.atTimeline, seconds: span.seconds, when: this.startedAtContextTime + (span.atTimeline + this.passOffset(pass) - this.startedAtSeconds) });
-    return scheduleSpan.call(this, project, span, pass);
+  engine.scheduleSpan = async function logged(project, span, pass) {
+    const entry = { pass, at: span.atTimeline, seconds: span.seconds, when: this.startedAtContextTime + (span.atTimeline + this.passOffset(pass) - this.startedAtSeconds) };
+    schedule.push(entry);
+    await scheduleSpan.call(this, project, span, pass);
+    // Handed to the graph after its moment had come (an upper bound): the
+    // engine starts such a span part-way in, which is a step in the sound.
+    entry.lateBy = this.context.currentTime - entry.when;
   };
   const frames = [];
   const copies = [];
@@ -339,7 +343,7 @@ async function main() {
   await mkdir(exportDir, { recursive: true });
   const withSilent = existsSync(silentFootage);
   const withReal = realFootage !== '' && existsSync(realFootage);
-  const files = [sync, take, tone, ...(withSilent ? [silentFootage] : []), ...(withReal ? [realFootage] : [])];
+  const files = [sync, take, tone, ...(withSilent ? [silentFootage] : [])];
 
   const app = await electron.launch({
     args: [`--user-data-dir=${join(workDir, 'profile')}`, join(projectRoot, 'dist-electron/main/index.js')],
@@ -619,7 +623,7 @@ async function main() {
       const trips = wrapsOf(recording.frames);
       console.log(`      ${label}: ${recording.samples.length} samples (${recording.missing} missed); longest near-silence ${joins.longest} samples; steepest step ${(joins.atJoin / joins.steepest).toFixed(2)}x the tone's own; `
         + `${schedule.passes} rounds scheduled, holes ${schedule.holes.map((hole) => hole.toFixed(3)).join(', ')} samples, rounds ${schedule.intervals.map((interval) => interval.toFixed(3)).join(', ')} samples apart; `
-        + `playhead wrapped ${trips.wraps} times, every ${trips.periods.map((p) => p.toFixed(0)).join(', ')} ms; ${recording.strips} strips at the end`);
+        + `playhead wrapped ${trips.wraps} times, every ${trips.periods.map((p) => p.toFixed(0)).join(', ')} ms; ${recording.strips} strips at the end; spans handed over late: ${recording.schedule.filter((span) => span.lateBy > 0).map((span) => `${span.at.toFixed(2)} s by ${(span.lateBy * 1000).toFixed(0)} ms`).join(', ') || 'none'}`);
       if (process.env.AUDIO_EDIT_DUMP) await writeFile(join(workDir, label.slice(0, 1) + '.json'), JSON.stringify(recording));
       return { recording, joins, schedule, trips };
     };
@@ -695,6 +699,8 @@ async function main() {
       `holes ${marked.schedule.holes.map((hole) => hole.toFixed(3)).join(', ')} samples; rounds ${marked.schedule.intervals.map((interval) => interval.toFixed(3)).join(', ')} samples apart against ${length}`);
     check('as heard, no gap at the joins, mid-clip', noGap(marked), `${marked.joins.longest} samples of near-silence at most`);
     check('and no click at them, though the join cuts the sound mid-wave', noClick(marked), `${(marked.joins.atJoin / marked.joins.steepest).toFixed(2)}x`);
+    check('going round, the sound is never rebuilt: a wrap is not read as a scrub (A, B and C)',
+      !whole.recording.replayed && !wholeStreamed.recording.replayed && !marked.recording.replayed, JSON.stringify([whole.recording.replayed, wholeStreamed.recording.replayed, marked.recording.replayed]));
     check('the engine lets go of the strips of rounds it is past: a few, not one per time round',
       marked.schedule.passes >= 4 && marked.recording.strips <= 3, `${marked.recording.strips} strips after ${marked.schedule.passes} rounds: ${marked.recording.stripKeys.join(', ')}`);
     // Nothing marked: a selected clip is the loop.
@@ -767,6 +773,16 @@ async function main() {
     if (withReal) {
       console.log(`5b. real footage with sound: ${realFootage}`);
       await clear();
+      // Imported only now: measuring a long file's waveform keeps the page busy
+      // for a while, and the loops above are not to be measured under that.
+      await app.evaluate(({ dialog }, paths) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: paths });
+      }, [realFootage]);
+      await window.getByRole('button', { name: 'Import' }).click();
+      await window.waitForFunction((name) => {
+        const asset = window.__scfStore.getState().assets.find((candidate) => candidate.name === name);
+        return asset && window.__scfAudioEngine().hasAudio(asset.uri);
+      }, basename(realFootage), { timeout: 300_000 });
       const seconds = 10;
       const realAsset = await store((name) => {
         const asset = window.__scfStore.getState().assets.find((candidate) => candidate.name === name);
