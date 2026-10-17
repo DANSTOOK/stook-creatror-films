@@ -11,6 +11,10 @@ import { _electron as electron } from 'playwright';
  * Layers, the viewer's edges and the playback clock, in the running app:
  * `npm run test:playhead-layers:ui`
  *
+ *   0. Track names: "Add track above Video 1" gives Video 3 | Video 2 |
+ *      Video 1 in one undo step, the picture on Video 3 covers the one on
+ *      Video 2, a name the user typed survives a move, the detached
+ *      timeline shows the same names, and a delete renumbers.
  *   1. Layers: a title on Video 1 under a picture is hidden, the inspector
  *      says by what, and "Move above" puts it on top - checked by the track
  *      order and by the pixels of the export's own frame (renderExact). A
@@ -157,6 +161,73 @@ async function main() {
     // The project keeps 1920x1080 at 30 fps whatever the first import was.
     await store(() => window.__scfStore.getState().setProjectSettings({ width: 1920, height: 1080, fps: 30 }));
     const hasHistory = (await undoDepth()) !== null;
+
+    /* 0. Track names count by layer --------------------------------------- */
+    console.log('0. track names count by layer');
+    const names = async () => (await pictureRowsTopFirst()).map((row) => row.name).join(' | ');
+    const oldTop = (await pictureRowsTopFirst())[0].id;
+    const depth0 = await undoDepth();
+    await window.getByRole('button', { name: 'Video 1', exact: true }).click({ button: 'right' });
+    await window.getByRole('menuitem', { name: 'Add track above' }).click();
+    await sleep(300);
+    const added = await names();
+    const depth1 = await undoDepth();
+    const oldTopName = (await pictureRowsTopFirst()).find((row) => row.id === oldTop)?.name;
+    check('"Add track above Video 1" gives Video 3 | Video 2 | Video 1, in one undo step',
+      added === 'Video 3 | Video 2 | Video 1' && oldTopName === 'Video 3' && (!hasHistory || depth1 === depth0 + 1),
+      `${added}; the old top track is now ${oldTopName}; undo ${depth0} -> ${depth1}`);
+
+    // A picture on the new Video 2 is under the one on Video 3, as the names say.
+    await store(() => {
+      const s = window.__scfStore.getState();
+      const byName = (name) => s.project.tracks.find((t) => t.name === name);
+      s.addAssetToTimeline(s.assets.find((a) => a.name === 'blue.png'), byName('Video 3').id, 0);
+      window.__scfStore.getState().addAssetToTimeline(s.assets.find((a) => a.name === 'red.png'), byName('Video 2').id, 0);
+      window.__scfStore.getState().setCurrentFrame(30);
+      window.__scfStore.getState().selectClips([]);
+    });
+    const [centre] = await exactPixels([{ x: W / 2, y: H / 2 }]);
+    check('the picture on Video 3 covers the one on Video 2 in the export frame', centre[2] > 200 && centre[0] < 60, `centre ${centre.join(',')}`);
+
+    // A track the user named keeps its name through a move; the default ones around it renumber.
+    await store(() => {
+      const s = window.__scfStore.getState();
+      const v2 = s.project.tracks.find((t) => t.name === 'Video 2');
+      s.updateTrack(v2.id, { name: 'B-roll' });
+      window.__scfStore.getState().moveTrack(v2.id, 1);
+    });
+    await sleep(200);
+    const renamed = await names();
+    check('a track the user named keeps its name when moved; the default names around it follow their layers',
+      renamed === 'Video 3 | Video 2 | B-roll', renamed);
+
+    // The timeline in its own window shows the same names.
+    await window.getByTestId('detach-timeline').click();
+    let timelinePage = null;
+    for (let tries = 0; tries < 40 && !timelinePage; tries += 1) {
+      await sleep(250);
+      timelinePage = await pageTitled(app, 'Timeline');
+    }
+    if (!timelinePage) {
+      check('the timeline in its own window shows the same names', false, 'no window titled Timeline');
+    } else {
+      watch(timelinePage);
+      await timelinePage.getByRole('button', { name: 'B-roll', exact: true }).waitFor({ timeout: 15_000 });
+      const shown = (await timelinePage.locator('button', { hasText: /^(Video \d+|B-roll)$/ }).allInnerTexts()).join(' | ');
+      check('the timeline in its own window shows the same names', shown === 'Video 3 | Video 2 | B-roll', shown);
+      await timelinePage.evaluate(() => document.querySelector('[data-testid="dock-timeline"]')?.click()).catch(() => undefined);
+      await window.waitForSelector('[data-testid="detach-timeline"]', { timeout: 10_000 });
+    }
+
+    // Back to two tracks for what follows: delete renumbers too.
+    await store(() => {
+      const s = window.__scfStore.getState();
+      s.removeClips(Object.keys(s.project.clips));
+      window.__scfStore.getState().removeTrack(s.project.tracks.find((t) => t.name === 'B-roll').id);
+    });
+    await sleep(200);
+    const back = await names();
+    check('deleting tracks renumbers the default names that are left', back === 'Video 2 | Video 1', back);
 
     /* 1. Layers ---------------------------------------------------------- */
     console.log('1. layers: what hides a clip, and "Move above"');

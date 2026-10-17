@@ -46,9 +46,11 @@ describe('track ordering', () => {
 
   it('keeps a picture track above the audio whatever row it is asked for', () => {
     state().addTrackAt('video', 99, 'Low video');
-    expect(trackNames()).toEqual(['Video 2', 'Video 1', 'Low video', 'Audio 1']);
+    // A default name is its layer's number: the bottom layer is 'Low video'
+    // now, so the two above it are layers 2 and 3.
+    expect(trackNames()).toEqual(['Video 3', 'Video 2', 'Low video', 'Audio 1']);
     state().addTrackAt('audio', 0, 'High audio');
-    expect(trackNames()).toEqual(['Video 2', 'Video 1', 'Low video', 'High audio', 'Audio 1']);
+    expect(trackNames()).toEqual(['Video 3', 'Video 2', 'Low video', 'High audio', 'Audio 2']);
   });
 
   it('keeps order values contiguous after an insert', () => {
@@ -58,14 +60,17 @@ describe('track ordering', () => {
   });
 
   it('moves a track down and back up again', () => {
-    const original = trackNames();
+    // By id: a default name counts by layer, so it changes with the move.
+    const rowIds = (): string[] => timelineRows(state().project.tracks).map((track) => track.id);
+    const original = rowIds();
     const top = timelineRows(state().project.tracks)[0];
 
     state().moveTrack(top.id, 1);
-    expect(trackNames()[1]).toBe(original[0]);
+    expect(rowIds()[1]).toBe(original[0]);
+    expect(trackNames()).toEqual(['Video 2', 'Video 1', 'Audio 1']);
 
     state().moveTrack(top.id, -1);
-    expect(trackNames()).toEqual(original);
+    expect(rowIds()).toEqual(original);
   });
 
   it('refuses to move past either end, or out of its group', () => {

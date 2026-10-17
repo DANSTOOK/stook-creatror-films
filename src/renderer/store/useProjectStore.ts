@@ -88,6 +88,7 @@ import {
   clipKind,
   trackAccepts,
   isPictureTrack,
+  withLayerNames,
   withRowOrders,
 } from '@renderer/components/Timeline/trackRows';
 import { trackAboveFor } from '@renderer/components/Timeline/layers';
@@ -569,6 +570,17 @@ function withContentLength(project: ProjectState): ProjectState {
   return { ...project, durationFrames: Math.ceil(content + project.fps) };
 }
 
+/**
+ * A project as opened, with its default track names counting by layer
+ * (trackRows withLayerNames). A file saved before that can have "Video 3"
+ * under "Video 2"; it opens with the names its stacking has. The stacking,
+ * and so the picture, is exactly as saved.
+ */
+function withNamedLayers(project: ProjectState): ProjectState {
+  const tracks = withLayerNames(project.tracks);
+  return tracks.every((track, index) => track === project.tracks[index]) ? project : { ...project, tracks };
+}
+
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   project: createEmptyProject(),
   assets: [],
@@ -610,7 +622,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // `transact`; opening a file was the one that did not, so a document
       // whose stored duration was shorter than its clips opened with the
       // playhead unable to reach them.
-      project: withContentLength(normalizeProject(document.project)),
+      project: withContentLength(withNamedLayers(normalizeProject(document.project))),
       assets: document.assets,
       // Files from before bins have none; a damaged list is repaired, not trusted.
       bins: sanitizeBins(document.bins),
