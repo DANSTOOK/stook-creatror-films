@@ -1478,7 +1478,7 @@ export function Timeline(): JSX.Element {
           <span className="min-w-0 flex-1 truncate">{tr('timeline.title')}</span>
           {/* Off to a screen of its own, as Resolve's dual-screen layout gives it. */}
           <span className="font-normal">
-            <DetachButton panel="timeline" />
+            <DetachButton panel="timeline" wordless />
           </span>
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2 font-normal">

@@ -304,7 +304,12 @@ export function Inspector(): JSX.Element {
   if (!clip && selectedTransition) {
     return (
       <aside data-testid="inspector-panel" className="panel w-full">
-        <header className="panel-header">{t('transition.name')}</header>
+        <header className="panel-header">
+          <span className="min-w-0 flex-1 truncate">{t('transition.name')}</span>
+          {/* In the inspector's own window this header is the title bar, and
+              the way back has to be in it whatever is picked. */}
+          <DetachButton panel="inspector" />
+        </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <TransitionPanel transition={selectedTransition} />
         </div>
@@ -910,7 +915,9 @@ export function Inspector(): JSX.Element {
             aria-selected={current === id}
             aria-controls="inspector-tabpanel"
             tabIndex={current === id ? 0 : -1}
-            className={`relative h-control-dense flex-1 rounded-control text-xs transition-colors ${
+            // A quarter each of a docked inspector; in a wide window, as wide
+            // as a name needs and no wider, rather than 400px apiece.
+            className={`relative h-control-dense max-w-36 flex-1 rounded-control text-xs transition-colors ${
               current === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
