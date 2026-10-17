@@ -186,17 +186,87 @@ export interface SnapResult {
 }
 
 /**
+ * A line a drag is being held against, for drawing it.
+ *
+ * `axis` 'x' is a line down the frame at x = `at`; 'y' runs across it at
+ * y = `at`, in project pixels. `kind` says what it is: the frame's centre
+ * line, one of its edges, or - while scaling - where the picture's edge
+ * stopped because the picture is exactly as wide (or tall) as the frame.
+ */
+export interface Guide {
+  axis: 'x' | 'y';
+  at: number;
+  kind: 'centre' | 'edge' | 'size';
+}
+
+/** The box a quad covers on screen, in project pixels. */
+function boundsOf(corners: readonly Point[]): { left: number; right: number; top: number; bottom: number } {
+  const xs = corners.map((corner) => corner.x);
+  const ys = corners.map((corner) => corner.y);
+  return { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) };
+}
+
+/** The frame's lines on one axis: both edges and the centre. */
+const frameLines = (size: number): Array<{ at: number; kind: Guide['kind'] }> => [
+  { at: size / 2, kind: 'centre' },
+  { at: 0, kind: 'edge' },
+  { at: size, kind: 'edge' },
+];
+
+/**
  * Pull a moved picture onto the lines that matter.
  *
  * Centring a shot by hand is a game of one pixel at a time, and every
- * editor answers it the same way: the drag sticks to the middle of the
- * frame and to the frame's own edges, and says so with a guide. The
- * candidates are the centre (position 0) and the offsets that put the
- * picture's edges on the frame's, so a clip can be pushed flush left or
- * right without measuring.
+ * editor answers it the same way: the drag sticks to the middle of the frame
+ * and to the frame's own edges, and says so with a guide - Premiere's "Snap
+ * in Program Monitor" (the edges and centre of the frame), Final Cut's
+ * alignment guides, Resolve 20.1's viewer guides with Alt to bypass. Here the
+ * picture's own box - as drawn, so turned, flipped or off-centre on its
+ * anchor - lands its left, right or middle on the frame's, and its top,
+ * bottom or middle likewise. The nearest line within reach wins; a tie goes
+ * to the centre, which is what a picture that fills the frame is being
+ * aimed at.
  *
- * `toleranceP0x` is in project pixels - the same units as the position -
- * so the stickiness is the same however the viewer is scaled.
+ * `tolerancePx` is in project pixels - the same units as the position - so
+ * the stickiness is the same however the viewer is scaled. Zero is off.
+ */
+export function snappedMove(
+  position: Vector2D,
+  start: ResolvedTransform,
+  frame: FrameSize,
+  tolerancePx: number,
+  layer?: LayerShape,
+): { position: Vector2D; guides: Guide[] } {
+  if (tolerancePx <= 0) return { position, guides: [] };
+  // A move does not change the shape: the box at the start, shifted.
+  const box = boundsOf(quadCorners(start, frame, layer));
+  const dx = position.x - start.position.x;
+  const dy = position.y - start.position.y;
+
+  const pick = (low: number, high: number, size: number, axis: Guide['axis']): { shift: number; guide: Guide } | null => {
+    let best: { shift: number; guide: Guide } | null = null;
+    for (const line of frameLines(size)) {
+      const shifts = line.kind === 'centre' ? [line.at - (low + high) / 2] : [line.at - low, line.at - high];
+      for (const shift of shifts) {
+        if (Math.abs(shift) > tolerancePx) continue;
+        // Strictly nearer wins; at equal distance the first (the centre) stays.
+        if (!best || Math.abs(shift) < Math.abs(best.shift) - 1e-6) best = { shift, guide: { axis, at: line.at, kind: line.kind } };
+      }
+    }
+    return best;
+  };
+
+  const x = pick(box.left + dx, box.right + dx, frame.width, 'x');
+  const y = pick(box.top + dy, box.bottom + dy, frame.height, 'y');
+  return {
+    position: { x: position.x + (x?.shift ?? 0), y: position.y + (y?.shift ?? 0) },
+    guides: [x?.guide, y?.guide].filter((guide): guide is Guide => guide !== undefined),
+  };
+}
+
+/**
+ * The same, for callers that only ask which way it snapped: `vertical` is a
+ * line down the frame, `horizontal` one across it.
  */
 export function snappedPosition(
   position: Vector2D,
@@ -204,31 +274,11 @@ export function snappedPosition(
   frame: FrameSize,
   tolerancePx: number,
 ): SnapResult {
-  if (tolerancePx <= 0) return { position, vertical: false, horizontal: false };
-
-  // Half the gap between the picture and the frame, which is where an edge
-  // of the picture meets the matching edge of the frame.
-  const halfSpareX = Math.abs((frame.width * (1 - Math.abs(transform.scale.x))) / 2);
-  const halfSpareY = Math.abs((frame.height * (1 - Math.abs(transform.scale.y))) / 2);
-
-  const nearest = (value: number, candidates: readonly number[]): number | null => {
-    let best: number | null = null;
-    for (const candidate of candidates) {
-      const distance = Math.abs(value - candidate);
-      if (distance <= tolerancePx && (best === null || distance < Math.abs(value - best))) {
-        best = candidate;
-      }
-    }
-    return best;
-  };
-
-  const x = nearest(position.x, [0, -halfSpareX, halfSpareX]);
-  const y = nearest(position.y, [0, -halfSpareY, halfSpareY]);
-
+  const snapped = snappedMove(position, transform, frame, tolerancePx);
   return {
-    position: { x: x ?? position.x, y: y ?? position.y },
-    vertical: x !== null,
-    horizontal: y !== null,
+    position: snapped.position,
+    vertical: snapped.guides.some((guide) => guide.axis === 'x'),
+    horizontal: snapped.guides.some((guide) => guide.axis === 'y'),
   };
 }
 
@@ -349,6 +399,107 @@ export function scaleFromHandle(
       y: -(anchor.y * frame.height) / 2,
     },
   };
+}
+
+/**
+ * Scale from a grip, stopping at the frame.
+ *
+ * A picture stretched by its grip used to go straight past the edge of the
+ * frame with nothing to say it had reached it. Now the edge being pulled
+ * sticks to the frame's edges and centre lines, and to the size at which the
+ * picture is exactly as wide (or as tall) as the frame - "fills the frame" -
+ * with a guide while it is held there, as moving does. Pulling further than
+ * the tolerance goes on past, so a punch-in is still one drag; Alt (a
+ * tolerance of zero) turns it off.
+ *
+ * Only a picture that is straight or upside down: turned any other way its
+ * edges are not along the frame's, and there is nothing to line up.
+ */
+export function snappedScale(
+  start: ResolvedTransform,
+  handle: Handle,
+  pointerPx: Point,
+  frame: FrameSize,
+  options: { free?: boolean } = {},
+  layer: LayerShape | undefined,
+  tolerancePx: number,
+): ScaleResult & { guides: Guide[] } {
+  const raw = scaleFromHandle(start, handle, pointerPx, frame, options, layer);
+  const turn = ((start.rotation % 180) + 180) % 180;
+  if (tolerancePx <= 0 || (turn > 0.01 && turn < 179.99)) return { ...raw, guides: [] };
+
+  const fixed = toPixels(fixedCorner(handle, quadOf(start, frame, layer)), frame);
+  const grip = handlePositions(start, frame, layer)[handle];
+  const horizontal = handle !== 'top' && handle !== 'bottom';
+  const vertical = handle !== 'left' && handle !== 'right';
+  // Which way the pulled edge lies from the edge that stays put.
+  const dirX = Math.sign(grip.x - fixed.x) || 1;
+  const dirY = Math.sign(grip.y - fixed.y) || 1;
+
+  const startBox = boundsOf(quadCorners(start, frame, layer));
+  const startWidth = startBox.right - startBox.left;
+  const startHeight = startBox.bottom - startBox.top;
+  const box = boundsOf(quadCorners({ ...start, ...raw }, frame, layer));
+  const width = box.right - box.left;
+  const height = box.bottom - box.top;
+  const pulledX = dirX > 0 ? box.right : box.left;
+  const pulledY = dirY > 0 ? box.bottom : box.top;
+
+  interface Candidate {
+    axis: Guide['axis'];
+    /** The size, in project pixels, the pulled edge lands at. */
+    size: number;
+    distance: number;
+    guide: Guide;
+  }
+  const candidates: Candidate[] = [];
+  const along = (axis: Guide['axis'], from: number, pulled: number, current: number, frameSize: number, dir: number, reach: number): void => {
+    for (const line of frameLines(frameSize)) {
+      const size = (line.at - from) * dir;
+      if (size > 1) candidates.push({ axis, size, distance: Math.abs(pulled - line.at), guide: { axis, at: line.at, kind: line.kind } });
+    }
+    // As wide, or as tall, as the frame - wherever that puts the edge.
+    if (reach > 0) candidates.push({ axis, size: reach, distance: Math.abs(current - reach), guide: { axis, at: from + dir * reach, kind: 'size' } });
+  };
+  // "Fills the frame" is the frame's own size, for a picture the shape of the
+  // frame; a title or a still of another shape fills it on one axis only.
+  if (horizontal) along('x', fixed.x, pulledX, width, frame.width, dirX, frame.width);
+  if (vertical) along('y', fixed.y, pulledY, height, frame.height, dirY, frame.height);
+
+  const near = candidates.filter((candidate) => candidate.distance <= tolerancePx);
+  if (near.length === 0) return { ...raw, guides: [] };
+
+  const proportional = horizontal && vertical && !options.free;
+  const pointer = { ...pointerPx };
+  const guides: Guide[] = [];
+  const nearest = (list: Candidate[]): Candidate | undefined =>
+    list.reduce<Candidate | undefined>((best, candidate) => (!best || candidate.distance < best.distance - 1e-6 ? candidate : best), undefined);
+
+  if (proportional) {
+    // One factor for both axes: the line nearest either pulled edge sets it,
+    // and the corner goes exactly where that factor puts it.
+    const best = nearest(near);
+    if (!best) return { ...raw, guides: [] };
+    const factor = best.axis === 'x' ? best.size / Math.max(startWidth, 1e-9) : best.size / Math.max(startHeight, 1e-9);
+    pointer.x = fixed.x + dirX * startWidth * factor;
+    pointer.y = fixed.y + dirY * startHeight * factor;
+    guides.push(best.guide);
+    // The other edge may land on a line too; say so only when it does.
+    const other = best.axis === 'x' ? fixed.y + dirY * startHeight * factor : fixed.x + dirX * startWidth * factor;
+    const otherAxis: Guide['axis'] = best.axis === 'x' ? 'y' : 'x';
+    const line = frameLines(otherAxis === 'x' ? frame.width : frame.height).find((candidate) => Math.abs(candidate.at - other) < 0.5);
+    if (line) guides.push({ axis: otherAxis, at: line.at, kind: line.kind });
+  } else {
+    for (const axis of ['x', 'y'] as const) {
+      const best = nearest(near.filter((candidate) => candidate.axis === axis));
+      if (!best) continue;
+      if (axis === 'x') pointer.x = fixed.x + dirX * best.size;
+      else pointer.y = fixed.y + dirY * best.size;
+      guides.push(best.guide);
+    }
+  }
+
+  return { ...scaleFromHandle(start, handle, pointer, frame, options, layer), guides };
 }
 
 /** The pointer's angle around the anchor, in degrees, for starting a rotation. */

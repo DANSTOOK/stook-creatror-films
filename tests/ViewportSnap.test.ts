@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { snappedPosition } from '@renderer/components/PreviewViewport/viewportTransform';
+import { quadCorners, snappedMove, snappedPosition, snappedScale } from '@renderer/components/PreviewViewport/viewportTransform';
 import type { ResolvedTransform } from '@shared/types';
 
 /**
@@ -87,5 +87,91 @@ describe('when two lines are within reach', () => {
     const spare = (frame.width * (1 - 0.99)) / 2; // 9.6px
     expect(snappedPosition({ x: spare - 1, y: 0 }, nearly, frame, tolerance).position.x).toBeCloseTo(spare, 5);
     expect(snappedPosition({ x: 1, y: 0 }, nearly, frame, tolerance).position.x).toBe(0);
+  });
+});
+
+/*
+  "Put a limit in the viewer: a stretched picture does not stop at the edge
+  of the frame." Moving already stuck to the centre (and, quietly, to the
+  edges - always drawing the centre guide); scaling stuck to nothing.
+*/
+describe('moving: the picture as drawn lands on the frame, and says which line', () => {
+  it('names the edge it landed on', () => {
+    const half = transform({ scale: { x: 0.5, y: 0.5 } });
+    const snapped = snappedMove({ x: -474, y: 0 }, half, frame, tolerance);
+    expect(snapped.position.x).toBe(-480);
+    expect(snapped.guides).toContainEqual({ axis: 'x', at: 0, kind: 'edge' });
+  });
+
+  it('measures the picture where it is drawn: an anchor off the middle moves the box', () => {
+    // Anchored at its corner, a half-size picture sits in the top-right
+    // quarter: its left edge is at the centre line, not 480px left of it.
+    const corner = transform({ scale: { x: 0.5, y: 0.5 }, anchorPoint: { x: 0, y: 0 } });
+    expect(Math.min(...quadCorners(corner, frame).map((point) => point.x))).toBeCloseTo(960, 6);
+    const snapped = snappedMove({ x: -955, y: 0 }, corner, frame, tolerance);
+    expect(snapped.position.x).toBe(-960);
+    expect(snapped.guides.find((guide) => guide.axis === 'x')).toEqual({ axis: 'x', at: 0, kind: 'edge' });
+  });
+
+  it('a picture that fills the frame shows one guide per axis, the centre', () => {
+    const snapped = snappedMove({ x: 6, y: -4 }, transform(), frame, tolerance);
+    expect(snapped.guides).toEqual([
+      { axis: 'x', at: 960, kind: 'centre' },
+      { axis: 'y', at: 540, kind: 'centre' },
+    ]);
+  });
+});
+
+describe('scaling: the pulled edge stops at the frame', () => {
+  // Half size, centred: the picture is 480..1440 across and 270..810 down.
+  const half = transform({ scale: { x: 0.5, y: 0.5 } });
+
+  it('the right grip pulled to just short of the right edge lands on it', () => {
+    const result = snappedScale(half, 'right', { x: 1912, y: 540 }, frame, {}, undefined, tolerance);
+    expect(result.scale.x).toBeCloseTo(0.75, 9);
+    expect(result.scale.y).toBeCloseTo(0.5, 9);
+    // The left edge has not moved.
+    expect(Math.min(...quadCorners({ ...half, ...result }, frame).map((point) => point.x))).toBeCloseTo(480, 6);
+    expect(result.guides).toEqual([{ axis: 'x', at: 1920, kind: 'edge' }]);
+  });
+
+  it('pulled on past the tolerance, it goes past - a punch-in is still one drag', () => {
+    const result = snappedScale(half, 'right', { x: 2000, y: 540 }, frame, {}, undefined, tolerance);
+    expect(result.scale.x).toBeCloseTo((2000 - 480) / 1920, 9);
+    expect(result.guides).toEqual([]);
+  });
+
+  it('Alt - a tolerance of zero - is the exact pointer', () => {
+    const result = snappedScale(half, 'right', { x: 1912, y: 540 }, frame, {}, undefined, 0);
+    expect(result.scale.x).toBeCloseTo((1912 - 480) / 1920, 9);
+    expect(result.guides).toEqual([]);
+  });
+
+  it('stops where the picture is exactly as wide as the frame, wherever that is', () => {
+    // Left edge at 300: as wide as the frame puts the right edge at 2220.
+    const shifted = transform({ scale: { x: 0.5, y: 0.5 }, position: { x: -180, y: 0 } });
+    const result = snappedScale(shifted, 'right', { x: 2215, y: 540 }, frame, {}, undefined, tolerance);
+    expect(result.scale.x).toBeCloseTo(1, 9);
+    expect(result.guides).toEqual([{ axis: 'x', at: 2220, kind: 'size' }]);
+  });
+
+  it('a corner keeps the shape and stops on whichever edge is nearer - here both', () => {
+    const result = snappedScale(half, 'bottomRight', { x: 1915, y: 1000 }, frame, {}, undefined, tolerance);
+    expect(result.scale.x).toBeCloseTo(0.75, 9);
+    expect(result.scale.y).toBeCloseTo(0.75, 9);
+    expect(result.guides).toContainEqual({ axis: 'y', at: 1080, kind: 'edge' });
+    expect(result.guides).toContainEqual({ axis: 'x', at: 1920, kind: 'edge' });
+  });
+
+  it('the bottom grip lands on the bottom edge, and on the centre line', () => {
+    expect(snappedScale(half, 'bottom', { x: 960, y: 1074 }, frame, {}, undefined, tolerance).scale.y).toBeCloseTo((1080 - 270) / 1080, 9);
+    // From the top edge at 270, the centre line is 270px down: a quarter of the frame.
+    expect(snappedScale(half, 'bottom', { x: 960, y: 546 }, frame, {}, undefined, tolerance).scale.y).toBeCloseTo(0.25, 9);
+  });
+
+  it('a picture turned at an angle has no edge along the frame: nothing to stop on', () => {
+    const turned = transform({ scale: { x: 0.5, y: 0.5 }, rotation: 30 });
+    const result = snappedScale(turned, 'right', { x: 1912, y: 540 }, frame, {}, undefined, tolerance);
+    expect(result.guides).toEqual([]);
   });
 });

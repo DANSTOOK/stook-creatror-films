@@ -17,9 +17,10 @@ import {
   movedPosition,
   quadCorners,
   rotationFromPointer,
-  scaleFromHandle,
-  snappedPosition,
+  snappedMove,
+  snappedScale,
   snappedTitlePosition,
+  type Guide,
   type Handle,
   type LayerShape,
   type Point,
@@ -75,6 +76,17 @@ const OVERFLOW_CSS_PX = 14;
  */
 const SNAP_CSS_PX = 10;
 
+/**
+ * Test ids for the guides. The centre lines keep the names they always had;
+ * an edge is named for the side of the frame it is on.
+ */
+function guideTestId(guide: Guide, width: number, height: number): string {
+  if (guide.kind === 'centre') return guide.axis === 'x' ? 'viewport-guide-vertical' : 'viewport-guide-horizontal';
+  if (guide.kind === 'size') return `viewport-guide-size-${guide.axis}`;
+  if (guide.axis === 'x') return guide.at <= width / 2 ? 'viewport-guide-left' : 'viewport-guide-right';
+  return guide.at <= height / 2 ? 'viewport-guide-top' : 'viewport-guide-bottom';
+}
+
 /** The cursor that says what a grip will do. */
 const cursorFor = (handle: Handle): string => {
   if (handle === 'left' || handle === 'right') return 'ew-resize';
@@ -113,7 +125,7 @@ export function ViewportControls(): JSX.Element | null {
   const dragRef = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState<Drag['kind'] | null>(null);
   /** Which guide lines to draw while a drag is held against them. */
-  const [guides, setGuides] = useState({ vertical: false, horizontal: false, safe: false });
+  const [guides, setGuides] = useState<{ lines: Guide[]; safe: boolean }>({ lines: [], safe: false });
   const [projectPxPerCssPx, setProjectPxPerCssPx] = useState(1);
   /** Bumped when fonts finish loading: a title measured before that is measured again. */
   const [fontsLoaded, setFontsLoaded] = useState(0);
@@ -216,34 +228,52 @@ export function ViewportControls(): JSX.Element | null {
       if (!drag) return;
       const pointer = pointerToProject(event);
       const { placed } = drag;
+      // The magnet, unless it is switched off or Alt asks for the exact
+      // pixel under the pointer - the escape hatch every snap needs.
+      const tolerance = snapping && !event.altKey ? SNAP_CSS_PX * projectPxPerCssPx : 0;
 
       if (drag.kind === 'move') {
         const delta = { x: pointer.x - drag.startPointer.x, y: pointer.y - drag.startPointer.y };
         const wanted = movedPosition(drag.startTransform, delta);
-        // The magnet, unless it is switched off or Alt asks for the exact
-        // pixel under the pointer - the escape hatch every snap needs.
-        const tolerance = snapping && !event.altKey ? SNAP_CSS_PX * projectPxPerCssPx : 0;
-        const snap = placed.layer
-          ? snappedTitlePosition(wanted, drag.startTransform, frame, placed.layer, tolerance, TITLE_SAFE)
-          : { ...snappedPosition(wanted, drag.startTransform, frame, tolerance), safe: false };
-        setGuides({ vertical: snap.vertical, horizontal: snap.horizontal, safe: snap.safe });
+        let snapped: { x: number; y: number };
+        if (placed.layer) {
+          // A title lives by the title-safe area and the centre lines.
+          const snap = snappedTitlePosition(wanted, drag.startTransform, frame, placed.layer, tolerance, TITLE_SAFE);
+          snapped = snap.position;
+          const lines: Guide[] = [];
+          if (snap.vertical) lines.push({ axis: 'x', at: frame.width / 2, kind: 'centre' });
+          if (snap.horizontal) lines.push({ axis: 'y', at: frame.height / 2, kind: 'centre' });
+          setGuides({ lines, safe: snap.safe });
+        } else {
+          // Anything else: its edges and its middle onto the frame's.
+          const snap = snappedMove(wanted, drag.startTransform, frame, tolerance);
+          snapped = snap.position;
+          setGuides({ lines: snap.guides, safe: false });
+        }
         // The same distance on the keyframed position, whatever the animation adds.
         setTransformAt(placed.clip.id, currentFrame, {
           position: {
-            x: drag.basePosition.x + (snap.position.x - drag.startTransform.position.x),
-            y: drag.basePosition.y + (snap.position.y - drag.startTransform.position.y),
+            x: drag.basePosition.x + (snapped.x - drag.startTransform.position.x),
+            y: drag.basePosition.y + (snapped.y - drag.startTransform.position.y),
           },
         });
         return;
       }
       if (drag.kind === 'scale') {
         // Scale and position together: the corner opposite the grip has to
-        // stay where it is, and that is a move as well as a resize.
-        setTransformAt(
-          placed.clip.id,
-          currentFrame,
-          toKeyframes(placed, scaleFromHandle(drag.startTransform, drag.handle, pointer, frame, { free: event.shiftKey }, placed.layer)),
+        // stay where it is, and that is a move as well as a resize. The edge
+        // being pulled stops at the frame's edges and at "fills the frame".
+        const { guides: lines, ...result } = snappedScale(
+          drag.startTransform,
+          drag.handle,
+          pointer,
+          frame,
+          { free: event.shiftKey },
+          placed.layer,
+          tolerance,
         );
+        setGuides({ lines, safe: false });
+        setTransformAt(placed.clip.id, currentFrame, toKeyframes(placed, result));
         return;
       }
       setTransformAt(placed.clip.id, currentFrame, {
@@ -266,7 +296,7 @@ export function ViewportControls(): JSX.Element | null {
     setDragging(null);
     // The guides say "this is why it stopped here" during a drag; afterwards
     // they would just be lines across the picture.
-    setGuides({ vertical: false, horizontal: false, safe: false });
+    setGuides({ lines: [], safe: false });
     const surface = surfaceRef.current;
     if (surface?.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
   }, []);
@@ -407,6 +437,13 @@ export function ViewportControls(): JSX.Element | null {
           The safe areas, while they are switched on: what a cropping player
           keeps (93%) and where text stays legible (90%). Thin, dashed and
           unclickable - something to judge the shot against, not part of it.
+          They are not magnets: a picture being moved or scaled sticks to the
+          frame's edges and centre lines, as Premiere's "Snap in Program
+          Monitor" does, and only a title sticks to the title-safe box. With
+          both boxes as magnets too, a picture pushed towards the edge would
+          catch twice on the way, 3.5% and 5% short of it. The guides are
+          drawn after these, in their own colour, so the line a drag stopped
+          on is never hidden under one of them.
         */}
         {showSafeAreas &&
           (Object.entries(safeAreas) as [keyof typeof safeAreas, (typeof safeAreas)['action']][]).map(([name, rect]) => (
@@ -426,33 +463,28 @@ export function ViewportControls(): JSX.Element | null {
             />
           ))}
 
-        {/* Guides, drawn only while a drag is held against them. */}
-        {dragging && guides.vertical && (
-          <line
-            data-testid="viewport-guide-vertical"
-            x1={project.width / 2}
-            y1={-overflow}
-            x2={project.width / 2}
-            y2={project.height + overflow}
-            stroke="#f472b6"
-            strokeWidth={stroke}
-            vectorEffect="non-scaling-stroke"
-            pointerEvents="none"
-          />
-        )}
-        {dragging && guides.horizontal && (
-          <line
-            data-testid="viewport-guide-horizontal"
-            x1={-overflow}
-            y1={project.height / 2}
-            x2={project.width + overflow}
-            y2={project.height / 2}
-            stroke="#f472b6"
-            strokeWidth={stroke}
-            vectorEffect="non-scaling-stroke"
-            pointerEvents="none"
-          />
-        )}
+        {/* Guides, drawn only while a drag is held against them: the frame's
+            centre lines, its edges, or - dashed - where a picture's edge
+            stopped because it is exactly as wide or tall as the frame. */}
+        {dragging &&
+          guides.lines.map((guide) => {
+            const across = guide.axis === 'x';
+            return (
+              <line
+                key={`${guide.axis}:${guide.kind}:${guide.at}`}
+                data-testid={guideTestId(guide, project.width, project.height)}
+                x1={across ? guide.at : -overflow}
+                y1={across ? -overflow : guide.at}
+                x2={across ? guide.at : project.width + overflow}
+                y2={across ? project.height + overflow : guide.at}
+                stroke="#f472b6"
+                strokeWidth={guide.kind === 'edge' ? stroke * 2 : stroke}
+                strokeDasharray={guide.kind === 'size' ? `${6 * projectPxPerCssPx} ${4 * projectPxPerCssPx}` : undefined}
+                vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
+              />
+            );
+          })}
 
         {selected && corners.length === 4 && !editing && (
           <g data-testid={selected.layer ? 'viewport-title-box' : undefined}>
