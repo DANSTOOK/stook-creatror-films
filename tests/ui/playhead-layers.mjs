@@ -25,7 +25,9 @@ import { _electron as electron } from 'playwright';
  *      there while the drag is held and gone after. Alt lets go. The safe
  *      areas stay drawn alongside. The same drag works in the viewer's own
  *      window.
- *   3. The clock: a tick that throws once does not stop the playhead.
+ *   3. The clock: a tick that throws once does not stop the playhead;
+ *      Space plays with a slider focused; a suspended audio clock is not
+ *      rebuilt against, and is woken while playing once it can run.
  *
  * Every check collects console errors along the way: there must be none
  * beyond the one the clock is expected to report. The window is never
@@ -445,6 +447,69 @@ async function main() {
     check('a tick that throws once does not stop the playhead, and is reported once',
       afterThrow.playing && afterThrow.frame > 30 && reports.length === 1, `frame ${afterThrow.frame} after 1.5 s, playing ${afterThrow.playing}, ${reports.length} reports`);
     for (let i = issues.length - 1; i >= 0; i -= 1) if (issues[i].includes('Playback clock: a tick failed')) issues.splice(i, 1);
+
+    // Space after touching a slider: a slider keeps the focus after it is
+    // clicked or dragged, and Space used to be swallowed by it.
+    await store(() => {
+      const s = window.__scfStore.getState();
+      s.setCurrentFrame(0);
+      s.selectClips([Object.keys(s.project.clips)[0]]);
+    });
+    await sleep(400);
+    const slider = window.getByTestId('inspector-panel').locator('input[type="range"]').first();
+    const sliderBox = await slider.boundingBox();
+    await window.mouse.click(sliderBox.x + sliderBox.width * 0.9, sliderBox.y + sliderBox.height / 2);
+    const focused = await store(() => `${document.activeElement?.tagName}:${document.activeElement?.getAttribute('type')}`);
+    await window.keyboard.press('Space');
+    await sleep(800);
+    const afterSpace = await store(() => ({ frame: window.__scfStore.getState().project.currentFrame, playing: window.__scfStore.getState().ui.isPlaying }));
+    await store(() => window.__scfStore.getState().setPlaying(false));
+    check('Space plays with an inspector slider focused after a click on it',
+      focused === 'INPUT:range' && afterSpace.playing && afterSpace.frame > 5, `focus ${focused}; playing ${afterSpace.playing}, frame ${afterSpace.frame}`);
+
+    // A suspended audio clock (no device, sleep, a device change) that will
+    // not resume: the playhead runs on its own clock, and the audio graph is
+    // not rebuilt every third of a second against a clock that stands still.
+    const suspended = await store(async () => {
+      const s = window.__scfStore.getState();
+      s.selectClips([]);
+      s.setCurrentFrame(0);
+      const engine = window.__scfAudioEngine();
+      const realResume = engine.context.resume.bind(engine.context);
+      const realPlay = engine.play;
+      let resumes = 0;
+      engine.context.resume = () => {
+        resumes += 1;
+        return new Promise(() => undefined);
+      };
+      await engine.context.suspend();
+      let plays = 0;
+      engine.play = (...args) => {
+        plays += 1;
+        return realPlay.apply(engine, args);
+      };
+      window.__scfStore.getState().setPlaying(true);
+      await new Promise((done) => setTimeout(done, 2000));
+      const frame = window.__scfStore.getState().project.currentFrame;
+      const playsSuspended = plays;
+      // The device comes back while it plays: the next wake resumes the
+      // clock, and the sound is put back under the playhead.
+      engine.context.resume = realResume;
+      await new Promise((done) => setTimeout(done, 1600));
+      const state = engine.context.state;
+      const drift = Math.abs(window.__scfStore.getState().project.currentFrame / window.__scfStore.getState().project.fps - engine.positionSeconds);
+      const replays = plays - playsSuspended;
+      window.__scfStore.getState().setPlaying(false);
+      engine.play = realPlay;
+      await realResume();
+      return { frame, plays: playsSuspended, resumes, replays, drift, state };
+    });
+    check('with the audio clock suspended the playhead runs in real time, and the graph is built once',
+      suspended.frame >= 50 && suspended.frame <= 70 && suspended.plays <= 2,
+      `${suspended.frame} frames in 2 s, ${suspended.plays} rebuilds, ${suspended.resumes} resume requests`);
+    check('when the audio clock can run again it is woken while playing, and sound and picture are back in step',
+      suspended.state === 'running' && suspended.drift < 0.35 && suspended.replays >= 1 && suspended.replays <= 2,
+      `context ${suspended.state}, drift ${suspended.drift.toFixed(3)} s, ${suspended.replays} rebuilds once it ran`);
 
     check('no errors in the console throughout', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
