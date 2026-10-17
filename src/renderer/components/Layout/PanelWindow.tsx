@@ -5,6 +5,7 @@ import { useT } from '@renderer/i18n';
 import type { DetachablePanel } from '@renderer/store/useWorkspaceStore';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { addFrameWindow, cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { spaceFromSlider } from '@renderer/hooks/spaceFromSlider';
 import { PANEL_NAME } from './panelInfo';
 import { PanelWindowContext, type PanelWindowScope } from './panelWindowContext';
 
@@ -283,7 +284,8 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
       const forward = (event: KeyboardEvent): void => {
         if (event.defaultPrevented) return;
         const target = event.target as HTMLElement | null;
-        if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
+        // Space from a slider is the transport's, here as in the editor (hooks/spaceFromSlider).
+        if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) && !spaceFromSlider(event)) return;
         window.dispatchEvent(new KeyboardEvent(event.type, event));
       };
       opened.addEventListener('keydown', forward);

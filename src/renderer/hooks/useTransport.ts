@@ -4,6 +4,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { shuttleRate } from './shuttle';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { spaceFromSlider } from './spaceFromSlider';
 
 /**
  * Playback transport.
@@ -243,8 +244,9 @@ export function useEditorShortcuts(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null;
-      // Never steal keys from a field the user is typing into.
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      // Never steal keys from a field the user is typing into - except Space
+      // from a slider, which has no use for it (spaceFromSlider).
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && !spaceFromSlider(event)) return;
       // The start screen is not the editor: no playing, cutting or nudging behind it.
       if (useSessionStore.getState().view !== 'editor') return;
 
