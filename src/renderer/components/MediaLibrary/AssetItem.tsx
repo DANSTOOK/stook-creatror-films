@@ -37,6 +37,32 @@ export function saveMediaView(view: MediaView): void {
   }
 }
 
+/**
+ * How big the thumbnails are, as a factor on the size the panel's width
+ * suggests (index.css, .media-grid): Premiere's Project panel and Resolve's
+ * Media Pool both put this on a slider, and the panel's width alone cannot
+ * know whether someone is looking for a shot or reading names.
+ */
+export const TILE_ZOOM_KEY = 'scf.mediaTileZoom';
+export const TILE_ZOOM = { min: 0.6, max: 1.6, step: 0.05, initial: 1 } as const;
+
+export function loadTileZoom(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(TILE_ZOOM_KEY));
+    return Number.isFinite(stored) && stored >= TILE_ZOOM.min && stored <= TILE_ZOOM.max ? stored : TILE_ZOOM.initial;
+  } catch {
+    return TILE_ZOOM.initial;
+  }
+}
+
+export function saveTileZoom(zoom: number): void {
+  try {
+    window.localStorage.setItem(TILE_ZOOM_KEY, String(zoom));
+  } catch {
+    // Remembered for this session only.
+  }
+}
+
 const KIND_ICONS: Record<MediaKind, typeof FileVideo> = {
   video: FileVideo,
   audio: Music,

@@ -1,12 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { PanelsTopLeft } from 'lucide-react';
-import { TooltipLayer, tip } from '@renderer/components/Tooltip/Tooltip';
+import { TooltipLayer } from '@renderer/components/Tooltip/Tooltip';
 import { useT } from '@renderer/i18n';
 import type { DetachablePanel } from '@renderer/store/useWorkspaceStore';
 import { hasNativeBridge } from '@renderer/media/importMedia';
-import { addFrameWindow } from '@renderer/timing/animationFrame';
-import { PANEL_ICON, PANEL_NAME } from './panelInfo';
+import { addFrameWindow, cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { PANEL_NAME } from './panelInfo';
+import { PanelWindowContext, type PanelWindowScope } from './panelWindowContext';
 
 /**
  * A panel in a window of its own, for a second monitor.
@@ -27,11 +27,16 @@ import { PANEL_ICON, PANEL_NAME } from './panelInfo';
  * complaint about this feature in other editors.
  *
  * The window is the panel and nothing else: the panel fills it edge to edge
- * at any size, under a bar drawn like the editor's own title bar (the main
- * process gives these windows the same caption-button overlay). The bar names
- * the panel - the viewer's header shows the project's name, not "Viewer" -
- * and says in words how to put it back, which Premiere leaves to dragging a
- * tab and a menu nobody finds.
+ * at any size, and the panel's own header is the window's title bar. It used
+ * to sit under a bar of the window's own that named the panel a second time -
+ * 72px of chrome, half of it saying the same thing twice. Now the header
+ * drags the window, its controls stay clickable, and its right end leaves
+ * room for the minimise, maximise and close buttons Windows draws over it
+ * (the main process gives these windows the same caption-button overlay as
+ * the editor). The way back is the header's own detach button, turned round:
+ * "Back to editor", in words, where the panel was sent out from - which
+ * Premiere leaves to dragging a tab and a menu nobody finds. The window's
+ * title still names the panel for the taskbar and Alt+Tab.
  */
 
 export interface PanelWindowProps {
@@ -162,35 +167,66 @@ function mirrorRoot(target: Document): () => void {
   return () => observer.disconnect();
 }
 
-/** The window's own bar: what the panel is, and the way back. */
-function PanelWindowBar({ panel, onDock }: { panel: DetachablePanel; onDock(): void }): JSX.Element {
-  const t = useT();
-  const Icon = PANEL_ICON[panel];
-  return (
-    <header
-      data-testid={`panel-window-bar-${panel}`}
-      className="app-drag flex h-9 shrink-0 items-center gap-2 bg-panel-950 pl-3"
-      style={{
-        // The caption buttons' room, as in the editor's title bar.
-        paddingRight: 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + 8px)',
-      }}
-    >
-      <Icon size={14} aria-hidden className="shrink-0 text-slate-400" />
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-200">{t(PANEL_NAME[panel])}</span>
-      <button
-        type="button"
-        data-testid={`dock-${panel}`}
-        className="tool-button tool-button-dense app-no-drag shrink-0"
-        onClick={onDock}
-        {...tip(t('panel.dock'), { named: false })}
-      >
-        <PanelsTopLeft size={13} aria-hidden />
-        {/* Words while there is room; a narrow window keeps the icon, and the
-            name stays for a screen reader. */}
-        <span className="max-[439px]:sr-only">{t('panel.dockShort')}</span>
-      </button>
-    </header>
-  );
+/**
+ * Makes the headers along the top of a panel's window its title bar.
+ *
+ * Which headers those are depends on the window: the timeline's carries the
+ * mixer beside it, and then both headers touch the top edge but only the
+ * mixer's reaches the caption buttons. So rather than guess from the markup,
+ * each header that starts at the top of the window is measured: it becomes
+ * part of the drag strip (`panel-window-strip` in index.css), and the part of
+ * it under Windows' buttons is handed to it as padding (`--caption-room`).
+ * The buttons' area comes from the `titlebar-area-*` environment variables
+ * Chromium sets under a window-controls overlay - the same ones the editor's
+ * title bar reads - with Windows' usual 138px when they are missing.
+ */
+function fitTitleStrip(host: HTMLElement): () => void {
+  const doc = host.ownerDocument;
+  const view = doc.defaultView;
+  if (!view) return () => undefined;
+  const probe = doc.createElement('div');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText =
+    'position:fixed;top:0;height:0;visibility:hidden;pointer-events:none;' +
+    'left:env(titlebar-area-x, 0px);width:env(titlebar-area-width, calc(100vw - 138px));';
+  doc.body.appendChild(probe);
+
+  let frame = 0;
+  const fit = (): void => {
+    frame = 0;
+    const captionLeft = probe.getBoundingClientRect().right;
+    for (const header of Array.from(host.querySelectorAll<HTMLElement>('.panel-header'))) {
+      const box = header.getBoundingClientRect();
+      const onTop = box.height > 0 && box.top <= 1;
+      header.classList.toggle('panel-window-strip', onTop);
+      // Padding does not move the header's own edges, so this cannot feed back.
+      const room = onTop ? Math.max(0, Math.ceil(box.right - captionLeft)) : 0;
+      header.style.setProperty('--caption-room', `${room}px`);
+    }
+  };
+  const schedule = (): void => {
+    // Through the shared frame source, as every loop is: a window's own
+    // requestAnimationFrame starves when that window is minimised.
+    if (!frame) frame = requestFrame(fit);
+  };
+  schedule();
+  // A header appears or goes (a clip picked in an empty inspector), the window
+  // is resized, or Windows moves its buttons (another display scale).
+  const mutations = new MutationObserver(schedule);
+  mutations.observe(host, { childList: true, subtree: true });
+  const sizes = new ResizeObserver(schedule);
+  sizes.observe(host);
+  view.addEventListener('resize', schedule);
+  const overlay = (view.navigator as Navigator & { windowControlsOverlay?: EventTarget }).windowControlsOverlay;
+  overlay?.addEventListener('geometrychange', schedule);
+  return () => {
+    if (frame) cancelFrame(frame);
+    mutations.disconnect();
+    sizes.disconnect();
+    view.removeEventListener('resize', schedule);
+    overlay?.removeEventListener('geometrychange', schedule);
+    probe.remove();
+  };
 }
 
 export function PanelWindow({ panel, onClose, children, width = 900, height = 620 }: PanelWindowProps): JSX.Element | null {
@@ -198,6 +234,7 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
   const [popout, setPopout] = useState<Window | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const title = t('panel.windowTitle', { name: t(PANEL_NAME[panel]) });
+  const scope = useMemo<PanelWindowScope>(() => ({ panel, dock: onClose }), [panel, onClose]);
 
   useEffect(() => {
     let teardown: (() => void) | null = null;
@@ -225,8 +262,8 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
       // The same ground and text colour as the editor, so a panel does not flash
       // white while it opens.
       opened.document.body.className = document.body.className;
-      // A column the height of the window: the bar, then the panel stretched
-      // over everything left. The panel's own box is what fills - a block mount
+      // A column the height of the window, the panel stretched over all of
+      // it. The panel's own box is what fills - a block mount
       // let each panel take the height of its content, which left the inspector
       // a strip at the top of an empty window and pushed the viewer's transport
       // off the bottom.
@@ -296,18 +333,20 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
     if (host) host.ownerDocument.title = title;
   }, [host, title]);
 
+  useEffect(() => (host ? fitTitleStrip(host) : undefined), [host]);
+
   if (!host || !popout) return null;
   return createPortal(
-    <>
-      <PanelWindowBar panel={panel} onDock={onClose} />
+    <PanelWindowContext.Provider value={scope}>
       {/* Whatever panel is put here fills it, including one (the mixer) that
-          takes only the width of its content when docked. */}
-      <div data-testid={`panel-window-${panel}`} className="flex min-h-0 min-w-0 flex-1 px-1.5 pb-1.5 [&>*]:min-w-0 [&>*]:flex-1">
+          takes only the width of its content when docked. Edge to edge: the
+          window's frame is the panel's frame (`panel-window` in index.css). */}
+      <div data-testid={`panel-window-${panel}`} className="panel-window flex min-h-0 min-w-0 flex-1 [&>*]:min-w-0 [&>*]:flex-1">
         {children}
       </div>
       {/* Tips for the controls in this window, drawn in this window. */}
       <TooltipLayer view={popout} />
-    </>,
+    </PanelWindowContext.Provider>,
     host,
   );
 }

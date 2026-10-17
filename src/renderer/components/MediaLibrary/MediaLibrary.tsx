@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
 import {
   ArrowRightToLine,
   ChevronDown,
@@ -8,6 +8,7 @@ import {
   FolderPlus,
   FolderSymlink,
   Import,
+  Image as ImageIcon,
   LayoutGrid,
   Link2,
   Library,
@@ -34,7 +35,7 @@ import {
 import { assetsInBin, binPath, childBins, countAssetsDeep } from '@renderer/media/bins';
 import { useFlip } from '@renderer/motion/useFlip';
 import { ProxyBar } from './ProxyBar';
-import { AssetItem, loadMediaView, saveMediaView, type MediaView } from './AssetItem';
+import { AssetItem, TILE_ZOOM, loadMediaView, loadTileZoom, saveMediaView, saveTileZoom, type MediaView } from './AssetItem';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { canRelink, relinkMissing } from '@renderer/media/relink';
 import { errorText } from '@renderer/errorText';
@@ -132,6 +133,11 @@ export function MediaLibrary(): JSX.Element {
   const setView = (next: MediaView): void => {
     saveMediaView(next);
     setViewState(next);
+  };
+  const [tileZoom, setTileZoomState] = useState(loadTileZoom);
+  const setTileZoom = (next: number): void => {
+    saveTileZoom(next);
+    setTileZoomState(next);
   };
   const waveforms = useMediaStore((state) => state.waveforms);
   const [tab, setTabState] = useState<LibraryTab>(loadLibraryTab);
@@ -553,7 +559,7 @@ export function MediaLibrary(): JSX.Element {
             // needs, not a quarter each, and one cut short still says its
             // whole name when pointed at.
             title={tr(LIBRARY_TAB_LABEL[id])}
-            className={`relative h-control-dense min-w-0 flex-auto truncate rounded-control px-1 text-xs transition-colors ${
+            className={`relative h-control-dense min-w-0 max-w-36 flex-auto truncate rounded-control px-1 text-xs transition-colors ${
               tab === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
@@ -584,23 +590,31 @@ export function MediaLibrary(): JSX.Element {
         }}
       />
 
-      <div id="library-tabpanel" role="tabpanel" aria-labelledby={`library-tab-${tab}`} className="flex min-h-0 flex-1 flex-col">
+      <div
+        id="library-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`library-tab-${tab}`}
+        className={`flex min-h-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
+      >
       {tab === 'titles' && <TitlesBrowser />}
       {tab === 'transitions' && <TransitionsBrowser />}
       {tab === 'captions' && <TranscriptPanel />}
-      {tab === 'media' && !libraryEmpty && (
+      {/* Bins above the clips in a narrow panel; beside them, as Resolve's
+          Media Pool keeps its bin list, once the panel is wide (index.css). */}
+      {tab === 'media' && (
+      <div className="media-browser-body flex min-h-0 flex-1 flex-col">
+      {!libraryEmpty && (
         <nav
           role="tree"
           aria-label={tr('media.bins')}
-          className="max-h-[38%] shrink-0 overflow-y-auto border-b border-panel-700 p-1.5"
+          className="media-bins max-h-[38%] shrink-0 overflow-y-auto border-b border-panel-700 p-1.5"
         >
           {binRow(null, 0)}
           {binTree(null, 1)}
         </nav>
       )}
 
-      {tab === 'media' && (
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="media-clips min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
         {libraryEmpty ? (
           <button
             type="button"
@@ -623,6 +637,27 @@ export function MediaLibrary(): JSX.Element {
                 {tr(visibleAssets.length === 1 ? 'media.oneClip' : 'media.clips', { count: visibleAssets.length })}
               </span>
               <span className="flex-1" />
+              {/* Thumbnail size, on a slider as Premiere and Resolve have it.
+                  Double-click puts it back, as Premiere's does. */}
+              {view === 'grid' && (
+                <label className="media-zoom flex shrink-0 items-center gap-1 text-slate-400" {...tip(tr('media.thumbSize'), { hint: tr('media.thumbSizeHint'), named: false })}>
+                  <ImageIcon size={10} aria-hidden />
+                  <input
+                    type="range"
+                    data-testid="media-thumb-size"
+                    aria-label={tr('media.thumbSize')}
+                    className="w-16"
+                    min={TILE_ZOOM.min}
+                    max={TILE_ZOOM.max}
+                    step={TILE_ZOOM.step}
+                    value={tileZoom}
+                    style={{ '--fill': `${((tileZoom - TILE_ZOOM.min) / (TILE_ZOOM.max - TILE_ZOOM.min)) * 100}%` } as CSSProperties}
+                    onChange={(event) => setTileZoom(Number(event.target.value))}
+                    onDoubleClick={() => setTileZoom(TILE_ZOOM.initial)}
+                  />
+                  <ImageIcon size={14} aria-hidden />
+                </label>
+              )}
               {/* Thumbnails or list: two choices, one always on, so a segmented pair. */}
               <div role="radiogroup" aria-label={tr('media.view')} className="flex shrink-0 items-center rounded-control bg-panel-950 p-px">
                 {(
@@ -660,7 +695,10 @@ export function MediaLibrary(): JSX.Element {
               role="listbox"
               aria-label={tr('media.clipsLabel', { name: currentBinName })}
               data-view={view}
-              className={view === 'grid' ? 'grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-x-2 gap-y-2.5' : 'flex flex-col gap-1'}
+              // The grid's tile size follows the panel's width and the slider
+              // (index.css, .media-grid).
+              className={view === 'grid' ? 'media-grid' : 'flex flex-col gap-1'}
+              style={view === 'grid' ? ({ '--tile-zoom': tileZoom } as CSSProperties) : undefined}
             >
               {visibleAssets.map((asset) => (
                 <AssetItem
@@ -714,6 +752,7 @@ export function MediaLibrary(): JSX.Element {
             </ul>
           </>
         )}
+      </div>
       </div>
       )}
       </div>

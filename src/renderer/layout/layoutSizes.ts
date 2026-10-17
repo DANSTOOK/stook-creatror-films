@@ -17,6 +17,14 @@ export interface PanelLayout {
   mediaWidth: number;
   inspectorWidth: number;
   timelineHeight: number;
+  /**
+   * The media and inspector row's height while the viewer is in a window of
+   * its own. The timeline takes the rest then: with the picture on another
+   * screen, this window is for editing, and editing wants a tall timeline -
+   * the split Resolve's dual-screen Edit page makes. Kept apart from
+   * timelineHeight so that docking the viewer again finds the layout it left.
+   */
+  browserHeight: number;
 }
 
 export type LayoutKey = keyof PanelLayout;
@@ -30,12 +38,14 @@ export const DEFAULT_LAYOUT: PanelLayout = {
   mediaWidth: 260,
   inspectorWidth: 300,
   timelineHeight: 300,
+  browserHeight: 340,
 };
 
 export const LAYOUT_LIMITS: Record<LayoutKey, Limit> = {
   mediaWidth: { min: 200, max: 640 },
   inspectorWidth: { min: 240, max: 640 },
   timelineHeight: { min: 170, max: 900 },
+  browserHeight: { min: 180, max: 900 },
 };
 
 /** Width and height the preview keeps, whatever the other panels do. */
@@ -111,8 +121,10 @@ export function clampLayout(layout: PanelLayout, space: { width: number; height:
     width - MIN_PREVIEW_WIDTH - mediaWidth,
   );
   const timelineHeight = clampOne(layout.timelineHeight, LAYOUT_LIMITS.timelineHeight, height - MIN_PREVIEW_HEIGHT);
+  // The timeline under that row never gets less than its own minimum.
+  const browserHeight = clampOne(layout.browserHeight, LAYOUT_LIMITS.browserHeight, height - LAYOUT_LIMITS.timelineHeight.min);
 
-  return { mediaWidth, inspectorWidth, timelineHeight };
+  return { mediaWidth, inspectorWidth, timelineHeight, browserHeight };
 }
 
 /** `layout` with one panel grown by `growPx` (negative shrinks it), then fitted. */
@@ -140,7 +152,12 @@ export function parseLayout(raw: string | null): PanelLayout {
     return typeof value === 'number' && Number.isFinite(value) ? value : DEFAULT_LAYOUT[key];
   };
   return clampLayout(
-    { mediaWidth: field('mediaWidth'), inspectorWidth: field('inspectorWidth'), timelineHeight: field('timelineHeight') },
+    {
+      mediaWidth: field('mediaWidth'),
+      inspectorWidth: field('inspectorWidth'),
+      timelineHeight: field('timelineHeight'),
+      browserHeight: field('browserHeight'),
+    },
     { width: 0, height: 0 },
   );
 }

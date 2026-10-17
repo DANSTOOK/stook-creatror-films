@@ -13,6 +13,7 @@ import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { timelineRows } from '@renderer/components/Timeline/trackRows';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
+import { usePanelWindow } from '@renderer/components/Layout/panelWindowContext';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
@@ -55,7 +56,7 @@ interface MeterRefs {
 }
 
 /** A stereo meter: two bars on the fader's scale, green to red, and a peak line each. */
-function Meter({ register }: { register(refs: MeterRefs | null): void }): JSX.Element {
+function Meter({ register, wide = false }: { register(refs: MeterRefs | null): void; wide?: boolean }): JSX.Element {
   const bars = useRef<HTMLElement[]>([]);
   const bands = useRef<HTMLElement[]>([]);
   const holds = useRef<HTMLElement[]>([]);
@@ -66,7 +67,7 @@ function Meter({ register }: { register(refs: MeterRefs | null): void }): JSX.El
   return (
     <div aria-hidden className="flex h-full gap-px">
       {[0, 1].map((channel) => (
-        <div key={channel} className="scf-meter relative h-full w-1.5 overflow-hidden rounded-[1px]">
+        <div key={channel} className={`scf-meter relative h-full overflow-hidden rounded-[1px] ${wide ? 'w-2.5' : 'w-1.5'}`}>
           <span
             ref={(element) => {
               if (element) bars.current[channel] = element;
@@ -144,22 +145,32 @@ function Fader({
   );
 }
 
+/**
+ * A channel strip. Docked it is 70px, the narrowest a strip reads at, so the
+ * mixer beside the timeline takes as little of it as it can. In the mixer's
+ * own window (`roomy`) strips share the width up to 120px each: wider
+ * faders and meters are easier to read and to hit across a room, and three
+ * 70px strips used to sit in a corner of a 720px window.
+ */
 function Strip({
   name,
   colour,
   children,
   master = false,
+  roomy = false,
 }: {
   name: string;
   colour?: string;
   children: React.ReactNode;
   master?: boolean;
+  roomy?: boolean;
 }): JSX.Element {
   return (
     <div
-      className={`flex h-full w-[70px] shrink-0 flex-col items-center gap-1.5 rounded-control px-1.5 py-1.5 ${
-        master ? 'bg-panel-800' : 'bg-panel-950/60'
-      }`}
+      data-strip={master ? 'master' : 'track'}
+      className={`flex h-full shrink-0 flex-col items-center gap-1.5 rounded-control px-1.5 py-1.5 ${
+        roomy ? 'min-w-[70px] max-w-[120px] flex-1' : 'w-[70px]'
+      } ${master ? 'bg-panel-800' : 'bg-panel-950/60'}`}
     >
       <span className="flex w-full min-w-0 items-center gap-1">
         {colour && <span aria-hidden className="h-2.5 w-1 shrink-0 rounded-full" style={{ background: colour }} />}
@@ -177,18 +188,20 @@ function TrackStrip({
   anySolo,
   ducked,
   registerMeter,
+  roomy,
 }: {
   track: Track;
   anySolo: boolean;
   ducked: boolean;
   registerMeter(refs: MeterRefs | null): void;
+  roomy: boolean;
 }): JSX.Element {
   const t = useT();
   const updateTrack = useProjectStore((state) => state.updateTrack);
   const audible = isTrackAudible(track, anySolo);
 
   return (
-    <Strip name={track.name} colour={TRACK_TYPE_COLORS[track.type]}>
+    <Strip name={track.name} colour={TRACK_TYPE_COLORS[track.type]} roomy={roomy}>
       <input
         type="range"
         className="h-3 w-full"
@@ -213,7 +226,7 @@ function TrackStrip({
       <div className={`flex min-h-0 w-full flex-1 items-stretch justify-center gap-1 ${audible ? '' : 'opacity-50'}`}>
         <Scale />
         <Fader label={t('mixer.trackLevel', { name: track.name })} gain={track.volume} onChange={(volume) => updateTrack(track.id, { volume })} />
-        <Meter register={registerMeter} />
+        <Meter register={registerMeter} wide={roomy} />
       </div>
       <span className="flex w-full items-center justify-center" title={ducked ? t('mixer.ducked') : undefined}>
         <ValueField
@@ -393,6 +406,8 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
 
   const anySolo = hasSoloedTrack(project);
+  // In a window of its own, not beside a timeline: the strips may take room.
+  const roomy = usePanelWindow()?.panel === 'mixer';
   // Same order as the timeline rows.
   const tracks = timelineRows(tracksRaw);
 
@@ -514,18 +529,21 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
             anySolo={anySolo}
             ducked={duckingOn && track.bus === 'music'}
             registerMeter={register(track.id)}
+            roomy={roomy}
           />
         ))}
-        {/* The master at the right-hand end, as on a desk, however wide the
-            mixer's own window is made. */}
-        <span aria-hidden className="ml-auto w-px shrink-0 bg-panel-700" />
-        <Strip name={t('mixer.master')} master>
+        {/* The master straight after the last track, past a divider and on a
+            lighter ground, as Resolve's Edit-page mixer and Logic's mixer
+            place it. Pinned to the far edge, it left a hole the width of the
+            window between the tracks and the master. */}
+        <span aria-hidden className="mx-0.5 w-px shrink-0 bg-panel-700" />
+        <Strip name={t('mixer.master')} master roomy={roomy}>
           <span className="h-3" aria-hidden />
           <label className="flex min-h-0 w-full flex-1 items-stretch justify-center gap-1">
             <span className="sr-only">{t('mixer.masterLevel')}</span>
             <Scale />
             <Fader label={t('mixer.masterLevel')} testId="master-fader" gain={masterVolume} onChange={setMasterVolume} />
-            <Meter register={register('master')} />
+            <Meter register={register('master')} wide={roomy} />
           </label>
           <span className="text-2xs tabular-nums text-slate-300">{dbLabel(masterVolume).replace(' dB', '')}</span>
           <span className="h-6" aria-hidden />

@@ -472,6 +472,57 @@
     @apply ring-2 ring-accent;
   }
 
+  /*
+    The media panel's clips at any width. Docked it is a 260px column; with the
+    viewer on another screen it is most of a row, and detached it can be a
+    whole monitor - where 96px thumbnails left one picture in a field of empty
+    panel. So the tile's size follows the panel's width (a fifth of it, from
+    104px for two across a docked panel to 200px), times the size slider
+    beside the view switch, and the grid fits as many as that allows.
+  */
+  .media-clips {
+    container-type: inline-size;
+  }
+
+  .media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(clamp(104px, 20cqi, 200px) * var(--tile-zoom, 1)), 1fr));
+    column-gap: 0.5rem;
+    row-gap: 0.625rem;
+  }
+
+  /*
+    Wide, the bins move to a list beside the clips, as in Resolve's Media Pool
+    and Final Cut's browser: stacked over a 1000px row, a bin list one name
+    long was a bar the width of the panel, and it took the height the clips
+    needed.
+  */
+  .media-browser {
+    container-type: inline-size;
+  }
+
+  /* Two classes deep, to win over the stacked layout's utilities. */
+  @container (min-width: 640px) {
+    .media-browser .media-browser-body {
+      flex-direction: row;
+    }
+
+    .media-browser .media-bins {
+      width: 200px;
+      max-height: none;
+      border-bottom-width: 0;
+      border-right-width: 1px;
+    }
+  }
+
+  /* A panel too narrow for the size slider keeps the view switch alone
+     (two classes deep, over the label's own display utility). */
+  @container (max-width: 279px) {
+    .media-clips .media-zoom {
+      display: none;
+    }
+  }
+
   .row-item:active {
     transform: translateY(0);
   }
@@ -583,6 +634,38 @@
   .app-drag select,
   .scf-overlay,
   .scf-menu {
+    -webkit-app-region: no-drag;
+  }
+
+  /*
+    A panel in a window of its own (Layout/PanelWindow). The window's frame is
+    the panel's frame: no inset, no rounded card inside a rounded window, no
+    second border - the room goes to what the panel shows.
+  */
+  .panel-window > .panel,
+  .panel-window > * > .panel,
+  .panel-window > * > * > .panel {
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /*
+    Its header is the window's title bar: it drags the window, and it is drawn
+    on the ground Windows paints its caption buttons on (the overlay colour is
+    panel-950), so those buttons sit in the bar instead of on a dark patch at
+    its end. Controls opt out of the drag or they could not be clicked; the
+    part under the caption buttons is padding, measured per header
+    (--caption-room), so nothing of the panel's ends up beneath them.
+  */
+  .panel-window-strip {
+    -webkit-app-region: drag;
+    background: theme('colors.panel.950');
+    /* Over any padding of the header's own: the timeline's has none. */
+    padding-right: calc(var(--pad-panel) + var(--caption-room, 0px)) !important;
+  }
+
+  .panel-window-strip :is(button, input, select, textarea, a, label, [role='tab'], [role='radiogroup'], [tabindex]) {
     -webkit-app-region: no-drag;
   }
 

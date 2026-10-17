@@ -73,7 +73,15 @@ describe('panel layout', () => {
       mediaWidth: LAYOUT_LIMITS.mediaWidth.min,
       inspectorWidth: 280,
       timelineHeight: LAYOUT_LIMITS.timelineHeight.min,
+      browserHeight: LAYOUT_LIMITS.browserHeight.min,
     });
+  });
+
+  it('keeps the timeline its minimum under the media row when the viewer is elsewhere', () => {
+    const tall = resizePanel(DEFAULT_LAYOUT, 'browserHeight', 5000, { width: 1400, height: 700 });
+    expect(tall.browserHeight).toBe(700 - LAYOUT_LIMITS.timelineHeight.min);
+    // A separate size: the timeline's own height for when the viewer is back is untouched.
+    expect(tall.timelineHeight).toBe(DEFAULT_LAYOUT.timelineHeight);
   });
 
   it('applies only the fixed limits before the space is measured', () => {
@@ -89,8 +97,10 @@ describe('panel layout', () => {
       mediaWidth: 420,
       inspectorWidth: DEFAULT_LAYOUT.inspectorWidth,
       timelineHeight: LAYOUT_LIMITS.timelineHeight.max,
+      // Saved before the row had a height of its own: it takes the default.
+      browserHeight: DEFAULT_LAYOUT.browserHeight,
     });
-    const stored = { mediaWidth: 333, inspectorWidth: 280, timelineHeight: 410 };
+    const stored = { mediaWidth: 333, inspectorWidth: 280, timelineHeight: 410, browserHeight: 300 };
     expect(parseLayout(JSON.stringify(stored))).toEqual(stored);
   });
 });
