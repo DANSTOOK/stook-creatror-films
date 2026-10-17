@@ -62,6 +62,32 @@ function loadTrack(url: string): Promise<{ track: Mp4VideoTrack; size: number } 
   return pending;
 }
 
+/**
+ * Test hook: make a reader's decoder fail part-way through a file, the way a
+ * real decode error does - the decoder closes and reports an error, and the
+ * frames it had not yet put out are lost.
+ *
+ * `window.__scfDecodeFault = { match, atSeconds, times }`: the first `times`
+ * decoders of a file whose URL contains `match` fail as they are fed the
+ * first sample at or after `atSeconds`. `fired` counts the failures caused,
+ * so a test can tell that the fault it asked for really happened.
+ */
+interface DecodeFault {
+  match: string;
+  atSeconds: number;
+  times: number;
+  fired?: number;
+}
+
+function injectedFault(url: string, sample: Mp4Sample): boolean {
+  const fault = (globalThis as { __scfDecodeFault?: DecodeFault | null }).__scfDecodeFault;
+  if (!fault || fault.times <= 0 || sample.time < fault.atSeconds) return false;
+  if (!decodeURIComponent(url).includes(fault.match)) return false;
+  fault.times -= 1;
+  fault.fired = (fault.fired ?? 0) + 1;
+  return true;
+}
+
 /** Forget parsed tracks, e.g. when an asset is removed. */
 export function clearTrackCache(): void {
   trackCache.clear();
@@ -187,6 +213,12 @@ export class SequentialVideoReader {
     const sample = this.track.samples[this.nextFeed];
     const data = await this.bytes(sample);
     if (decoder.state !== 'configured') return;
+    if (injectedFault(this.url, sample)) {
+      decoder.close();
+      this.failure = new Error(`injected decode error at ${sample.time.toFixed(3)} s (test)`);
+      this.notify();
+      return;
+    }
     decoder.decode(
       new EncodedVideoChunk({
         type: sample.isSync ? 'key' : 'delta',
