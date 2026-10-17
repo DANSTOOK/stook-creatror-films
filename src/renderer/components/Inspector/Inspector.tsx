@@ -27,6 +27,7 @@ import { CaptionStyleTab } from './CaptionStyleTab';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
 import { MultiInspector } from './MultiInspector';
+import { LayerRow } from './LayerRow';
 import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
@@ -898,6 +899,9 @@ export function Inspector(): JSX.Element {
         </span>
         <DetachButton panel="inspector" />
       </header>
+      {/* Which layer it is on, and what hides it if anything does. Across
+          the whole panel, above the tabs: it is about the clip, not a tab. */}
+      <LayerRow project={project} clipIds={[clip.id]} />
 
       {/* Only the tabs that apply; a segmented control, as Resolve's are. */}
       <div

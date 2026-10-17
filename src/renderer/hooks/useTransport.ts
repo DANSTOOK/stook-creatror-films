@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { emitScrub } from '@renderer/audio/scrubAudio';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { shuttleRate } from './shuttle';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { spaceFromSlider } from './spaceFromSlider';
 
 /**
  * Playback transport.
@@ -147,9 +148,6 @@ export const getMountedClockCount = (): number => mountedClocks;
  */
 export function usePlaybackClock(): void {
   const isPlaying = useProjectStore((state) => state.ui.isPlaying);
-  const rafRef = useRef<number | null>(null);
-  const lastTimeRef = useRef(0);
-  const frameAccumulator = useRef(0);
 
   useEffect(() => {
     mountedClocks += 1;
@@ -167,20 +165,42 @@ export function usePlaybackClock(): void {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isPlaying) {
-      if (rafRef.current !== null) cancelFrame(rafRef.current);
-      rafRef.current = null;
-      return;
-    }
+  useEffect(() => (isPlaying ? runPlaybackClock() : undefined), [isPlaying]);
+}
 
-    lastTimeRef.current = performance.now();
-    frameAccumulator.current = 0;
+/** Where the clock's frames come from: the editor's windows, or a test's hand. */
+export interface FrameSource {
+  request(callback: FrameRequestCallback): number;
+  cancel(handle: number): void;
+}
 
-    const tick = (now: number): void => {
+const editorFrames: FrameSource = { request: requestFrame, cancel: cancelFrame };
+
+/**
+ * The loop behind `usePlaybackClock`: from now until the returned function
+ * is called, every frame moves the playhead on by the time that has passed,
+ * and the end of the timeline stops playback. Apart from the hook so that
+ * a test can hand it frames one at a time.
+ */
+export function runPlaybackClock(frames: FrameSource = editorFrames, startTime = performance.now()): () => void {
+  let lastTime = startTime;
+  let accumulator = 0;
+  let handle: number | null = null;
+  let reported = false;
+
+  const tick = (now: number): void => {
+    // The next frame is asked for first. Asked for last, as it was, any
+    // exception on the way - from anything the playhead's move notifies -
+    // ended the loop for good while the store still said "playing": the
+    // button showed Pause and the playhead stood still. The frame source
+    // reports an exception and carries on with the other loops, but it
+    // cannot ask again for a loop that never did.
+    handle = frames.request(tick);
+
+    try {
       const { project, ui, setCurrentFrame, setPlaying } = useProjectStore.getState();
-      const elapsedSeconds = (now - lastTimeRef.current) / 1000;
-      lastTimeRef.current = now;
+      const elapsedSeconds = (now - lastTime) / 1000;
+      lastTime = now;
 
       const result = advancePlayhead(
         {
@@ -191,27 +211,30 @@ export function usePlaybackClock(): void {
           rate: ui.playbackRate,
         },
         elapsedSeconds,
-        frameAccumulator.current,
+        accumulator,
       );
 
-      frameAccumulator.current = result.accumulator;
+      accumulator = result.accumulator;
       if (result.frame !== project.currentFrame) setCurrentFrame(result.frame);
 
       if (result.stopped) {
+        frames.cancel(handle);
+        handle = null;
         setPlaying(false);
-        return;
       }
+    } catch (error) {
+      // Said once per play, not thirty times a second.
+      if (!reported) console.error('Playback clock: a tick failed; playback carries on.', error);
+      reported = true;
+    }
+  };
 
-      rafRef.current = requestFrame(tick);
-    };
+  handle = frames.request(tick);
 
-    rafRef.current = requestFrame(tick);
-
-    return () => {
-      if (rafRef.current !== null) cancelFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [isPlaying]);
+  return () => {
+    if (handle !== null) frames.cancel(handle);
+    handle = null;
+  };
 }
 
 /** Global editing shortcuts, matching the layout Filmora users expect. */
@@ -221,8 +244,9 @@ export function useEditorShortcuts(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null;
-      // Never steal keys from a field the user is typing into.
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      // Never steal keys from a field the user is typing into - except Space
+      // from a slider, which has no use for it (spaceFromSlider).
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && !spaceFromSlider(event)) return;
       // The start screen is not the editor: no playing, cutting or nudging behind it.
       if (useSessionStore.getState().view !== 'editor') return;
 

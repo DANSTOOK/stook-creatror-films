@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { advancePlayhead } from '@renderer/hooks/useTransport';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { advancePlayhead, runPlaybackClock } from '@renderer/hooks/useTransport';
+import { FrameRace, type FrameWindow } from '@renderer/timing/animationFrame';
+import { useProjectStore } from '@renderer/store/useProjectStore';
 
 /**
  * The playback clock.
@@ -100,5 +102,126 @@ describe('advancePlayhead', () => {
     const second = advancePlayhead(options({ currentFrame: first.frame }), 1 / 30, 0);
 
     expect(second.frame).toBe(2);
+  });
+});
+
+/*
+  "A tick can no longer kill the clock", from the branch of 2026-10-02, checked
+  against v1.41. The clock asked for its next frame at the end of each tick,
+  so one exception on the way - thrown by anything the playhead's move
+  notifies - ended the loop for good while the store still said "playing":
+  Pause on screen, the playhead standing still. The frame source
+  (timing/animationFrame FrameRace) catches and reports a callback that
+  throws, so other loops go on - but a loop that never asked again stays
+  stopped. These drive the real loop with the real FrameRace, frame by frame.
+*/
+class HandWindow implements FrameWindow {
+  closed = false;
+  readonly performance = { timeOrigin: 0 };
+  private next = 1;
+  private readonly queued = new Map<number, FrameRequestCallback>();
+  requestAnimationFrame(callback: FrameRequestCallback): number {
+    this.queued.set(this.next, callback);
+    this.next += 1;
+    return this.next - 1;
+  }
+  cancelAnimationFrame(handle: number): void {
+    this.queued.delete(handle);
+  }
+  get waiting(): number {
+    return this.queued.size;
+  }
+  frame(now: number): void {
+    const due = [...this.queued.values()];
+    this.queued.clear();
+    for (const callback of due) callback(now);
+  }
+}
+
+describe('the playback loop', () => {
+  const state = () => useProjectStore.getState();
+  const FRAME_MS = 1000 / 30;
+  const offs: Array<() => void> = [];
+
+  const playing = (): { editor: HandWindow; stop: () => void } => {
+    state().newProject(1920, 1080, 30);
+    const track = state().project.tracks[0];
+    state().addClip({ trackId: track.id, name: 'c', sourceUri: 'media://c', startFrame: 0, durationFrames: 300 });
+    state().setCurrentFrame(0);
+    state().setPlaying(true);
+    const editor = new HandWindow();
+    const race = new FrameRace(editor);
+    const stop = runPlaybackClock({ request: (callback) => race.request(callback), cancel: (handle) => race.cancel(handle) }, 0);
+    offs.push(stop);
+    return { editor, stop };
+  };
+  const run = (editor: HandWindow, from: number, count: number): void => {
+    for (let i = from; i < from + count; i += 1) editor.frame(i * FRAME_MS);
+  };
+
+  afterEach(() => {
+    for (const off of offs.splice(0)) off();
+    state().setPlaying(false);
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('moves the playhead one frame per frame of real time', () => {
+    const { editor } = playing();
+    run(editor, 1, 30);
+    expect(state().project.currentFrame).toBeGreaterThanOrEqual(29);
+    expect(state().project.currentFrame).toBeLessThanOrEqual(30);
+  });
+
+  it('keeps going when one tick throws', () => {
+    // What FrameRace does with it: reported, and the other loops go on.
+    const reported: unknown[] = [];
+    vi.stubGlobal('reportError', (error: unknown) => reported.push(error));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { editor } = playing();
+    let thrown = 0;
+    offs.push(
+      useProjectStore.subscribe((now) => {
+        if (thrown === 0 && now.project.currentFrame > 5) {
+          thrown += 1;
+          throw new Error('test: one failing listener');
+        }
+      }),
+    );
+    run(editor, 1, 30);
+    expect(thrown).toBe(1);
+    expect(state().ui.isPlaying).toBe(true);
+    expect(state().project.currentFrame).toBeGreaterThanOrEqual(29);
+    expect(editor.waiting).toBe(1);
+  });
+
+  it('says so once per play, not once a frame, when every tick throws', () => {
+    vi.stubGlobal('reportError', () => undefined);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { editor } = playing();
+    offs.push(
+      useProjectStore.subscribe(() => {
+        throw new Error('test: a listener that always fails');
+      }),
+    );
+    run(editor, 1, 30);
+    expect(state().project.currentFrame).toBeGreaterThanOrEqual(29);
+    expect(errors.mock.calls.filter(([message]) => String(message).includes('Playback clock'))).toHaveLength(1);
+  });
+
+  it('stops at the end, and asks for no more frames', () => {
+    const { editor } = playing();
+    state().setCurrentFrame(state().project.durationFrames - 3);
+    run(editor, 1, 10);
+    expect(state().ui.isPlaying).toBe(false);
+    expect(state().project.currentFrame).toBe(state().project.durationFrames);
+    expect(editor.waiting).toBe(0);
+  });
+
+  it('asks for nothing once it is stopped from outside', () => {
+    const { editor, stop } = playing();
+    run(editor, 1, 3);
+    stop();
+    expect(editor.waiting).toBe(0);
   });
 });
