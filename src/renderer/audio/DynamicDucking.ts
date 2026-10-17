@@ -1,6 +1,7 @@
 import type { DuckingParams } from '@shared/types';
 import { DEFAULT_DUCKING } from '@shared/types';
 import { clamp } from '@shared/utils/math';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * Sidechain compression ("auto ducking").
@@ -107,15 +108,15 @@ export class DynamicDucking {
     this.currentGain = target;
     this.musicGain.gain.setTargetAtTime(target, this.context.currentTime, timeConstant / 3);
 
-    this.rafHandle = requestAnimationFrame(this.step);
+    this.rafHandle = requestFrame(this.step);
   };
 
   start(): void {
-    if (this.rafHandle === null) this.rafHandle = requestAnimationFrame(this.step);
+    if (this.rafHandle === null) this.rafHandle = requestFrame(this.step);
   }
 
   stop(): void {
-    if (this.rafHandle !== null) cancelAnimationFrame(this.rafHandle);
+    if (this.rafHandle !== null) cancelFrame(this.rafHandle);
     this.rafHandle = null;
     this.musicGain.gain.setTargetAtTime(1, this.context.currentTime, 0.05);
   }

@@ -149,13 +149,20 @@ interface FrameSample {
   thumbnailUri?: string;
 }
 
+/** A poster thumbnail's long edge (see sampleFrame). */
+const POSTER_EDGE_PX = 320;
+
 /**
- * Draw one frame once, and read both answers off it: whether the source carries
+ * Draw one frame, and read both answers off it: whether the source carries
  * real transparency, and a poster thumbnail for the media panel.
  *
- * Downscaled to at most 128px on the long edge - a sprite with any transparency
- * at all has plenty of it, so a full-resolution readback would be wasted work,
- * and that size doubles as a perfectly good thumbnail.
+ * The transparency is read at most 128px on the long edge - a sprite with any
+ * transparency at all has plenty of it, so a bigger readback would be wasted
+ * work. The thumbnail is drawn bigger than that: the media panel's tiles grow
+ * with the panel to 200px and more (a panel on a second monitor), and a 128px
+ * picture was blurred at that size. 320px is sharp there at 150% display
+ * scale; an opaque frame is kept as a JPEG, so it costs the saved project
+ * about what the small PNG did.
  */
 function sampleFrame(source: CanvasImageSource, width: number, height: number): FrameSample {
   if (width === 0 || height === 0) return { hasAlphaChannel: false };
@@ -179,11 +186,24 @@ function sampleFrame(source: CanvasImageSource, width: number, height: number): 
     const hasAlphaChannel = hasTransparentPixels(
       context.getImageData(0, 0, sampleWidth, sampleHeight).data,
     );
-    return { hasAlphaChannel, thumbnailUri: canvas.toDataURL('image/png') };
+    return { hasAlphaChannel, thumbnailUri: posterFrame(source, width, height, hasAlphaChannel) ?? canvas.toDataURL('image/png') };
   } catch {
     // A tainted canvas cannot be read; assume opaque rather than guessing.
     return { hasAlphaChannel: false };
   }
+}
+
+/** The media panel's picture of a frame: PNG where it is see-through, JPEG otherwise. */
+function posterFrame(source: CanvasImageSource, width: number, height: number, alpha: boolean): string | undefined {
+  const scale = Math.min(1, POSTER_EDGE_PX / Math.max(width, height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return undefined;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  return alpha ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
 }
 
 /** Read duration, dimensions and transparency straight from the decoder. */

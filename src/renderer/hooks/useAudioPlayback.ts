@@ -14,6 +14,7 @@ import {
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { mainMakesClipContent } from '@renderer/media/useClipContent';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * Connects the audio subsystem to the transport.
@@ -88,7 +89,7 @@ export function useAudioPlayback(): void {
     extractorRef.current = new WaveformExtractor();
 
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
       duckingRef.current?.dispose();
       duckingRef.current = null;
@@ -256,7 +257,7 @@ export function useAudioPlayback(): void {
 
     if (!isPlaying || playbackRate !== 1) {
       engine.stop();
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
       return;
     }
@@ -268,7 +269,7 @@ export function useAudioPlayback(): void {
     // playhead diverges from it the user moved the playhead, so audio is
     // rescheduled from the new position rather than left drifting.
     const watch = (): void => {
-      rafRef.current = requestAnimationFrame(watch);
+      rafRef.current = requestFrame(watch);
 
       const current = useProjectStore.getState();
       if (!current.ui.isPlaying) return;
@@ -279,10 +280,10 @@ export function useAudioPlayback(): void {
       }
     };
 
-    rafRef.current = requestAnimationFrame(watch);
+    rafRef.current = requestFrame(watch);
 
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
     };
   }, [isPlaying, playbackRate]);

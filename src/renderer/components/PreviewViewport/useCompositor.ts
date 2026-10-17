@@ -5,6 +5,7 @@ import {
 } from '@renderer/engine/FrameRenderer';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { tickScopes } from '@renderer/scopes/scopeFeed';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * Wires the WebGL compositor to the store.
@@ -49,7 +50,7 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
     }
 
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
       setActiveFrameRenderer(null);
       rendererRef.current?.dispose();
@@ -88,7 +89,7 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
 
     const draw = (now: number): void => {
       if (cancelled) return;
-      rafRef.current = requestAnimationFrame(draw);
+      rafRef.current = requestFrame(draw);
 
       const renderer = rendererRef.current;
       if (!renderer) return;
@@ -111,10 +112,10 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
       }
     };
 
-    rafRef.current = requestAnimationFrame(draw);
+    rafRef.current = requestFrame(draw);
     return () => {
       cancelled = true;
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
     };
   }, []);

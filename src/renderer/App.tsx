@@ -6,6 +6,7 @@ import { Splitter } from './components/Layout/Splitter';
 import { PanelSlot, markEditorShown } from './components/Layout/PanelSlot';
 import { PanelWindow, focusPanelWindow } from './components/Layout/PanelWindow';
 import { PanelEmptyState } from './components/Layout/PanelEmptyState';
+import { DetachButton } from './components/Layout/DetachButton';
 import { PictureInPicture2, SlidersHorizontal } from 'lucide-react';
 import { useWorkspaceStore } from './store/useWorkspaceStore';
 import { MediaLibrary } from './components/MediaLibrary';
@@ -117,6 +118,11 @@ export default function App(): JSX.Element {
       !(state.ui.selectedTransitionId && state.project.transitions?.[state.ui.selectedTransitionId]),
   );
 
+  // The mixer's window opens as wide as its strips need (Mixer: up to 120px
+  // each, and the master), rather than one width for three tracks or twelve.
+  const trackCount = useProjectStore((state) => state.project.tracks.length);
+  const mixerWindowWidth = Math.min(1280, Math.max(440, (trackCount + 1) * 124 + 32));
+
   const [mixerOpen, setMixerOpenState] = useState(() => {
     try {
       return window.localStorage.getItem(MIXER_OPEN_KEY) === '1';
@@ -179,10 +185,14 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (!compact) setRevealed({ media: false, inspector: false });
   }, [compact]);
+  // Folding the side panels away is for the viewer's sake; with the viewer in
+  // a window of its own there is nothing to make room for, and folding them
+  // left a laptop's editor with nothing in it but the timeline.
+  const folds = compact && !detached.viewer;
   const hidden: Record<PanelKey, boolean> = {
     timeline: chosenHidden.timeline,
-    media: chosenHidden.media || (compact && !revealed.media),
-    inspector: chosenHidden.inspector || (compact && !revealed.inspector),
+    media: chosenHidden.media || (folds && !revealed.media),
+    inspector: chosenHidden.inspector || (folds && !revealed.inspector),
   };
 
   /** Show or hide a panel: in a compact window, the side panels are revealed instead. */
@@ -191,7 +201,7 @@ export default function App(): JSX.Element {
     // A panel out in its own window is not here to show or hide: its button
     // brings that window to the front instead.
     if (detached[panel] && focusPanelWindow(panel)) return;
-    if (compact && panel !== 'timeline' && !chosenHidden[panel]) {
+    if (folds && panel !== 'timeline' && !chosenHidden[panel]) {
       setRevealed((current) => ({ ...current, [panel]: !current[panel] }));
       return;
     }
@@ -567,6 +577,16 @@ export default function App(): JSX.Element {
         : null;
   const timelineFills = rowFiller === null;
   const nothingHere = timelineFills && !timelineHere;
+  /*
+    With the viewer elsewhere and the timeline here, the row above is a
+    browser row - media and inspector - of a height of its own, and the
+    timeline takes the rest: on a dual-screen layout this window is the one
+    for editing, as Resolve's dual-screen Edit page gives one screen to the
+    timeline. Stretching the media panel over the whole row instead put one
+    thumbnail in a 1280px box over a 300px timeline.
+  */
+  const browserRow = rowFiller !== null && rowFiller !== 'viewer' && timelineHere;
+  const timelineGrows = timelineFills || browserRow;
   // The mixer is docked beside the timeline, and goes with it to its window.
   const mixerDocked = mixerOpen && !detached.mixer;
   const grows = (fills: boolean): string => (fills ? 'min-w-0 flex-1' : 'shrink-0');
@@ -595,7 +615,10 @@ export default function App(): JSX.Element {
       <div className="relative min-h-0 flex-1">
         <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col px-1.5 pb-1.5">
           <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
-            <main className={`flex min-h-0 ${rowFiller ? 'flex-1' : ''}`}>
+            <main
+              className={`flex min-h-0 ${rowFiller ? (browserRow ? 'shrink-0' : 'flex-1') : ''}`}
+              style={browserRow ? { height: fitted.browserHeight } : undefined}
+            >
               {/*
                 Each area has a wrapper that is always there, saying whether it
                 is open (data-state), so a later transition has something to
@@ -645,15 +668,19 @@ export default function App(): JSX.Element {
             <div
               data-panel="timeline"
               data-state={timelineHere ? 'open' : 'closed'}
-              className={`flex flex-col ${timelineFills && timelineHere ? 'min-h-0 flex-1' : 'shrink-0'}`}
+              className={`flex flex-col ${timelineGrows && timelineHere ? 'min-h-0 flex-1' : 'shrink-0'}`}
             >
               {timelineHere && (
                 <>
-                  {!timelineFills && border('timelineHeight', t('layout.resizeTimeline'), 'horizontal', -1)}
-                  <PanelSlot edge="bottom" className={timelineFills ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'}>
+                  {/* The border sizes the row above when that row has the
+                      height of its own, and the timeline otherwise. */}
+                  {browserRow
+                    ? border('browserHeight', t('layout.resizeBrowser'), 'horizontal', 1)
+                    : !timelineFills && border('timelineHeight', t('layout.resizeTimeline'), 'horizontal', -1)}
+                  <PanelSlot edge="bottom" className={timelineGrows ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'}>
                     <div
-                      className={`flex gap-1.5 ${timelineFills ? 'min-h-0 flex-1' : 'shrink-0'}`}
-                      style={timelineFills ? undefined : { height: fitted.timelineHeight }}
+                      className={`flex gap-1.5 ${timelineGrows ? 'min-h-0 flex-1' : 'shrink-0'}`}
+                      style={timelineGrows ? undefined : { height: fitted.timelineHeight }}
                     >
                       <div className="min-w-0 flex-1">
                         <Timeline />
@@ -680,7 +707,7 @@ export default function App(): JSX.Element {
                     onClick={() => {
                       useWorkspaceStore.getState().dockAll();
                       setHidden({ media: false, inspector: false, timeline: false });
-                      if (compact) setRevealed({ media: true, inspector: true });
+                      if (folds) setRevealed({ media: true, inspector: true });
                     }}
                   >
                     {t('panel.bringBack')}
@@ -707,7 +734,11 @@ export default function App(): JSX.Element {
                   <Timeline />
                 </div>
                 {mixerDocked && (
-                  <div className="flex min-h-0 max-w-[45%] shrink-0">
+                  // Never narrower than its header: that header shares the
+                  // window's title strip with Windows' caption buttons, and
+                  // squeezed under 300px its Ducking and close buttons went
+                  // beneath them. The strips scroll instead.
+                  <div className="flex min-h-0 min-w-[300px] max-w-[45%] shrink-0">
                     <Mixer onClose={() => setMixerOpen(false)} />
                   </div>
                 )}
@@ -725,6 +756,12 @@ export default function App(): JSX.Element {
                   rather than holding one line at the top of an empty box. */}
               {nothingSelected ? (
                 <section data-testid="inspector-empty" className="panel w-full">
+                  {/* The header every panel's window has: it is the title
+                      bar there, with the way back in it. */}
+                  <header className="panel-header">
+                    <span className="min-w-0 flex-1 truncate">{t('inspector.title')}</span>
+                    <DetachButton panel="inspector" />
+                  </header>
                   <PanelEmptyState icon={SlidersHorizontal} title={t('panel.noneSelected')} hint={t('panel.noneSelectedHint')} />
                 </section>
               ) : (
@@ -733,7 +770,7 @@ export default function App(): JSX.Element {
             </PanelWindow>
           )}
           {view === 'editor' && mixerOpen && detached.mixer && (
-            <PanelWindow panel="mixer" onClose={() => setDetached('mixer', false)} width={720} height={540}>
+            <PanelWindow panel="mixer" onClose={() => setDetached('mixer', false)} width={mixerWindowWidth} height={540}>
               <Mixer onClose={() => setMixerOpen(false)} />
             </PanelWindow>
           )}

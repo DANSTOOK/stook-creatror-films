@@ -15,6 +15,7 @@ import {
   transitionLoopProgress,
 } from './libraryThumbs';
 import { TITLE_DRAG_TYPE, TRANSITION_DRAG_TYPE, useLibraryDragStore, type LibraryDragKind } from './libraryDrag';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * The Titles and Transitions tabs of the library panel: templates to drag
@@ -62,11 +63,11 @@ function Thumb({ draw, playing, ready }: { draw: Draw; playing: boolean; ready: 
         return;
       }
       draw(context, (now - started) / 1000);
-      frame = requestAnimationFrame(tick);
+      frame = requestFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
+    frame = requestFrame(tick);
     return () => {
-      cancelAnimationFrame(frame);
+      cancelFrame(frame);
       draw(context, null);
     };
   }, [draw, playing, ready]);

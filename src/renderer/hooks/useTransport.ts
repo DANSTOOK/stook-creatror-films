@@ -3,6 +3,7 @@ import { emitScrub } from '@renderer/audio/scrubAudio';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { shuttleRate } from './shuttle';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * Playback transport.
@@ -168,7 +169,7 @@ export function usePlaybackClock(): void {
 
   useEffect(() => {
     if (!isPlaying) {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
       return;
     }
@@ -201,13 +202,13 @@ export function usePlaybackClock(): void {
         return;
       }
 
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestFrame(tick);
     };
 
-    rafRef.current = requestAnimationFrame(tick);
+    rafRef.current = requestFrame(tick);
 
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
     };
   }, [isPlaying]);
