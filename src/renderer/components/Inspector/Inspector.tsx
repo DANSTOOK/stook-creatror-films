@@ -28,6 +28,7 @@ import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { TransitionPanel } from './TransitionPanel';
 import { MultiInspector } from './MultiInspector';
 import { BackgroundRemovalRows } from './BackgroundRemovalRows';
+import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
 
@@ -554,11 +555,11 @@ export function Inspector(): JSX.Element {
           {...sectionProps('backgroundRemoval')}
           title={t('inspector.backgroundRemoval')}
           enabled={clip.backgroundRemoval.enabled}
-          onEnabledChange={(enabled) => setEffect('backgroundRemoval', { enabled }, false)}
+          onEnabledChange={(enabled) => setBackgroundRemoval(clip.id, { enabled })}
           onReset={() => resetEffect('backgroundRemoval')}
           onRemove={() => removeEffect('backgroundRemoval')}
         >
-          <BackgroundRemovalRows clip={clip} asset={asset} onChange={(patch) => setEffect('backgroundRemoval', patch, false)} />
+          <BackgroundRemovalRows clip={clip} asset={asset} onChange={(patch) => setBackgroundRemoval(clip.id, patch)} />
         </Section>
       )}
 

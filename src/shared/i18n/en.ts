@@ -398,6 +398,8 @@ export const en = {
   'timeline.maskOff': 'Disable mask',
   'timeline.chromaOn': 'Enable chroma key',
   'timeline.chromaOff': 'Disable chroma key',
+  'timeline.backgroundOn': 'Enable Remove background',
+  'timeline.backgroundOff': 'Disable Remove background',
   'timeline.pixelOn': 'Enable pixel art',
   'timeline.pixelOff': 'Disable pixel art',
   'timeline.deleteClip': 'Delete clip',

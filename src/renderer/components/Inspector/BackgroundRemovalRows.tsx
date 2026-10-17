@@ -6,7 +6,7 @@ import type { MessageKey } from '@shared/i18n';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { currentLocale, useT } from '@renderer/i18n';
 import { formatBytes } from '@renderer/captions/captionModels';
-import { MATTE_MODEL_NAME, matteEntry, useMattes } from '@renderer/matting/mattes';
+import { MATTE_MODEL_NAME, declinedMattes as declined, matteEntry, useMattes } from '@renderer/matting/mattes';
 import { SwitchRow } from './rows';
 
 /**
@@ -24,9 +24,6 @@ const MODEL_LABEL: Record<MatteModelId, MessageKey> = {
   precise: 'mattes.modelPrecise',
   fast: 'mattes.modelFast',
 };
-
-/** Files and models whose analysis the person cancelled or deleted, this session: not started again on their own. */
-const declined = new Set<string>();
 
 const perFrame = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
 
@@ -59,11 +56,12 @@ export function BackgroundRemovalRows({ clip, asset, onChange }: BackgroundRemov
   const info = status?.models.find((candidate) => candidate.id === model);
   const usable = Boolean(asset && path && (asset.kind === 'video' || asset.kind === 'image'));
 
-  // On, the model here, no mattes and nothing running: start.
+  // On, the model here, no mattes and nothing running: start - again as
+  // soon as any of that changes (a model downloaded, the cache cleared).
   useEffect(() => {
-    if (!enabled || !usable || !asset || !info?.present || url !== null || job || error || declined.has(entry)) return;
-    void useMattes.getState().analyse(asset, model);
-  }, [enabled, usable, asset, info?.present, url, job, error, entry, model]);
+    if (!enabled || !usable || !asset || !info?.present || url !== null || job || error) return;
+    void useMattes.getState().ensureAnalysed(asset, model);
+  }, [enabled, usable, asset, info?.present, url, job, error, model]);
 
   const percent = job && job.total > 0 ? Math.min(100, Math.round((job.done / job.total) * 100)) : 0;
 

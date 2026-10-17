@@ -81,6 +81,7 @@ import {
   useLibraryDragStore,
 } from '@renderer/components/MediaLibrary/libraryDrag';
 import { assetLengthFrames } from '@renderer/media/assetLength';
+import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import TimelineCanvas, {
   type ClipHover,
   type LibraryDropHint,
@@ -567,6 +568,11 @@ export function Timeline(): JSX.Element {
             state.updateClip(clip.id, {
               chromaKey: { ...clip.chromaKey, enabled: !clip.chromaKey.enabled },
             }),
+        },
+        // The inspector's own way in: turned on, the file is analysed at once when the model is here.
+        {
+          label: t(clip.backgroundRemoval.enabled ? 'timeline.backgroundOff' : 'timeline.backgroundOn'),
+          onSelect: () => setBackgroundRemoval(clip.id, { enabled: !clip.backgroundRemoval.enabled }),
         },
         {
           label: t(clip.pixelArt.enabled ? 'timeline.pixelOff' : 'timeline.pixelOn'),

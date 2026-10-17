@@ -398,6 +398,8 @@ export const es: Messages = {
   'timeline.maskOff': 'Desactivar máscara',
   'timeline.chromaOn': 'Activar chroma',
   'timeline.chromaOff': 'Desactivar chroma',
+  'timeline.backgroundOn': 'Activar Quitar fondo',
+  'timeline.backgroundOff': 'Desactivar Quitar fondo',
   'timeline.pixelOn': 'Activar pixel art',
   'timeline.pixelOff': 'Desactivar pixel art',
   'timeline.deleteClip': 'Eliminar clip',

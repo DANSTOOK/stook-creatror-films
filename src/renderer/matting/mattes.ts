@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { MediaAsset, MatteModelId } from '@shared/types';
+import type { BackgroundRemovalConfig, MediaAsset, MatteModelId } from '@shared/types';
 import type { MatteEngineStatus } from '@shared/types/ipc';
 import type { MessageKey } from '@shared/i18n';
 import { t } from '@renderer/i18n';
@@ -59,6 +59,12 @@ interface MattesState {
   cancelDownload(): void;
   lookup(path: string, model: MatteModelId): Promise<void>;
   analyse(asset: MediaAsset, model: MatteModelId): Promise<void>;
+  /**
+   * Start the analysis of a file whose effect is on, if it needs one and
+   * can have one: the model here, no mattes yet, nothing running, no error
+   * standing, and not declined this session.
+   */
+  ensureAnalysed(asset: MediaAsset, model: MatteModelId): Promise<void>;
   cancel(path: string, model: MatteModelId): void;
   remove(path: string, model: MatteModelId): Promise<void>;
   /** Preferences: delete a model from this computer. False when refused (an analysis or download uses it). */
@@ -68,6 +74,12 @@ interface MattesState {
 }
 
 export const matteEntry = (path: string, model: MatteModelId): string => `${path}|${model}`;
+
+/**
+ * Files and models whose analysis the person cancelled or deleted, this
+ * session, by `path|model`: not started again on their own, only when asked.
+ */
+export const declinedMattes = new Set<string>();
 
 const bridge = (): typeof window.filmora | null => (typeof window !== 'undefined' && window.filmora?.mattesStatus ? window.filmora : null);
 
@@ -182,6 +194,18 @@ export const useMattes = create<MattesState>((set, get) => ({
     }
   },
 
+  async ensureAnalysed(asset, model) {
+    const path = asset.sourcePath;
+    if (!path || (asset.kind !== 'video' && asset.kind !== 'image')) return;
+    const entry = matteEntry(path, model);
+    if (declinedMattes.has(entry) || get().jobs[entry] || get().errors[entry]) return;
+    const status = get().status ?? (await get().refresh());
+    if (!status?.models.find((candidate) => candidate.id === model)?.present) return;
+    if (!(entry in get().urls)) await get().lookup(path, model);
+    if (get().urls[entry] !== null) return;
+    await get().analyse(asset, model);
+  },
+
   cancel(path, model) {
     void bridge()?.mattesCancel?.(path, model);
   },
@@ -227,6 +251,22 @@ export const useMattes = create<MattesState>((set, get) => ({
 // For the in-app checks, which tell a partial file from a finished one by what
 // the page holds; the page owns this state already, naming it adds no access.
 if (typeof window !== 'undefined') (window as { __scfMattes?: typeof useMattes }).__scfMattes = useMattes;
+
+/**
+ * Change a clip's Remove background - turn it on or off, its model, Invert -
+ * as one undo step: the one way the inspector and the timeline's menu both
+ * do it. Turned on, the clip's file is analysed straight away when the model
+ * is here, whether or not the inspector is showing the clip.
+ */
+export function setBackgroundRemoval(clipId: string, patch: Partial<BackgroundRemovalConfig>): void {
+  const store = useProjectStore.getState();
+  const clip = store.project.clips[clipId];
+  if (!clip || clip.title) return;
+  const next = { ...clip.backgroundRemoval, ...patch };
+  store.updateClip(clipId, { backgroundRemoval: next });
+  const asset = store.assets.find((candidate) => candidate.uri === clip.sourceUri);
+  if (next.enabled && asset) void useMattes.getState().ensureAnalysed(asset, next.model);
+}
 
 /** The mattes to draw a file with, for the renderer: null until they exist. */
 export const matteUrlFor = (path: string, model: MatteModelId): string | null => useMattes.getState().urls[matteEntry(path, model)] ?? null;
