@@ -515,9 +515,10 @@
     }
   }
 
-  /* A panel too narrow for the size slider keeps the view switch alone. */
+  /* A panel too narrow for the size slider keeps the view switch alone
+     (two classes deep, over the label's own display utility). */
   @container (max-width: 279px) {
-    .media-zoom {
+    .media-clips .media-zoom {
       display: none;
     }
   }
