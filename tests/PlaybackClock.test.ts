@@ -74,14 +74,50 @@ describe('advancePlayhead', () => {
     expect(tick.stopped).toBe(true);
   });
 
-  it('wraps to the start when looping', () => {
+  it('wraps exactly when looping: the frames past the end carry on from the start', () => {
+    // 995 + 30 frames is 25 frames past the end. It used to snap to 0 and
+    // drop those 25, so every time round the picture fell behind the sound.
     const tick = advancePlayhead(
       options({ currentFrame: 995, durationFrames: 1000, loop: true }),
       1,
       0,
     );
-    expect(tick.frame).toBe(0);
+    expect(tick.frame).toBe(25);
     expect(tick.stopped).toBe(false);
+  });
+
+  it('goes round the loop it is given, not the canvas', () => {
+    // In at 100, out at 160: 155 + 10 frames is 5 past the out point.
+    const tick = advancePlayhead(options({ currentFrame: 155, loop: true, loopStart: 100, loopEnd: 160 }), 10 / 30, 0);
+    expect(tick.frame).toBe(105);
+    // Never shows the out frame itself: the range ends before it.
+    const atEdge = advancePlayhead(options({ currentFrame: 159, loop: true, loopStart: 100, loopEnd: 160 }), 1 / 30, 0);
+    expect(atEdge.frame).toBe(100);
+  });
+
+  it('keeps the fraction across the wrap, so going round does not drift', () => {
+    let frame = 100;
+    let accumulator = 0;
+    // Half a frame a tick (exact in binary), 640 ticks: 320 frames on, round
+    // a 64-frame loop exactly five times.
+    for (let i = 0; i < 640; i += 1) {
+      const tick = advancePlayhead(options({ currentFrame: frame, fps: 32, loop: true, loopStart: 100, loopEnd: 164 }), 1 / 64, accumulator);
+      frame = tick.frame;
+      accumulator = tick.accumulator;
+    }
+    expect(frame).toBe(100);
+    expect(accumulator).toBe(0);
+  });
+
+  it('jumps into the loop when the playhead is past it', () => {
+    const tick = advancePlayhead(options({ currentFrame: 400, loop: true, loopStart: 100, loopEnd: 160 }), 1 / 30, 0);
+    expect(tick.frame).toBe(100);
+  });
+
+  it('goes round backwards too, from the start to the last frame', () => {
+    const tick = advancePlayhead(options({ currentFrame: 101, loop: true, loopStart: 100, loopEnd: 160, rate: -1 }), 3 / 30, 0);
+    // 101 - 3 = 98: two frames before the start is the second-to-last frame.
+    expect(tick.frame).toBe(158);
   });
 
   it('ignores a negative elapsed time rather than running backwards', () => {

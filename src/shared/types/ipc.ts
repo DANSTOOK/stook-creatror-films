@@ -322,7 +322,10 @@ export type MenuCommand =
   | 'generateCaptions'
   | 'importCaptions'
   | 'exportCaptions'
-  | 'fontLicenses';
+  | 'fontLicenses'
+  | 'detachAudio'
+  | 'rejoinAudio'
+  | 'loopPlayback';
 
 /** What the page tells the menu, so it can label, tick and grey its items. */
 export interface MenuState {
@@ -335,6 +338,8 @@ export interface MenuState {
   inspectorShown: boolean;
   timelineShown: boolean;
   fullscreenViewer: boolean;
+  /** Loop playback is on: ticked in View > Loop playback. Absent from an older page: off. */
+  loopPlayback?: boolean;
 }
 
 /**

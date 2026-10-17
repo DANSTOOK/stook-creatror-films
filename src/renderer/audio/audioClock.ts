@@ -33,3 +33,19 @@ export function audioClockAction(
   if (contextState !== 'running') return 'wait';
   return Math.abs(driftSeconds) > thresholdSeconds ? 'resync' : 'none';
 }
+
+/**
+ * How far the playhead is from the sound, round a loop.
+ *
+ * Round a loop the two wrap a moment apart: the picture a frame at a time,
+ * the sound on its sample. Just either side of the join they read a whole
+ * loop apart while being a frame apart, and taken at face value that would
+ * be a resync - a rebuilt graph - every time round. So the shorter way round
+ * is the drift. Without a loop (`loopSeconds` null) it is the drift as is.
+ */
+export function driftRoundLoop(driftSeconds: number, loopSeconds: number | null): number {
+  if (loopSeconds === null || !(loopSeconds > 0)) return driftSeconds;
+  // The other way round: the same two points, the loop's length the other side.
+  const across = driftSeconds - Math.sign(driftSeconds) * loopSeconds;
+  return Math.abs(across) < Math.abs(driftSeconds) ? across : driftSeconds;
+}

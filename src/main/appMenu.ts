@@ -37,6 +37,7 @@ const INITIAL: MenuState = {
   inspectorShown: true,
   timelineShown: true,
   fullscreenViewer: false,
+  loopPlayback: false,
 };
 
 /** The menu for a given page state. Pure apart from the callbacks it closes over. */
@@ -101,6 +102,11 @@ export function buildMenuTemplate(
       // The default transition, on the selected clips or the cut at the playhead.
       command('menu.addTransition', 'addTransition', { accelerator: 'CmdOrCtrl+T', enabled: inEditor }),
       { type: 'separator' },
+      // A video clip's sound as a clip of its own, and back (Final Cut's Clip >
+      // Detach Audio). Ctrl+Alt+S: Ctrl+Shift+S is Save As.
+      command('menu.detachAudio', 'detachAudio', { accelerator: 'CmdOrCtrl+Alt+S', enabled: inEditor }),
+      command('menu.rejoinAudio', 'rejoinAudio', { enabled: inEditor }),
+      { type: 'separator' },
       // Where Windows editors keep them (Premiere: Edit > Preferences).
       command('menu.preferences', 'preferences'),
     ],
@@ -145,6 +151,13 @@ export function buildMenuTemplate(
         type: 'checkbox',
         checked: state.fullscreenViewer,
         accelerator: 'Shift+F',
+        enabled: inEditor,
+      }),
+      // Final Cut keeps Loop Playback under View > Playback; Ctrl+/ is Resolve's key.
+      command('menu.loopPlayback', 'loopPlayback', {
+        type: 'checkbox',
+        checked: state.loopPlayback === true,
+        accelerator: 'CmdOrCtrl+/',
         enabled: inEditor,
       }),
       { type: 'separator' },
@@ -251,6 +264,7 @@ export function installAppMenu(getWindow: () => BrowserWindow | null): void {
       inspectorShown: raw.inspectorShown !== false,
       timelineShown: raw.timelineShown !== false,
       fullscreenViewer: raw.fullscreenViewer === true,
+      loopPlayback: raw.loopPlayback === true,
     };
     reportedLanguage = state.language;
     setMainLanguage(state.language);

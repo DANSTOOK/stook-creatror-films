@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import type { MediaAsset } from '@shared/types';
-import { AudioEngine, setActiveAudioEngine } from '@renderer/audio/AudioEngine';
+import { AudioEngine, setActiveAudioEngine, type LoopWindow } from '@renderer/audio/AudioEngine';
+import { currentLoopRange } from '@renderer/timing/loopRange';
 import { DynamicDucking } from '@renderer/audio/DynamicDucking';
 import { mixSignature } from '@renderer/audio/mixRouting';
 import { GRAIN_INTERVAL_MS, onScrub, planScrubGrains } from '@renderer/audio/scrubAudio';
 import { AudioStream } from '@renderer/audio/AudioStream';
-import { audioClockAction } from '@renderer/audio/audioClock';
+import { audioClockAction, driftRoundLoop } from '@renderer/audio/audioClock';
 import {
   bucketsFor,
   PeakAccumulator,
@@ -29,6 +30,14 @@ import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /** Playhead divergence beyond this many seconds means the user scrubbed. */
 const RESYNC_THRESHOLD_SECONDS = 0.35;
+
+/** The loop playback goes round now, in timeline seconds, or null when it does not loop. */
+function loopWindowOf(): LoopWindow | null {
+  const { project, ui } = useProjectStore.getState();
+  if (!ui.loopPlayback) return null;
+  const range = currentLoopRange(project, ui);
+  return { start: range.start / project.fps, end: range.end / project.fps };
+}
 
 /** Seconds of audio read at a time while measuring a waveform. */
 const PEAK_PASS_SECONDS = 4;
@@ -81,6 +90,13 @@ export function useAudioPlayback(): void {
   // project object itself is replaced on every scrub, and rebuilding the audio
   // graph once per frame of playhead movement is not something to do.
   const mixKey = useProjectStore((state) => mixSignature(state.project));
+  // What the loop goes round, as a string, so moving the playhead does not
+  // count as a change: only the loop switching or its range moving does.
+  const loopKey = useProjectStore((state) => {
+    if (!state.ui.loopPlayback) return '';
+    const range = currentLoopRange(state.project, state.ui);
+    return `${range.start}-${range.end}`;
+  });
 
   // The AudioContext starts suspended until a gesture resumes it, so creating
   // it up front costs nothing and keeps the decode path simple.
@@ -120,7 +136,7 @@ export function useAudioPlayback(): void {
     // A track that changed bus cannot be re-pointed live, so the schedule is
     // rebuilt - but only then, since rebuilding restarts every source.
     if (ui.isPlaying && engine.needsRebuild(project)) {
-      engine.play(project, project.currentFrame);
+      engine.play(project, project.currentFrame, loopWindowOf());
     }
 
     engine.applyMix(project);
@@ -251,7 +267,9 @@ export function useAudioPlayback(): void {
     };
   }, []);
 
-  // Start and stop with the transport, and recover from scrubs.
+  // Start and stop with the transport, and recover from scrubs. A loop that
+  // starts, stops or changes its range while playing is a new schedule: the
+  // next time round has to be laid on the audio clock for the new range.
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -264,7 +282,7 @@ export function useAudioPlayback(): void {
     }
 
     const { project } = useProjectStore.getState();
-    engine.play(project, project.currentFrame);
+    engine.play(project, project.currentFrame, loopWindowOf());
     // play() has just asked a suspended context to resume.
     let lastWake = performance.now();
 
@@ -280,13 +298,15 @@ export function useAudioPlayback(): void {
       if (!current.ui.isPlaying) return;
 
       const timelineSeconds = current.project.currentFrame / current.project.fps;
+      const loop = engine.loopWindow;
+      const drift = driftRoundLoop(timelineSeconds - engine.positionSeconds, loop ? loop.end - loop.start : null);
       const now = performance.now();
-      const action = audioClockAction(engine.context.state, timelineSeconds - engine.positionSeconds, now - lastWake, RESYNC_THRESHOLD_SECONDS);
+      const action = audioClockAction(engine.context.state, drift, now - lastWake, RESYNC_THRESHOLD_SECONDS);
       if (action === 'wake') {
         lastWake = now;
         void engine.context.resume().catch(() => undefined);
       } else if (action === 'resync') {
-        engine.play(current.project, current.project.currentFrame);
+        engine.play(current.project, current.project.currentFrame, loopWindowOf());
       }
     };
 
@@ -296,5 +316,5 @@ export function useAudioPlayback(): void {
       if (rafRef.current !== null) cancelFrame(rafRef.current);
       rafRef.current = null;
     };
-  }, [isPlaying, playbackRate]);
+  }, [isPlaying, playbackRate, loopKey]);
 }

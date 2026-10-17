@@ -1,5 +1,6 @@
 import type { Clip, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
+import { audioFollowsSpeed } from '@renderer/timing/clipSpeed';
 
 /**
  * Pure mixing rules.
@@ -34,6 +35,18 @@ export function trackGain(track: Track, anySolo: boolean): number {
 
 export const clipGain = (clip: Clip): number => clamp(clip.volume, 0, 2);
 
+/**
+ * Whether a clip's own sound is part of the mix at all.
+ *
+ * Not when it plays backwards (see audioFollowsSpeed), and not when its sound
+ * was separated onto a clip of its own: that clip plays it, and the picture
+ * clip playing it too would double it - 6 dB louder and, the moment either
+ * is moved, an echo. Playback, scrubbing and the export all ask this one
+ * question, so the three cannot disagree about how many times a sound plays.
+ */
+export const clipSounds = (clip: Pick<Clip, 'speed' | 'reversed' | 'audioDetached'>): boolean =>
+  clip.audioDetached !== true && audioFollowsSpeed(clip);
+
 export const panPosition = (pan: number): number =>
   clamp(Number.isFinite(pan) ? pan : 0, -1, 1);
 
@@ -56,7 +69,9 @@ export function mixSignature(project: ProjectState): string {
 
   const clips = Object.values(project.clips)
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map((c) => `${c.id}:${c.volume}:${c.pan}:${c.eq.low}/${c.eq.mid}/${c.eq.high}`)
+    // Whether a clip sounds at all is part of the mix: separating a clip's
+    // sound has to silence it at once, not at the next seek.
+    .map((c) => `${c.id}:${c.volume}:${c.pan}:${c.eq.low}/${c.eq.mid}/${c.eq.high}${c.audioDetached ? ':d' : ''}`)
     .join(',');
 
   return [

@@ -34,6 +34,8 @@ export const sameNumber = (a: number, b: number): boolean => Math.abs(a - b) < 1
 
 /** A clip whose source is audio only, by its track or by its media. */
 function isAudioOnly(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): boolean {
+  // A video's sound detached onto a clip of its own (Detach audio).
+  if (clip.audioOnly) return true;
   if (project.tracks.find((track) => track.id === clip.trackId)?.type === 'audio') return true;
   return assets.find((asset) => asset.uri === clip.sourceUri)?.kind === 'audio';
 }
@@ -69,6 +71,10 @@ export function groupSelection(ids: readonly string[], project: ProjectState, as
     visual.push(clip);
     if (clip.title) continue;
     gradeable.push(clip);
+    // A picture whose sound was detached has none of its own: its level is
+    // set on the sound clip, as the single-clip inspector says. Counted here,
+    // a group change would report it as changed while nothing is heard.
+    if (clip.audioDetached) continue;
     if (assets.find((asset) => asset.uri === clip.sourceUri)?.kind !== 'image') audible.push(clip);
   }
   return { all, visual, gradeable, audible };

@@ -231,6 +231,19 @@ describe('captions follow their footage', () => {
     expect(store().project.clips[clip.id].startFrame).toBe(90);
   });
 
+  it('a clip whose sound was detached: its captions go with the sound clip, where the words are heard', () => {
+    const [sound] = store().detachAudio([clipA]);
+    expect(sound).toBeDefined();
+    // Detaching moves nothing.
+    expect(span('uno dos')).toEqual([30, 72]);
+    // The sound slid two seconds later on its own (a J or L cut): the words go with it.
+    store().setUi({ rippleEnabled: false });
+    store().setClipStarts(new Map([[sound, 60]]));
+    expect(store().project.clips[clipA].startFrame).toBe(0);
+    expect(span('uno dos')).toEqual([90, 132]);
+    expect(byText('uno dos')?.caption?.link?.clipId).toBe(sound);
+  });
+
   it('a locked captions track is left exactly as it is', () => {
     store().updateTrack(trackId, { locked: true });
     store().setUi({ rippleEnabled: false });

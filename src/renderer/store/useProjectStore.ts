@@ -78,6 +78,14 @@ import {
   tidyLinkGroups,
   unlinkClips,
 } from '@renderer/components/Timeline/linkGroups';
+import {
+  assetHasSound,
+  bringIntoSync as bringPairIntoSync,
+  detachAudio,
+  rejoinAudio as rejoinAudioClips,
+  type DetachResult,
+} from '@renderer/components/Timeline/detachAudio';
+import { currentLoopRange, insideLoop } from '@renderer/timing/loopRange';
 import { rangeLength, withInPoint, withOutPoint } from './markRange';
 import { fitZoom, playheadAnchor, revealSpan, zoomAround } from '@renderer/components/Timeline/zoom';
 import {
@@ -234,6 +242,23 @@ interface ProjectStore {
   linkSelection(): void;
   /** Take the selection out of its link groups. */
   unlinkSelection(): void;
+  /**
+   * Detach audio (Ctrl+Alt+S): the sound of the selected video clips (or of
+   * `clipIds`) onto audio clips of their own, linked to them, the pictures'
+   * own sound silenced - one undo step. Returns the new sound clips' ids.
+   * See components/Timeline/detachAudio.ts.
+   */
+  detachAudio(clipIds?: string[]): string[];
+  /**
+   * Put detached sound back in its picture clips, where it still lines up -
+   * one undo step. Returns how many were joined and how many had been moved
+   * apart and were left alone.
+   */
+  rejoinAudio(clipIds?: string[]): { joined: number; apart: number };
+  /** Move or slip one part of a drifted picture-and-sound pair back in step with the other. */
+  bringIntoSync(clipId: string, mode: 'move' | 'slip'): boolean;
+  /** Loop playback on or off (Ctrl+/); turned on while playing, it goes round from where it is. */
+  setLoopPlayback(loop: boolean): void;
   /**
    * Zoom by `factor` around `anchorPx` (a position in the viewport); without an
    * anchor, around the playhead when it is on screen.
@@ -557,6 +582,9 @@ function soundOfAssets(assets: readonly MediaAsset[]): SoundOf {
   return (clip) => {
     const asset = byUri.get(clip.sourceUri);
     if (!asset || asset.kind === 'image') return 0;
+    // A picture whose sound was detached is silent: its captions follow the
+    // sound clip, which is where the words are heard now.
+    if (clip.audioDetached) return 0;
     // A video's sound is known only once it has been pulled out of the file.
     return asset.kind === 'audio' || asset.audioUri ? 2 : 1;
   };
@@ -713,6 +741,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setPlaying(playing) {
     if (!playing && get().ui.playbackRate !== 1) get().setUi({ playbackRate: 1 });
+    if (playing && !get().ui.isPlaying) enterLoop(get());
     set({ ui: { ...get().ui, isPlaying: playing } });
   },
 
@@ -858,6 +887,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setPlaybackRate(rate) {
     const clamped = Math.max(-8, Math.min(8, rate));
+    if (clamped !== 0 && !get().ui.isPlaying) enterLoop(get());
     // Stopping is a rate of zero, so K is the same action as L and J.
     get().setUi({ playbackRate: clamped === 0 ? 1 : clamped, isPlaying: clamped !== 0 });
   },
@@ -971,6 +1001,55 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const ids = ui.selectedClipIds.filter((id) => project.clips[id]);
     if (!ids.some((id) => project.clips[id].linkGroup)) return;
     get().transact('Unlink clips', (current) => ({ ...current, clips: unlinkClips(current.clips, ids) }));
+  },
+
+  detachAudio(clipIds) {
+    const { ui, assets } = get();
+    const ids = clipIds ?? ui.selectedClipIds;
+    const kinds = new Map(assets.map((asset) => [asset.uri, asset]));
+    let made: DetachResult | null = null;
+    get().transact('Detach audio', (project) => {
+      made = detachAudio(
+        project,
+        ids,
+        (uri) => kinds.get(uri)?.kind,
+        (uri) => assetHasSound(kinds.get(uri)),
+      );
+      return made.soundIds.length > 0 ? made.project : project;
+    });
+    const result = made as DetachResult | null;
+    if (!result || result.soundIds.length === 0) return [];
+    // The pairs are the selection now, as a linked group always is.
+    get().selectClips([...result.pictureIds, ...result.soundIds]);
+    return result.soundIds;
+  },
+
+  rejoinAudio(clipIds) {
+    const ids = clipIds ?? get().ui.selectedClipIds;
+    let outcome = { joined: 0, apart: 0 };
+    get().transact('Rejoin audio', (project) => {
+      const result = rejoinAudioClips(project.clips, ids);
+      outcome = { joined: result.joined.length, apart: result.apart };
+      return result.joined.length > 0 ? { ...project, clips: result.clips } : project;
+    });
+    return outcome;
+  },
+
+  bringIntoSync(clipId, mode) {
+    let moved = false;
+    get().transact(mode === 'move' ? 'Move into sync' : 'Slip into sync', (project) => {
+      const clip = project.clips[clipId];
+      const locked = project.tracks.find((track) => track.id === clip?.trackId)?.locked;
+      if (!clip || locked) return project;
+      const clips = bringPairIntoSync(project.clips, clipId, mode, sourceFramesFor(get(), clip));
+      moved = clips !== project.clips;
+      return moved ? { ...project, clips } : project;
+    });
+    return moved;
+  },
+
+  setLoopPlayback(loop) {
+    get().setUi({ loopPlayback: loop });
   },
 
   zoomBy(factor, anchorPx) {
@@ -2647,6 +2726,18 @@ function neighbourBefore(clips: Record<string, Clip>, clip: Clip): Clip | null {
         candidate.startFrame + candidate.durationFrames === clip.startFrame,
     ) ?? null
   );
+}
+
+/**
+ * Playback starting with the loop on starts inside it: from its start when
+ * the playhead is anywhere else, as Premiere and Resolve play In to Out from
+ * the In point. A playhead already inside plays on from where it is.
+ */
+function enterLoop(state: ProjectStore): void {
+  const { project, ui } = state;
+  if (!ui.loopPlayback) return;
+  const range = currentLoopRange(project, ui);
+  if (!insideLoop(range, project.currentFrame)) state.setCurrentFrame(range.start);
 }
 
 /* Selectors ----------------------------------------------------------------- */

@@ -140,9 +140,13 @@ export function trackAccepts(track: Pick<Track, 'type'>, kind: MediaAsset['kind'
 /** Picture tracks that take pictures: every visual track but captions. */
 export const isPictureTrack = (track: Pick<Track, 'type'>): boolean => isVisualTrack(track) && track.type !== 'captions';
 
-/** What kind of thing a clip is, for `trackAccepts`. */
-export function clipKind(clip: { caption?: unknown; title?: unknown; sourceUri: string }, kindOf: (uri: string) => MediaAsset['kind'] | undefined): MediaAsset['kind'] | 'caption' | undefined {
+/**
+ * What kind of thing a clip is, for `trackAccepts`. A video's sound separated
+ * onto a clip of its own is sound, whatever its file is.
+ */
+export function clipKind(clip: { caption?: unknown; title?: unknown; audioOnly?: boolean; sourceUri: string }, kindOf: (uri: string) => MediaAsset['kind'] | undefined): MediaAsset['kind'] | 'caption' | undefined {
   if (clip.caption) return 'caption';
   if (clip.title) return 'image';
+  if (clip.audioOnly) return 'audio';
   return kindOf(clip.sourceUri);
 }
