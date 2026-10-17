@@ -104,6 +104,7 @@ export function BackgroundRemovalRows({ clip, asset, onModelChange }: Background
             {t('dialog.cancel')}
           </button>
         </div>
+        {job.done > 0 && <p className="text-2xs leading-relaxed text-slate-400">{t('mattes.partialHint')}</p>}
       </div>
     );
   } else if (url) {

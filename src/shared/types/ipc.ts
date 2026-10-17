@@ -112,6 +112,7 @@ export const IPC = {
   mattesCancel: 'mattes:cancel',
   mattesDelete: 'mattes:delete',
   mattesProgress: 'mattes:progress',
+  mattesPartial: 'mattes:partial',
 } as const;
 
 /* Remove background ------------------------------------------------------------ */
@@ -159,6 +160,24 @@ export interface MatteProgressEvent {
   total: number;
   msPerFrame: number;
   device: 'gpu' | 'cpu' | null;
+  /**
+   * The file the analysis is writing, as a URL the page can read by range,
+   * once it holds at least one finished frame; null before. Which of its
+   * bytes are finished is asked of `mattesPartial`.
+   */
+  partialUrl: string | null;
+}
+
+/**
+ * What an analysis still running has finished: the frames written so far,
+ * whose bytes never change again (shared/matte/format.ts).
+ */
+export interface MattePartial {
+  width: number;
+  height: number;
+  fps: number;
+  /** The offsets from the one asked for on: frame i is the bytes [offsets[i], offsets[i + 1]). */
+  offsets: number[];
 }
 
 /* Captions ------------------------------------------------------------------ */
@@ -681,6 +700,12 @@ export interface FilmoraApi {
   /** Throw away this file's mattes for this model. */
   mattesDelete?(path: string, model: import('./index').MatteModelId): Promise<void>;
   onMatteProgress?(listener: (progress: MatteProgressEvent) => void): () => void;
+  /**
+   * The frames an analysis still running has finished, for its `partialUrl`:
+   * the offsets from index `from` on (0 for all of them). Null once that
+   * analysis has ended; its finished file is then found with `mattesFind`.
+   */
+  mattesPartial?(url: string, from: number): Promise<MattePartial | null>;
 }
 
 declare global {

@@ -7,6 +7,7 @@ import { t } from '@renderer/i18n';
 import { errorText } from '@renderer/errorText';
 import { notify } from '@renderer/notifications/notifications';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { PARTIAL_MATTE_MARK } from '@renderer/engine/MatteTextures';
 
 /**
  * Remove background, as the page knows it: which models are on this
@@ -44,6 +45,13 @@ interface MattesState {
    * kept of the old ones.
    */
   urls: Record<string, string | null>;
+  /**
+   * While a file is being analysed, its unfinished mattes by `path|model`:
+   * the temporary file the analysis writes, marked as such (`#partial`), so
+   * the frames finished so far can be shown before the rest
+   * (engine/MatteTextures). Gone the moment the analysis ends.
+   */
+  partials: Record<string, string>;
   jobs: Record<string, MatteJobState>;
   errors: Record<string, string>;
   refresh(): Promise<MatteEngineStatus | null>;
@@ -72,9 +80,16 @@ function listen(): void {
   });
   api.onMatteProgress?.((progress) => {
     const entry = matteEntry(progress.path, progress.model);
-    useMattes.setState((state) => ({
-      jobs: { ...state.jobs, [entry]: { done: progress.done, total: progress.total, msPerFrame: progress.msPerFrame, device: progress.device } },
-    }));
+    useMattes.setState((state) => {
+      // Only for an analysis this page is waiting on: an event that arrives
+      // after it ended must not bring back a file that is gone.
+      if (!state.jobs[entry]) return {};
+      const partial = state.partials[entry] ?? (progress.partialUrl ? `${withRevision(progress.partialUrl)}${PARTIAL_MATTE_MARK}` : undefined);
+      return {
+        jobs: { ...state.jobs, [entry]: { done: progress.done, total: progress.total, msPerFrame: progress.msPerFrame, device: progress.device } },
+        ...(partial && partial !== state.partials[entry] ? { partials: { ...state.partials, [entry]: partial } } : {}),
+      };
+    });
   });
 }
 
@@ -88,6 +103,7 @@ export const useMattes = create<MattesState>((set, get) => ({
   status: null,
   downloading: null,
   urls: {},
+  partials: {},
   jobs: {},
   errors: {},
 
@@ -151,11 +167,13 @@ export const useMattes = create<MattesState>((set, get) => ({
         seconds: asset.durationSeconds ?? 0,
         still: asset.kind === 'image',
       });
-      set((state) => ({ urls: { ...state.urls, [entry]: withRevision(url) } }));
+      // The finished file and the end of the partial one in a single step, so
+      // no frame is ever drawn with neither.
+      set((state) => ({ urls: { ...state.urls, [entry]: withRevision(url) }, partials: without(state.partials, entry) }));
     } catch (error) {
       set((state) => ({ errors: { ...state.errors, [entry]: errorText(error) } }));
     } finally {
-      set((state) => ({ jobs: without(state.jobs, entry) }));
+      set((state) => ({ jobs: without(state.jobs, entry), partials: without(state.partials, entry) }));
       void get().refresh();
     }
   },
@@ -172,8 +190,15 @@ export const useMattes = create<MattesState>((set, get) => ({
   },
 }));
 
+// For the in-app checks, which tell a partial file from a finished one by what
+// the page holds; the page owns this state already, naming it adds no access.
+if (typeof window !== 'undefined') (window as { __scfMattes?: typeof useMattes }).__scfMattes = useMattes;
+
 /** The mattes to draw a file with, for the renderer: null until they exist. */
 export const matteUrlFor = (path: string, model: MatteModelId): string | null => useMattes.getState().urls[matteEntry(path, model)] ?? null;
+
+/** The unfinished mattes of an analysis running now, for the renderer: null when none is. */
+export const partialMatteUrlFor = (path: string, model: MatteModelId): string | null => useMattes.getState().partials[matteEntry(path, model)] ?? null;
 
 /**
  * Find the mattes of every clip that has Remove background on, whether or

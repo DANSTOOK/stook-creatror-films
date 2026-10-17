@@ -20,6 +20,12 @@ import { outputToMatte, rgbToPlanar } from './pixels';
  * name, so a cancel, a crash or a power cut never leaves half a cache to be
  * trusted later.
  *
+ * The frames already in the temporary file can be shown before then: each
+ * is written once, after the last, and never touched again - the header and
+ * the index are only written at the end - so the main process is told where
+ * each one ends as soon as it is on disk, and the page reads those bytes
+ * while the rest is still being made.
+ *
  * A GPU that fails mid-way - out of memory, a driver reset - does not end
  * the job: the model is loaded again on the processor and the frame retried.
  */
@@ -161,6 +167,26 @@ function frameReader(child: ChildProcess, frameBytes: number): { next(): Promise
   };
 }
 
+/**
+ * Rename the finished file into place. The page may be reading the frames it
+ * already had from the temporary file at that moment; Node opens files
+ * sharing deletion, so that does not stand in the way, but a virus scanner
+ * looking at a new file can for a moment, and a finished analysis is not
+ * thrown away for that.
+ */
+async function renamePatiently(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 20 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
 /* The job -------------------------------------------------------------------- */
 
 async function run(job: MatteJob): Promise<void> {
@@ -196,6 +222,7 @@ async function run(job: MatteJob): Promise<void> {
     offsets.push(position);
     await file?.write(coded, 0, coded.length, position);
     position += coded.length;
+    send({ type: 'written', end: position });
   };
 
   let decoded = 0;
@@ -254,7 +281,7 @@ async function run(job: MatteJob): Promise<void> {
     await file.write(header, 0, header.length, 0);
     await file.close();
     file = null;
-    await rename(job.part, job.target);
+    await renamePatiently(job.part, job.target);
     send({
       type: 'done',
       frames: offsets.length - 1,

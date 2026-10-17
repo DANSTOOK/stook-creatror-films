@@ -243,6 +243,8 @@ export const es: Messages = {
   'mattes.noFile': 'Solo se puede quitar el fondo a un clip con un archivo de vídeo o de imagen.',
   'mattes.unavailable': 'Quitar fondo no está incluido en esta versión.',
   'mattes.notAnalysedExport': 'No se puede quitar el fondo de «{name}» en la exportación: el clip no está analizado. Analízalo en el inspector o desactiva Quitar fondo.',
+  'mattes.analysingExport': 'Todavía no se puede quitar el fondo de «{name}» en la exportación: el análisis aún no ha llegado a este fotograma. Espera a que termine o desactiva Quitar fondo.',
+  'mattes.partialHint': 'Los fotogramas ya analizados se ven sin fondo; el resto se ve entero hasta que el análisis llegue a ellos.',
   'mattes.errorUnknownModel': 'Ese no es uno de los modelos para quitar fondos.',
   'mattes.errorNoModel': 'El modelo para quitar fondos no está en este equipo.',
   'mattes.errorDownload': 'No se pudo descargar el modelo ({detail}). Revisa la conexión e inténtalo de nuevo.',

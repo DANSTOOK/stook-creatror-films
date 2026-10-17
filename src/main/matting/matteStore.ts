@@ -46,7 +46,11 @@ export class MatteFolder {
     return join(this.folder, `${key}${MATTE_EXTENSION}`);
   }
 
-  /** Where a build writes until it is complete. Never read: see the worker. */
+  /**
+   * Where a build writes until it is complete. Never taken for a finished
+   * file: only its finished frames are read, while it runs, at the offsets
+   * the worker reports (see the worker).
+   */
   partFor(key: string): string {
     return join(this.folder, `${key}.building-${process.pid}${MATTE_EXTENSION}.part`);
   }

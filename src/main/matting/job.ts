@@ -38,6 +38,13 @@ export type ToWorker = { type: 'start'; job: MatteJob } | { type: 'cancel' };
 export type FromWorker =
   | { type: 'device'; device: MatteDevice; probe?: { cpuMs: number; gpus: Array<{ index: number; ms: number }> } }
   | { type: 'progress'; done: number; total: number; msPerFrame: number }
+  /**
+   * One more frame is on disk, whole, and its bytes end at `end`: the next
+   * frame starts there. Sent only once the write has finished, so the page
+   * can read every frame up to it from the temporary file while the rest is
+   * still being made (mattingIpc.ts, mattesPartial).
+   */
+  | { type: 'written'; end: number }
   | { type: 'done'; frames: number; bytes: number; msPerFrame: number; timings: { probeMs: number; loadMs: number; framesMs: number } }
   | { type: 'cancelled' }
   | { type: 'error'; message: string };

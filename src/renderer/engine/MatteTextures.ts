@@ -6,6 +6,7 @@ import {
   readMatteIndex,
   type MatteHeader,
 } from '@shared/matte/format';
+import type { MattePartial } from '@shared/types/ipc';
 import type { ByteReader } from './mp4';
 import { rangeReader } from './rangeFetch';
 
@@ -25,7 +26,26 @@ import { rangeReader } from './rangeFetch';
  *   picture is held while a video seeks; the next draw has it.
  * - `prepare`, for the export: waits until this frame's matte is here, so
  *   every exported frame has its own.
+ *
+ * A file still being analysed is read too, marked `#partial`: its frames so
+ * far, at the offsets the main process reports (main/matting/mattingIpc.ts,
+ * mattesPartial), since the file itself has no header or index until it is
+ * finished. A frame the analysis has not reached has no matte at all - the
+ * viewer draws the clip whole there, never with a neighbour's matte, and the
+ * export refuses it.
  */
+
+/** The mark on the URL of a file still being analysed (renderer/matting/mattes.ts). */
+export const PARTIAL_MATTE_MARK = '#partial';
+export const isPartialMatteUrl = (url: string): boolean => url.endsWith(PARTIAL_MATTE_MARK);
+
+/** What the main process says of a file still being analysed; null once it has ended. */
+export type DescribePartial = (url: string, from: number) => Promise<MattePartial | null>;
+
+const describeOverIpc: DescribePartial = async (url, from) => (await window.filmora?.mattesPartial?.(url, from)) ?? null;
+
+/** How often a file still being analysed is asked for frames it has finished since. */
+const PARTIAL_REFRESH_MS = 250;
 
 /** Frames fetched per request: about half a second of footage, 100-500 KB. */
 const BLOCK = 16;
@@ -35,9 +55,12 @@ const KEEP_FRAMES = 48;
 const KEEP_TEXTURES = 8;
 
 interface OpenMatte {
+  /** For a file still being analysed, `frames` is how many are finished so far. */
   header: MatteHeader;
   offsets: number[];
   read: ByteReader;
+  /** Set while the file is still being analysed: when it was last asked after, and the question in flight. */
+  partial: { refreshedAt: number; refreshing: Promise<void> | null } | null;
 }
 
 export class MatteTextures {
@@ -54,22 +77,65 @@ export class MatteTextures {
   constructor(
     private readonly gl: WebGL2RenderingContext,
     private readonly reader: (url: string) => ByteReader = rangeReader,
+    private readonly describePartial: DescribePartial = describeOverIpc,
   ) {}
 
   private open(url: string): Promise<OpenMatte | null> {
     let file = this.files.get(url);
     if (!file) {
-      file = (async () => {
+      file = (async (): Promise<OpenMatte | null> => {
         const read = this.reader(url);
+        if (isPartialMatteUrl(url)) {
+          const described = await this.describePartial(url, 0);
+          if (!described || described.offsets.length === 0) return null;
+          const { width, height, fps, offsets } = described;
+          const header = { width, height, fps, frames: offsets.length - 1, indexOffset: 0 };
+          return { header, offsets, read, partial: { refreshedAt: performance.now(), refreshing: null } };
+        }
         const header = readMatteHeader(await read(0, MATTE_HEADER_BYTES));
         if (!header) return null;
         const offsets = readMatteIndex(await read(header.indexOffset, (header.frames + 1) * 8), header.frames);
-        return offsets ? { header, offsets, read } : null;
+        return offsets ? { header, offsets, read, partial: null } : null;
       })().catch(() => null);
       void file.then((open) => this.opened.set(url, open));
       this.files.set(url, file);
     }
     return file;
+  }
+
+  /**
+   * Ask after the frames a file still being analysed has finished since it
+   * was last asked: at most every PARTIAL_REFRESH_MS, unless `now`.
+   */
+  private grow(url: string, open: OpenMatte, now = false): Promise<void> {
+    const partial = open.partial;
+    if (!partial) return Promise.resolve();
+    if (partial.refreshing) return partial.refreshing;
+    if (!now && performance.now() - partial.refreshedAt < PARTIAL_REFRESH_MS) return Promise.resolve();
+    partial.refreshing = (async () => {
+      const described = await this.describePartial(url, open.offsets.length).catch(() => null);
+      // Null: the analysis has ended. Its finished file takes over under
+      // another URL; until then this one keeps the frames it had.
+      if (described) {
+        open.offsets.push(...described.offsets);
+        open.header = { ...open.header, frames: open.offsets.length - 1 };
+      }
+    })().finally(() => {
+      partial.refreshedAt = performance.now();
+      partial.refreshing = null;
+    });
+    return partial.refreshing;
+  }
+
+  /**
+   * The frame of the file a source frame shows, and whether it is there to
+   * be read. A finished file has a matte for every frame (the last is held
+   * past its end); a file still being analysed only for those it has reached.
+   */
+  private frameOf(open: OpenMatte, sourceFrame: number, fps: number): { frame: number; ready: boolean } {
+    if (!open.partial) return { frame: matteFrameFor(sourceFrame, fps, open.header.fps, open.header.frames), ready: true };
+    const frame = matteFrameFor(sourceFrame, fps, open.header.fps, Infinity);
+    return { frame, ready: frame < open.header.frames };
   }
 
   private remember(key: string, pixels: Uint8Array): void {
@@ -153,7 +219,12 @@ export class MatteTextures {
       return null;
     }
     if (open === null) return null;
-    const frame = matteFrameFor(sourceFrame, fps, open.header.fps, open.header.frames);
+    const { frame, ready } = this.frameOf(open, sourceFrame, fps);
+    if (!ready) {
+      // Not analysed yet: drawn whole, and asked after again shortly.
+      void this.grow(url, open);
+      return null;
+    }
     const pixels = this.frames.get(`${url}#${frame}`);
     if (pixels) {
       this.remember(`${url}#${frame}`, pixels);
@@ -164,11 +235,19 @@ export class MatteTextures {
     return held ? this.textures.get(held) ?? null : null;
   }
 
-  /** The export's: resolves once this frame's matte is ready, false when the file cannot be read. */
+  /**
+   * The export's: resolves once this frame's matte is ready; false when the
+   * file cannot be read, or is still being analysed and has not reached it.
+   */
   async prepare(url: string, sourceFrame: number, fps: number): Promise<boolean> {
     const open = await this.open(url);
     if (!open) return false;
-    const frame = matteFrameFor(sourceFrame, fps, open.header.fps, open.header.frames);
+    let { frame, ready } = this.frameOf(open, sourceFrame, fps);
+    if (!ready) {
+      await this.grow(url, open, true);
+      ({ frame, ready } = this.frameOf(open, sourceFrame, fps));
+      if (!ready) return false;
+    }
     if (!this.frames.has(`${url}#${frame}`)) await this.load(url, open, frame);
     return this.frames.has(`${url}#${frame}`);
   }
@@ -177,8 +256,8 @@ export class MatteTextures {
   exactTextureFor(url: string, sourceFrame: number, fps: number): WebGLTexture | null {
     const open = this.opened.get(url);
     if (!open) return null;
-    const frame = matteFrameFor(sourceFrame, fps, open.header.fps, open.header.frames);
-    const pixels = this.frames.get(`${url}#${frame}`);
+    const { frame, ready } = this.frameOf(open, sourceFrame, fps);
+    const pixels = ready ? this.frames.get(`${url}#${frame}`) : undefined;
     return pixels ? this.upload(url, open, frame, pixels) : null;
   }
 

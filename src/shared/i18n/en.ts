@@ -243,6 +243,8 @@ export const en = {
   'mattes.noFile': 'Only a clip with a video or picture file can have its background removed.',
   'mattes.unavailable': 'Background removal is not part of this build.',
   'mattes.notAnalysedExport': 'The background of “{name}” cannot be removed in the export: the clip has not been analysed. Analyse it in the inspector, or turn Remove background off.',
+  'mattes.analysingExport': 'The background of “{name}” cannot be removed in the export yet: its analysis has not reached this frame. Wait for it to finish, or turn Remove background off.',
+  'mattes.partialHint': 'Frames already analysed show without their background; the rest stay whole until the analysis reaches them.',
   'mattes.errorUnknownModel': 'That is not one of the background models.',
   'mattes.errorNoModel': 'The background model is not on this computer.',
   'mattes.errorDownload': 'The model could not be downloaded ({detail}). Check the connection and try again.',

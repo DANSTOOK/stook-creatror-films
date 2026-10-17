@@ -4,8 +4,8 @@ import { rm } from 'node:fs/promises';
 import { cpus } from 'node:os';
 import { join } from 'node:path';
 import { MATTE_MODEL_IDS, type MatteModelId } from '@shared/types';
-import { IPC, type MatteBuildRequest, type MatteEngineStatus, type MatteModelProgress, type MatteProgressEvent } from '@shared/types/ipc';
-import { matteSize } from '@shared/matte/format';
+import { IPC, type MatteBuildRequest, type MatteEngineStatus, type MatteModelProgress, type MattePartial, type MatteProgressEvent } from '@shared/types/ipc';
+import { MATTE_HEADER_BYTES, matteSize } from '@shared/matte/format';
 import { resolveFfmpegPath } from '../exporter/HardwareAccel';
 import { assertAllowedPath } from '../ipc/fileSystem';
 import { mediaUrlFor } from '../ipc/mediaProtocol';
@@ -38,7 +38,23 @@ interface Running {
   key: string;
   promise: Promise<string | null>;
   cancel(): void;
+  /**
+   * The frames finished so far, in the temporary file at `url`, once the
+   * analysis has started: frame i is the bytes [offsets[i], offsets[i + 1]).
+   */
+  partial(): PartialFile | null;
 }
+
+interface PartialFile {
+  url: string;
+  width: number;
+  height: number;
+  fps: number;
+  offsets: number[];
+}
+
+/** A partial URL as the page holds it, with its revision and marks taken off. */
+const bareUrl = (url: string): string => url.split(/[?#]/)[0];
 
 export function registerMattingHandlers(getWindow: () => BrowserWindow | null): { cancelAll(): void } {
   // SCF_MATTE_SMOOTHING=off keeps the model's own output, for measuring the smoothing (matteStore.ts).
@@ -200,9 +216,18 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
     const size = matteSize(width, height);
     let cancelled = false;
     let cancelWorker: (() => void) | null = null;
+    let partial: PartialFile | null = null;
 
     const progress = (done: number, total: number, msPerFrame: number): void =>
-      send(IPC.mattesProgress, { path, model: modelId, done, total, msPerFrame, device: deviceKind() } satisfies MatteProgressEvent);
+      send(IPC.mattesProgress, {
+        path,
+        model: modelId,
+        done,
+        total,
+        msPerFrame,
+        device: deviceKind(),
+        partialUrl: partial && partial.offsets.length > 1 ? partial.url : null,
+      } satisfies MatteProgressEvent);
 
     const promise = (async (): Promise<string | null> => {
       // Wait for the analysis before this one; it failing is not this one's business.
@@ -234,12 +259,15 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
           threads: Math.max(1, Math.floor(cpus().length / 2)),
           smoothing,
         };
+        partial = { url: mediaUrlFor(job.part), width: size.width, height: size.height, fps, offsets: [MATTE_HEADER_BYTES] };
         const outcome = await runWorker(
           job,
           (message) => {
             if (message.type === 'device') {
               device = message.device;
               console.info(`[matte] ${describeDevice(message.device)}${message.probe ? ` (probe ${JSON.stringify(message.probe)})` : ''}`);
+            } else if (message.type === 'written') {
+              partial?.offsets.push(message.end);
             } else if (message.type === 'progress') {
               progress(message.done, message.total, message.msPerFrame);
             } else if (message.type === 'done') {
@@ -269,8 +297,21 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
         cancelled = true;
         cancelWorker?.();
       },
+      partial: () => partial,
     });
     return promise;
+  });
+
+  ipcMain.handle(IPC.mattesPartial, (_event, url: unknown, from: unknown): MattePartial | null => {
+    if (typeof url !== 'string') return null;
+    const wanted = bareUrl(url);
+    for (const job of jobs.values()) {
+      const file = job.partial();
+      if (!file || file.url !== wanted) continue;
+      const start = Math.max(0, Math.floor(Number(from) || 0));
+      return { width: file.width, height: file.height, fps: file.fps, offsets: file.offsets.slice(start) };
+    }
+    return null;
   });
 
   ipcMain.handle(IPC.mattesCancel, (_event, path: unknown, model: unknown) => {
