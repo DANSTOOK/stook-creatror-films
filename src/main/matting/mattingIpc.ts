@@ -1,6 +1,6 @@
 import { app, ipcMain, net, utilityProcess, type BrowserWindow, type UtilityProcess } from 'electron';
 import { existsSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
 import { cpus } from 'node:os';
 import { join } from 'node:path';
 import { MATTE_MODEL_IDS, type MatteModelId } from '@shared/types';
@@ -10,7 +10,7 @@ import { resolveFfmpegPath } from '../exporter/HardwareAccel';
 import { assertAllowedPath } from '../ipc/fileSystem';
 import { mediaUrlFor } from '../ipc/mediaProtocol';
 import { mt } from '../language';
-import { ChecksumError, downloadModel, isModelReady, modelPath } from '../subtitles/models';
+import { ChecksumError, deleteModel, downloadModel, isModelReady, modelPath } from '../subtitles/models';
 import { MATTE_MODELS, matteModelById } from './catalog';
 import { deviceOverride, describeDevice, type MatteDevice } from './device';
 import type { FromWorker, MatteJob, ToWorker } from './job';
@@ -36,6 +36,7 @@ const isModelId = (value: unknown): value is MatteModelId => (MATTE_MODEL_IDS as
 
 interface Running {
   key: string;
+  model: MatteModelId;
   promise: Promise<string | null>;
   cancel(): void;
   /**
@@ -78,14 +79,15 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
     available: existsSync(workerPath()),
     device: deviceKind(),
     models: await Promise.all(
-      MATTE_MODELS.map(async (model) => ({
-        id: model.id,
-        bytes: model.bytes,
-        present: await isModelReady(modelsDir(), model),
-        source: model.source,
-        licence: model.licence,
-      })),
+      MATTE_MODELS.map(async (model) => {
+        const present = await isModelReady(modelsDir(), model);
+        // What the file really takes on disk, not the catalogue's figure.
+        const onDisk = present ? await stat(modelPath(modelsDir(), model)).catch(() => null) : null;
+        return { id: model.id, bytes: model.bytes, present, fileBytes: onDisk?.size ?? 0, source: model.source, licence: model.licence };
+      }),
     ),
+    cache: await folder.usage(),
+    analysing: [...new Set([...jobs.values()].map((job) => job.model))],
   });
 
   ipcMain.handle(IPC.mattesStatus, () => status());
@@ -130,6 +132,21 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
     if (model) downloads.get(model.id)?.abort();
   });
 
+  /**
+   * Delete a model from this computer. Refused, never forced, while an
+   * analysis runs or waits with it, or while it is downloading: the person
+   * cancels that first and knows what they stopped. Afterwards the effect
+   * asks to download it again, as on a computer that never had it.
+   */
+  ipcMain.handle(IPC.mattesModelDelete, async (_event, id: unknown): Promise<MatteEngineStatus> => {
+    const model = matteModelById(id);
+    if (!model) throw new Error(mt('mattes.errorUnknownModel'));
+    if (downloads.has(model.id)) throw new Error(mt('mattes.errorBusyDownload'));
+    if ([...jobs.values()].some((job) => job.model === model.id)) throw new Error(mt('mattes.errorBusyModel'));
+    await deleteModel(modelsDir(), model);
+    return status();
+  });
+
   /* Mattes ---------------------------------------------------------------------- */
 
   ipcMain.handle(IPC.mattesFind, async (_event, path: unknown, model: unknown) => {
@@ -146,6 +163,17 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
     if (found) await rm(found.file, { force: true });
   });
 
+  /**
+   * Throw every matte away. Refused while any analysis runs or waits: its
+   * temporary file is in the same folder, and the page may be reading its
+   * finished frames. Every clip is analysed again when next it needs to be.
+   */
+  ipcMain.handle(IPC.mattesClearCache, async (): Promise<MatteEngineStatus> => {
+    if (jobs.size > 0) throw new Error(mt('mattes.errorBusyCache'));
+    await folder.clear();
+    return status();
+  });
+
   /** By `path|model`: the analysis running or waiting for it. */
   const jobs = new Map<string, Running>();
   /** Analyses wait for the one before them. */
@@ -160,7 +188,11 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
         reject(error);
         return;
       }
-      let settled = false;
+      // Settled only once the process has gone, not on its last message:
+      // until it exits it may still hold the model file open, and the model
+      // can be deleted from Preferences the moment the analysis is over.
+      let outcome: { kind: 'done' | 'cancelled' } | { kind: 'error'; error: Error } | null = null;
+      let lingering: ReturnType<typeof setTimeout> | null = null;
       let complaint = '';
       child.stderr?.on('data', (chunk: Buffer) => {
         complaint = `${complaint}${chunk.toString('utf8')}`.slice(-2000);
@@ -169,22 +201,18 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
       setCancel(() => child.postMessage({ type: 'cancel' } satisfies ToWorker));
       child.on('message', (message: FromWorker) => {
         onMessage(message);
-        if (settled) return;
-        if (message.type === 'done') {
-          settled = true;
-          resolve('done');
-        } else if (message.type === 'cancelled') {
-          settled = true;
-          resolve('cancelled');
-        } else if (message.type === 'error') {
-          settled = true;
-          reject(new Error(message.message));
-        }
+        if (outcome) return;
+        if (message.type === 'done' || message.type === 'cancelled') outcome = { kind: message.type };
+        else if (message.type === 'error') outcome = { kind: 'error', error: new Error(message.message) };
+        else return;
+        // It exits straight after; one that does not is not waited on for ever.
+        lingering = setTimeout(() => child.kill(), 5000);
       });
       child.on('exit', (code) => {
-        if (settled) return;
-        settled = true;
-        reject(new Error(complaint.trim().split(/\r?\n/).slice(-2).join(' / ') || `exit ${code}`));
+        if (lingering) clearTimeout(lingering);
+        if (outcome?.kind === 'error') reject(outcome.error);
+        else if (outcome) resolve(outcome.kind);
+        else reject(new Error(complaint.trim().split(/\r?\n/).slice(-2).join(' / ') || `exit ${code}`));
       });
       child.postMessage({ type: 'start', job } satisfies ToWorker);
     });
@@ -292,6 +320,7 @@ export function registerMattingHandlers(getWindow: () => BrowserWindow | null): 
 
     jobs.set(id, {
       key,
+      model: modelId,
       promise,
       cancel: () => {
         cancelled = true;

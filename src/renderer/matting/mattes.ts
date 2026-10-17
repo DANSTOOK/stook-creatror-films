@@ -61,6 +61,10 @@ interface MattesState {
   analyse(asset: MediaAsset, model: MatteModelId): Promise<void>;
   cancel(path: string, model: MatteModelId): void;
   remove(path: string, model: MatteModelId): Promise<void>;
+  /** Preferences: delete a model from this computer. False when refused (an analysis or download uses it). */
+  deleteModel(id: MatteModelId): Promise<boolean>;
+  /** Preferences: throw every matte away. False when refused (an analysis is running). */
+  clearCache(): Promise<boolean>;
 }
 
 export const matteEntry = (path: string, model: MatteModelId): string => `${path}|${model}`;
@@ -187,6 +191,36 @@ export const useMattes = create<MattesState>((set, get) => ({
     if (!api?.mattesDelete) return;
     await api.mattesDelete(path, model);
     set((state) => ({ urls: { ...state.urls, [matteEntry(path, model)]: null } }));
+  },
+
+  async deleteModel(id) {
+    const api = bridge();
+    if (!api?.mattesModelDelete) return false;
+    try {
+      set({ status: await api.mattesModelDelete(id) });
+      return true;
+    } catch (error) {
+      // Refused while it analyses or downloads: the reason is the message.
+      notify(errorText(error), 'error');
+      void get().refresh();
+      return false;
+    }
+  },
+
+  async clearCache() {
+    const api = bridge();
+    if (!api?.mattesClearCache) return false;
+    try {
+      const status = await api.mattesClearCache();
+      // Every file is looked up afresh: none has mattes any more, and a clip
+      // with the effect on is analysed again when it next needs to be.
+      set({ status, urls: {}, errors: {} });
+      return true;
+    } catch (error) {
+      notify(errorText(error), 'error');
+      void get().refresh();
+      return false;
+    }
   },
 }));
 

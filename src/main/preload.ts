@@ -231,6 +231,8 @@ const api: FilmoraApi = {
     };
   },
   mattesPartial: (url, from) => ipcRenderer.invoke(IPC.mattesPartial, url, from) as Promise<MattePartial | null>,
+  mattesModelDelete: (id) => ipcRenderer.invoke(IPC.mattesModelDelete, id) as Promise<MatteEngineStatus>,
+  mattesClearCache: () => ipcRenderer.invoke(IPC.mattesClearCache) as Promise<MatteEngineStatus>,
 };
 
 contextBridge.exposeInMainWorld('filmora', api);

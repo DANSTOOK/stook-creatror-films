@@ -93,6 +93,24 @@ export class MatteFolder {
     return records.filter((record): record is MatteRecord => record !== null);
   }
 
+  /**
+   * What the folder takes on disk: finished mattes, and the temporary file
+   * of an analysis running now or left by one that crashed.
+   */
+  async usage(): Promise<{ files: number; bytes: number }> {
+    const names = await readdir(this.folder).catch(() => [] as string[]);
+    let files = 0;
+    let bytes = 0;
+    for (const name of names) {
+      if (!name.endsWith(MATTE_EXTENSION) && !name.endsWith(`${MATTE_EXTENSION}.part`)) continue;
+      const info = await stat(join(this.folder, name)).catch(() => null);
+      if (!info?.isFile()) continue;
+      files += 1;
+      bytes += info.size;
+    }
+    return { files, bytes };
+  }
+
   /** Throw every matte away, and whatever a crashed build left behind. */
   async clear(): Promise<number> {
     const names = await readdir(this.folder).catch(() => [] as string[]);
