@@ -16,6 +16,104 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.41.0-beta.1 — Paneles que aprovechan el espacio, y lo que quedó pendiente de la 1.40
+2026-10-17 · pre-release para probar
+
+Todo lo que la v1.40 dejó «sin verificar» o «fuera», junto: se comprobó
+cada cosa, y lo que estaba roto se arregló. Cuatro partes en paralelo, cada
+una en su rama, integradas y probadas juntas antes de publicar.
+
+### Arreglado
+- **Con el editor minimizado, el visor de la otra pantalla se congelaba.**
+  Era el caso central de trabajar con dos monitores, y fallaba: Windows
+  frena el reloj de una ventana minimizada, y el reproductor vivía en la
+  ventana principal. Medido con el editor minimizado:
+
+  | | Antes | Ahora |
+  |---|---|---|
+  | Fotogramas por segundo en el visor separado | ~1 | 30 |
+  | Desfase entre audio y vídeo | 0,5–1 s | 0–17 ms |
+
+  Ahora cada bucle (reproductor, visor, línea de tiempo, medidores) pide su
+  fotograma a todas las ventanas abiertas y lo da la primera que pueda; con
+  todo visible no se dibuja nada dos veces. El coste: unas décimas de punto
+  de CPU con cuatro paneles fuera.
+  - *Comprobado:* 30 fotogramas/s sostenidos durante 20 s con el editor
+    minimizado, en modo de prueba y en un arranque normal en pantalla; 7
+    pruebas unitarias.
+- **Una captura de un solo fotograma podía salir con el fotograma anterior.**
+  Afectaba a la miniatura de la pantalla de inicio y a la portada del
+  diálogo de exportar, y muy rara vez a una exportación que tuviera que
+  saltar de fotograma en fotograma (un MP4 cuyo decodificador falla a mitad,
+  o el modo de salto forzado). **Las exportaciones normales nunca se vieron
+  afectadas:** 0 fotogramas mal, comprobado con vídeos que llevan el número
+  de cada fotograma impreso como código de barras, y en 9000 fotogramas del
+  vídeo de Kratos.
+  - La causa estaba en el reproductor de vídeo de Chromium: con otro
+    decodificador trabajando a la vez, tras un salto a veces se queda en el
+    fotograma anterior aunque diga que está en el correcto. Ahora esas
+    capturas usan el mismo decodificador que la exportación.
+  - La exportación no se frena: 333–346 → 402 fotogramas/s en 5 minutos de
+    Kratos.
+  - *Comprobado:* una prueba nueva (`npm run test:exact-frames`) que revisa
+    fotograma a fotograma lo que se dibuja y lo que se exporta; **falla con
+    el código anterior** (4 de 360 fotogramas mal, todos justo antes de un
+    fotograma clave) y pasa con el nuevo. Forma parte de la suite de extremo
+    a extremo, que pasa de 21 a 22 comprobaciones.
+- **Paneles separados: demasiado espacio vacío.**
+  - Una sola barra de título: la cabecera del panel hace de barra de la
+    ventana, como en la ventana principal. Antes eran dos barras apiladas
+    (73 px), ahora una (36 px), y «Volver al editor» está donde estaba el
+    botón que lo sacó.
+  - **Medios:** las miniaturas crecen con la ventana (de 97 a 224 px de
+    ancho a 1600 px), hay un deslizador de tamaño como el de Premiere, y en
+    un panel ancho los bins pasan a una columna lateral, como en Resolve.
+  - **Mezclador:** canales más anchos (de 70 a 120 px) y el Master justo
+    después de la última pista, sin el hueco del medio.
+  - **Con el visor fuera**, la línea de tiempo gana el espacio (de ~300 a
+    ~508 px de alto) en vez de estirar los medios a 1280 px para una sola
+    miniatura.
+  - *Comprobado:* capturas de cada panel a tres tamaños, con un proyecto
+    casi vacío y con uno cargado, y 50/50 en una prueba que revisa en cada
+    ventana que hay una sola barra, que arrastra y que nada queda bajo los
+    botones de Windows.
+
+### Añadido
+- **Quitar fondo, lo que quedó fuera en la 1.40:**
+  - **Se ve mientras analiza:** los fotogramas ya calculados aparecen
+    recortados sin esperar al final. Los que faltan se ven enteros en la
+    vista previa, y la exportación se niega a usarlos en vez de exportarlos
+    con el fondo.
+  - **Preferencias** muestran los modelos descargados y la caché de
+    recortes con su tamaño real, y dejan borrarlos. Mientras un análisis los
+    usa, no se puede, y lo dice.
+  - **Invertir:** conserva el fondo y quita el sujeto.
+  - **Clic derecho en la línea de tiempo:** activar o desactivar quitar
+    fondo en ese clip.
+  - **Vídeos de velocidad de fotogramas variable** (los de móvil, por
+    ejemplo): el recorte ya no va desfasado. Con un archivo de tramos a
+    30/60/20 fps estaba mal en 20 de 134 fotogramas; ahora en 0.
+
+### Comprobado, ya funcionaba
+- Arrastrar medios, o un archivo desde el Explorador, a una línea de tiempo
+  separada: el clip cae donde se suelta. (Comprobado con eventos de arrastre
+  reales de Chromium; el arrastre físico del ratón entre ventanas, que hace
+  Windows, no.)
+- Una ventana guardada en un monitor que ya no existe vuelve a aparecer
+  centrada en uno que sí.
+
+### Sin verificar
+- Si un MP4 falla al decodificarse a mitad de exportación, ese clip se
+  exporta saltando de fotograma en fotograma, y ahí sigue siendo posible, muy
+  rara vez, un fotograma anterior.
+
+Cifras de esta versión, sobre todo lo integrado: **1230 pruebas unitarias**,
+**127/127** de interfaz (dos pasadas seguidas), **22/22** de extremo a
+extremo, **5/5** de instancia única y **35/35** de quitar fondo con el vídeo
+de Kratos.
+
+---
+
 ## v1.40.0-beta.1 — Quitar fondo, varios clips a la vez y paneles en otra pantalla de verdad
 2026-10-16 · pre-release para probar
 
