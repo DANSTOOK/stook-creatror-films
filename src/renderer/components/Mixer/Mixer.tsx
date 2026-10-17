@@ -14,6 +14,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { timelineRows } from '@renderer/components/Timeline/trackRows';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { usePanelWindow } from '@renderer/components/Layout/panelWindowContext';
+import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
 /**
  * The mixer, docked beside the timeline.
@@ -467,17 +468,17 @@ export function Mixer({ onClose }: MixerProps): JSX.Element {
       clear();
       return undefined;
     }
-    let frame = requestAnimationFrame(function tick(now) {
+    let frame = requestFrame(function tick(now) {
       const engine = getAudioEngine();
       if (engine) {
         const levels = engine.meterLevels();
         draw('master', levels.master, now);
         for (const id of meters.current.keys()) if (id !== 'master') draw(id, levels.tracks.get(id), now);
       }
-      frame = requestAnimationFrame(tick);
+      frame = requestFrame(tick);
     });
     return () => {
-      cancelAnimationFrame(frame);
+      cancelFrame(frame);
       clear();
     };
   }, [isPlaying]);

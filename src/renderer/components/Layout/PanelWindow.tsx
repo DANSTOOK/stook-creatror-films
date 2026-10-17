@@ -4,6 +4,7 @@ import { TooltipLayer } from '@renderer/components/Tooltip/Tooltip';
 import { useT } from '@renderer/i18n';
 import type { DetachablePanel } from '@renderer/store/useWorkspaceStore';
 import { hasNativeBridge } from '@renderer/media/importMedia';
+import { addFrameWindow, cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { PANEL_NAME } from './panelInfo';
 import { PanelWindowContext, type PanelWindowScope } from './panelWindowContext';
 
@@ -204,7 +205,9 @@ function fitTitleStrip(host: HTMLElement): () => void {
     }
   };
   const schedule = (): void => {
-    if (!frame) frame = view.requestAnimationFrame(fit);
+    // Through the shared frame source, as every loop is: a window's own
+    // requestAnimationFrame starves when that window is minimised.
+    if (!frame) frame = requestFrame(fit);
   };
   schedule();
   // A header appears or goes (a clip picked in an empty inspector), the window
@@ -217,7 +220,7 @@ function fitTitleStrip(host: HTMLElement): () => void {
   const overlay = (view.navigator as Navigator & { windowControlsOverlay?: EventTarget }).windowControlsOverlay;
   overlay?.addEventListener('geometrychange', schedule);
   return () => {
-    if (frame) view.cancelAnimationFrame(frame);
+    if (frame) cancelFrame(frame);
     mutations.disconnect();
     sizes.disconnect();
     view.removeEventListener('resize', schedule);
@@ -268,6 +271,9 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
       mount.className = 'flex h-full w-full flex-col bg-panel-950';
       opened.document.body.appendChild(mount);
       openWindows.set(panel, opened);
+      // Playback keeps its frames while the editor is minimised and this
+      // window is the one on a screen (timing/animationFrame).
+      const stopFrames = addFrameWindow(opened);
       setPopout(opened);
       setHost(mount);
 
@@ -294,6 +300,7 @@ export function PanelWindow({ panel, onClose, children, width = 900, height = 62
 
       teardown = () => {
         remember();
+        stopFrames();
         stopMirroring();
         opened.removeEventListener('keydown', forward);
         opened.removeEventListener('resize', remember);
