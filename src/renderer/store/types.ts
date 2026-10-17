@@ -321,7 +321,7 @@ export function createClip(input: CreateClipInput): Clip {
       smoothness: 0.1,
       spill: 0.3,
     },
-    backgroundRemoval: { enabled: false, model: 'precise' },
+    backgroundRemoval: { enabled: false, model: 'precise', invert: false },
     pixelArt: {
       enabled: false,
       pixelSize: 4,
@@ -374,13 +374,15 @@ const finite = (value: unknown, fallback: number): number =>
  * Remove background as read from a file. A project from before it existed
  * has none and opens with it off; a model this build does not know - a file
  * from a later version, say - falls back to the precise one rather than
- * leaving a clip that cannot be analysed.
+ * leaving a clip that cannot be analysed. A project from before Invert
+ * existed keeps the subject, as it did then.
  */
 export function normalizeBackgroundRemoval(value: unknown): BackgroundRemovalConfig {
   const source = (value && typeof value === 'object' ? value : {}) as Partial<BackgroundRemovalConfig>;
   return {
     enabled: source.enabled === true,
     model: (MATTE_MODEL_IDS as readonly unknown[]).includes(source.model) ? (source.model as MatteModelId) : 'precise',
+    invert: source.invert === true,
   };
 }
 

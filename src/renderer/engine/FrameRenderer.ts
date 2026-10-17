@@ -10,9 +10,9 @@ import { TitleLayers } from './TitleLayers';
 import { activeTransitionsAt } from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { withCaptionTitles } from '@renderer/captions/captionRender';
-import { matteUrlFor, useMattes } from '@renderer/matting/mattes';
+import { matteUrlFor, partialMatteUrlFor, useMattes } from '@renderer/matting/mattes';
 import { t } from '@renderer/i18n';
-import { MatteTextures } from './MatteTextures';
+import { MatteTextures, isPartialMatteUrl } from './MatteTextures';
 
 /**
  * Bundles the compositor with the caches it needs, and offers the two ways a
@@ -77,9 +77,11 @@ export class FrameRenderer {
     this.textures = new TextureManager(this.compositor.context);
     this.titles = new TitleLayers(this.textures);
     this.mattes = new MatteTextures(this.compositor.context);
-    // Mattes deleted or made again come with a new URL: let the old go.
+    // Mattes deleted or made again come with a new URL, and an analysis that
+    // ends takes its partial one away: let the old go.
     this.stopRetainingMattes = useMattes.subscribe((state) => {
-      this.mattes.retain(new Set(Object.values(state.urls).filter((url): url is string => url !== null)));
+      const finished = Object.values(state.urls).filter((url): url is string => url !== null);
+      this.mattes.retain(new Set([...finished, ...Object.values(state.partials)]));
     });
   }
 
@@ -89,12 +91,14 @@ export class FrameRenderer {
 
   /**
    * The mattes a clip is drawn with: undefined when Remove background is off
-   * (or it is a title), null when it is on and its file has none yet.
+   * (or it is a title), null when it is on and its file has none yet. While
+   * its file is being analysed, the frames finished so far (a partial URL).
    */
   private matteUrl(clip: Clip): string | null | undefined {
     if (clip.title || !clip.backgroundRemoval?.enabled) return undefined;
     const path = this.assets.get(clip.sourceUri)?.sourcePath;
-    return path ? matteUrlFor(path, clip.backgroundRemoval.model) : null;
+    if (!path) return null;
+    return matteUrlFor(path, clip.backgroundRemoval.model) ?? partialMatteUrlFor(path, clip.backgroundRemoval.model);
   }
 
   /** The viewer's source with its matte, when there is one to hand. */
@@ -102,7 +106,7 @@ export class FrameRenderer {
     const url = source ? this.matteUrl(clip) : undefined;
     if (!source || !url) return source;
     const matte = this.mattes.textureFor(url, sourceFrame, fps);
-    return matte ? { ...source, matte } : source;
+    return matte ? { ...source, matte, matteInvert: clip.backgroundRemoval.invert } : source;
   }
 
   /** Title clips, drawn as text into textures of their own. */
@@ -493,10 +497,11 @@ export class FrameRenderer {
           return;
         }
         // Remove background: the export waits for this frame's own matte,
-        // and refuses a clip that has none rather than export it whole.
+        // and refuses a clip that has none rather than export it whole - a
+        // frame the analysis running now has not reached included.
         const matte = this.matteUrl(clip);
         if (matte === null || (matte && !(await this.mattes.prepare(matte, sourceFrame, project.fps)))) {
-          throw new Error(t('mattes.notAnalysedExport', { name: clip.name }));
+          throw new Error(t(matte && isPartialMatteUrl(matte) ? 'mattes.analysingExport' : 'mattes.notAnalysedExport', { name: clip.name }));
         }
         if (this.sequential && this.media.get(clip.sourceUri) instanceof HTMLVideoElement) {
           let reader = this.sequential.get(clip.id);
@@ -538,7 +543,7 @@ export class FrameRenderer {
     // seekSources has made this frame's matte ready, or refused the frame.
     const url = this.matteUrl(clip);
     const matte = source && url ? this.mattes.exactTextureFor(url, sourceFrame, fps) : null;
-    return source && matte ? { ...source, matte } : source;
+    return source && matte ? { ...source, matte, matteInvert: clip.backgroundRemoval.invert } : source;
   }
 
   private exactPictureFor(clip: Clip, fps: number): ClipSource | null {

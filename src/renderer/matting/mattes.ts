@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import type { MediaAsset, MatteModelId } from '@shared/types';
+import type { BackgroundRemovalConfig, MediaAsset, MatteModelId } from '@shared/types';
 import type { MatteEngineStatus } from '@shared/types/ipc';
 import type { MessageKey } from '@shared/i18n';
 import { t } from '@renderer/i18n';
 import { errorText } from '@renderer/errorText';
 import { notify } from '@renderer/notifications/notifications';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { PARTIAL_MATTE_MARK } from '@renderer/engine/MatteTextures';
 
 /**
  * Remove background, as the page knows it: which models are on this
@@ -44,6 +45,13 @@ interface MattesState {
    * kept of the old ones.
    */
   urls: Record<string, string | null>;
+  /**
+   * While a file is being analysed, its unfinished mattes by `path|model`:
+   * the temporary file the analysis writes, marked as such (`#partial`), so
+   * the frames finished so far can be shown before the rest
+   * (engine/MatteTextures). Gone the moment the analysis ends.
+   */
+  partials: Record<string, string>;
   jobs: Record<string, MatteJobState>;
   errors: Record<string, string>;
   refresh(): Promise<MatteEngineStatus | null>;
@@ -51,11 +59,27 @@ interface MattesState {
   cancelDownload(): void;
   lookup(path: string, model: MatteModelId): Promise<void>;
   analyse(asset: MediaAsset, model: MatteModelId): Promise<void>;
+  /**
+   * Start the analysis of a file whose effect is on, if it needs one and
+   * can have one: the model here, no mattes yet, nothing running, no error
+   * standing, and not declined this session.
+   */
+  ensureAnalysed(asset: MediaAsset, model: MatteModelId): Promise<void>;
   cancel(path: string, model: MatteModelId): void;
   remove(path: string, model: MatteModelId): Promise<void>;
+  /** Preferences: delete a model from this computer. False when refused (an analysis or download uses it). */
+  deleteModel(id: MatteModelId): Promise<boolean>;
+  /** Preferences: throw every matte away. False when refused (an analysis is running). */
+  clearCache(): Promise<boolean>;
 }
 
 export const matteEntry = (path: string, model: MatteModelId): string => `${path}|${model}`;
+
+/**
+ * Files and models whose analysis the person cancelled or deleted, this
+ * session, by `path|model`: not started again on their own, only when asked.
+ */
+export const declinedMattes = new Set<string>();
 
 const bridge = (): typeof window.filmora | null => (typeof window !== 'undefined' && window.filmora?.mattesStatus ? window.filmora : null);
 
@@ -72,9 +96,16 @@ function listen(): void {
   });
   api.onMatteProgress?.((progress) => {
     const entry = matteEntry(progress.path, progress.model);
-    useMattes.setState((state) => ({
-      jobs: { ...state.jobs, [entry]: { done: progress.done, total: progress.total, msPerFrame: progress.msPerFrame, device: progress.device } },
-    }));
+    useMattes.setState((state) => {
+      // Only for an analysis this page is waiting on: an event that arrives
+      // after it ended must not bring back a file that is gone.
+      if (!state.jobs[entry]) return {};
+      const partial = state.partials[entry] ?? (progress.partialUrl ? `${withRevision(progress.partialUrl)}${PARTIAL_MATTE_MARK}` : undefined);
+      return {
+        jobs: { ...state.jobs, [entry]: { done: progress.done, total: progress.total, msPerFrame: progress.msPerFrame, device: progress.device } },
+        ...(partial && partial !== state.partials[entry] ? { partials: { ...state.partials, [entry]: partial } } : {}),
+      };
+    });
   });
 }
 
@@ -88,6 +119,7 @@ export const useMattes = create<MattesState>((set, get) => ({
   status: null,
   downloading: null,
   urls: {},
+  partials: {},
   jobs: {},
   errors: {},
 
@@ -151,13 +183,27 @@ export const useMattes = create<MattesState>((set, get) => ({
         seconds: asset.durationSeconds ?? 0,
         still: asset.kind === 'image',
       });
-      set((state) => ({ urls: { ...state.urls, [entry]: withRevision(url) } }));
+      // The finished file and the end of the partial one in a single step, so
+      // no frame is ever drawn with neither.
+      set((state) => ({ urls: { ...state.urls, [entry]: withRevision(url) }, partials: without(state.partials, entry) }));
     } catch (error) {
       set((state) => ({ errors: { ...state.errors, [entry]: errorText(error) } }));
     } finally {
-      set((state) => ({ jobs: without(state.jobs, entry) }));
+      set((state) => ({ jobs: without(state.jobs, entry), partials: without(state.partials, entry) }));
       void get().refresh();
     }
+  },
+
+  async ensureAnalysed(asset, model) {
+    const path = asset.sourcePath;
+    if (!path || (asset.kind !== 'video' && asset.kind !== 'image')) return;
+    const entry = matteEntry(path, model);
+    if (declinedMattes.has(entry) || get().jobs[entry] || get().errors[entry]) return;
+    const status = get().status ?? (await get().refresh());
+    if (!status?.models.find((candidate) => candidate.id === model)?.present) return;
+    if (!(entry in get().urls)) await get().lookup(path, model);
+    if (get().urls[entry] !== null) return;
+    await get().analyse(asset, model);
   },
 
   cancel(path, model) {
@@ -170,10 +216,63 @@ export const useMattes = create<MattesState>((set, get) => ({
     await api.mattesDelete(path, model);
     set((state) => ({ urls: { ...state.urls, [matteEntry(path, model)]: null } }));
   },
+
+  async deleteModel(id) {
+    const api = bridge();
+    if (!api?.mattesModelDelete) return false;
+    try {
+      set({ status: await api.mattesModelDelete(id) });
+      return true;
+    } catch (error) {
+      // Refused while it analyses or downloads: the reason is the message.
+      notify(errorText(error), 'error');
+      void get().refresh();
+      return false;
+    }
+  },
+
+  async clearCache() {
+    const api = bridge();
+    if (!api?.mattesClearCache) return false;
+    try {
+      const status = await api.mattesClearCache();
+      // Every file is looked up afresh: none has mattes any more, and a clip
+      // with the effect on is analysed again when it next needs to be.
+      set({ status, urls: {}, errors: {} });
+      return true;
+    } catch (error) {
+      notify(errorText(error), 'error');
+      void get().refresh();
+      return false;
+    }
+  },
 }));
+
+// For the in-app checks, which tell a partial file from a finished one by what
+// the page holds; the page owns this state already, naming it adds no access.
+if (typeof window !== 'undefined') (window as { __scfMattes?: typeof useMattes }).__scfMattes = useMattes;
+
+/**
+ * Change a clip's Remove background - turn it on or off, its model, Invert -
+ * as one undo step: the one way the inspector and the timeline's menu both
+ * do it. Turned on, the clip's file is analysed straight away when the model
+ * is here, whether or not the inspector is showing the clip.
+ */
+export function setBackgroundRemoval(clipId: string, patch: Partial<BackgroundRemovalConfig>): void {
+  const store = useProjectStore.getState();
+  const clip = store.project.clips[clipId];
+  if (!clip || clip.title) return;
+  const next = { ...clip.backgroundRemoval, ...patch };
+  store.updateClip(clipId, { backgroundRemoval: next });
+  const asset = store.assets.find((candidate) => candidate.uri === clip.sourceUri);
+  if (next.enabled && asset) void useMattes.getState().ensureAnalysed(asset, next.model);
+}
 
 /** The mattes to draw a file with, for the renderer: null until they exist. */
 export const matteUrlFor = (path: string, model: MatteModelId): string | null => useMattes.getState().urls[matteEntry(path, model)] ?? null;
+
+/** The unfinished mattes of an analysis running now, for the renderer: null when none is. */
+export const partialMatteUrlFor = (path: string, model: MatteModelId): string | null => useMattes.getState().partials[matteEntry(path, model)] ?? null;
 
 /**
  * Find the mattes of every clip that has Remove background on, whether or

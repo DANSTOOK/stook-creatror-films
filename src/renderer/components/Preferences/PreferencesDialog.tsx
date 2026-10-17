@@ -11,6 +11,7 @@ import {
 import { LANGUAGES, isLanguage } from '@shared/i18n';
 import { useLanguageStore, useT } from '@renderer/i18n';
 import { SpeechModels } from '@renderer/components/Captions/SpeechModels';
+import { MatteStorage } from './MatteStorage';
 
 /**
  * Settings of this computer rather than of a project.
@@ -18,7 +19,8 @@ import { SpeechModels } from '@renderer/components/Captions/SpeechModels';
  * The interface language, and how long a new transition is. Each applies the
  * moment it is chosen - the language to the page, the native menu and the
  * close prompt - with nothing to restart, and is kept on this machine beside
- * the panel sizes. English and one second are the defaults.
+ * the panel sizes. English and one second are the defaults. Below them, what
+ * captions and Remove background keep on this computer.
  */
 
 /**
@@ -162,6 +164,9 @@ export function PreferencesDialog({ onClose, closing = false }: PreferencesDialo
       </div>
       <div className="pt-2">
         <SpeechModels />
+      </div>
+      <div className="pt-2">
+        <MatteStorage />
       </div>
     </Dialog>
   );

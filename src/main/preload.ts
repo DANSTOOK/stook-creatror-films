@@ -16,6 +16,7 @@ import {
   type CaptionTranscribeResult,
   type MatteEngineStatus,
   type MatteModelProgress,
+  type MattePartial,
   type MatteProgressEvent,
   type MenuCommand,
   type PickedFile,
@@ -229,6 +230,9 @@ const api: FilmoraApi = {
       ipcRenderer.off(IPC.mattesProgress, handler);
     };
   },
+  mattesPartial: (url, from) => ipcRenderer.invoke(IPC.mattesPartial, url, from) as Promise<MattePartial | null>,
+  mattesModelDelete: (id) => ipcRenderer.invoke(IPC.mattesModelDelete, id) as Promise<MatteEngineStatus>,
+  mattesClearCache: () => ipcRenderer.invoke(IPC.mattesClearCache) as Promise<MatteEngineStatus>,
 };
 
 contextBridge.exposeInMainWorld('filmora', api);

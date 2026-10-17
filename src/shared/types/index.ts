@@ -147,6 +147,8 @@ export const MATTE_MODEL_IDS: readonly MatteModelId[] = ['precise', 'fast'];
 export interface BackgroundRemovalConfig {
   enabled: boolean;
   model: MatteModelId;
+  /** Keep the background and take the subject away instead: the same matte, turned inside out. */
+  invert: boolean;
 }
 
 /** Nearest-neighbour / pixelization pass used for sprite authoring. */

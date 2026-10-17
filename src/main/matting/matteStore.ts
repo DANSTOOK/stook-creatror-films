@@ -16,7 +16,10 @@ import { proxyKey, type SourceStamp } from '../media/proxies';
  * cache made the old way is not read as if it were the new.
  */
 
-export const MATTE_RECIPE = 1;
+// 2: every frame taken at its own time, with the times kept (main/matting/job.ts),
+// instead of resampled to the file's average rate - which put mattes a frame
+// out on files with a variable frame rate.
+export const MATTE_RECIPE = 2;
 
 export const MATTE_EXTENSION = '.scfmatte';
 
@@ -46,7 +49,11 @@ export class MatteFolder {
     return join(this.folder, `${key}${MATTE_EXTENSION}`);
   }
 
-  /** Where a build writes until it is complete. Never read: see the worker. */
+  /**
+   * Where a build writes until it is complete. Never taken for a finished
+   * file: only its finished frames are read, while it runs, at the offsets
+   * the worker reports (see the worker).
+   */
   partFor(key: string): string {
     return join(this.folder, `${key}.building-${process.pid}${MATTE_EXTENSION}.part`);
   }
@@ -87,6 +94,24 @@ export class MatteFolder {
         }),
     );
     return records.filter((record): record is MatteRecord => record !== null);
+  }
+
+  /**
+   * What the folder takes on disk: finished mattes, and the temporary file
+   * of an analysis running now or left by one that crashed.
+   */
+  async usage(): Promise<{ files: number; bytes: number }> {
+    const names = await readdir(this.folder).catch(() => [] as string[]);
+    let files = 0;
+    let bytes = 0;
+    for (const name of names) {
+      if (!name.endsWith(MATTE_EXTENSION) && !name.endsWith(`${MATTE_EXTENSION}.part`)) continue;
+      const info = await stat(join(this.folder, name)).catch(() => null);
+      if (!info?.isFile()) continue;
+      files += 1;
+      bytes += info.size;
+    }
+    return { files, bytes };
   }
 
   /** Throw every matte away, and whatever a crashed build left behind. */

@@ -13,16 +13,24 @@
  *   8   format version        u32
  *   12  width, height         u32, u32
  *   20  frame count           u32
- *   24  frames per second     f64   (the rate the frames were taken at)
+ *   24  frames per second     f64   (the file's average rate; informative)
  *   32  offset of the index   f64
- *   40  reserved              24 bytes, zero
+ *   40  offset of the times   f64   (0: none - a still)
+ *   48  reserved              16 bytes, zero
  *   64  frames, one after another, each run-length coded (below)
  *   ... the index: frame count + 1 offsets as f64, the last one the end of
  *       the last frame, so frame i is the bytes [index[i], index[i + 1]).
+ *   ... the times: frame count f64, each frame's presentation time in
+ *       seconds, never decreasing.
  *
- * The index goes last because frames are written as they are made, and the
- * count is only known at the end. A file whose header still says zero frames
- * was never finished, and is never renamed to its real name (see the worker).
+ * One matte per frame of the file, each with the time it is shown at: a file
+ * with a variable frame rate has no rate to count frames by, so a matte is
+ * found by time, the way the decoders find the picture (matteFrameAt).
+ *
+ * The index and the times go last because frames are written as they are
+ * made, and the count is only known at the end. A file whose header still
+ * says zero frames was never finished, and is never renamed to its real name
+ * (see the worker).
  */
 
 export const MATTE_MAGIC = 'SCFMATTE';
@@ -35,6 +43,8 @@ export interface MatteHeader {
   frames: number;
   fps: number;
   indexOffset: number;
+  /** Where the frame times are; 0 when the file has none (a still). */
+  timesOffset: number;
 }
 
 export function writeMatteHeader(header: MatteHeader): Uint8Array {
@@ -47,6 +57,7 @@ export function writeMatteHeader(header: MatteHeader): Uint8Array {
   view.setUint32(20, header.frames, true);
   view.setFloat64(24, header.fps, true);
   view.setFloat64(32, header.indexOffset, true);
+  view.setFloat64(40, header.timesOffset, true);
   return bytes;
 }
 
@@ -64,8 +75,16 @@ export function readMatteHeader(bytes: Uint8Array): MatteHeader | null {
     frames: view.getUint32(20, true),
     fps: view.getFloat64(24, true),
     indexOffset: view.getFloat64(32, true),
+    timesOffset: view.getFloat64(40, true),
   };
-  const sane = header.width > 0 && header.height > 0 && header.frames > 0 && Number.isFinite(header.fps) && header.fps > 0 && header.indexOffset >= MATTE_HEADER_BYTES;
+  const sane =
+    header.width > 0 &&
+    header.height > 0 &&
+    header.frames > 0 &&
+    Number.isFinite(header.fps) &&
+    header.fps > 0 &&
+    header.indexOffset >= MATTE_HEADER_BYTES &&
+    (header.timesOffset === 0 || header.timesOffset >= MATTE_HEADER_BYTES);
   return sane ? header : null;
 }
 
@@ -87,6 +106,26 @@ export function readMatteIndex(bytes: Uint8Array, frames: number): number[] | nu
     offsets.push(offset);
   }
   return offsets;
+}
+
+export function writeMatteTimes(times: readonly number[]): Uint8Array {
+  const bytes = new Uint8Array(times.length * 8);
+  const view = new DataView(bytes.buffer);
+  times.forEach((time, index) => view.setFloat64(index * 8, time, true));
+  return bytes;
+}
+
+export function readMatteTimes(bytes: Uint8Array, frames: number): number[] | null {
+  if (bytes.byteLength < frames * 8) return null;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const times: number[] = [];
+  for (let index = 0; index < frames; index += 1) {
+    const time = view.getFloat64(index * 8, true);
+    // Times never go back: anything else is a damaged file.
+    if (!Number.isFinite(time) || (index > 0 && time < times[index - 1])) return null;
+    times.push(time);
+  }
+  return times;
 }
 
 /* Run-length coding --------------------------------------------------------- */
@@ -185,7 +224,8 @@ export function matteSize(width: number, height: number, longEdge = MATTE_LONG_E
 }
 
 /**
- * Which matte goes with a frame of footage.
+ * Which matte goes with a frame of footage, for a file without frame times
+ * (a still, whose one matte is every frame's).
  *
  * The compositor asks for `sourceFrame` on the timeline's clock, and the
  * video it shows is the picture on screen at (sourceFrame + 0.5) / fps - the
@@ -198,4 +238,31 @@ export function matteFrameFor(sourceFrame: number, timelineFps: number, matteFps
   if (frames <= 1 || !(timelineFps > 0) || !(matteFps > 0)) return 0;
   const seconds = (Math.max(0, sourceFrame) + 0.5) / timelineFps;
   return Math.min(frames - 1, Math.max(0, Math.floor(seconds * matteFps + 1e-6)));
+}
+
+/**
+ * Which matte goes with a frame of footage, by the frames' own times.
+ *
+ * The picture on screen for `sourceFrame` of a `timelineFps` timeline is the
+ * last frame whose presentation time is at or before the middle of that
+ * timeline frame, (sourceFrame + 0.5) / timelineFps - the rule both of the
+ * renderer's decoders follow (SequentialVideoReader.sampleAt, and the
+ * <video> element seeking there). Its matte is the one taken from that very
+ * frame: the last of `times` at or before the same moment, of the first
+ * `frames`. Before the first frame, the first. Unlike counting frames at an
+ * average rate, this holds for a file whose frames come at any intervals.
+ */
+export function matteFrameAt(sourceFrame: number, timelineFps: number, times: readonly number[], frames = times.length): number {
+  const count = Math.min(frames, times.length);
+  if (count <= 1 || !(timelineFps > 0)) return 0;
+  const seconds = (Math.max(0, sourceFrame) + 0.5) / timelineFps;
+  let low = 0;
+  let high = count - 1;
+  if (seconds < times[0]) return 0;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (times[middle] <= seconds) low = middle;
+    else high = middle - 1;
+  }
+  return low;
 }

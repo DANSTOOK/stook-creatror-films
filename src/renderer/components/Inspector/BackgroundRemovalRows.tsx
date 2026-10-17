@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download } from 'lucide-react';
-import { MATTE_MODEL_IDS, type Clip, type MatteModelId, type MediaAsset } from '@shared/types';
+import { MATTE_MODEL_IDS, type BackgroundRemovalConfig, type Clip, type MatteModelId, type MediaAsset } from '@shared/types';
 import type { MessageKey } from '@shared/i18n';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { currentLocale, useT } from '@renderer/i18n';
 import { formatBytes } from '@renderer/captions/captionModels';
-import { MATTE_MODEL_NAME, matteEntry, useMattes } from '@renderer/matting/mattes';
+import { MATTE_MODEL_NAME, declinedMattes as declined, matteEntry, useMattes } from '@renderer/matting/mattes';
+import { SwitchRow } from './rows';
 
 /**
  * Remove background, in the inspector: which model, and where the clip's
@@ -24,18 +25,15 @@ const MODEL_LABEL: Record<MatteModelId, MessageKey> = {
   fast: 'mattes.modelFast',
 };
 
-/** Files and models whose analysis the person cancelled or deleted, this session: not started again on their own. */
-const declined = new Set<string>();
-
 const perFrame = (ms: number): string => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
 
 export interface BackgroundRemovalRowsProps {
   clip: Clip;
   asset: MediaAsset | undefined;
-  onModelChange(model: MatteModelId): void;
+  onChange(patch: Partial<BackgroundRemovalConfig>): void;
 }
 
-export function BackgroundRemovalRows({ clip, asset, onModelChange }: BackgroundRemovalRowsProps): JSX.Element {
+export function BackgroundRemovalRows({ clip, asset, onChange }: BackgroundRemovalRowsProps): JSX.Element {
   const t = useT();
   const locale = currentLocale();
   const { model, enabled } = clip.backgroundRemoval;
@@ -58,11 +56,12 @@ export function BackgroundRemovalRows({ clip, asset, onModelChange }: Background
   const info = status?.models.find((candidate) => candidate.id === model);
   const usable = Boolean(asset && path && (asset.kind === 'video' || asset.kind === 'image'));
 
-  // On, the model here, no mattes and nothing running: start.
+  // On, the model here, no mattes and nothing running: start - again as
+  // soon as any of that changes (a model downloaded, the cache cleared).
   useEffect(() => {
-    if (!enabled || !usable || !asset || !info?.present || url !== null || job || error || declined.has(entry)) return;
-    void useMattes.getState().analyse(asset, model);
-  }, [enabled, usable, asset, info?.present, url, job, error, entry, model]);
+    if (!enabled || !usable || !asset || !info?.present || url !== null || job || error) return;
+    void useMattes.getState().ensureAnalysed(asset, model);
+  }, [enabled, usable, asset, info?.present, url, job, error, model]);
 
   const percent = job && job.total > 0 ? Math.min(100, Math.round((job.done / job.total) * 100)) : 0;
 
@@ -104,6 +103,7 @@ export function BackgroundRemovalRows({ clip, asset, onModelChange }: Background
             {t('dialog.cancel')}
           </button>
         </div>
+        {job.done > 0 && <p className="text-2xs leading-relaxed text-slate-400">{t('mattes.partialHint')}</p>}
       </div>
     );
   } else if (url) {
@@ -161,7 +161,7 @@ export function BackgroundRemovalRows({ clip, asset, onModelChange }: Background
           className="numeric-input h-control-dense"
           data-testid="matte-model"
           value={model}
-          onChange={(event) => onModelChange(event.target.value as MatteModelId)}
+          onChange={(event) => onChange({ model: event.target.value as MatteModelId })}
         >
           {MATTE_MODEL_IDS.map((id) => (
             <option key={id} value={id}>
@@ -171,6 +171,8 @@ export function BackgroundRemovalRows({ clip, asset, onModelChange }: Background
         </select>
       </label>
       {model === 'precise' && <p className="text-2xs leading-relaxed text-slate-400">{t('mattes.preciseHint')}</p>}
+      <SwitchRow label={t('mattes.invert')} checked={clip.backgroundRemoval.invert} onChange={(invert) => onChange({ invert })} />
+      {clip.backgroundRemoval.invert && <p className="text-2xs leading-relaxed text-slate-400">{t('mattes.invertHint')}</p>}
       {body}
       {asking && <MatteModelPrompt model={model} onClose={() => setAsking(false)} />}
     </>
