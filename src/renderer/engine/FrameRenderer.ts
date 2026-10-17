@@ -26,6 +26,13 @@ import { MatteTextures, isPartialMatteUrl } from './MatteTextures';
  * would silently duplicate frames.
  */
 
+/**
+ * How long readers an exact render opened on its own outlive the last such
+ * render: long enough for a caller rendering frame after frame to keep them,
+ * short enough not to hold a hardware decoder the preview could use.
+ */
+const READERS_IDLE_MS = 2000;
+
 export class FrameRenderer {
   readonly compositor: Compositor;
   readonly textures: TextureManager;
@@ -434,7 +441,68 @@ export class FrameRenderer {
     this.seekingSources.clear();
   }
 
+  /**
+   * True while the readers in `sequential` were opened by an exact render
+   * outside an export (the start screen's thumbnail, the cover frame, a
+   * test), and are to be closed once those renders stop coming.
+   */
+  private readersOnDemand = false;
+  private readersIdleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Every exact render decodes with WebCodecs when its file allows it, not
+   * only an export's.
+   *
+   * Seeking a <video> is not frame-exact. Measured on bar-coded files, a seek
+   * into the last frame before a keyframe (or into the last frame of a file)
+   * sometimes settles on the frame BEFORE it: `seeked` has fired, currentTime
+   * is the target and readyState is 4, yet the element's picture - read back
+   * through a 2D canvas, and `new VideoFrame(video).timestamp` - is the
+   * previous frame. It is still there half a second later, and seeking to the
+   * same time again lands on it again. How often depends on what else is
+   * decoding: never in hundreds of frames with the decoder to itself, 1-3 in
+   * 120 with the viewer's decoder or another video playing at the same time,
+   * a different count every run. The readers never showed it: 0 wrong frames
+   * in every run of every file.
+   *
+   * So an exact render with no export running opens readers of its own. They
+   * are kept between renders - a frame-by-frame caller pays for one decoder,
+   * not one a frame - and closed shortly after the last. The seek path stays
+   * for what WebCodecs cannot read, and for `__scfSeekExport`, which the
+   * export benchmark uses to compare the two paths.
+   */
+  private ensureExactReaders(): void {
+    if (this.readersIdleTimer !== null) {
+      clearTimeout(this.readersIdleTimer);
+      this.readersIdleTimer = null;
+    }
+    if ((window as { __scfSeekExport?: boolean }).__scfSeekExport) {
+      // Readers a thumbnail opened a moment ago must not carry a forced-seek
+      // export onto the other path.
+      if (this.readersOnDemand) this.stopSequentialDecode();
+      return;
+    }
+    if (this.sequential) return;
+    this.sequential = new Map();
+    this.readersOnDemand = true;
+  }
+
+  /** After an exact render: readers opened on demand go once renders stop. */
+  private releaseExactReadersSoon(): void {
+    if (!this.readersOnDemand) return;
+    if (this.readersIdleTimer !== null) clearTimeout(this.readersIdleTimer);
+    this.readersIdleTimer = setTimeout(() => {
+      this.readersIdleTimer = null;
+      if (this.readersOnDemand) this.stopSequentialDecode();
+    }, READERS_IDLE_MS);
+  }
+
   stopSequentialDecode(): void {
+    if (this.readersIdleTimer !== null) {
+      clearTimeout(this.readersIdleTimer);
+      this.readersIdleTimer = null;
+    }
+    this.readersOnDemand = false;
     const readers = this.sequential;
     this.sequential = null;
     this.decodedFrames.clear();
@@ -458,6 +526,7 @@ export class FrameRenderer {
 
   /** Seek every source contributing to `frame` and wait for all of them. */
   private async seekSources(project: ProjectState, frame: number): Promise<void> {
+    this.ensureExactReaders();
     this.decodedFrames.clear();
     // Every clip drawn at this frame, at the frame of footage it shows - a
     // transition's sides past their ends included.
@@ -565,18 +634,22 @@ export class FrameRenderer {
    */
   async renderExact(project: ProjectState, frame: number, premultiply = false): Promise<Uint8Array> {
     project = withCaptionTitles(project);
-    await this.seekSources(project, frame);
-    // An exact render is the export's: every title animates, none is at rest.
-    this.compositor.restingTitleId = null;
+    try {
+      await this.seekSources(project, frame);
+      // An exact render is the export's: every title animates, none is at rest.
+      this.compositor.restingTitleId = null;
 
-    this.compositor.renderFrame(
-      project,
-      frame,
-      (clip, sourceFrame) => this.exactUploadFor(clip, project.fps, project, frame, sourceFrame),
-      false,
-    );
+      this.compositor.renderFrame(
+        project,
+        frame,
+        (clip, sourceFrame) => this.exactUploadFor(clip, project.fps, project, frame, sourceFrame),
+        false,
+      );
 
-    return this.compositor.readPixels(premultiply);
+      return this.compositor.readPixels(premultiply);
+    } finally {
+      this.releaseExactReadersSoon();
+    }
   }
 
   /**
@@ -587,13 +660,12 @@ export class FrameRenderer {
    */
   async renderExactToCanvas(project: ProjectState, frame: number): Promise<void> {
     project = withCaptionTitles(project);
-    await this.seekSources(project, frame);
-    this.compositor.restingTitleId = null;
-
     const previousOptions = this.compositor.options;
-    this.compositor.options = { ...previousOptions, showTransparencyGrid: false };
-
     try {
+      await this.seekSources(project, frame);
+      this.compositor.restingTitleId = null;
+      this.compositor.options = { ...previousOptions, showTransparencyGrid: false };
+
       this.compositor.renderFrame(
         project,
         frame,
@@ -602,6 +674,7 @@ export class FrameRenderer {
       );
     } finally {
       this.compositor.options = previousOptions;
+      this.releaseExactReadersSoon();
     }
   }
 
