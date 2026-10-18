@@ -698,6 +698,12 @@ export class FrameRenderer {
   private async checkedSeek(clip: Clip, uri: string, sourceFrame: number, fps: number): Promise<void> {
     const strict = this.isExclusive;
     const seconds = (sourceFrame + 0.5) / fps;
+    // An image shows one picture at every frame: there is nothing to seek and
+    // nothing to check. seekExact is a no-op for it, as it always was.
+    if (!(this.media.get(uri) instanceof HTMLVideoElement)) {
+      await this.media.seekExact(uri, sourceFrame, fps);
+      return;
+    }
     const check = await this.frameCheckFor(clip.sourceUri);
     if (!check) {
       this.seekCounts.unchecked += 1;
