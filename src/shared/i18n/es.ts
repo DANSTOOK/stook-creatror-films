@@ -992,7 +992,7 @@ export const es: Messages = {
   'menu.addTitle': 'Añadir título',
   'menu.addLowerThird': 'Añadir rótulo inferior',
   'menu.addCredits': 'Añadir créditos finales',
-  'menu.fontLicenses': 'Licencias de las fuentes',
+  'menu.fontLicenses': 'Licencias de las fuentes y créditos',
   'menu.ok': 'Aceptar',
   'inspector.tabTitle': 'Título',
   'inspector.kindTitle': 'Título',

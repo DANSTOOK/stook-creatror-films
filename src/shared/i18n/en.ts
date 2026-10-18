@@ -993,7 +993,7 @@ export const en = {
   'menu.addTitle': 'Add title',
   'menu.addLowerThird': 'Add lower third',
   'menu.addCredits': 'Add end credits',
-  'menu.fontLicenses': 'Font licenses',
+  'menu.fontLicenses': 'Font licenses and credits',
   'menu.ok': 'OK',
   'inspector.tabTitle': 'Title',
   'inspector.kindTitle': 'Title',

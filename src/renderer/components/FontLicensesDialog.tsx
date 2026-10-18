@@ -2,6 +2,7 @@ import { Scale } from 'lucide-react';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { useT } from '@renderer/i18n';
 import { BUNDLED_FONTS } from '@renderer/text/fonts';
+import { ThirdPartyLicenses } from './ThirdPartyLicenses';
 
 /**
  * The licences of the fonts that ship with the app, reached from Help and
@@ -12,7 +13,7 @@ export function FontLicensesDialog({ onClose }: { onClose(): void }): JSX.Elemen
   const t = useT();
   return (
     <Dialog
-      title={t('licenses.title')}
+      title={t('fx.licenses.title')}
       icon={Scale}
       onClose={onClose}
       testId="font-licenses-dialog"
@@ -39,6 +40,8 @@ export function FontLicensesDialog({ onClose }: { onClose(): void }): JSX.Elemen
           </section>
         ))}
       </div>
+      {/* The transitions and effects (fx/licenses): who made them, on what terms. */}
+      <ThirdPartyLicenses />
     </Dialog>
   );
 }
