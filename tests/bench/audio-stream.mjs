@@ -26,10 +26,10 @@ import { _electron as electron } from 'playwright';
  * disagreed about it the sound would be ~21 ms out.
  *
  * Not covered here: a file whose container does NOT declare that priming in
- * an edit list. The reader handles it (`primingSeconds`), but every file
- * ffmpeg writes for this check carries an edit list, so that path is
- * reasoned about rather than measured - worth saying plainly instead of
- * implying it was tested.
+ * an edit list. Against decodeAudioData it cannot be checked at all - the
+ * browser butts frames together and ignores the gap such a file has after
+ * its first packet - so tests/bench/aac-priming.mjs measures that case
+ * against ffmpeg's timestamps and the picture instead.
  */
 
 const require = createRequire(import.meta.url);
@@ -241,7 +241,7 @@ async function main() {
     console.log(`   ${result.channels} ch @ ${result.sampleRate} Hz; streamed ${result.streamDuration.toFixed(6)} s vs decoded ${result.referenceDuration.toFixed(6)} s`);
     if (result.priming?.info) {
       const info = result.priming.info;
-      console.log(`   reader: ${info.sampleCount} frames, first sample time ${info.firstSampleTime.toExponential(3)} s, second ${info.secondSampleTime.toExponential(3)} s, priming ${info.primingSeconds.toExponential(3)} s (${Math.round(info.primingSeconds * info.sampleRate)} samples)`);
+      console.log(`   reader: ${info.sampleCount} frames, first sample time ${info.firstSampleTime.toExponential(3)} s, second ${info.secondSampleTime.toExponential(3)} s`);
     }
     if (result.priming) {
       const { reference: ref, streamed } = result.priming;
