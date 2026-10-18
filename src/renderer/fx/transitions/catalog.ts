@@ -120,7 +120,7 @@ export const SHADER_TRANSITIONS: readonly ShaderTransitionDef[] = [
     f('star_rotation', 0.75, 0, 1, 'fxp.rotation'),
     c4('border_color', [1, 1, 1, 1], 'fxp.borderColor'),
     v2('star_center', [0.5, 0.5], 0, 1, 'fxp.center'),
-  ]),
+  ], { still: 0.25 }),
   def('heart', 'heart', 'wipe', 'gre', [], { still: 0.6 }),
   def('blinds', 'windowblinds', 'wipe', 'Fabien Benetou'),
   def('slices', 'windowslice', 'wipe', 'gre', [f('count', 10, 2, 50, 'fxp.count', 1), f('smoothness', 0.5, 0, 1, 'fxp.softness')]),
@@ -163,10 +163,10 @@ export const SHADER_TRANSITIONS: readonly ShaderTransitionDef[] = [
   ], { still: 0.35 }),
 
   /* Zoom and spin. */
-  def('zoomIn', 'SimpleZoom', 'zoom', '0gust1', [f('zoom_quickness', 0.8, 0.2, 1, 'fxp.zoomPart')], { still: 0.6 }),
+  def('zoomIn', 'SimpleZoom', 'zoom', '0gust1', [f('zoom_quickness', 0.8, 0.2, 1, 'fxp.zoomPart')], { still: 0.3 }),
   def('dreamyZoom', 'DreamyZoom', 'zoom', 'Zeh Fernando', [f('rotation', 6, -45, 45, 'fxp.rotationDeg', 1), f('scale', 1.2, 1, 3, 'fxp.scale')], { still: 0.3 }),
   def('crossWarp', 'crosswarp', 'zoom', 'Eke Péter'),
-  def('zoomThrough', 'zoomInOut', 'zoom', 'OllyOllyOlly', [], { still: 0.35 }),
+  def('zoomThrough', 'zoomInOut', 'zoom', 'OllyOllyOlly', [], { still: 0.15 }),
   def('spinZoom', 'rotate_scale_fade', 'zoom', 'Fernando Kuteken', [
     v2('center', [0.5, 0.5], 0, 1, 'fxp.center'),
     f('rotations', 1, -5, 5, 'fxp.turns', 0.25),
