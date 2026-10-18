@@ -62,6 +62,12 @@ const START_WAIT_REACH_SECONDS = 0.1;
 const SAFE_LEAD_SECONDS = 0.02;
 
 /**
+ * How long after a stop's fade the stopped strips are let go: the page's timers
+ * are not on the audio clock, so a little room past the fade itself.
+ */
+const STOP_RELEASE_MS = 50;
+
+/**
  * A stretch of the timeline played over and over, in timeline seconds:
  * `start` included, `end` not.
  */
@@ -430,9 +436,18 @@ export class AudioEngine {
     return { clipId, trackId, sources: [], guard, fedUntil: -Infinity, guardOutAt: null, edge, gain, panner, low, mid, high, buffer };
   }
 
-  /** Fade a strip in from silence over the first moments after a loop's join. */
+  /**
+   * Fade a strip in from silence over the first moments after a loop's join.
+   *
+   * Silent from now, not only from the join: the strip is this time round's
+   * own, so nothing sounds through it before then, and a source and a
+   * parameter given the same time do not always land on the same sample.
+   * Measured at the start of play, the source came in one sample ahead of a
+   * fade written for the same moment - one sample at full level, a click.
+   */
   private declickIn(strip: ClipStrip, at: number): void {
     const edge = strip.edge.gain;
+    edge.setValueAtTime(0, Math.min(this.context.currentTime, at));
     edge.setValueAtTime(0, at);
     edge.linearRampToValueAtTime(1, at + LOOP_DECLICK_SECONDS);
   }
@@ -644,6 +659,10 @@ export class AudioEngine {
     // Carrying on in time: the fade-out written in case it would not is taken back.
     if (followsOn && strip.guardOutAt !== null) guard.cancelScheduledValues(strip.guardOutAt);
     if (placement.fadeIn) {
+      // Silent ahead of the start - from the end of what it played before, if
+      // anything, else from now - since a source and a fade given the same
+      // moment can land a sample apart (see declickIn).
+      guard.setValueAtTime(0, Math.min(placement.startAt, Math.max(now, strip.fedUntil)));
       guard.setValueAtTime(0, placement.startAt);
       guard.linearRampToValueAtTime(1, placement.startAt + DECLICK_SECONDS);
     }
@@ -912,6 +931,8 @@ export class AudioEngine {
       );
       // Joined part-way through: in from silence rather than on whatever sample is there.
       if (clipStart < startSeconds - 1e-6) {
+        // Silent from now, ahead of the start (see declickIn).
+        strip.guard.gain.setValueAtTime(0, Math.min(this.context.currentTime, at));
         strip.guard.gain.setValueAtTime(0, at);
         strip.guard.gain.linearRampToValueAtTime(1, at + DECLICK_SECONDS);
       }
@@ -945,32 +966,58 @@ export class AudioEngine {
     this.scheduledUntil = new Map();
     this.fadedClips = new Set();
 
-    for (const strip of this.strips.values()) {
+    /*
+      Down to silence, then let go. Stopping a source on a sample that is not
+      silent is the same step as starting on one: a click on every pause, and
+      on every resync, which is a stop and a play. So each strip fades out
+      from a moment ahead of the audio clock (SAFE_LEAD_SECONDS: a fade
+      written at a time already gone would be a jump), its sources stop once
+      it is silent, and the nodes are let go after that. The playback that
+      follows builds strips of its own meanwhile.
+    */
+    const fadeFrom = this.context.currentTime + SAFE_LEAD_SECONDS;
+    const silentAt = fadeFrom + 2 * DECLICK_SECONDS;
+    const strips = [...this.strips.values()];
+    const trackStrips = [...this.trackStrips.values()];
+    for (const strip of strips) {
+      // From wherever its own fades have it by then, down to nothing: a
+      // target curve starts from the value the parameter has at its start,
+      // and is under a thousandth by the time the sources stop. (Not
+      // cancelAndHoldAtTime and a ramp: with no fade under way at that moment
+      // Chromium held nothing, and the ramp ran on from the last fade written
+      // - a second back - which dropped the sound to 2% at once: measured,
+      // the same click as stopping dead.)
+      strip.guard.gain.cancelScheduledValues(fadeFrom);
+      strip.guard.gain.setTargetAtTime(0, fadeFrom, DECLICK_SECONDS / 4);
       for (const source of strip.sources) {
         try {
-          source.stop();
+          // One due to start later than this never sounds at all.
+          source.stop(silentAt);
         } catch {
           // A source that never started throws; nothing to clean up.
         }
-        source.disconnect();
       }
       strip.sources.length = 0;
-      strip.guard.disconnect();
-      strip.edge.disconnect();
-      strip.gain.disconnect();
-      strip.low.disconnect();
-      strip.mid.disconnect();
-      strip.high.disconnect();
-      strip.panner.disconnect();
     }
     this.strips.clear();
-
-    for (const strip of this.trackStrips.values()) {
-      strip.gain.disconnect();
-      strip.panner.disconnect();
-      disconnectMeter(strip.meter);
-    }
     this.trackStrips.clear();
+    if (strips.length === 0 && trackStrips.length === 0) return;
+    setTimeout(() => {
+      for (const strip of strips) {
+        strip.guard.disconnect();
+        strip.edge.disconnect();
+        strip.gain.disconnect();
+        strip.low.disconnect();
+        strip.mid.disconnect();
+        strip.high.disconnect();
+        strip.panner.disconnect();
+      }
+      for (const strip of trackStrips) {
+        strip.gain.disconnect();
+        strip.panner.disconnect();
+        disconnectMeter(strip.meter);
+      }
+    }, (SAFE_LEAD_SECONDS + DECLICK_SECONDS) * 1000 + STOP_RELEASE_MS);
   }
 
   /**
