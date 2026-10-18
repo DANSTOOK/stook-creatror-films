@@ -28,9 +28,17 @@ import { _electron as electron } from 'playwright';
  *      drawing and another video decoding at the same time, the conditions
  *      that made a seeked <video> hand back the previous frame;
  *   3. a real export through the dialog, decoded again by ffmpeg.
- * The old seek-per-frame path (__scfSeekExport) is measured in the
- * conditions of 2 as well and reported, not asserted: it is Chromium's
- * <video>, kept only for files WebCodecs cannot read, and it still misses.
+ * The seek-per-frame path (__scfSeekExport), kept for files WebCodecs
+ * cannot read, is measured in the conditions of 2 as well. Chromium's
+ * <video> still misses there, so what is asserted is that every frame it
+ * shows is checked and no wrong one passes the check.
+ *
+ * Then decoders made to fail mid-export (__scfDecodeFault): once per file,
+ * where a fresh decoder must take over with every frame right; for good on
+ * two files, which must go to the checked seek and still come out right;
+ * and for good on the variable-rate file, whose frames before a keyframe
+ * no seek reaches, where the export must stop and say so. Last, an MKV and
+ * a WebM, always sought, rendered and exported with another video decoding.
  *
  * node tests/e2e/exact-frames.mjs   (SKIP_BUILD=1 to reuse dist-electron)
  */
@@ -85,9 +93,13 @@ async function encode(out, count, rate, { audio = false, vf = null, extra = [] }
   // The encoder's own time base too, or it rounds the new timestamps back to
   // the input's 1/30 s and the muxer nudges the collisions apart by a tick.
   if (vf) args.push('-vf', vf, '-fps_mode', 'passthrough', '-enc_time_base:v', '1/90000', '-video_track_timescale', '90000');
-  args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p', '-g', '15', '-keyint_min', '15', '-sc_threshold', '0', ...extra);
-  if (audio) args.push('-c:a', 'aac', '-shortest');
-  args.push('-movflags', '+faststart', out);
+  // WebM is VP9 and Opus; everything else H.264 with B-frames, and AAC.
+  const webm = out.endsWith('.webm');
+  if (webm) args.push('-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-crf', '20', '-b:v', '0', '-pix_fmt', 'yuv420p', '-g', '15', '-keyint_min', '15', ...extra);
+  else args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p', '-g', '15', '-keyint_min', '15', '-sc_threshold', '0', ...extra);
+  if (audio) args.push('-c:a', webm ? 'libopus' : 'aac', '-shortest');
+  if (out.endsWith('.mp4')) args.push('-movflags', '+faststart');
+  args.push(out);
   const child = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'] });
   let errors = '';
   child.stderr.on('data', (chunk) => (errors += chunk));
@@ -117,6 +129,19 @@ async function truthOf(file) {
   return { times, codes, keyframes };
 }
 
+/**
+ * The container's own presentation times, which is the clock a <video>
+ * counts in. ffmpeg's decode (truthOf) moves an MKV or WebM with a negative
+ * start time to start at 0; listing the packets with -copyts does not.
+ */
+async function containerTimes(file) {
+  const { stdout } = await execFileAsync(ffmpeg, ['-v', 'error', '-copyts', '-i', file, '-map', '0:V:0', '-c', 'copy', '-f', 'framecrc', '-'], { maxBuffer: 1 << 26 });
+  const [, num, den] = /#tb 0: (\d+)\/(\d+)/.exec(stdout);
+  return stdout.split('\n').filter((line) => /^0,/.test(line))
+    .map((line) => (Number(line.split(',')[2]) * Number(num)) / Number(den))
+    .sort((a, b) => a - b);
+}
+
 /** The rule: the last source frame at or before the middle of the timeline frame. */
 function ruleFrame(times, sourceFrame, fps) {
   const middle = (sourceFrame + 0.5) / fps;
@@ -126,7 +151,7 @@ function ruleFrame(times, sourceFrame, fps) {
 }
 
 /** In the page: renderExact every timeline frame and read its bar code. */
-const RENDER_ALL = async ({ mode, BITS, BAR_W, end }) => {
+const RENDER_ALL = async ({ mode, BITS, BAR_W, end, start = 0, fault = null, contention = mode !== 'export' }) => {
   const project = window.__scfStore.getState().project;
   const renderer = window.__scfRenderer();
   const { width } = project;
@@ -137,11 +162,21 @@ const RENDER_ALL = async ({ mode, BITS, BAR_W, end }) => {
   };
   const exportLike = mode === 'export';
   window.__scfSeekExport = mode === 'seek';
+  // A decoder failure to inject (see SequentialVideoReader): `perFile` gives
+  // each file on the timeline its own, `only` keeps to files so named.
+  const { assets } = window.__scfStore.getState();
+  window.__scfDecodeFault = fault
+    ? [...new Set(Object.values(project.clips).map((clip) => clip.sourceUri))]
+        .filter((uri) => !fault.only || assets.find((asset) => asset.uri === uri)?.name.includes(fault.only))
+        .map((uri) => ({ match: uri, atSeconds: fault.atSeconds, times: fault.times }))
+    : null;
+  const reopensBefore = renderer.seekStats().decoderReopens;
   // Another video decoding at the same time, as the viewer's own decoder or
   // a second clip would be: what made a seeked <video> settle on the frame
-  // before. Off for the export-like pass, which has the decoders to itself.
+  // before. Off by default for the export-like pass, which has the decoders
+  // to itself.
   let load = null;
-  if (!exportLike) {
+  if (contention) {
     load = document.createElement('video');
     load.src = Object.values(project.clips)[0].sourceUri;
     load.muted = true;
@@ -156,15 +191,18 @@ const RENDER_ALL = async ({ mode, BITS, BAR_W, end }) => {
   }
   const codes = [];
   let readersSeen = 0;
+  let error = null;
   const started = performance.now();
   try {
-    for (let frame = 0; frame < end; frame += 1) {
+    for (let frame = start; frame < end; frame += 1) {
       codes.push(read(await renderer.renderExact(project, frame)));
       // Which path drew it: readers exist only while frames are decoded with WebCodecs.
       if (renderer.sequential) readersSeen += 1;
       // Let the viewer draw between renders, as it does when nothing holds it.
       if (!exportLike && frame % 3 === 0) await new Promise((done) => requestAnimationFrame(done));
     }
+  } catch (caught) {
+    error = String(caught);
   } finally {
     if (exportLike) {
       renderer.stopSequentialDecode();
@@ -174,7 +212,10 @@ const RENDER_ALL = async ({ mode, BITS, BAR_W, end }) => {
     load?.pause();
     load?.remove();
   }
-  return { codes, readersSeen, seconds: (performance.now() - started) / 1000, slow: renderer.slowSources() };
+  const fired = [].concat(window.__scfDecodeFault ?? []).reduce((sum, entry) => sum + (entry.fired ?? 0), 0);
+  window.__scfDecodeFault = null;
+  const stats = renderer.seekStats();
+  return { codes, readersSeen, error, fired, stats, reopens: stats.decoderReopens - reopensBefore, seconds: (performance.now() - started) / 1000, slow: renderer.slowSources() };
 };
 
 async function main() {
@@ -300,31 +341,179 @@ async function main() {
       }
     }
 
-    // For information: the seek-per-frame path in the same conditions.
+    // Which file each timeline frame comes from: the variable-rate one has
+    // frames no seek can reach (see below).
+    const fileOf = [];
+    for (const clip of layout.clips) for (let frame = clip.startFrame; frame < clip.startFrame + clip.durationFrames; frame += 1) fileOf[frame] = clip.name;
+    const isVfr = (frame) => fileOf[frame]?.startsWith('exact-vfr');
+    const constantRate = fileOf.filter((name, frame) => !isVfr(frame)).length;
+    const wrongFrames = (codes, start = 0) => codes.flatMap((code, at) => (code !== expected[start + at] ? [start + at] : []));
+
+    // The seek path, forced, with the viewer and another video decoding.
+    // Measured, a <video> shows a neighbour for the last frame before every
+    // keyframe of the variable-rate file whatever the aim, so not every
+    // frame can be right here. What must hold: every frame was checked, and
+    // the check let no wrong frame through as right - each wrong frame is
+    // one it caught and could not put right. (In an export such a frame
+    // stops the export; this is not one, so it is drawn and counted.)
     const seek = await window.evaluate(RENDER_ALL, { mode: 'seek', BITS, BAR_W, end: layout.end });
-    const seekWrong = judge(seek.codes);
-    console.log(`   info  seek per frame (__scfSeekExport), same conditions: ${seekWrong.length}/${seek.codes.length} wrong${seekWrong.length ? `: ${seekWrong.slice(0, 8).join(' ')}` : ''}`);
+    const seekWrong = wrongFrames(seek.codes);
+    check('seek per frame (__scfSeekExport), contention: every frame is checked, and no wrong frame passes the check',
+      seek.codes.length === expected.length && seek.stats.checked === expected.length && seek.stats.unchecked === 0
+        && seekWrong.length <= seek.stats.failed && seekWrong.every(isVfr),
+      `${seekWrong.length} wrong (${seekWrong.slice(0, 6).join(' ')}), ${seek.stats.checked} checked, ${seek.stats.rightFirstTime} right first time, ${seek.stats.recovered} put right, ${seek.stats.failed} not`);
+    check('seek per frame, contention: the constant-rate files come out right on every frame',
+      seek.codes.length === expected.length && seekWrong.filter((frame) => !isVfr(frame)).length === 0 && constantRate >= 200,
+      `${constantRate} constant-rate frames`);
+
+    // A decoder that fails mid-export, once per file: the reader opens a
+    // fresh decoder at the keyframe before and goes on, never seeking.
+    for (const contention of [false, true]) {
+      const result = await window.evaluate(RENDER_ALL, { mode: 'export', BITS, BAR_W, end: layout.end, contention, fault: { atSeconds: 0.5, times: 1 } });
+      const wrong = wrongFrames(result.codes);
+      check(`decoder failing mid-export once per file${contention ? ', contention' : ''}: a fresh decoder takes over, every frame right`,
+        !result.error && result.codes.length === expected.length && wrong.length === 0 && result.fired === 3 && result.reopens >= 3
+          && result.slow.length === 0 && result.stats.checked === 0,
+        `${wrong.length} wrong, ${result.fired} failures injected, ${result.reopens} decoders reopened, slow path: ${result.slow.join(', ') || 'none'}${result.error ? `, ${result.error.slice(0, 100)}` : ''}`);
+    }
+
+    // A decoder that keeps failing on the constant-rate files: the reader
+    // gives up, the clips go to the checked seek, under contention.
+    const persistent = await window.evaluate(RENDER_ALL, { mode: 'export', BITS, BAR_W, end: layout.end, contention: true, fault: { only: 'fps', atSeconds: 0.5, times: 99 } });
+    const persistentWrong = wrongFrames(persistent.codes);
+    check('decoder failing for good on two files, contention: they are sought, checked, and every frame is right',
+      !persistent.error && persistent.codes.length === expected.length && persistentWrong.length === 0 && persistent.slow.length === 2
+        && persistent.stats.checked >= 200 && persistent.stats.failed === 0,
+      `${persistentWrong.length} wrong, slow path: ${persistent.slow.join(', ')}, ${persistent.stats.checked} checked, ${persistent.stats.recovered} put right${persistent.error ? `, ${persistent.error.slice(0, 100)}` : ''}`);
 
     console.log('4. exporting through the dialog');
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, workDir);
-    await window.getByTestId('title-bar').getByRole('button', { name: 'Export', exact: true }).click();
     const panel = window.locator('.panel').filter({ hasText: 'Target bitrate' }).first();
-    await panel.getByText('This render:').waitFor({ timeout: 60_000 });
-    await panel.getByLabel('File name').fill('exact-export');
-    await panel.getByRole('button', { name: 'Browse' }).click();
-    await panel.getByText('Will ', { exact: false }).first().waitFor({ timeout: 10_000 });
-    await panel.getByRole('button', { name: 'Start export' }).click();
-    const outcome = window.getByText(/Export finished|Export failed/).first();
-    await outcome.waitFor({ timeout: 300_000 });
-    check('the export finishes', (await outcome.innerText()).startsWith('Export finished'), (await outcome.innerText()).slice(0, 80));
+    /** Export the timeline through the dialog, with a fault and another video decoding if asked. */
+    const exportTimeline = async (name, { fault = null, contention = false } = {}) => {
+      // Browse picks the work folder, whatever an import left the dialog doing.
+      await app.evaluate(({ dialog }, folder) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      }, workDir);
+      await window.evaluate(async ({ fault, contention }) => {
+        const { project, assets } = window.__scfStore.getState();
+        window.__scfDecodeFault = fault
+          ? [...new Set(Object.values(project.clips).map((clip) => clip.sourceUri))]
+              .filter((uri) => !fault.only || assets.find((asset) => asset.uri === uri)?.name.includes(fault.only))
+              .map((uri) => ({ match: uri, atSeconds: fault.atSeconds, times: fault.times }))
+          : null;
+        if (contention) {
+          const load = document.createElement('video');
+          load.id = 'exact-load';
+          load.src = Object.values(project.clips)[0].sourceUri;
+          load.muted = true;
+          load.loop = true;
+          load.playbackRate = 4;
+          document.body.appendChild(load);
+          await load.play().catch(() => undefined);
+        }
+      }, { fault, contention });
+      await window.getByTestId('title-bar').getByRole('button', { name: 'Export', exact: true }).click();
+      await panel.getByText('This render:').waitFor({ timeout: 60_000 });
+      await panel.getByLabel('File name').fill(name);
+      await panel.getByRole('button', { name: 'Browse' }).click();
+      await panel.getByText('Will ', { exact: false }).first().waitFor({ timeout: 10_000 });
+      await panel.getByRole('button', { name: 'Start export' }).click();
+      const outcome = window.getByText(/Export finished|Export failed/).first();
+      await outcome.waitFor({ timeout: 300_000 });
+      const text = await outcome.innerText();
+      const after = await window.evaluate(() => {
+        document.getElementById('exact-load')?.remove();
+        const fired = [].concat(window.__scfDecodeFault ?? []).reduce((sum, entry) => sum + (entry.fired ?? 0), 0);
+        window.__scfDecodeFault = null;
+        return { fired, stats: window.__scfRenderer().seekStats() };
+      });
+      await panel.getByTitle('Close').click();
+      return { text, ...after, codes: text.startsWith('Export finished') ? (await truthOf(join(workDir, `${name}.mp4`))).codes : [] };
+    };
 
-    const exported = await truthOf(join(workDir, 'exact-export.mp4'));
-    const wrong = judge(exported.codes);
+    const plain = await exportTimeline('exact-export');
+    check('the export finishes', plain.text.startsWith('Export finished'), plain.text.slice(0, 80));
+    const wrong = judge(plain.codes);
     check('the exported file holds every timeline frame, each the one the rule picks',
-      exported.codes.length === expected.length && wrong.length === 0,
-      `${exported.codes.length} frames for ${expected.length}, ${wrong.length} wrong${wrong.length ? `: ${wrong.slice(0, 8).join(' ')}` : ''}`);
+      plain.codes.length === expected.length && wrong.length === 0,
+      `${plain.codes.length} frames for ${expected.length}, ${wrong.length} wrong${wrong.length ? `: ${wrong.slice(0, 8).join(' ')}` : ''}`);
+
+    const faulted = await exportTimeline('exact-export-fault', { fault: { atSeconds: 0.5, times: 1 }, contention: true });
+    const faultedWrong = judge(faulted.codes);
+    check('an export whose decoders fail mid-file, contention: finished, every frame right, nothing sought',
+      faulted.text.startsWith('Export finished') && faulted.codes.length === expected.length && faultedWrong.length === 0
+        && faulted.fired === 3 && faulted.stats.checked === 0,
+      `${faulted.text.slice(0, 60)}, ${faulted.codes.length} frames, ${faultedWrong.length} wrong, ${faulted.fired} failures injected`);
+
+    // The variable-rate file's decoder failing for good: its last frames
+    // before keyframes cannot be sought, so the export must stop and say so
+    // rather than write the neighbour.
+    const stopped = await exportTimeline('exact-export-stop', { fault: { only: 'vfr', atSeconds: 0.5, times: 99 } });
+    check('an export that would need a frame no seek can show stops, and says which',
+      stopped.text.startsWith('Export failed') && /would not show frame \d+ of .exact-vfr/.test(stopped.text)
+        && stopped.stats.failed === 1 && stopped.stats.wrongSeen.length >= 1 && stopped.fired >= 1,
+      `${stopped.text.slice(0, 140)} | caught: ${stopped.stats.wrongSeen.slice(0, 3).join(' ')}`);
+
+    // MKV and WebM: WebCodecs cannot read them, so they are always sought.
+    // Opus and AAC in them start the container before 0, as a recording's do.
+    console.log('5. MKV and WebM, always sought');
+    const sought = [
+      { name: 'exact-30fps.mkv', count: 90, rate: 30, options: { audio: true } },
+      { name: 'exact-25fps.webm', count: 75, rate: 25, options: { audio: true } },
+    ].map((file) => ({ ...file, path: join(workDir, file.name) }));
+    const before = layout.end;
+    for (const [at, file] of sought.entries()) {
+      await encode(file.path, file.count, file.rate, file.options);
+      file.truth = await truthOf(file.path);
+      file.times = await containerTimes(file.path);
+      await app.evaluate(({ dialog }, path) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
+      }, file.path);
+      // After the MP4s: the renders and exports above moved the playhead.
+      await window.evaluate((frame) => window.__scfStore.getState().setCurrentFrame(frame), before + sought.slice(0, at).reduce((sum, done) => sum + Math.round((done.count / done.rate) * layout.fps), 0));
+      await window.getByRole('button', { name: 'Import' }).click();
+      const row = window.locator('li').filter({ hasText: file.name }).first();
+      await row.waitFor({ state: 'visible', timeout: 60_000 });
+      await row.hover();
+      await row.getByRole('button', { name: 'Add at the playhead' }).click();
+      await window.waitForFunction((count) => Object.keys(window.__scfStore.getState().project.clips).length === count, files.length + at + 1);
+    }
+    const more = await window.evaluate(() => {
+      const { project, assets } = window.__scfStore.getState();
+      return Object.values(project.clips).map((clip) => ({ name: assets.find((asset) => asset.uri === clip.sourceUri)?.name ?? clip.name, startFrame: clip.startFrame, durationFrames: clip.durationFrames, sourceOffsetFrames: clip.sourceOffsetFrames }));
+    });
+    let end = before;
+    for (const file of sought) {
+      const clip = more.find((candidate) => candidate.name === file.name);
+      if (!clip) throw new Error(`no clip for ${file.name}`);
+      for (let frame = clip.startFrame; frame < clip.startFrame + clip.durationFrames; frame += 1) {
+        expected[frame] = file.truth.codes[ruleFrame(file.times, clip.sourceOffsetFrames + frame - clip.startFrame, layout.fps)];
+      }
+      end = Math.max(end, clip.startFrame + clip.durationFrames);
+    }
+    const negativeStart = sought.every((file) => file.times[0] === 0 && file.truth.times[0] > 0);
+    check('the MKV and WebM are on the timeline after the MP4s, each read back sound, starting the container before 0',
+      // A file with sound can run a frame past its pictures: 180 to 182.
+      end - before >= 180 && end - before <= 182 && sought.every((file) => file.truth.codes.every((code, index) => code === index) && file.times.length === file.count) && negativeStart,
+      `${end - before} frames added, container start before 0: ${negativeStart}`);
+
+    for (let pass = 1; pass <= 2; pass += 1) {
+      const result = await window.evaluate(RENDER_ALL, { mode: 'export', BITS, BAR_W, start: before, end, contention: true });
+      const wrong = wrongFrames(result.codes, before);
+      check(`MKV and WebM as the export renders them, contention, pass ${pass}: every frame checked and right`,
+        !result.error && result.codes.length === end - before && wrong.length === 0 && result.stats.checked === end - before
+          && result.stats.failed === 0 && result.slow.length === 2,
+        `${wrong.length} wrong, ${result.stats.checked} checked, ${result.stats.rightFirstTime} right first time, ${result.stats.recovered} put right, slow path: ${result.slow.join(', ')}${result.error ? `, ${result.error.slice(0, 100)}` : ''}`);
+    }
+
+    const both = await exportTimeline('exact-export-mkv-webm', { contention: true });
+    const bothWrong = judge(both.codes);
+    check('an export of all five files, contention: every frame right, MKV and WebM frames checked',
+      both.text.startsWith('Export finished') && both.codes.length === end && bothWrong.length === 0 && both.stats.checked === end - before && both.stats.failed === 0,
+      `${both.text.slice(0, 60)}, ${both.codes.length} frames for ${end}, ${bothWrong.length} wrong${bothWrong.length ? `: ${bothWrong.slice(0, 6).join(' ')}` : ''}, ${both.stats.checked} checked`);
   } finally {
     await app.close().catch(() => undefined);
   }
