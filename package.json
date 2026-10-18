@@ -51,6 +51,7 @@
     "test:bench:audio-seek": "node ./tests/bench/audio-seek.mjs",
     "test:bench:audio-chunks": "node ./tests/bench/audio-chunks.mjs",
     "test:bench:audio-irregular-head": "node ./tests/bench/audio-irregular-head.mjs",
+    "test:bench:aac-priming": "node ./tests/bench/aac-priming.mjs",
     "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
     "release": "node ./scripts/release.mjs",
     "rollback": "node ./scripts/rollback.mjs"

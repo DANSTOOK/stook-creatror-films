@@ -62,18 +62,6 @@ const FAR_AHEAD_SECONDS = 30;
 const AAC_FRAME_SAMPLES = 1024;
 
 /**
- * Samples of run-up AAC-LC hands back before the sound itself, which have to
- * be thrown away.
- *
- * It is a fact about the codec, not the container. A file written with an
- * edit list says so - `time` is then negative for those samples - but a
- * stream-copied track need not carry one, and the samples are there all the
- * same. `decodeAudioData` discards them either way, and everything in the
- * app is lined up against that, so this does too.
- */
-const AAC_PRIMING_SAMPLES = AAC_FRAME_SAMPLES;
-
-/**
  * Frames fed before a span that `decodeUncached` is asked for.
  *
  * Only a nicety there: it does NOT make a mid-stream decode match one from
@@ -116,15 +104,20 @@ export class AudioStream {
   private bufferStart = 0;
   private readonly read: ReturnType<typeof rangeReader>;
 
-  /**
-   * Seconds of codec run-up in front of the sound, to skip over.
+  /*
+   * Sound time is the container's presentation time, exactly: what the
+   * samples' `time` says once mp4.ts has applied the edit list (or an
+   * iTunSMPB delay), and nothing more is taken off.
    *
-   * Zero when the container already accounts for it - the edit list puts
-   * those samples before time zero, so the first sample's `time` is negative
-   * - and one AAC frame when it does not. See AAC_PRIMING_SAMPLES.
+   * It used to drop one more AAC frame of "priming" whenever the first sample
+   * was not before zero, on the belief that decodeAudioData does. Measured,
+   * neither it nor ffmpeg drops anything a file does not declare. A file
+   * without an edit list - every fragmented MP4 ffmpeg writes, the user's
+   * KRATOS vs THOR footage among them - already places its first real frame
+   * where its picture starts, by stretching the priming packet's duration, so
+   * the extra frame put that sound 1024 samples (23.2 ms at 44.1 kHz) ahead
+   * of its picture and of ffmpeg.
    */
-  private readonly primingSeconds: number;
-  private readonly primingSamples: number;
 
   /**
    * The first packet is not one AAC frame long (a gap after it in the
@@ -145,8 +138,8 @@ export class AudioStream {
   private fedCount = 0;
   private decodedUntil = 0;
   private endReached = false;
-  /** -1024 when the decoder started at the head, 0 when it started mid-stream. */
-  private labelShift = -AAC_FRAME_SAMPLES;
+  /** From the decoder's labels to sound time, in samples: see labelShiftFor. */
+  private labelShift = 0;
   private failure: Error | null = null;
   private wake: (() => void) | null = null;
   /** Serialises `ensure`, so two spans never feed the decoder at once. */
@@ -158,11 +151,27 @@ export class AudioStream {
   ) {
     this.samples = track.samples;
     this.read = rangeReader(url);
-    this.primingSeconds = this.samples[0].time < 0 ? 0 : AAC_PRIMING_SAMPLES / track.sampleRate;
-    this.primingSamples = Math.round(this.primingSeconds * track.sampleRate);
     this.irregularHead =
       this.samples.length > 1 &&
       Math.abs((this.samples[1].time - this.samples[0].time) * track.sampleRate - AAC_FRAME_SAMPLES) > 1;
+  }
+
+  /**
+   * What to add to the decoder's output labels, in samples, for a decode that
+   * starts on packet `start`.
+   *
+   * Chromium's AudioDecoder labels its first output with the first chunk's
+   * timestamp, but never below zero, and counts on from there. A first chunk
+   * stamped before zero - the priming an edit list cuts, at -1024 for ffmpeg
+   * or -2112 for Apple - therefore comes back labelled 0, and every label runs
+   * that far ahead of the sound; one stamped at or after zero comes back as
+   * stamped. Measured on chunks starting at -2112, -1024, 0, 13344, 19933 and
+   * 20992 samples. The shift used to be a flat -1024 for any decode from the
+   * head, which was right only for ffmpeg's own edit list: a file without one
+   * came out a frame early, and an Apple one 1088 samples late.
+   */
+  private labelShiftFor(start: number): number {
+    return Math.min(0, Math.round(this.samples[start].time * this.track.sampleRate));
   }
 
   /** The earliest packet a decode may start on. */
@@ -178,10 +187,10 @@ export class AudioStream {
     return this.track.channels;
   }
 
-  /** Seconds of sound, priming excluded. */
+  /** Seconds from time zero to the end of the sound. */
   get duration(): number {
     const last = this.samples[this.samples.length - 1];
-    return Math.max(0, last.time + last.duration - this.primingSeconds);
+    return Math.max(0, last.time + last.duration);
   }
 
   /** Decoded audio held right now, in bytes. */
@@ -201,7 +210,6 @@ export class AudioStream {
     sampleCount: number;
     firstSampleTime: number;
     secondSampleTime: number;
-    primingSeconds: number;
     duration: number;
     heldSeconds: number;
     decodedUntilSeconds: number;
@@ -212,7 +220,6 @@ export class AudioStream {
       sampleCount: this.samples.length,
       firstSampleTime: this.samples[0].time,
       secondSampleTime: this.samples[1]?.time ?? NaN,
-      primingSeconds: this.primingSeconds,
       duration: this.duration,
       heldSeconds: this.heldSamples / this.track.sampleRate,
       decodedUntilSeconds: this.decodedUntil / this.track.sampleRate,
@@ -304,27 +311,24 @@ export class AudioStream {
     const { sampleRate, channels } = this.track;
 
     // Where to begin feeding, in sample-table terms.
-    const fileFrom = Math.max(0, fromSeconds) + this.primingSeconds;
+    const fileFrom = Math.max(0, fromSeconds);
     const start =
       fromSeconds < NEAR_HEAD_SECONDS && !this.irregularHead
         ? 0
         : Math.max(this.firstStartIndex, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
 
     this.nextFeed = start;
-    // Labels run one frame ahead of content only when starting at the head.
-    this.labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
+    this.labelShift = this.labelShiftFor(start);
     // Everything before the first frame fed is simply not held.
     this.decodedUntil =
       start === 0
         ? 0
-        : Math.max(0, Math.round(this.samples[start].time * sampleRate) - this.primingSamples);
+        : Math.max(0, Math.round(this.samples[start].time * sampleRate));
     this.decoder = new AudioDecoder({
       output: (data) => {
         try {
-          // The decoder's labels run one frame ahead of its content when it
-          // starts at the head, and sound time starts after the priming.
-          const at =
-            Math.round((data.timestamp / 1e6) * sampleRate) + this.labelShift - this.primingSamples;
+          // Sound time from the decoder's label (labelShiftFor).
+          const at = Math.round((data.timestamp / 1e6) * sampleRate) + this.labelShift;
           const count = data.numberOfFrames;
 
           // Entirely run-up: nothing of it belongs to the sound.
@@ -490,11 +494,11 @@ export class AudioStream {
     const planes = Array.from({ length: channels }, () => new Float32Array(length));
     if (length === 0) return planes;
 
-    const fileFrom = fromSeconds + this.primingSeconds;
+    const fileFrom = fromSeconds;
     const firstSample = Math.round(fileFrom * sampleRate);
     const endSeconds = fileFrom + seconds;
     const start = Math.max(this.firstStartIndex, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
-    const labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
+    const labelShift = this.labelShiftFor(start);
     const feedUntilSeconds = endSeconds - labelShift / sampleRate;
 
     let failure: Error | null = null;
