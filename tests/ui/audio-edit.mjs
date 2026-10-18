@@ -212,7 +212,13 @@ const RECORD = async ([seconds, tailMs = 0, raw = 0]) => {
   const frames = [];
   const copies = [];
   const began = performance.now();
-  const sampler = setInterval(() => frames.push([performance.now() - began, window.__scfStore.getState().project.currentFrame]), 20);
+  // And, while the sound runs (no loop), how far the picture is from it: the playhead's frame less the engine's clock.
+  const drifts = [];
+  const sampler = setInterval(() => {
+    const { project } = window.__scfStore.getState();
+    frames.push([performance.now() - began, project.currentFrame]);
+    if (engine.playing && !engine.waiting && !engine.loopWindow) drifts.push(project.currentFrame / project.fps - engine.positionSeconds);
+  }, 20);
   const copier = setInterval(() => {
     const data = new Float32Array(SIZE);
     analyser.getFloatTimeDomainData(data);
@@ -341,7 +347,7 @@ const RECORD = async ([seconds, tailMs = 0, raw = 0]) => {
   const endTime = copies[copies.length - 1].time;
   return {
     samples: Array.from(out), sampleRate: rate, endTime, playedAt, replayed, frames, schedule, missing, strips, stripKeys, probes,
-    pressCtx, stopCtx, waitedMs: begins.length && playCalls.length ? (begins[0] - playCalls[0]) * 1000 : null, firstMoveMs: firstMove === null ? null : firstMove - pressedAt,
+    pressCtx, stopCtx, drifts, waitedMs: begins.length && playCalls.length ? (begins[0] - playCalls[0]) * 1000 : null, firstMoveMs: firstMove === null ? null : firstMove - pressedAt,
     outvoted: [...outvoted.entries()].map(([copy, count]) => ({ copy, count })),
   };
 };
@@ -929,14 +935,14 @@ async function main() {
       await store((frame) => window.__scfStore.getState().setCurrentFrame(frame), second * FPS + 7);
       await sleep(300);
       const recording = await store(RECORD, [1.0, 200]);
-      starts.push({ second, ...startAndStop(recording, 440), waitedMs: recording.waitedMs, firstMoveMs: recording.firstMoveMs, replayed: recording.replayed, late: recording.schedule.filter((span) => span.lateBy > 0).length, outvoted: recording.outvoted.length });
+      starts.push({ second, ...startAndStop(recording, 440), drift: median(recording.drifts.slice(5).map((drift) => Math.abs(drift) * 1000)), waitedMs: recording.waitedMs, firstMoveMs: recording.firstMoveMs, replayed: recording.replayed, late: recording.schedule.filter((span) => span.lateBy > 0).length, outvoted: recording.outvoted.length });
     }
     await store(() => {
       for (const worker of window.__audioEditHogs) worker.terminate();
       clearInterval(window.__audioEditJank);
     });
     for (const start of starts) {
-      console.log(`      from ${start.second} s: waited ${start.waitedMs?.toFixed(1)} ms for the first span, sound from ${start.onsetMs.toFixed(1)} ms, the playhead moved at ${start.firstMoveMs?.toFixed(1)} ms; steepest step ${start.start.toFixed(2)}x at the start, ${start.playing.toFixed(2)}x playing, ${start.stop.toFixed(2)}x at the stop; ${start.late} spans late, ${start.outvoted} copies outvoted, replayed ${start.replayed}`);
+      console.log(`      from ${start.second} s: waited ${start.waitedMs?.toFixed(1)} ms for the first span, sound from ${start.onsetMs.toFixed(1)} ms, the playhead moved at ${start.firstMoveMs?.toFixed(1)} ms and ran ${start.drift.toFixed(1)} ms from the sound (median); steepest step ${start.start.toFixed(2)}x at the start, ${start.playing.toFixed(2)}x playing, ${start.stop.toFixed(2)}x at the stop; ${start.late} spans late, ${start.outvoted} copies outvoted, replayed ${start.replayed}`);
     }
     const waits = starts.map((start) => start.waitedMs ?? 0);
     check(`the load is real: with ${hogs} workers spinning, the first span kept the start waiting in every run, up to ${Math.max(...waits).toFixed(0)} ms`,
@@ -945,11 +951,13 @@ async function main() {
       starts.every((start) => start.onsetMs >= 0 && start.peak > 0.01 && start.start <= 1.15), starts.map((start) => `${start.start.toFixed(2)}x`).join(', '));
     check('nor while it plays on, nor at the stop', starts.every((start) => start.playing <= 1.15 && start.stop <= 1.15),
       starts.map((start) => `${start.playing.toFixed(2)}x/${start.stop.toFixed(2)}x`).join(', '));
-    check('picture and sound set off together: the playhead moves on the first frame after the sound begins, never before it',
-      starts.every((start) => start.firstMoveMs !== null && start.firstMoveMs >= start.onsetMs - 15 && start.firstMoveMs <= start.onsetMs + 1000 / FPS + 40),
-      starts.map((start) => `${(start.firstMoveMs - start.onsetMs).toFixed(1)} ms`).join(', '));
-    check('and the wait is short: the sound is under way within 350 ms of the press, however loaded',
-      starts.every((start) => start.onsetMs <= 350 && !start.replayed), `median ${median(starts.map((start) => start.onsetMs)).toFixed(1)} ms, at most ${Math.max(...starts.map((start) => start.onsetMs)).toFixed(1)} ms`);
+    // On v1.42.0-beta.1 the picture set off with the press and the sound up to 650 ms after it.
+    check('picture and sound set off together: the playhead never moves before the sound begins, and then keeps to it within three frames',
+      starts.every((start) => start.firstMoveMs !== null && start.firstMoveMs >= start.onsetMs - 15 && start.drift <= 3000 / FPS),
+      starts.map((start) => `moved ${(start.firstMoveMs - start.onsetMs).toFixed(1)} ms after the sound, ${start.drift.toFixed(1)} ms apart`).join('; '));
+    // The wait is cut off at 300 ms (START_WAIT_MS); the press reaching the engine and the start's 20 ms margin come on top.
+    check('and the wait is bounded: the sound is under way within 400 ms of the press, however loaded, and never rebuilt',
+      starts.every((start) => start.onsetMs <= 400 && !start.replayed), `median ${median(starts.map((start) => start.onsetMs)).toFixed(1)} ms, at most ${Math.max(...starts.map((start) => start.onsetMs)).toFixed(1)} ms`);
 
     if (withSilent) {
       console.log(`5. a video with no sound: ${silentFootage}`);
