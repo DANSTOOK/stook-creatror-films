@@ -132,7 +132,7 @@ export const SHADER_TRANSITIONS: readonly ShaderTransitionDef[] = [
   def('checkerboard', 'chessboard', 'wipe', 'lql', [f('grid_num', 10, 2, 40, 'fxp.count', 1)], { still: 0.4 }),
   def('undulatingBurn', 'undulatingBurnOut', 'wipe', 'pthrasher', [f('smoothness', 0.03, 0, 0.2, 'fxp.softness'), v2('center', [0.5, 0.5], 0, 1, 'fxp.center'), c3('color', [0, 0, 0], 'fxp.edgeColor')]),
   def('wind', 'wind', 'wipe', 'gre', [f('size', 0.2, 0, 1, 'fxp.edgeWidth'), b('reversed', false, 'fxp.reverse')]),
-  def('box', 'Rectangle', 'wipe', 'martiniti', [c4('bgcolor', [0, 0, 0, 1], 'fxp.color')], { still: 0.35 }),
+  def('box', 'Rectangle', 'wipe', 'martiniti', [c4('bgcolor', [0, 0, 0, 1], 'fxp.color')], { still: 0.2 }),
   def('pinwheel', 'pinwheel', 'wipe', 'Mr Speaker', [f('speed', 2, 0.5, 10, 'fxp.speed')]),
   def('warpWipe', 'directionalwarp', 'wipe', 'pschroen', [f('smoothness', 0.1, 0, 1, 'fxp.softness'), v2('direction', [-1, 1], -1, 1, 'fxp.direction')]),
 
