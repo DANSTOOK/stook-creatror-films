@@ -7,6 +7,7 @@ import { notify } from '@renderer/notifications/notifications';
 import { t } from '@renderer/i18n';
 import { shuttleRate } from './shuttle';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { heldClockFrom } from '@renderer/timing/playbackHold';
 import { spaceFromSlider } from './spaceFromSlider';
 
 /**
@@ -228,9 +229,13 @@ export function runPlaybackClock(frames: FrameSource = editorFrames, startTime =
     handle = frames.request(tick);
 
     try {
-      const { project, ui, setCurrentFrame, setPlaying } = useProjectStore.getState();
-      const elapsedSeconds = (now - lastTime) / 1000;
+      // While the sound is being made ready the playhead waits for it
+      // (timing/playbackHold), and the wait is not played through afterwards.
+      const from = heldClockFrom(now, lastTime);
       lastTime = now;
+      if (from === null) return;
+      const { project, ui, setCurrentFrame, setPlaying } = useProjectStore.getState();
+      const elapsedSeconds = (now - from) / 1000;
       const loop = ui.loopPlayback ? currentLoopRange(project, ui) : null;
 
       const result = advancePlayhead(
