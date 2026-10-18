@@ -19,6 +19,7 @@ import {
 import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
 import { ClipContentStore } from '../media/clipContent';
+import { audioExtractArgs } from '../media/audioExtract';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
@@ -416,7 +417,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const target = join(tmpdir(), `filmora-audio-${randomUUID()}.m4a`);
     const ffmpeg = resolveFfmpegPath();
     const attempt = (codec: string[]): Promise<boolean> =>
-      execFileAsync(ffmpeg, ['-v', 'error', '-y', '-i', path, '-vn', '-map', '0:a:0', ...codec, target], {
+      execFileAsync(ffmpeg, audioExtractArgs(path, target, codec), {
         maxBuffer: 8 * 1024 * 1024,
         windowsHide: true,
       }).then(() => true, () => false);

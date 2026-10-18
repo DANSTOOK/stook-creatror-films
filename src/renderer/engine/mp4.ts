@@ -161,7 +161,7 @@ export function parseMoov(moov: Uint8Array, fragments: readonly Mp4Fragment[] = 
     const description = moov.slice(config.start, config.end);
     const codec = configType === 'avcC' ? avcCodec(entry.type, description) : hevcCodec(entry.type, description);
 
-    const samples = sampleTable(view, trak, stbl, timescale, root, fragments);
+    const samples = sampleTable(view, trak, stbl, timescale, root, fragments, presentationStart(view, root, trak, timescale));
     if (!samples) return null;
 
     return { codec, description, width, height, timescale, samples };
@@ -181,13 +181,14 @@ function sampleTable(
   trak: Box,
   stbl: Box,
   timescale: number,
-  root?: Box,
-  fragments: readonly Mp4Fragment[] = [],
+  root: Box,
+  fragments: readonly Mp4Fragment[],
+  start: PresentationStart,
 ): Mp4Sample[] | null {
   // A fragmented file keeps this table empty and describes its samples in
   // movie fragments instead.
-  if (root && fragments.length > 0 && sampleCount(view, stbl) === 0) {
-    return fragmentSampleTable(view, root, trak, timescale, fragments);
+  if (fragments.length > 0 && sampleCount(view, stbl) === 0) {
+    return fragmentSampleTable(view, root, trak, timescale, fragments, start);
   }
   {
     // stts: decode-time deltas.
@@ -272,30 +273,15 @@ function sampleTable(
       }
     }
 
-    // Edit list: the presentation starts at media_time, not at zero. ffmpeg
-    // writes one whenever B-frames shift composition times.
-    let mediaStart = 0;
-    const elst = path(view, trak, 'edts', 'elst');
-    if (elst) {
-      const version = view.getUint8(elst.start);
-      const entries = view.getUint32(elst.start + 4);
-      for (let e = 0; e < entries; e += 1) {
-        const at = elst.start + 8 + e * (version === 1 ? 20 : 12);
-        const mediaTime = version === 1 ? Number(view.getBigInt64(at + 8)) : view.getInt32(at + 4);
-        if (mediaTime >= 0) {
-          mediaStart = mediaTime;
-          break;
-        }
-      }
-    }
-
+    // The edit list moves every sample by the same amount (presentationStart).
+    const shift = start.emptyTicks - start.mediaStart;
     const samples: Mp4Sample[] = new Array(count);
     for (let i = 0; i < count; i += 1) {
       samples[i] = {
         offset: sampleOffsets[i],
         size: sizes[i],
         dts: dts[i],
-        time: (dts[i] + offsets[i] - mediaStart) / timescale,
+        time: (dts[i] + offsets[i] + shift) / timescale,
         duration: deltas[i] / timescale,
         isSync: sync[i],
       };
@@ -418,7 +404,16 @@ export function parseMoovAudio(moov: Uint8Array, fragments: readonly Mp4Fragment
     if (channelConfig > 0) channels = channelConfig;
     if (!sampleRate || !channels) return null;
 
-    const samples = sampleTable(view, trak, stbl, timescale, root, fragments);
+    // Encoder delay declared the iTunes way counts only when the edit list
+    // does not already skip anything: then it is the one statement there is
+    // about where the sound begins.
+    const start = presentationStart(view, root, trak, timescale);
+    if (start.mediaStart === 0) {
+      const delay = iTunesEncoderDelay(moov, view, root);
+      if (delay > 0) start.mediaStart = Math.round((delay * timescale) / sampleRate);
+    }
+
+    const samples = sampleTable(view, trak, stbl, timescale, root, fragments, start);
     if (!samples) return null;
 
     return { codec: `mp4a.40.${objectType}`, description, sampleRate, channels, timescale, samples };
@@ -518,18 +513,132 @@ function trackIdOf(view: DataView, trak: Box): number | null {
   return view.getUint32(tkhd.start + (view.getUint8(tkhd.start) === 1 ? 20 : 12));
 }
 
-/** Where the presentation starts, from the edit list, in the track timescale. */
-function editListStart(view: DataView, trak: Box): number {
+/**
+ * Where a track's presentation begins, in its own timescale.
+ *
+ * A sample is presented at `composition time - mediaStart + emptyTicks`.
+ */
+interface PresentationStart {
+  /** The media time the first real edit starts playing from (its media_time). */
+  mediaStart: number;
+  /** Empty edits in front of it: time the track presents nothing. */
+  emptyTicks: number;
+}
+
+/**
+ * The edit list's account of where a track starts (ISO/IEC 14496-12 8.6.6).
+ *
+ * Two things in it move a track, and real files use both:
+ *  - media_time of the first real edit. ffmpeg writes one for every AAC
+ *    track (1024, the encoder's priming) and for B-frame video, and Apple
+ *    encoders write 2112. The samples before it are decoded but not shown.
+ *  - empty edits (media_time -1) in front of that, in the MOVIE timescale:
+ *    the track starts that much later than the others. A sound that starts
+ *    after its picture, or a stream-copied cut, is written this way, and
+ *    ignoring it put that sound half a second early in a measured file.
+ *
+ * Only the first real edit is honoured; later ones (a file made of several
+ * cuts) and dwell edits are rare enough not to be read. The empty time is
+ * rounded to the track's timescale exactly as ffmpeg rounds it, so both read
+ * a file to the same sample. No edit list means the timestamps as stored.
+ */
+function presentationStart(view: DataView, root: Box, trak: Box, timescale: number): PresentationStart {
+  const start: PresentationStart = { mediaStart: 0, emptyTicks: 0 };
   const elst = path(view, trak, 'edts', 'elst');
-  if (!elst) return 0;
+  if (!elst) return start;
+
+  const mvhd = child(view, root, 'mvhd');
+  const movieTimescale = mvhd
+    ? view.getUint32(mvhd.start + (view.getUint8(mvhd.start) === 1 ? 20 : 12))
+    : 0;
+
   const version = view.getUint8(elst.start);
   const entries = view.getUint32(elst.start + 4);
+  let empty = 0;
   for (let e = 0; e < entries; e += 1) {
     const at = elst.start + 8 + e * (version === 1 ? 20 : 12);
+    if (at + (version === 1 ? 20 : 12) > elst.end) break;
+    const duration = version === 1 ? readUint64(view, at) : view.getUint32(at);
     const mediaTime = version === 1 ? Number(view.getBigInt64(at + 8)) : view.getInt32(at + 4);
-    if (mediaTime >= 0) return mediaTime;
+    if (mediaTime < 0) {
+      empty += duration;
+      continue;
+    }
+    start.mediaStart = mediaTime;
+    break;
   }
-  return 0;
+  if (empty > 0 && movieTimescale > 0) start.emptyTicks = Math.round((empty * timescale) / movieTimescale);
+  return start;
+}
+
+/**
+ * Encoder delay from an iTunes `iTunSMPB` tag, in samples, or 0.
+ *
+ * The tag is hex words: a zero, the delay, the padding, the sample count.
+ * iTunes writes it as a freeform `----` item (moov/udta/meta/ilst), and
+ * ffmpeg carries it through a stream copy only as a keyed `mdta` item
+ * (moov/meta with keys + ilst) - which is how the app's own audio extraction
+ * writes it - so both are read. The 16384 ceiling is ffmpeg's: anything
+ * larger is not a codec delay.
+ */
+function iTunesEncoderDelay(moov: Uint8Array, view: DataView, root: Box): number {
+  const text = (box: Box): string => String.fromCharCode(...moov.subarray(box.start, box.end));
+  const valueOf = (item: Box): string | null => {
+    const data = childBoxes(view, item.start, item.end).find((box) => box.type === 'data');
+    // A data box: 4 bytes of type, 4 of locale, then the value.
+    return data ? text({ type: 'data', start: data.start + 8, end: data.end }) : null;
+  };
+
+  let value: string | null = null;
+
+  // iTunes: moov/udta/meta/ilst/---- with mean, name and data. Every udta
+  // is looked in: a file can carry more than one (ffmpeg's encoder tag in
+  // one, a tagger's in another).
+  for (const udta of childBoxes(view, root.start, root.end)) {
+    if (udta.type !== 'udta') continue;
+    const udtaMeta = child(view, udta, 'meta');
+    const freeformList = udtaMeta
+      ? childBoxes(view, udtaMeta.start + 4, udtaMeta.end).find((box) => box.type === 'ilst')
+      : undefined;
+    for (const item of freeformList ? childBoxes(view, freeformList.start, freeformList.end) : []) {
+      if (item.type !== '----') continue;
+      const name = childBoxes(view, item.start, item.end).find((box) => box.type === 'name');
+      if (name && text({ type: 'name', start: name.start + 4, end: name.end }) === 'iTunSMPB') value = valueOf(item);
+    }
+  }
+
+  // ffmpeg with use_metadata_tags: a meta with a keys table, and ilst
+  // items whose type is the 1-based index of their key.
+  // ffmpeg puts it under udta; other writers straight under moov.
+  const metas = [child(view, root, 'meta'), ...childBoxes(view, root.start, root.end).filter((box) => box.type === 'udta').map((udta) => child(view, udta, 'meta'))];
+  for (const meta of metas) {
+    if (value !== null || !meta) continue;
+    const boxes = childBoxes(view, meta.start + 4, meta.end);
+    const keys = boxes.find((box) => box.type === 'keys');
+    const list = boxes.find((box) => box.type === 'ilst');
+    if (keys && list) {
+      let index = 0;
+      let at = keys.start + 8;
+      for (let e = 0, n = view.getUint32(keys.start + 4); e < n && at + 8 <= keys.end; e += 1) {
+        const size = view.getUint32(at);
+        if (size < 8) break;
+        if (text({ type: 'key', start: at + 8, end: at + size }) === 'iTunSMPB') index = e + 1;
+        at += size;
+      }
+      if (index > 0) {
+        for (let at2 = list.start; at2 + 8 <= list.end; ) {
+          const size = view.getUint32(at2);
+          if (size < 8) break;
+          if (view.getUint32(at2 + 4) === index) value = valueOf({ type: 'item', start: at2 + 8, end: at2 + size });
+          at2 += size;
+        }
+      }
+    }
+  }
+
+  const words = value?.trim().split(/\s+/) ?? [];
+  const delay = words.length >= 2 ? parseInt(words[1], 16) : 0;
+  return Number.isFinite(delay) && delay > 0 && delay < 16384 ? delay : 0;
 }
 
 interface SampleDefaults {
@@ -554,6 +663,7 @@ function fragmentSampleTable(
   trak: Box,
   timescale: number,
   fragments: readonly Mp4Fragment[],
+  start: PresentationStart,
 ): Mp4Sample[] | null {
   const trackId = trackIdOf(view, trak);
   if (trackId === null) return null;
@@ -572,7 +682,7 @@ function fragmentSampleTable(
     }
   }
 
-  const mediaStart = editListStart(view, trak);
+  const shift = start.emptyTicks - start.mediaStart;
   const samples: Mp4Sample[] = [];
   let nextDts = 0;
 
@@ -666,7 +776,7 @@ function fragmentSampleTable(
               offset: cursor,
               size: sampleSize,
               dts,
-              time: (dts + composition - mediaStart) / timescale,
+              time: (dts + composition + shift) / timescale,
               duration: sampleDuration / timescale,
               isSync: (sampleFlags & SAMPLE_IS_NON_SYNC) === 0,
             });
