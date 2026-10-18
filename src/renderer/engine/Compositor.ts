@@ -20,12 +20,16 @@ import chromaKeyFragmentSource from './shaders/ChromaKey.glsl?raw';
 import pixelArtFragmentSource from './shaders/PixelArtFilter.glsl?raw';
 import blendFragmentSource from './shaders/Blend.glsl?raw';
 import { BLEND_MODE_INDEX } from './blending';
+import { ShaderTransitionPrograms } from '@renderer/fx/transitions/shaders';
+import { activeEffects, effectValuesAt } from '@renderer/fx/effects/catalog';
+import { EFFECT_PASSES, type EffectPass } from '@renderer/fx/effects/shaders';
 
 /**
  * Ping-pong FBO render loop.
  *
  * Each visible clip is rasterized into a project-sized buffer, pushed through
- * its enabled effect passes (chroma key -> grade -> mask -> pixel art) by
+ * its enabled effect passes (chroma key -> grade -> effect stack -> mask ->
+ * pixel art) by
  * swapping between two framebuffers, then blended into the scene accumulator.
  *
  * Alpha handling is the load-bearing detail for game-asset export:
@@ -171,7 +175,7 @@ void main() {
 `;
 
 /** The shader's number for each kind. */
-const TRANSITION_KIND: Record<Transition['kind'], number> = { crossDissolve: 0, dip: 1, wipe: 2, slide: 3, push: 4, shader: 0 };
+const TRANSITION_KIND: Record<Transition['kind'], number> = { crossDissolve: 0, dip: 1, wipe: 2, slide: 3, push: 4, shader: 0 }; // A shader transition that will not compile is drawn as a dissolve.
 
 /** Which way each direction travels, in texture space (y up). */
 const DIRECTION: Record<Transition['direction'], [number, number]> = { left: [-1, 0], right: [1, 0], up: [0, 1], down: [0, -1] };
@@ -369,6 +373,16 @@ export class Compositor {
   private readonly transitionProgram: GLProgram;
   private readonly blendProgram: GLProgram;
   private readonly copyProgram: GLProgram;
+  /**
+   * The library's shader transitions (fx/transitions), each compiled the
+   * first time it is drawn - or, sooner, when a project that uses it is
+   * first drawn (see warmUp), so playback does not stop to compile.
+   */
+  private shaderTransitions: ShaderTransitionPrograms | null = null;
+  /** Effect programs by their fragment source: passes that share one share the program. */
+  private readonly effectPrograms = new Map<string, GLProgram>();
+  /** A copy of a clip mid-stack, for an effect's later pass to read (sharpen, edge work). */
+  private effectKept: RenderTarget | null = null;
   /** A transition's two sides, while one is on screen; given back otherwise. */
   private transitionFrom: RenderTarget | null = null;
   private transitionTo: RenderTarget | null = null;
@@ -582,6 +596,7 @@ export class Compositor {
       target.resize(w, h);
     }
     this.before?.resize(w, h);
+    this.effectKept?.resize(w, h);
     this.transitionFrom?.resize(w, h);
     this.transitionTo?.resize(w, h);
     this.blended?.resize(w, h);
@@ -848,6 +863,10 @@ export class Compositor {
       });
     }
 
+    // The effect stack: on the graded picture, before the mask, so a mask's
+    // edge stays sharp whatever blurs or warps are above it.
+    this.applyEffectStack(clip, frame);
+
     if (clip.mask.enabled && clip.mask.type !== 0) {
       this.runPass(this.maskingProgram, (program) => {
         program.setInt('u_maskType', clip.mask.type);
@@ -867,6 +886,81 @@ export class Compositor {
         program.set('u_alphaThreshold', clip.pixelArt.alphaThreshold);
       });
     }
+  }
+
+  /* Effect stack ------------------------------------------------------------ */
+
+  private effectProgram(source: string, label: string): GLProgram {
+    let program = this.effectPrograms.get(source);
+    if (!program) {
+      program = new GLProgram(this.gl, baseVertexSource, source, `effect:${label}`);
+      this.effectPrograms.set(source, program);
+    }
+    return program;
+  }
+
+  /** Copy what `ping` holds now into the kept buffer, for a later pass of the same effect. */
+  private keepCurrent(): void {
+    const { gl } = this;
+    this.effectKept ??= new RenderTarget(gl, this.width, this.height, this.scene.internalFormat, 'effect-kept');
+    this.effectKept.bind();
+    gl.disable(gl.BLEND);
+    this.copyProgram.use();
+    this.copyProgram.set('u_transform', FULLSCREEN_MATRIX);
+    this.copyProgram.set('u_flipY', false);
+    this.copyProgram.setTexture('u_inputTexture', this.ping.texture, 0);
+    this.drawQuad(this.copyProgram);
+  }
+
+  /**
+   * A clip's effects, top to bottom, each pass from `ping` to `pong` like
+   * every other effect in the chain. Settings are read at `frame`, so
+   * keyframed ones animate; the frame's time drives the ones that move by
+   * themselves.
+   */
+  private applyEffectStack(clip: Clip, frame: number): void {
+    const effects = activeEffects(clip.effects);
+    if (effects.length === 0) return;
+    const context = { width: this.width, height: this.height, seconds: frame / Math.max(1, this.fps) };
+    for (const effect of effects) {
+      const passes = EFFECT_PASSES[effect.type];
+      if (!passes) continue;
+      const values = effectValuesAt(effect, frame);
+      passes.forEach((pass: EffectPass, index) => {
+        if (pass.keep) this.keepCurrent();
+        const program = this.effectProgram(pass.source, `${effect.type}:${index}`);
+        const uniforms = pass.uniforms(values, context);
+        this.runPass(program, (configured) => {
+          for (const [name, value] of Object.entries(uniforms)) {
+            configured.set(name, typeof value === 'number' ? value : new Float32Array(value));
+          }
+          if (pass.original && this.effectKept) configured.setTexture('u_original', this.effectKept.texture, 4);
+        });
+      });
+    }
+  }
+
+  /**
+   * Compile now what this project will draw: its shader transitions and its
+   * effects. Each is compiled once per context, so this costs nothing after
+   * the first frame that has it - the frame the editor added it on, rather
+   * than the frame playback reaches it.
+   */
+  private warmUp(project: ProjectState): void {
+    for (const transition of Object.values(project.transitions ?? {})) {
+      if (transition.kind === 'shader' && transition.shader) this.shaderPrograms().program(transition.shader);
+    }
+    for (const clip of Object.values(project.clips)) {
+      if (!clip.effects || clip.effects.length === 0) continue;
+      for (const effect of clip.effects) {
+        (EFFECT_PASSES[effect.type] ?? []).forEach((pass, index) => this.effectProgram(pass.source, `${effect.type}:${index}`));
+      }
+    }
+  }
+
+  private shaderPrograms(): ShaderTransitionPrograms {
+    this.shaderTransitions ??= new ShaderTransitionPrograms(this.gl, baseVertexSource);
+    return this.shaderTransitions;
   }
 
   /** Draw resolved layers, bottom first, onto `into`. `skipGrade` is the viewer's "before". */
@@ -913,6 +1007,24 @@ export class Compositor {
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const { transition } = layer.entry;
+    // A shader transition: its own program, with the two sides on units 0
+    // and 1. One that failed to compile here is drawn as a dissolve below.
+    const shader =
+      transition.kind === 'shader' && transition.shader
+        ? this.shaderPrograms().use(transition.shader, layer.entry.progress, this.width / this.height, transition.params, 0, 1)
+        : null;
+    if (shader) {
+      shader.set('u_transform', FULLSCREEN_MATRIX);
+      shader.set('u_flipY', false);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.transitionFrom.texture);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.transitionTo.texture);
+      this.drawQuad(shader);
+      gl.disable(gl.BLEND);
+      this.stats.passes += 1;
+      return;
+    }
     const colour = parseColor(transition.color)?.rgb ?? [0, 0, 0];
     this.transitionProgram.use();
     this.transitionProgram.set('u_transform', FULLSCREEN_MATRIX);
@@ -1025,6 +1137,7 @@ export class Compositor {
     this.stats.clipsDrawn = 0;
     this.stats.passes = 0;
     this.fps = project.fps;
+    this.warmUp(project);
 
     this.scene.bind();
     // Transparent clear: the project frame keeps its alpha so pixel-art and
@@ -1262,6 +1375,12 @@ export class Compositor {
     gl.deleteTexture(this.defaultLutTexture);
     this.releaseTransitionTargets();
     this.transitionProgram.dispose();
+    this.shaderTransitions?.dispose();
+    this.shaderTransitions = null;
+    for (const program of this.effectPrograms.values()) program.dispose();
+    this.effectPrograms.clear();
+    this.effectKept?.dispose();
+    this.effectKept = null;
     for (const texture of this.curveTextures.values()) gl.deleteTexture(texture);
     this.curveTextures.clear();
 
