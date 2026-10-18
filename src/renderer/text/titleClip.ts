@@ -3,8 +3,9 @@ import type { MessageKey } from '@shared/i18n';
 import { createId } from '@shared/utils/id';
 import { createClip } from '@renderer/store/types';
 import { isPictureTrack } from '@renderer/components/Timeline/trackRows';
-import { presetStyle, TITLE_URI_PREFIX, titleName } from './titleStyle';
-import { presetAnimation } from './animation';
+import { TITLE_URI_PREFIX, titleName } from './titleStyle';
+import { titleFromTemplate, type TitleTemplate } from './templates';
+import type { FrameSize } from './layout';
 
 /**
  * Making a title clip, and choosing where it goes.
@@ -60,16 +61,17 @@ export function planTitlePlacement(project: ProjectState, startFrame: number, du
 
 /** A new title clip on `trackId`, in the template's look, with its text. */
 export function createTitleClip(
-  preset: TitlePreset,
+  template: TitleTemplate,
   text: string,
   trackId: string,
   startFrame: number,
   durationFrames: number,
   fallbackName: string,
+  frame: FrameSize,
 ): Clip {
-  // A new title comes on and goes off as its template does, and scales and
-  // turns about its own text.
-  const title: TitleContent = { preset, text, style: presetStyle(preset), animation: presetAnimation(preset), origin: 'text' };
+  // A new title comes on and goes off as its template does, scales and turns
+  // about its own text, and is sized for the project's frame.
+  const title: TitleContent = titleFromTemplate(template, text, frame);
   const clip = createClip({
     trackId,
     name: titleName(text, fallbackName),

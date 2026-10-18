@@ -76,8 +76,7 @@ import {
 } from '@renderer/timing/transitions';
 import { newTransitionFrames } from '@renderer/timing/transitionLength';
 import { TITLE_SECONDS, titleDropPlacement } from '@renderer/text/titleClip';
-import { TITLE_PRESETS } from '@renderer/text/titleStyle';
-import type { TitlePreset } from '@shared/types';
+import { isTemplateId } from '@renderer/text/templates';
 import {
   TITLE_DRAG_TYPE,
   TRANSITION_DRAG_TYPE,
@@ -1345,8 +1344,8 @@ export function Timeline(): JSX.Element {
         const { target, frame, trackId } = libraryTargetAt(event, library);
         const state = store.getState();
         if (target.kind === 'title') {
-          const preset = event.dataTransfer.getData(TITLE_DRAG_TYPE) as TitlePreset;
-          if (TITLE_PRESETS.includes(preset)) state.addTitle(preset, { trackId, startFrame: frame });
+          const template = event.dataTransfer.getData(TITLE_DRAG_TYPE);
+          if (isTemplateId(template)) state.addTitle(template, { trackId, startFrame: frame });
         } else if (target.cut) {
           const preset = event.dataTransfer.getData(TRANSITION_DRAG_TYPE) as TransitionPreset;
           if (TRANSITION_PRESETS.includes(preset)) state.dropTransition(preset, target.cut);
