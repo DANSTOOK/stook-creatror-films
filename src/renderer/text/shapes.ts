@@ -15,23 +15,6 @@ import type { Rect } from './layout';
  * pixel, as in layout.ts.
  */
 
-export const TITLE_SHAPES: readonly TitleShapeKind[] = [
-  'bar',
-  'underline',
-  'rules',
-  'brackets',
-  'frame',
-  'band',
-  'tail',
-  'arrow',
-  'dot',
-  'play',
-  'bell',
-  'heart',
-  'pin',
-  'star',
-];
-
 /** Marks drawn before the first line, in a square as tall as its letters. */
 const MARKS: ReadonlySet<TitleShapeKind> = new Set<TitleShapeKind>(['arrow', 'dot', 'play', 'bell', 'heart', 'pin', 'star']);
 
