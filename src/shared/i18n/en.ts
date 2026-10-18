@@ -1,3 +1,5 @@
+import { fxEn } from './fx.en';
+
 /**
  * English, the default and the fallback.
  *
@@ -1388,6 +1390,8 @@ export const en = {
   'keys.loopKeys': 'Ctrl+/',
   'keys.loop': 'Loop playback on or off: In to Out, else the selected clips, else the whole edit',
   'viewer.loopHint': 'Goes round In to Out when marked, else the selected clips, else the whole edit. The ruler shows what.',
+  // The transitions and effects library, in a file of its own (fx.en.ts).
+  ...fxEn,
 };
 
 export type Messages = typeof en;

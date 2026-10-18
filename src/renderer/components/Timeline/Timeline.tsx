@@ -66,11 +66,14 @@ import {
   cutsOf,
   MIN_TRANSITION_FRAMES,
   presetKind,
+  presetLabel,
   presetOf,
+  isTransitionPreset,
   shortfall,
   TRANSITION_PRESETS,
   transitionWindow,
   transitionsOf,
+  type BuiltinTransitionPreset,
   type TimelineCut,
   type TransitionPreset,
 } from '@renderer/timing/transitions';
@@ -759,8 +762,10 @@ export function Timeline(): JSX.Element {
   /** The three a transition can be, as menu items that apply `choose`. */
   const transitionChoices = useCallback(
     (choose: (preset: TransitionPreset) => void, current?: TransitionPreset): ContextMenuItem[] =>
-      TRANSITION_PRESETS.map((preset) => ({
-        label: t(`transition.${preset}`),
+      // The six built in; a shader transition from the library, when that
+      // is what this one is, heads the list so the tick has somewhere to be.
+      [...(current && !TRANSITION_PRESETS.includes(current as BuiltinTransitionPreset) ? [current] : []), ...TRANSITION_PRESETS].map((preset) => ({
+        label: t(presetLabel(preset)),
         ...(current ? { checked: current === preset, radio: true } : {}),
         onSelect: () => choose(preset),
       })),
@@ -1349,7 +1354,7 @@ export function Timeline(): JSX.Element {
           if (TITLE_PRESETS.includes(preset)) state.addTitle(preset, { trackId, startFrame: frame });
         } else if (target.cut) {
           const preset = event.dataTransfer.getData(TRANSITION_DRAG_TYPE) as TransitionPreset;
-          if (TRANSITION_PRESETS.includes(preset)) state.dropTransition(preset, target.cut);
+          if (isTransitionPreset(preset)) state.dropTransition(preset, target.cut);
         }
         return;
       }

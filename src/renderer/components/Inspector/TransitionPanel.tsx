@@ -39,6 +39,7 @@ const ALIGNMENTS: Array<{ id: TransitionAlignment; label: MessageKey }> = [
 ];
 
 const choiceOf = (transition: Transition): Choice => {
+  if (transition.kind === 'shader') return 'crossDissolve';
   if (transition.kind !== 'dip') return transition.kind;
   if (transition.color === DIP_BLACK) return 'dipToBlack';
   if (transition.color === DIP_WHITE) return 'dipToWhite';

@@ -171,7 +171,7 @@ void main() {
 `;
 
 /** The shader's number for each kind. */
-const TRANSITION_KIND: Record<Transition['kind'], number> = { crossDissolve: 0, dip: 1, wipe: 2, slide: 3, push: 4 };
+const TRANSITION_KIND: Record<Transition['kind'], number> = { crossDissolve: 0, dip: 1, wipe: 2, slide: 3, push: 4, shader: 0 };
 
 /** Which way each direction travels, in texture space (y up). */
 const DIRECTION: Record<Transition['direction'], [number, number]> = { left: [-1, 0], right: [1, 0], up: [0, 1], down: [0, -1] };
