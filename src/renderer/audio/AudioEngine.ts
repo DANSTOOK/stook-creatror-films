@@ -9,9 +9,11 @@ import type { AudioStream } from './AudioStream';
 import {
   advanceScheduled,
   forgetPassed,
+  placeSpan,
   planPlaybackSpans,
   type ScheduledSpan,
 } from './playbackSchedule';
+import { clearPlaybackHold, holdPlayback, releasePlayback } from '@renderer/timing/playbackHold';
 
 /** How often the scheduler looks ahead while playing. */
 const SCHEDULE_INTERVAL_MS = 200;
@@ -26,6 +28,38 @@ const LOOKAHEAD_SECONDS = 2;
 
 /** Longest stretch handed over at once. */
 const SPAN_SECONDS = 0.5;
+
+/**
+ * The fade used wherever sound has to start or stop on a sample that is not
+ * silent: four milliseconds, what a DAW's auto-fade does at a cut - too short
+ * to hear as a fade, long enough that no step is left.
+ */
+const DECLICK_SECONDS = 0.004;
+
+/**
+ * The longest the start of play waits for its first streamed spans.
+ *
+ * Measured on v1.42.0-beta.1 with a CPU hog and a long file being imported,
+ * the first span came 10 to 250 ms after play was pressed (about 10 ms on an
+ * idle machine). Waiting is what Premiere and Resolve do; waiting without
+ * bound would leave a stuck decoder holding the picture, so past this the
+ * picture sets off and the late span fades in when it comes.
+ */
+const START_WAIT_MS = 300;
+
+/**
+ * Streamed spans that sound within this much of the start are waited for.
+ * One sounding later has that long to be decoded once playing, which is ten
+ * times what a span takes on an idle machine.
+ */
+const START_WAIT_REACH_SECONDS = 0.1;
+
+/**
+ * How far ahead of the audio clock a source is started, at the least (see
+ * playbackSchedule `placeSpan`): two audio callbacks on Windows, so a stale
+ * clock or a page held up for a moment cannot make a source start late.
+ */
+const SAFE_LEAD_SECONDS = 0.02;
 
 /**
  * A stretch of the timeline played over and over, in timeline seconds:
@@ -47,7 +81,7 @@ export interface LoopWindow {
  * loop's edge gets it too: the end of the edit butted against its start is
  * the same step.
  */
-export const LOOP_DECLICK_SECONDS = 0.004;
+export const LOOP_DECLICK_SECONDS = DECLICK_SECONDS;
 
 /** The wrapped timeline position of an unwrapped play time, for a loop. */
 export function wrapLoopSeconds(seconds: number, loop: LoopWindow | null): number {
@@ -100,7 +134,23 @@ interface ClipStrip {
    */
   sources: AudioBufferSourceNode[];
   /**
-   * What the sources play into, ahead of the clip's gain: at 1, except for
+   * What the sources play into first: at 1, except where the sound starts
+   * mid-way after silence - the start of play part-way into a clip, a span
+   * that came late - which it fades in, and at the end of what has been
+   * handed over so far, which it fades out in case the next span is late
+   * (see `placeStreamSpan`). Apart from `edge`, so these and the loop's
+   * fades never have to be written onto one parameter.
+   */
+  guard: GainNode;
+  /** Audio clock time the last span handed to this strip ends. */
+  fedUntil: number;
+  /**
+   * When the fade-out at `fedUntil` begins, while one is written - taken
+   * back when the next span carries on in time - or null.
+   */
+  guardOutAt: number | null;
+  /**
+   * What the guard feeds, ahead of the clip's gain: at 1, except for
    * the few milliseconds either side of a loop's join (LOOP_DECLICK_SECONDS),
    * which it fades through without touching the clip's own fade envelope.
    */
@@ -189,12 +239,22 @@ export class AudioEngine {
   /* Streamed sources, and the scheduler that feeds them to the graph. */
   private readonly streams = new Map<string, AudioStream>();
   private scheduler: ReturnType<typeof setInterval> | null = null;
+  /**
+   * True from `play` until the sound begins, while the first streamed spans
+   * are decoded (see START_WAIT_MS). The clock stands at the start meanwhile,
+   * and so does the playhead (timing/playbackHold).
+   */
+  private waiting = false;
+  /** Spans decoded while waiting, handed to the graph when the sound begins. */
+  private held: Array<{ project: ProjectState; span: ScheduledSpan; pass: number; buffer: AudioBuffer; bufferFrom: number }> = [];
+  private waitTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The generation a scheduling pass is running for, or null: one pass at a time per play. */
+  private feeding: number | null = null;
   /** Timeline seconds already handed to the graph, per clip, per time round the loop (0 without one). */
   private scheduledUntil = new Map<number, Map<string, number>>();
   /** Strips (by key) whose fade envelope and loop fades have already been written. */
   private fadedClips = new Set<string>();
   private playingProject: ProjectState | null = null;
-  private ticking = false;
   /** The stretch being looped, or null when playback runs on to the end. */
   private loop: LoopWindow | null = null;
   /**
@@ -268,8 +328,10 @@ export class AudioEngine {
 
   /** Play time since the start, as if the loop were laid out end to end. */
   private get unwrappedSeconds(): number {
-    if (!this.playing) return this.startedAtSeconds;
-    return this.startedAtSeconds + (this.context.currentTime - this.startedAtContextTime);
+    // Waiting for the first spans, or in the moment before the sound begins,
+    // it stands at the start - as the playhead does.
+    if (!this.playing || this.waiting) return this.startedAtSeconds;
+    return this.startedAtSeconds + Math.max(0, this.context.currentTime - this.startedAtContextTime);
   }
 
   /** The audio clock's time for a moment of unwrapped play time. */
@@ -338,8 +400,10 @@ export class AudioEngine {
   private createStrip(bus: AudioNode, trackId: string, clipId: string, buffer?: AudioBuffer): ClipStrip {
     const { context } = this;
 
+    const guard = context.createGain();
     const edge = context.createGain();
     const gain = context.createGain();
+    guard.connect(edge);
     edge.connect(gain);
 
     const low = context.createBiquadFilter();
@@ -363,7 +427,7 @@ export class AudioEngine {
     high.connect(panner);
     panner.connect(bus);
 
-    return { clipId, trackId, sources: [], edge, gain, panner, low, mid, high, buffer };
+    return { clipId, trackId, sources: [], guard, fedUntil: -Infinity, guardOutAt: null, edge, gain, panner, low, mid, high, buffer };
   }
 
   /** Fade a strip in from silence over the first moments after a loop's join. */
@@ -450,6 +514,7 @@ export class AudioEngine {
   private releasePassedStrips(firstPass: number): void {
     for (const [key, strip] of this.strips) {
       if (strip.pass === undefined || strip.pass >= firstPass || strip.sources.length > 0) continue;
+      strip.guard.disconnect();
       strip.edge.disconnect();
       strip.gain.disconnect();
       strip.low.disconnect();
@@ -468,11 +533,11 @@ export class AudioEngine {
   }
 
   /**
-   * Decode one planned span and hand it to the graph at its moment.
+   * Decode one planned span and hand it to the graph (`placeStreamSpan`).
    *
-   * A span that is already late is started with an offset into itself rather
-   * than late in full, so a slow decode costs a little of that stretch
-   * instead of pushing everything after it out of time.
+   * While the start of play is waiting for its first spans, a decoded span is
+   * kept until the sound begins instead: its moment on the audio clock is not
+   * known before then.
    *
    * `pass` is the time round the loop it belongs to (0 without a loop). A
    * source held whole is not decoded at all: the span is a window of its
@@ -481,9 +546,7 @@ export class AudioEngine {
   private async scheduleSpan(project: ProjectState, span: ScheduledSpan, pass: number): Promise<void> {
     const stream = this.streams.get(span.sourceUri);
     const whole = stream ? undefined : this.buffers.get(span.sourceUri);
-    const clip = project.clips[span.clipId];
-    const track = project.tracks.find((candidate) => candidate.id === clip?.trackId);
-    if ((!stream && !whole) || !clip || !track) return;
+    if (!stream && !whole) return;
     const generation = this.generation;
 
     let buffer: AudioBuffer;
@@ -502,13 +565,53 @@ export class AudioEngine {
       bufferFrom = span.sourceFrom;
     }
 
+    if (this.waiting) this.held.push({ project, span, pass, buffer, bufferFrom });
+    else this.placeStreamSpan(project, span, pass, buffer, bufferFrom);
+  }
+
+  /**
+   * Hand one decoded span to the graph at its moment.
+   *
+   * A span whose moment has gone is started that far into itself, a little
+   * ahead of the audio clock, rather than late in full - a slow decode costs
+   * a little of that stretch instead of pushing everything after it out of
+   * time - and fades in, since it starts mid-sound after a hole. The end of
+   * what has been handed over is faded out, in case the next span is late
+   * too, and that fade is taken back when the next one carries on in time;
+   * so a decoder that cannot keep up leaves short silences, never a click.
+   * See playbackSchedule `placeSpan`.
+   */
+  private placeStreamSpan(project: ProjectState, span: ScheduledSpan, pass: number, buffer: AudioBuffer, bufferFrom: number): void {
+    const clip = project.clips[span.clipId];
+    const track = project.tracks.find((candidate) => candidate.id === clip?.trackId);
+    if (!clip || !track) return;
+
     const offset = this.passOffset(pass);
     const when = this.contextTimeOf(span.atTimeline + offset);
     const now = this.context.currentTime;
-    const lateBy = now - when;
-    if (lateBy >= span.seconds) return;
-
+    const earliest = now + SAFE_LEAD_SECONDS;
     const key = pass === 0 ? clip.id : `${clip.id}@${pass}`;
+    const loop = this.loop;
+    const clipStart = clip.startFrame / project.fps;
+    const clipEnd = (clip.startFrame + clip.durationFrames) / project.fps;
+
+    const existing = this.strips.get(key);
+    const followsOn =
+      existing !== undefined &&
+      Math.abs(existing.fedUntil - when) < 1e-6 &&
+      (existing.guardOutAt === null || existing.guardOutAt > earliest);
+    // A later time round starts at the loop's start, where `edge` fades it in already.
+    const atJoin = pass > 0 && loop !== null && Math.abs(span.atTimeline - loop.start) < 1e-6;
+    const placement = placeSpan({
+      when,
+      seconds: span.seconds,
+      earliest,
+      followsOn,
+      startsMidSound: span.atTimeline > clipStart + 1e-6 && !atJoin,
+      fadeSeconds: DECLICK_SECONDS,
+    });
+    if (!placement) return;
+
     const strip = this.stripFor(clip, track, hasSoloedTrack(project), key, pass);
 
     /*
@@ -520,7 +623,7 @@ export class AudioEngine {
     */
     if (!this.fadedClips.has(key)) {
       this.fadedClips.add(key);
-      const clipStartsAt = this.contextTimeOf(clip.startFrame / project.fps + offset);
+      const clipStartsAt = this.contextTimeOf(clipStart + offset);
       applyFadeEnvelope(
         strip.gain.gain,
         clip,
@@ -529,10 +632,7 @@ export class AudioEngine {
         Math.max(0, now - clipStartsAt),
         project.fps / span.rate,
       );
-      const loop = this.loop;
       if (loop) {
-        const clipStart = clip.startFrame / project.fps;
-        const clipEnd = (clip.startFrame + clip.durationFrames) / project.fps;
         // Sounding at the loop's start after a join: in from silence.
         if (pass > 0 && clipStart <= loop.start + 1e-6) this.declickIn(strip, this.contextTimeOf(loop.start + offset));
         // Sounding up to the loop's end: down to silence by the join.
@@ -540,102 +640,173 @@ export class AudioEngine {
       }
     }
 
+    const guard = strip.guard.gain;
+    // Carrying on in time: the fade-out written in case it would not is taken back.
+    if (followsOn && strip.guardOutAt !== null) guard.cancelScheduledValues(strip.guardOutAt);
+    if (placement.fadeIn) {
+      guard.setValueAtTime(0, placement.startAt);
+      guard.linearRampToValueAtTime(1, placement.startAt + DECLICK_SECONDS);
+    }
+
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = span.rate;
-    source.connect(strip.edge);
+    source.connect(strip.guard);
     source.onended = () => {
       const at = strip.sources.indexOf(source);
       if (at >= 0) strip.sources.splice(at, 1);
       source.disconnect();
     };
-
     // Offsets and lengths are in the buffer's own time, which a retimed clip
     // spends `rate` times as fast as the timeline.
-    if (lateBy > 0) source.start(now, bufferFrom + lateBy * span.rate, (span.seconds - lateBy) * span.rate);
-    else source.start(when, bufferFrom, span.seconds * span.rate);
+    source.start(placement.startAt, bufferFrom + placement.skip * span.rate, (span.seconds - placement.skip) * span.rate);
     strip.sources.push(source);
+
+    // The clip sounds on past this span (not at its own end, nor the loop's,
+    // which have theirs): down to silence by its end, unless the next span
+    // carries on in time and takes this back.
+    const endsAt = when + span.seconds;
+    strip.fedUntil = endsAt;
+    if (span.atTimeline + span.seconds < Math.min(clipEnd, loop?.end ?? Infinity) - 1e-6) {
+      strip.guardOutAt = endsAt - DECLICK_SECONDS;
+      guard.setValueAtTime(1, strip.guardOutAt);
+      guard.linearRampToValueAtTime(0, endsAt);
+    } else {
+      strip.guardOutAt = null;
+    }
   }
 
   /**
-   * Keep the graph fed for the next few seconds.
+   * What to hand to the graph next, soonest first, marked as scheduled.
    *
    * Without a loop that is the streamed clips ahead of the playhead - the
-   * whole buffers were laid out by `play`. Round a loop it is also every
-   * later pass, streamed or whole: the next time round is scheduled on the
-   * audio clock before the join is reached, so the loop's start follows its
-   * end on the very next sample instead of after a reschedule.
+   * whole buffers are laid out when the sound begins. Round a loop it is
+   * also every later pass, streamed or whole: the next time round is
+   * scheduled on the audio clock before the join is reached, so the loop's
+   * start follows its end on the very next sample instead of after a
+   * reschedule.
    */
-  private async tick(): Promise<void> {
-    if (this.ticking || !this.playing) return;
-    const project = this.playingProject;
-    if (!project) return;
+  private plan(project: ProjectState): Array<{ span: ScheduledSpan; pass: number }> {
+    const now = this.unwrappedSeconds;
+    const horizon = now + LOOKAHEAD_SECONDS;
+    const loop = this.loop;
+    const firstPass = loopPassAt(now, loop);
+    const lastPass = loop ? loopPassAt(horizon, loop) : 0;
 
-    this.ticking = true;
+    // Passes already played through are forgotten.
+    for (const pass of [...this.scheduledUntil.keys()]) if (pass < firstPass) this.scheduledUntil.delete(pass);
+    // And so are their strips, once nothing plays through them: a strip is
+    // made every time round, and a loop left going for an hour would
+    // otherwise keep thousands of silent nodes hanging off the track buses.
+    if (loop) this.releasePassedStrips(firstPass);
+
+    const planned: Array<{ span: ScheduledSpan; pass: number }> = [];
+    for (let pass = firstPass; pass <= lastPass; pass += 1) {
+      const offset = this.passOffset(pass);
+      // Where this pass starts and ends, in unwrapped play time.
+      const passStart = pass === 0 || !loop ? -Infinity : loop.end + (pass - 1) * (loop.end - loop.start);
+      const from = Math.max(now, passStart);
+      if (from >= horizon) break;
+
+      const scheduled = forgetPassed(this.scheduledUntil.get(pass) ?? new Map<string, number>(), from - offset);
+      const spans = planPlaybackSpans(project, {
+        fromSeconds: from - offset,
+        horizonSeconds: horizon - from,
+        chunkSeconds: SPAN_SECONDS,
+        scheduledUntil: scheduled,
+        // The first pass's whole buffers are laid out when the sound begins.
+        canStream: pass === 0 ? (uri) => this.streams.has(uri) : (uri) => this.hasAudio(uri),
+        whole: (uri) => !this.streams.has(uri),
+        endSeconds: loop?.end,
+      });
+      // Marked before decoding, so the next tick does not plan them again
+      // while this one is still waiting on the decoder.
+      this.scheduledUntil.set(pass, advanceScheduled(scheduled, spans));
+      for (const span of spans) planned.push({ span, pass });
+    }
+
+    // Soonest first, whichever pass it belongs to.
+    planned.sort((a, b) => a.span.atTimeline + this.passOffset(a.pass) - (b.span.atTimeline + this.passOffset(b.pass)));
+    return planned;
+  }
+
+  /** Whether the start of play waits for this span: streamed, and sounding right away. */
+  private startWaitsFor(span: ScheduledSpan, pass: number): boolean {
+    return pass === 0 && this.streams.has(span.sourceUri) && span.atTimeline < this.startedAtSeconds + START_WAIT_REACH_SECONDS;
+  }
+
+  /**
+   * Decode and hand over what `plan` chose, one span after another. The
+   * sound begins as soon as every span the start waits for is decoded - they
+   * come first, being soonest.
+   */
+  private async feed(project: ProjectState, planned: Array<{ span: ScheduledSpan; pass: number }>): Promise<void> {
     const generation = this.generation;
+    this.feeding = generation;
     try {
-      const now = this.unwrappedSeconds;
-      const horizon = now + LOOKAHEAD_SECONDS;
-      const loop = this.loop;
-      const firstPass = loopPassAt(now, loop);
-      const lastPass = loop ? loopPassAt(horizon, loop) : 0;
-
-      // Passes already played through are forgotten.
-      for (const pass of [...this.scheduledUntil.keys()]) if (pass < firstPass) this.scheduledUntil.delete(pass);
-      // And so are their strips, once nothing plays through them: a strip is
-      // made every time round, and a loop left going for an hour would
-      // otherwise keep thousands of silent nodes hanging off the track buses.
-      if (loop) this.releasePassedStrips(firstPass);
-
-      const planned: Array<{ span: ScheduledSpan; pass: number }> = [];
-      for (let pass = firstPass; pass <= lastPass; pass += 1) {
-        const offset = this.passOffset(pass);
-        // Where this pass starts and ends, in unwrapped play time.
-        const passStart = pass === 0 || !loop ? -Infinity : loop.end + (pass - 1) * (loop.end - loop.start);
-        const from = Math.max(now, passStart);
-        if (from >= horizon) break;
-
-        const scheduled = forgetPassed(this.scheduledUntil.get(pass) ?? new Map<string, number>(), from - offset);
-        const spans = planPlaybackSpans(project, {
-          fromSeconds: from - offset,
-          horizonSeconds: horizon - from,
-          chunkSeconds: SPAN_SECONDS,
-          scheduledUntil: scheduled,
-          // The first pass's whole buffers were laid out by `play`.
-          canStream: pass === 0 ? (uri) => this.streams.has(uri) : (uri) => this.hasAudio(uri),
-          whole: (uri) => !this.streams.has(uri),
-          endSeconds: loop?.end,
-        });
-        // Marked before decoding, so the next tick does not plan them again
-        // while this one is still waiting on the decoder.
-        this.scheduledUntil.set(pass, advanceScheduled(scheduled, spans));
-        for (const span of spans) planned.push({ span, pass });
-      }
-      if (planned.length === 0) return;
-
-      // Soonest first, whichever pass it belongs to.
-      planned.sort((a, b) => a.span.atTimeline + this.passOffset(a.pass) - (b.span.atTimeline + this.passOffset(b.pass)));
       for (const { span, pass } of planned) {
         if (!this.playing || generation !== this.generation) break;
+        if (this.waiting && !this.startWaitsFor(span, pass)) this.begin(SAFE_LEAD_SECONDS);
         await this.scheduleSpan(project, span, pass);
       }
     } catch {
       // A source that cannot be decoded goes quiet rather than stopping
       // playback; the rest of the mix carries on.
     } finally {
-      this.ticking = false;
+      if (generation === this.generation) {
+        if (this.waiting) this.begin(SAFE_LEAD_SECONDS);
+        this.feeding = null;
+      }
     }
+  }
+
+  /** Keep the graph fed for the next few seconds. */
+  private async tick(): Promise<void> {
+    if (!this.playing || this.feeding === this.generation) return;
+    const project = this.playingProject;
+    if (!project) return;
+    const planned = this.plan(project);
+    if (planned.length > 0) await this.feed(project, planned);
+  }
+
+  /**
+   * The sound begins: the audio clock is set going from the start `lead`
+   * seconds from now, the whole buffers are laid out against it, the spans
+   * decoded while waiting are handed over, and the playhead is let go on the
+   * same moment.
+   */
+  private begin(lead: number): void {
+    if (!this.waiting || !this.playing) return;
+    this.waiting = false;
+    if (this.waitTimer !== null) clearTimeout(this.waitTimer);
+    this.waitTimer = null;
+    const project = this.playingProject;
+    if (!project) return;
+
+    this.startedAtContextTime = this.context.currentTime + lead;
+    this.layOutWholeClips(project, this.startedAtContextTime);
+    const held = this.held;
+    this.held = [];
+    for (const item of held) this.placeStreamSpan(item.project, item.span, item.pass, item.buffer, item.bufferFrom);
+    releasePlayback(performance.now() + lead * 1000);
   }
 
   /**
    * Schedule every audio clip that overlaps the playback window.
    *
    * Clips already past the playhead are started with an offset so a mid-clip
-   * seek stays sample-accurate against the video clock.
+   * seek stays sample-accurate against the video clock, and faded in over a
+   * few milliseconds: starting on a sample that is not silent is a click.
+   *
+   * Streamed sound has to be decoded first. When some sounds right at the
+   * start, the sound - and the playhead with it - waits until it is ready (at
+   * most START_WAIT_MS) and then both set off together, from its first
+   * sample, rather than starting it part-way in. Measured with a CPU hog and
+   * a long import, that click was at nearly every start of play.
    *
    * With a loop, the first pass runs to the loop's end - clips are cut there
    * - and the scheduler lays the later passes on the audio clock ahead of
-   * time (see `tick`).
+   * time (see `plan`).
    */
   play(edited: ProjectState, fromFrame: number, loop: LoopWindow | null = null): void {
     void this.context.resume();
@@ -650,14 +821,39 @@ export class AudioEngine {
     const fps = project.fps;
     // A loop shorter than a frame is not a loop anyone asked for.
     this.loop = loop && loop.end - loop.start >= 1 / fps - 1e-9 ? { ...loop } : null;
-    const loopEnd = this.loop?.end ?? Infinity;
     // Started past the loop's end, playback begins at its start.
-    const startSeconds = this.loop && fromFrame / fps >= loopEnd ? this.loop.start : fromFrame / fps;
-    const anySolo = hasSoloedTrack(project);
-    const now = this.context.currentTime;
+    const startSeconds = this.loop && fromFrame / fps >= this.loop.end ? this.loop.start : fromFrame / fps;
 
     this.master.gain.value = clamp(project.audio.masterVolume, 0, 2);
+    this.startedAtContextTime = this.context.currentTime;
+    this.startedAtSeconds = startSeconds;
+    this.playing = true;
+    this.waiting = true;
+    this.playingProject = project;
+    this.scheduledUntil = new Map();
 
+    const planned = this.plan(project);
+    if (planned.some(({ span, pass }) => this.startWaitsFor(span, pass))) {
+      holdPlayback();
+      this.waitTimer = setTimeout(() => this.begin(SAFE_LEAD_SECONDS), START_WAIT_MS);
+    } else {
+      // Nothing to wait for: the sound begins now, as the playhead does.
+      this.begin(0);
+    }
+    if (planned.length > 0) void this.feed(project, planned);
+    this.scheduler = setInterval(() => void this.tick(), SCHEDULE_INTERVAL_MS);
+  }
+
+  /**
+   * The first pass of every clip held whole, from the start: each one source
+   * node to the clip's end or the loop's, started at `at` on the audio clock
+   * or as far after it as the clip begins.
+   */
+  private layOutWholeClips(project: ProjectState, at: number): void {
+    const fps = project.fps;
+    const startSeconds = this.startedAtSeconds;
+    const loopEnd = this.loop?.end ?? Infinity;
+    const anySolo = hasSoloedTrack(project);
     const trackById = new Map(project.tracks.map((track) => [track.id, track]));
 
     for (const clip of Object.values(project.clips)) {
@@ -668,7 +864,7 @@ export class AudioEngine {
       if (!track) continue;
 
       // A streamed source has no whole buffer to lay out: the scheduler
-      // below feeds it to the graph a few seconds at a time.
+      // feeds it to the graph a few seconds at a time.
       if (this.streams.has(clip.sourceUri)) continue;
 
       const buffer = this.buffers.get(clip.sourceUri);
@@ -694,7 +890,7 @@ export class AudioEngine {
 
       const source = this.context.createBufferSource();
       source.buffer = buffer;
-      source.connect(strip.edge);
+      source.connect(strip.guard);
       strip.sources.push(source);
 
       const sourceOffset = clip.sourceOffsetFrames / fps;
@@ -710,26 +906,21 @@ export class AudioEngine {
         strip.gain.gain,
         clip,
         clipGain(clip),
-        now + whenSeconds,
+        at + whenSeconds,
         Math.max(0, startSeconds - clipStart),
         fps / rate,
       );
+      // Joined part-way through: in from silence rather than on whatever sample is there.
+      if (clipStart < startSeconds - 1e-6) {
+        strip.guard.gain.setValueAtTime(0, at);
+        strip.guard.gain.linearRampToValueAtTime(1, at + DECLICK_SECONDS);
+      }
       // Sounding up to the loop's end: down to silence by the join.
-      if (clipEnd >= loopEnd - 1e-6) this.declickOut(strip, now + (loopEnd - startSeconds));
-      source.start(now + whenSeconds, offsetSeconds, durationSeconds);
+      if (clipEnd >= loopEnd - 1e-6) this.declickOut(strip, at + (loopEnd - startSeconds));
+      source.start(at + whenSeconds, offsetSeconds, durationSeconds);
       this.strips.set(clip.id, strip);
       this.fadedClips.add(clip.id);
     }
-
-    this.startedAtContextTime = now;
-    this.startedAtSeconds = startSeconds;
-    this.playing = true;
-
-    // Streamed clips are decoded and handed over as the playhead nears them.
-    this.playingProject = project;
-    this.scheduledUntil = new Map();
-    void this.tick();
-    this.scheduler = setInterval(() => void this.tick(), SCHEDULE_INTERVAL_MS);
   }
 
   stop(): void {
@@ -743,6 +934,12 @@ export class AudioEngine {
       this.startedAtSeconds = this.positionSeconds;
       this.playing = false;
     }
+    // A start still waiting for its sound waits no more, and holds the playhead no more.
+    this.waiting = false;
+    this.held = [];
+    if (this.waitTimer !== null) clearTimeout(this.waitTimer);
+    this.waitTimer = null;
+    clearPlaybackHold();
     this.loop = null;
     this.playingProject = null;
     this.scheduledUntil = new Map();
@@ -758,6 +955,7 @@ export class AudioEngine {
         source.disconnect();
       }
       strip.sources.length = 0;
+      strip.guard.disconnect();
       strip.edge.disconnect();
       strip.gain.disconnect();
       strip.low.disconnect();
