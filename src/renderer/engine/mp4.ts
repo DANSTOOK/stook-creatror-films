@@ -591,21 +591,28 @@ function iTunesEncoderDelay(moov: Uint8Array, view: DataView, root: Box): number
 
   let value: string | null = null;
 
-  // iTunes: moov/udta/meta/ilst/---- with mean, name and data.
-  const udtaMeta = path(view, root, 'udta', 'meta');
-  const freeformList = udtaMeta
-    ? childBoxes(view, udtaMeta.start + 4, udtaMeta.end).find((box) => box.type === 'ilst')
-    : undefined;
-  for (const item of freeformList ? childBoxes(view, freeformList.start, freeformList.end) : []) {
-    if (item.type !== '----') continue;
-    const name = childBoxes(view, item.start, item.end).find((box) => box.type === 'name');
-    if (name && text({ type: 'name', start: name.start + 4, end: name.end }) === 'iTunSMPB') value = valueOf(item);
+  // iTunes: moov/udta/meta/ilst/---- with mean, name and data. Every udta
+  // is looked in: a file can carry more than one (ffmpeg's encoder tag in
+  // one, a tagger's in another).
+  for (const udta of childBoxes(view, root.start, root.end)) {
+    if (udta.type !== 'udta') continue;
+    const udtaMeta = child(view, udta, 'meta');
+    const freeformList = udtaMeta
+      ? childBoxes(view, udtaMeta.start + 4, udtaMeta.end).find((box) => box.type === 'ilst')
+      : undefined;
+    for (const item of freeformList ? childBoxes(view, freeformList.start, freeformList.end) : []) {
+      if (item.type !== '----') continue;
+      const name = childBoxes(view, item.start, item.end).find((box) => box.type === 'name');
+      if (name && text({ type: 'name', start: name.start + 4, end: name.end }) === 'iTunSMPB') value = valueOf(item);
+    }
   }
 
-  // ffmpeg with use_metadata_tags: moov/meta with a keys table, and ilst
+  // ffmpeg with use_metadata_tags: a meta with a keys table, and ilst
   // items whose type is the 1-based index of their key.
-  const meta = child(view, root, 'meta');
-  if (value === null && meta) {
+  // ffmpeg puts it under udta; other writers straight under moov.
+  const metas = [child(view, root, 'meta'), ...childBoxes(view, root.start, root.end).filter((box) => box.type === 'udta').map((udta) => child(view, udta, 'meta'))];
+  for (const meta of metas) {
+    if (value !== null || !meta) continue;
     const boxes = childBoxes(view, meta.start + 4, meta.end);
     const keys = boxes.find((box) => box.type === 'keys');
     const list = boxes.find((box) => box.type === 'ilst');
