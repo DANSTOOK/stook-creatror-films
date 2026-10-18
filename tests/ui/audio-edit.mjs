@@ -147,25 +147,37 @@ function lagOf(a, b, maxLag, around = 0) {
 }
 
 /**
- * Record the master bus for `seconds` of playback.
+ * Record the master bus for `seconds` of playback (and `tailMs` after the stop).
+ * With `raw` set, nothing is played: a sine of that frequency is started and
+ * stopped on the master by hand, on whatever sample it has reached - the
+ * click the measures below have to be able to see.
  *
  * In the page, an AnalyserNode hangs off the master - nothing in the graph the
  * editor hears is changed - and its last 32768 samples are copied every 40 ms.
- * The analyser's buffer is written on the audio thread, so what it holds is
- * exactly what the master carried, however busy the page is; each copy
- * overlaps the one before, and is laid after it where the two agree sample
- * for sample. (A ScriptProcessor, the first way this was recorded, runs on
- * the page's thread and came back with pieces missing at its block edges -
- * steps in the recording that were never in the sound. An AudioWorklet would
- * be better still, but the page's CSP keeps its module from loading.) A stretch
- * no copy covered is NaN and counted, never a gap mistaken for the engine's.
+ * Each copy overlaps the ones before it, and is placed against the one before
+ * by the shift at which its first 4096 samples are the same. (A ScriptProcessor,
+ * the first way this was recorded, runs on the page's thread and came back with
+ * pieces missing at its block edges - steps in the recording that were never in
+ * the sound. An AudioWorklet would be better still, but the page's CSP keeps
+ * its module from loading.)
+ *
+ * Every sample of the recording is then the value most of the copies covering
+ * it agree on - about fifteen of them. A copy does not always hold what the
+ * master carried: measured on v1.42.0-beta.1, about one run in twelve has a
+ * copy, or two in a row, whose newest 8 to 25 thousand samples disagree with
+ * every other copy over the same stretch. Laid after the copy before, as they
+ * used to be, those made steps of up to 34 times a tone's own largest - the
+ * click reported in the In-to-Out loop, which was in the recording and not in
+ * the sound. Outvoted, they are counted instead (`outvoted`). A sample no
+ * majority agrees on, or no copy covered, is NaN and counted, never a gap
+ * mistaken for the engine's.
  *
  * Alongside: probes for timing - every third copy while playing, its newest
  * 8192 samples with where the engine's clock said the playhead was at that
- * moment - the playhead itself, sampled on a timer every 20 ms, and what the
- * engine scheduled for each time round the loop.
+ * moment - the playhead itself, sampled on a timer every 20 ms, when it first
+ * moved, and what the engine handed to the graph for each time round the loop.
  */
-const RECORD = async ([seconds]) => {
+const RECORD = async ([seconds, tailMs = 0, raw = 0]) => {
   const engine = window.__scfAudioEngine();
   const context = engine.context;
   await context.resume();
@@ -175,14 +187,27 @@ const RECORD = async ([seconds]) => {
   analyser.fftSize = SIZE;
   engine.master.connect(analyser);
   const schedule = [];
-  const scheduleSpan = engine.scheduleSpan;
-  engine.scheduleSpan = async function logged(project, span, pass) {
-    const entry = { pass, at: span.atTimeline, seconds: span.seconds, when: this.startedAtContextTime + (span.atTimeline + this.passOffset(pass) - this.startedAtSeconds) };
-    schedule.push(entry);
-    await scheduleSpan.call(this, project, span, pass);
-    // Handed to the graph after its moment had come (an upper bound): the
-    // engine starts such a span part-way in, which is a step in the sound.
-    entry.lateBy = this.context.currentTime - entry.when;
+  // Each span as it is handed to the graph: its moment, and how late that was.
+  const placeStreamSpan = engine.placeStreamSpan;
+  engine.placeStreamSpan = function logged(project, span, pass, ...rest) {
+    const now = this.context.currentTime;
+    const when = this.startedAtContextTime + (span.atTimeline + this.passOffset(pass) - this.startedAtSeconds);
+    schedule.push({ pass, at: span.atTimeline, seconds: span.seconds, when, lateBy: now - when });
+    return placeStreamSpan.call(this, project, span, pass, ...rest);
+  };
+  const begins = [];
+  const begin = engine.begin;
+  engine.begin = function logged(...args) {
+    if (this.waiting) begins.push(this.context.currentTime);
+    return begin.apply(this, args);
+  };
+  let plays = 0;
+  const playCalls = [];
+  const play = engine.play;
+  engine.play = function counted(...args) {
+    plays += 1;
+    playCalls.push(this.context.currentTime);
+    return play.apply(this, args);
   };
   const frames = [];
   const copies = [];
@@ -191,28 +216,54 @@ const RECORD = async ([seconds]) => {
   const copier = setInterval(() => {
     const data = new Float32Array(SIZE);
     analyser.getFloatTimeDomainData(data);
-    copies.push({ time: context.currentTime, position: engine.playing ? engine.positionSeconds : null, data });
+    copies.push({ time: context.currentTime, position: engine.playing && !engine.waiting ? engine.positionSeconds : null, data });
   }, 40);
   await new Promise((done) => setTimeout(done, 150));
-  window.__scfStore.getState().setPlaying(true);
-  const playedAt = performance.now() - began;
-  await new Promise((done) => setTimeout(done, 250));
-  const clock = engine.startedAtContextTime;
-  await new Promise((done) => setTimeout(done, seconds * 1000 - 250));
-  const replayed = engine.startedAtContextTime !== clock;
+  const startFrame = window.__scfStore.getState().project.currentFrame;
+  let firstMove = null;
+  const unsubscribe = window.__scfStore.subscribe((state) => {
+    if (firstMove === null && state.project.currentFrame !== startFrame) firstMove = performance.now();
+  });
+  const pressedAt = performance.now();
+  const pressCtx = context.currentTime;
+  let bare = null;
+  if (raw > 0) {
+    const tone = context.createBuffer(1, Math.ceil(rate * (seconds + 1)), rate);
+    const plane = tone.getChannelData(0);
+    // From the crest: the worst sample to start on.
+    for (let i = 0; i < plane.length; i += 1) plane[i] = 0.3 * Math.cos((2 * Math.PI * raw * i) / rate);
+    bare = context.createBufferSource();
+    bare.buffer = tone;
+    bare.connect(engine.master);
+    bare.start();
+  } else window.__scfStore.getState().setPlaying(true);
+  const playedAt = pressedAt - began;
+  await new Promise((done) => setTimeout(done, seconds * 1000));
+  // Built once, by the press: never again while it played.
+  const replayed = plays > 1;
   const strips = engine.strips.size;
   const stripKeys = [...engine.strips.keys()];
-  clearInterval(copier);
   clearInterval(sampler);
-  window.__scfStore.getState().setPlaying(false);
+  unsubscribe();
+  const stopCtx = context.currentTime;
+  if (bare) {
+    // Stopped a little way into a wave, not on a zero crossing.
+    bare.stop(context.currentTime + 0.37 / raw);
+  } else window.__scfStore.getState().setPlaying(false);
+  if (tailMs > 0) await new Promise((done) => setTimeout(done, tailMs));
+  clearInterval(copier);
   engine.master.disconnect(analyser);
-  delete engine.scheduleSpan;
+  delete engine.placeStreamSpan;
+  delete engine.play;
+  delete engine.begin;
+  bare?.disconnect();
 
-  // Lay each copy after the last. The analyser moves on a render quantum
-  // (128 samples) at a time, so the copy is the last one moved on by some
-  // whole number of quanta; the clock says roughly how many, and the samples
-  // say exactly: the shift where every overlapping sample is the same.
-  const parts = [copies[0].data];
+  // Where each copy starts, in samples. The analyser moves on a render quantum
+  // (128 samples) at a time, so a copy is the one before moved on by some whole
+  // number of quanta; the clock says roughly how many, and the samples say
+  // exactly.
+  const pos = [0];
+  const segment = [0];
   let missing = 0;
   for (let index = 1; index < copies.length; index += 1) {
     const last = copies[index - 1].data;
@@ -226,24 +277,73 @@ const RECORD = async ([seconds]) => {
       return true;
     });
     if (shift === undefined) {
-      // Too far apart to overlap: what came between is not known.
-      const gap = Math.max(0, Math.round(estimate) - SIZE);
+      // Too far apart to overlap: what came between is not known, and the
+      // copies either side of it do not vote together.
+      const gap = Math.max(1, Math.round(estimate) - SIZE);
       missing += gap;
-      parts.push(new Float32Array(gap).fill(NaN), next);
-    } else if (shift > 0) parts.push(next.subarray(SIZE - shift));
+      pos.push(pos[index - 1] + SIZE + gap);
+      segment.push(segment[index - 1] + 1);
+    } else {
+      pos.push(pos[index - 1] + shift);
+      segment.push(segment[index - 1]);
+    }
   }
-  const total = parts.reduce((sum, part) => sum + part.length, 0);
-  const out = new Float32Array(total);
-  let at = 0;
-  for (const part of parts) {
-    out.set(part, at);
-    at += part.length;
+  const total = pos[pos.length - 1] + SIZE;
+  const out = new Float32Array(total).fill(NaN);
+  const outvoted = new Map();
+  let undecided = 0;
+  const values = [];
+  const owners = [];
+  let low = 0;
+  for (let i = 0; i < total; i += 1) {
+    while (low < copies.length && pos[low] + SIZE <= i) low += 1;
+    values.length = 0;
+    owners.length = 0;
+    for (let k = low; k < copies.length && pos[k] <= i; k += 1) {
+      // Only the newest stretch of copies placed by one chain of matches.
+      if (owners.length > 0 && segment[k] !== segment[owners[0]]) {
+        values.length = 0;
+        owners.length = 0;
+      }
+      values.push(copies[k].data[i - pos[k]]);
+      owners.push(k);
+    }
+    if (values.length === 0) continue;
+    let same = true;
+    for (let j = 1; j < values.length && same; j += 1) same = values[j] === values[0];
+    if (same) {
+      out[i] = values[0];
+      continue;
+    }
+    let best = 0;
+    let bestCount = 0;
+    for (let j = 0; j < values.length; j += 1) {
+      let count = 0;
+      for (let m = 0; m < values.length; m += 1) if (values[m] === values[j]) count += 1;
+      if (count > bestCount) {
+        bestCount = count;
+        best = j;
+      }
+    }
+    if (bestCount * 2 <= values.length) {
+      undecided += 1;
+      continue;
+    }
+    out[i] = values[best];
+    for (let j = 0; j < values.length; j += 1) {
+      if (values[j] !== values[best]) outvoted.set(owners[j], (outvoted.get(owners[j]) ?? 0) + 1);
+    }
   }
+  missing += undecided;
   const playing = copies.filter((copy) => copy.position !== null);
   const probes = playing.filter((_, index) => index % 3 === 1).map((copy) => ({ position: copy.position, data: Array.from(copy.data.subarray(SIZE - 8192)) }));
   // The audio clock time of the newest sample, near enough: to place a step in the recording against the schedule.
   const endTime = copies[copies.length - 1].time;
-  return { samples: Array.from(out), sampleRate: rate, endTime, playedAt, replayed, frames, schedule, missing, strips, stripKeys, probes };
+  return {
+    samples: Array.from(out), sampleRate: rate, endTime, playedAt, replayed, frames, schedule, missing, strips, stripKeys, probes,
+    pressCtx, stopCtx, waitedMs: begins.length && playCalls.length ? (begins[0] - playCalls[0]) * 1000 : null, firstMoveMs: firstMove === null ? null : firstMove - pressedAt,
+    outvoted: [...outvoted.entries()].map(([copy, count]) => ({ copy, count })),
+  };
 };
 
 /**
@@ -311,6 +411,40 @@ function analyseJoins(recorded, frequency, sampleRate) {
   return { peak, longest, steepest, atJoin, atIndex };
 }
 
+/**
+ * What the start and the stop of play sound like, from a recording of a steady
+ * tone: when the sound first comes (on the audio clock, from the press), the
+ * biggest step between neighbouring samples in its first 20 ms, while it
+ * plays, and from the stop on - each against the tone's own biggest step.
+ */
+function startAndStop(recording, frequency) {
+  const samples = recording.samples;
+  const rate = recording.sampleRate;
+  let peak = 0;
+  for (const value of samples) if (!Number.isNaN(value)) peak = Math.max(peak, Math.abs(value));
+  const steepest = 2 * Math.sin((Math.PI * frequency) / rate) * peak;
+  const timeOf = (index) => recording.endTime - (samples.length - 1 - index) / rate;
+  const indexAt = (time) => Math.round(samples.length - 1 - (recording.endTime - time) * rate);
+  const onset = samples.findIndex((value) => !Number.isNaN(value) && Math.abs(value) > peak * 0.02);
+  const stop = indexAt(recording.stopCtx);
+  const steepestIn = (from, to) => {
+    let most = 0;
+    for (let i = Math.max(1, from); i < Math.min(samples.length, to); i += 1) {
+      if (Number.isNaN(samples[i]) || Number.isNaN(samples[i - 1])) continue;
+      most = Math.max(most, Math.abs(samples[i] - samples[i - 1]));
+    }
+    return most / steepest;
+  };
+  const twentyMs = Math.round(0.02 * rate);
+  return {
+    peak,
+    onsetMs: onset >= 0 ? (timeOf(onset) - recording.pressCtx) * 1000 : NaN,
+    start: onset >= 0 ? steepestIn(onset - 4, onset + twentyMs) : NaN,
+    playing: onset >= 0 ? steepestIn(onset + twentyMs, stop - twentyMs / 2) : NaN,
+    stop: steepestIn(stop - twentyMs / 2, samples.length),
+  };
+}
+
 /** The playhead's trips round a loop: how many wraps, and the wall time between them. */
 function wrapsOf(frames) {
   const at = [];
@@ -334,6 +468,7 @@ async function main() {
   const sync = join(workDir, 'sync.mp4');
   const take = join(workDir, 'take.mp4');
   const tone = join(workDir, 'tone.wav');
+  const longTone = join(workDir, 'long-tone.mp4');
   // A 4-second shot whose sound is noise, which never repeats: there is
   // exactly one way to line it up with anything, so a lag measured against it
   // is a lag, not a whole number of periods of a tone, and a sixth of a
@@ -346,11 +481,15 @@ async function main() {
   // 441 Hz for 6 s: a 2.5 s loop of it is 1102.5 cycles, so the join butts a
   // crest against a trough - the worst case for a click.
   await execFileAsync(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=441:sample_rate=48000:duration=6', '-filter:a', 'volume=0.5', '-c:a', 'pcm_s16le', tone]);
+  // Three minutes of a steady 440 Hz under a small picture, for the start of play: long enough that
+  // every start can be far from the last, which makes the decoder start again.
+  await execFileAsync(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=30:d=180', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=180',
+    '-filter:a', 'volume=0.5', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-g', '30', '-c:a', 'aac', '-b:a', '192k', '-shortest', longTone]);
   const exportDir = join(workDir, 'export');
   await mkdir(exportDir, { recursive: true });
   const withSilent = existsSync(silentFootage);
   const withReal = realFootage !== '' && existsSync(realFootage);
-  const files = [sync, take, tone, ...(withSilent ? [silentFootage] : [])];
+  const files = [sync, take, tone, longTone, ...(withSilent ? [silentFootage] : [])];
 
   const app = await electron.launch({
     args: [`--user-data-dir=${join(workDir, 'profile')}`, join(projectRoot, 'dist-electron/main/index.js')],
@@ -759,6 +898,58 @@ async function main() {
     await panel.getByTestId('dock-timeline').click().catch(() => undefined);
     await closed;
     await window.getByTestId('timeline-canvas').waitFor({ state: 'visible', timeout: 10_000 });
+
+    console.log('4b. the start of play, with the machine loaded');
+    /*
+      Every start of play part-way into a streamed sound clicked on
+      v1.42.0-beta.1 - 13 to 16 times the tone's own steepest step, idle or
+      loaded - and under load the picture set off up to a quarter of a second
+      before the sound. A three-minute tone, each start 33 s from the last so
+      that the decoder starts again every time, while every core but one spins
+      in a worker and the page's own thread is busy 25 ms in every 40.
+    */
+    await clear();
+    await place('long-tone.mp4', 'video', 0);
+    const control = startAndStop(await store(RECORD, [1.0, 200, 440]), 440);
+    check('the measure hears a click: a bare tone started and stopped on the master on whatever sample it reached',
+      control.start > 3 && control.stop > 3, `start ${control.start.toFixed(1)}x, stop ${control.stop.toFixed(1)}x the tone's steepest`);
+    const hogs = await store(() => {
+      const code = 'let x = 0; for (;;) x += Math.sqrt(x + 1);';
+      const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+      window.__audioEditHogs = Array.from({ length: Math.max(1, navigator.hardwareConcurrency - 1) }, () => new Worker(url));
+      window.__audioEditJank = setInterval(() => {
+        const until = performance.now() + 25;
+        while (performance.now() < until);
+      }, 40);
+      return window.__audioEditHogs.length;
+    });
+    const starts = [];
+    for (const second of [12, 45, 78, 111, 144]) {
+      // A frame and a bit past the second: the start lands mid-wave.
+      await store((frame) => window.__scfStore.getState().setCurrentFrame(frame), second * FPS + 7);
+      await sleep(300);
+      const recording = await store(RECORD, [1.0, 200]);
+      starts.push({ second, ...startAndStop(recording, 440), waitedMs: recording.waitedMs, firstMoveMs: recording.firstMoveMs, replayed: recording.replayed, late: recording.schedule.filter((span) => span.lateBy > 0).length, outvoted: recording.outvoted.length });
+    }
+    await store(() => {
+      for (const worker of window.__audioEditHogs) worker.terminate();
+      clearInterval(window.__audioEditJank);
+    });
+    for (const start of starts) {
+      console.log(`      from ${start.second} s: waited ${start.waitedMs?.toFixed(1)} ms for the first span, sound from ${start.onsetMs.toFixed(1)} ms, the playhead moved at ${start.firstMoveMs?.toFixed(1)} ms; steepest step ${start.start.toFixed(2)}x at the start, ${start.playing.toFixed(2)}x playing, ${start.stop.toFixed(2)}x at the stop; ${start.late} spans late, ${start.outvoted} copies outvoted, replayed ${start.replayed}`);
+    }
+    const waits = starts.map((start) => start.waitedMs ?? 0);
+    check(`the load is real: with ${hogs} workers spinning, the first span kept the start waiting in every run, up to ${Math.max(...waits).toFixed(0)} ms`,
+      starts.length === 5 && starts.every((start) => start.waitedMs !== null) && Math.max(...waits) >= 10, waits.map((wait) => wait.toFixed(1)).join(', '));
+    check('no click at the start of play: the sound fades in, from where the playhead is',
+      starts.every((start) => start.onsetMs >= 0 && start.peak > 0.01 && start.start <= 1.15), starts.map((start) => `${start.start.toFixed(2)}x`).join(', '));
+    check('nor while it plays on, nor at the stop', starts.every((start) => start.playing <= 1.15 && start.stop <= 1.15),
+      starts.map((start) => `${start.playing.toFixed(2)}x/${start.stop.toFixed(2)}x`).join(', '));
+    check('picture and sound set off together: the playhead moves on the first frame after the sound begins, never before it',
+      starts.every((start) => start.firstMoveMs !== null && start.firstMoveMs >= start.onsetMs - 15 && start.firstMoveMs <= start.onsetMs + 1000 / FPS + 40),
+      starts.map((start) => `${(start.firstMoveMs - start.onsetMs).toFixed(1)} ms`).join(', '));
+    check('and the wait is short: the sound is under way within 350 ms of the press, however loaded',
+      starts.every((start) => start.onsetMs <= 350 && !start.replayed), `median ${median(starts.map((start) => start.onsetMs)).toFixed(1)} ms, at most ${Math.max(...starts.map((start) => start.onsetMs)).toFixed(1)} ms`);
 
     if (withSilent) {
       console.log(`5. a video with no sound: ${silentFootage}`);
