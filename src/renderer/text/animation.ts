@@ -17,8 +17,45 @@ import { cubicBezierEase } from '@renderer/engine/KeyframeEvaluator';
  * nothing, and trimming the clip carries the exit with its end.
  */
 
-export const TITLE_ENTRANCES: readonly TitleEntrance[] = ['none', 'fade', 'rise', 'pop', 'wipe'];
-export const TITLE_EXITS: readonly TitleExit[] = ['none', 'fade', 'drop', 'vanish'];
+/*
+ * In the order the inspector lists them: the whole title moving first, then
+ * the ones that bring its letters, words or lines on one at a time - those
+ * are text/textMotion.ts's, and do nothing here.
+ */
+export const TITLE_ENTRANCES: readonly TitleEntrance[] = [
+  'none',
+  'fade',
+  'rise',
+  'fall',
+  'fromLeft',
+  'fromRight',
+  'pop',
+  'zoom',
+  'wipe',
+  'blur',
+  'typewriter',
+  'letters',
+  'words',
+  'bounce',
+  'tracking',
+  'lines',
+];
+export const TITLE_EXITS: readonly TitleExit[] = [
+  'none',
+  'fade',
+  'drop',
+  'lift',
+  'toLeft',
+  'toRight',
+  'vanish',
+  'zoom',
+  'blur',
+  'typewriter',
+  'letters',
+  'words',
+  'tracking',
+  'lines',
+];
 
 /** About half a second on, a third of a second off: exits are quicker, as in the interface. */
 export const DEFAULT_IN_SECONDS = 0.5;
@@ -31,6 +68,11 @@ export const POP_FROM = 0.8;
 export const VANISH_BY = 0.15;
 /** The width of Wipe's soft edge, as a share of the title's width. */
 export const WIPE_SOFTNESS = 0.12;
+/** How far a slide comes from or goes to, sideways, as a share of the frame's height. */
+export const SLIDE = 0.08;
+/** The size Zoom comes in from, and grows by as it goes. */
+export const ZOOM_FROM = 1.25;
+export const ZOOM_BY = 0.2;
 /** A reveal at or beyond this shows the whole title: nothing is wiped. */
 export const REVEAL_ALL = 2;
 
@@ -165,7 +207,25 @@ export function titleAnimationAt(
         // The soft edge crosses from just before the left of the title to its right.
         state.reveal = -WIPE_SOFTNESS + (1 + WIPE_SOFTNESS) * eased;
         break;
+      case 'fall':
+        state.opacity *= eased;
+        state.offset.y -= (1 - eased) * TRAVEL * frameHeight;
+        break;
+      case 'fromLeft':
+        state.opacity *= eased;
+        state.offset.x -= (1 - eased) * SLIDE * frameHeight;
+        break;
+      case 'fromRight':
+        state.opacity *= eased;
+        state.offset.x += (1 - eased) * SLIDE * frameHeight;
+        break;
+      case 'zoom':
+        // From larger, settling without a bounce: a push in, not a pop.
+        state.opacity *= eased;
+        state.scale *= ZOOM_FROM + (1 - ZOOM_FROM) * eased;
+        break;
       default:
+        // None, or one that redraws the letters (text/textMotion).
         break;
     }
   }
@@ -186,7 +246,24 @@ export function titleAnimationAt(
         state.opacity *= 1 - gone;
         state.scale *= 1 - VANISH_BY * gone;
         break;
+      case 'lift':
+        state.opacity *= 1 - gone;
+        state.offset.y -= gone * TRAVEL * frameHeight;
+        break;
+      case 'toLeft':
+        state.opacity *= 1 - gone;
+        state.offset.x -= gone * SLIDE * frameHeight;
+        break;
+      case 'toRight':
+        state.opacity *= 1 - gone;
+        state.offset.x += gone * SLIDE * frameHeight;
+        break;
+      case 'zoom':
+        state.opacity *= 1 - gone;
+        state.scale *= 1 + ZOOM_BY * gone;
+        break;
       default:
+        // None, or one that redraws the letters (text/textMotion).
         break;
     }
   }
