@@ -31,6 +31,64 @@ Oswald (googlefonts/OswaldFont, commit 89795261ac9eeb9aa8cd99f43982c4e4b0e53261)
   Oswald-OFL.txt           <- https://raw.githubusercontent.com/googlefonts/OswaldFont/89795261ac9eeb9aa8cd99f43982c4e4b0e53261/OFL.txt
     SHA-256 0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652
 
+The title library's families, added 2026-10-17
+-----------------------------------------------
+
+Seventeen more families, every one under the SIL Open Font License 1.1, from
+the Google Fonts repository (google/fonts) at commit
+47d54ca1ebb14fd864695f1d39dc734f39017c33, downloaded from
+  https://raw.githubusercontent.com/google/fonts/47d54ca1ebb14fd864695f1d39dc734f39017c33/ofl/<family>/<file>
+and shipped unmodified: no subsetting, no conversion, no renaming inside the
+files. Only the file names differ where the published name has brackets
+("Outfit[wght].ttf" is saved as "Outfit-wght.ttf"). Each one's OFL.txt is
+saved beside it as <Family>-OFL.txt and shown under Help > About > Font
+licences.
+
+Every one maps á é í ó ú ü ñ Á É Í Ó Ú Ü Ñ ¿ ¡ « » to its own glyphs
+(tests/TitleFonts.test.ts reads the cmap tables). Knewave has no ª; that one
+character falls back to Inter.
+
+  File                         <- ofl/ path                             SHA-256
+  Outfit-wght.ttf              <- outfit/Outfit[wght].ttf               fc7287273e66929776e2ba54f144fe699080bec29f61bf649d70d871468aeade
+  SpaceGrotesk-wght.ttf        <- spacegrotesk/SpaceGrotesk[wght].ttf   acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72
+  BebasNeue-Regular.ttf        <- bebasneue/BebasNeue-Regular.ttf       08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73
+  Anton-Regular.ttf            <- anton/Anton-Regular.ttf               a4ba3a92350ebb031da0cb47630ac49eb265082ca1bc0450442f4a83ab947cab
+  LeagueGothic-wdth.ttf        <- leaguegothic/LeagueGothic[wdth].ttf   3b0e998c9a0034222394ffecdd383e6948259ad037b95555b139a217629ce1d0
+  ArchivoBlack-Regular.ttf     <- archivoblack/ArchivoBlack-Regular.ttf dd9a89a019b4849f66ab75455fe7bdf931311042cbb0f0f97acc061539703180
+  PlayfairDisplay-wght.ttf     <- playfairdisplay/PlayfairDisplay[wght].ttf c40f2293766a503bc70cce9e512ef844a4ccb7cbcde792fe2ea31d191917d8d6
+  Cinzel-wght.ttf              <- cinzel/Cinzel[wght].ttf               f4d83d34d1f6c741193e4acf4b3dff9531e5a67b6aa65228d00a7db72a4e0f34
+  AbrilFatface-Regular.ttf     <- abrilfatface/AbrilFatface-Regular.ttf 5971d4a3758a922a9fedc7f6fb825a96341a2e718c45a4b2c9a6b417c8c4dbe9
+  Caveat-wght.ttf              <- caveat/Caveat[wght].ttf               0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988
+  DancingScript-wght.ttf       <- dancingscript/DancingScript[wght].ttf 21808625578fe8d8cd10cb684be546dca077b27cd03a53a2f1ec11dc743c924c
+  Knewave-Regular.ttf          <- knewave/Knewave-Regular.ttf           ed3bac761d755b89ab3082c844d4a623d63c7d6eef85d22ba1fb6c680e6a4436
+  Bangers-Regular.ttf          <- bangers/Bangers-Regular.ttf           4160a7311de9342674cce9160cde9fcbb30f48190397d86ff1b70b455af65824
+  Righteous-Regular.ttf        <- righteous/Righteous-Regular.ttf       2ffb3fe5c27d7e6571210b800448c4e234e651b46c6b4426c1bb567e5341348a
+  Monoton-Regular.ttf          <- monoton/Monoton-Regular.ttf           951c4cea65ffede784a7c9672feec5d329a7e1e12216c42d53ecf36c90d04dea
+  PressStart2P-Regular.ttf     <- pressstart2p/PressStart2P-Regular.ttf 034c77f1f05ec89421e4a63f0e3a4ca1ecf852cc6d2bf611f126f275728e017d
+  CourierPrime-Regular.ttf     <- courierprime/CourierPrime-Regular.ttf 72f793376f8e2841656bf21d77a5de010f2929bd6956a22ee848ad0c7eb978af
+
+  Licence texts (SHA-256 as downloaded):
+  Outfit-OFL.txt          c676351bf8576b9aba743cd5eaa8c0e7ee0d51f805d720447b4df4ddb6a2e416
+  SpaceGrotesk-OFL.txt    564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72
+  BebasNeue-OFL.txt       72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341
+  Anton-OFL.txt           ee67e6ee22790b7929f1a3769ca2801d565c64b5a9096942c1adf5596de9c9e4
+  LeagueGothic-OFL.txt    44778c339892f79188c60b7471485dd5af92c59351c7f9629a00fc625c6cae5d
+  ArchivoBlack-OFL.txt    3173acd82f8c6159b5b1037b539fcbd4edff68e65c2ea8b9412b5a5ca97b08ff
+  PlayfairDisplay-OFL.txt 566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e
+  Cinzel-OFL.txt          f2b3029aba64c378bf0963b62945eee15e564fe4330b934c8f2eb058282b5e83
+  AbrilFatface-OFL.txt    aba8997e16b1e3888c6e855ba883c70d96bd4375bff8cb9c7ce0f097200f74b8
+  Caveat-OFL.txt          1f9d81d094273d82f3898a1ee8b598a717d050ecbf5ff7bede105b704880157b
+  DancingScript-OFL.txt   6f090277c00af96651ce6dbcc38ff1591047a3bffef486e80b6a32e8276a8201
+  Knewave-OFL.txt         14b3fbd06078a869cf2ba96e6dacb852d373703c86ca7ad54a4cdd6e20fbab19
+  Bangers-OFL.txt         630dd5a307c0657b094d324e069b390edf90182fe5003639e06c02a0e5769af7
+  Righteous-OFL.txt       1c5bc055869d5e9151ec7774082727db720ec4293c65be67f91a4bdcaeb02998
+  Monoton-OFL.txt         585c6d2da8bcd8ffa651e0016f2e992a6891b625143a46a1dacf00699a817d9a
+  PressStart2P-OFL.txt    705960c3281a5765ecc0b59bd4ed7ca59eed165748076bc2fc3e8fdbfeb944b0
+  CourierPrime-OFL.txt    9a755af092b494944c99f471be6fddd19b006a448fefdc4717e4ee0aa09a97b0
+
+Together the seventeen font files are 2,077,280 bytes (about 2.0 MB) before
+the installer compresses them.
+
 The licence texts are text files, so git may rewrite their line endings on
 checkout; the hashes above are of the files as downloaded. The font files are
 binary and are checked by tests/TitleFonts.test.ts.

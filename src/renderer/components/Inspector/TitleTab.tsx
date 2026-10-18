@@ -53,6 +53,17 @@ const ENTRANCE_NAME: Record<TitleEntrance, MessageKey> = {
   rise: 'title.inRise',
   pop: 'title.inPop',
   wipe: 'title.inWipe',
+  fall: 'title.inFall',
+  fromLeft: 'title.inFromLeft',
+  fromRight: 'title.inFromRight',
+  zoom: 'title.inZoom',
+  blur: 'title.inBlur',
+  typewriter: 'title.inTypewriter',
+  letters: 'title.inLetters',
+  words: 'title.inWords',
+  bounce: 'title.inBounce',
+  tracking: 'title.inTracking',
+  lines: 'title.inLines',
 };
 
 const EXIT_NAME: Record<TitleExit, MessageKey> = {
@@ -60,6 +71,16 @@ const EXIT_NAME: Record<TitleExit, MessageKey> = {
   fade: 'title.outFade',
   drop: 'title.outDrop',
   vanish: 'title.outVanish',
+  lift: 'title.outLift',
+  toLeft: 'title.outToLeft',
+  toRight: 'title.outToRight',
+  zoom: 'title.outZoom',
+  blur: 'title.outBlur',
+  typewriter: 'title.outTypewriter',
+  letters: 'title.outLetters',
+  words: 'title.outWords',
+  tracking: 'title.outTracking',
+  lines: 'title.outLines',
 };
 
 const seconds = (value: number): string => `${value.toFixed(2)} s`;
