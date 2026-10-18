@@ -5,7 +5,9 @@ import { useT, type MessageKey } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { DIP_BLACK, DIP_WHITE, MIN_TRANSITION_FRAMES, headHandle, neededHandles, presetKind, tailHandle } from '@renderer/timing/transitions';
+import { SHADER_TRANSITION_CATEGORIES, SHADER_TRANSITIONS, isShaderTransitionId, shaderTransitionLabel, transitionCategoryLabel } from '@renderer/fx/transitions/catalog';
 import { Section, SliderRow, SwitchRow } from './rows';
+import { ShaderTransitionParams } from './ShaderTransitionParams';
 
 /**
  * The inspector for a transition picked on the timeline: its type, its
@@ -13,9 +15,11 @@ import { Section, SliderRow, SwitchRow } from './rows';
  * clip runs out of footage under it, which one and by how much, in words.
  */
 
-type Choice = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'dipToColor' | 'wipe' | 'slide' | 'push';
+type BuiltinChoice = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'dipToColor' | 'wipe' | 'slide' | 'push';
+/** One of the built-in kinds, or a shader transition's id. */
+type Choice = BuiltinChoice | (string & { readonly shaderChoice?: never });
 
-const CHOICES: Array<{ id: Choice; label: MessageKey }> = [
+const CHOICES: Array<{ id: BuiltinChoice; label: MessageKey }> = [
   { id: 'crossDissolve', label: 'transition.crossDissolve' },
   { id: 'dipToBlack', label: 'transition.dipToBlack' },
   { id: 'dipToWhite', label: 'transition.dipToWhite' },
@@ -38,8 +42,11 @@ const ALIGNMENTS: Array<{ id: TransitionAlignment; label: MessageKey }> = [
   { id: 'end', label: 'transition.alignEnd' },
 ];
 
+/** A built-in kind clears what a shader transition left on the transition. */
+const NOT_SHADER = { shader: undefined, params: undefined };
+
 const choiceOf = (transition: Transition): Choice => {
-  if (transition.kind === 'shader') return 'crossDissolve';
+  if (transition.kind === 'shader') return isShaderTransitionId(transition.shader) ? transition.shader : 'crossDissolve';
   if (transition.kind !== 'dip') return transition.kind;
   if (transition.color === DIP_BLACK) return 'dipToBlack';
   if (transition.color === DIP_WHITE) return 'dipToWhite';
@@ -86,18 +93,32 @@ export function TransitionPanel({ transition }: { transition: Transition }): JSX
             value={choice}
             onChange={(event) => {
               const next = event.target.value as Choice;
-              if (next === 'crossDissolve') set({ kind: 'crossDissolve' });
-              else if (next === 'dipToBlack') set({ kind: 'dip', color: DIP_BLACK });
-              else if (next === 'dipToWhite') set({ kind: 'dip', color: DIP_WHITE });
-              else if (next === 'dipToColor') set({ kind: 'dip', color: transition.color === DIP_BLACK || transition.color === DIP_WHITE ? '#2563eb' : transition.color });
+              // A library transition, with its settings back at their defaults.
+              if (isShaderTransitionId(next)) set(presetKind(next));
+              else if (next === 'crossDissolve') set({ ...NOT_SHADER, kind: 'crossDissolve' });
+              else if (next === 'dipToBlack') set({ ...NOT_SHADER, kind: 'dip', color: DIP_BLACK });
+              else if (next === 'dipToWhite') set({ ...NOT_SHADER, kind: 'dip', color: DIP_WHITE });
+              else if (next === 'dipToColor') set({ ...NOT_SHADER, kind: 'dip', color: transition.color === DIP_BLACK || transition.color === DIP_WHITE ? '#2563eb' : transition.color });
               // A wipe, slide or push starts the way its preset travels.
-              else set({ kind: next, direction: presetKind(next).direction });
+              else set({ ...NOT_SHADER, kind: next as 'wipe' | 'slide' | 'push', direction: presetKind(next).direction });
             }}
           >
-            {CHOICES.map((option) => (
-              <option key={option.id} value={option.id}>
-                {t(option.label)}
-              </option>
+            <optgroup label={t(transitionCategoryLabel('basic'))}>
+              {CHOICES.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {t(option.label)}
+                </option>
+              ))}
+            </optgroup>
+            {/* The library's, by the same categories as the Transitions panel. */}
+            {SHADER_TRANSITION_CATEGORIES.map((category) => (
+              <optgroup key={category} label={t(transitionCategoryLabel(category))}>
+                {SHADER_TRANSITIONS.filter((entry) => entry.category === category).map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {t(shaderTransitionLabel(entry.id))}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
@@ -136,6 +157,7 @@ export function TransitionPanel({ transition }: { transition: Transition }): JSX
             </select>
           </label>
         )}
+        {transition.kind === 'shader' && <ShaderTransitionParams transition={transition} onChange={set} />}
         {transition.kind === 'wipe' && (
           <SliderRow
             label={t('transition.softness')}
