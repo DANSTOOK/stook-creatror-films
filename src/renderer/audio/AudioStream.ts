@@ -138,8 +138,8 @@ export class AudioStream {
   private fedCount = 0;
   private decodedUntil = 0;
   private endReached = false;
-  /** -1024 when the decoder started at the head, 0 when it started mid-stream. */
-  private labelShift = -AAC_FRAME_SAMPLES;
+  /** From the decoder's labels to sound time, in samples: see labelShiftFor. */
+  private labelShift = 0;
   private failure: Error | null = null;
   private wake: (() => void) | null = null;
   /** Serialises `ensure`, so two spans never feed the decoder at once. */
@@ -154,6 +154,24 @@ export class AudioStream {
     this.irregularHead =
       this.samples.length > 1 &&
       Math.abs((this.samples[1].time - this.samples[0].time) * track.sampleRate - AAC_FRAME_SAMPLES) > 1;
+  }
+
+  /**
+   * What to add to the decoder's output labels, in samples, for a decode that
+   * starts on packet `start`.
+   *
+   * Chromium's AudioDecoder labels its first output with the first chunk's
+   * timestamp, but never below zero, and counts on from there. A first chunk
+   * stamped before zero - the priming an edit list cuts, at -1024 for ffmpeg
+   * or -2112 for Apple - therefore comes back labelled 0, and every label runs
+   * that far ahead of the sound; one stamped at or after zero comes back as
+   * stamped. Measured on chunks starting at -2112, -1024, 0, 13344, 19933 and
+   * 20992 samples. The shift used to be a flat -1024 for any decode from the
+   * head, which was right only for ffmpeg's own edit list: a file without one
+   * came out a frame early, and an Apple one 1088 samples late.
+   */
+  private labelShiftFor(start: number): number {
+    return Math.min(0, Math.round(this.samples[start].time * this.track.sampleRate));
   }
 
   /** The earliest packet a decode may start on. */
@@ -300,8 +318,7 @@ export class AudioStream {
         : Math.max(this.firstStartIndex, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
 
     this.nextFeed = start;
-    // Labels run one frame ahead of content only when starting at the head.
-    this.labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
+    this.labelShift = this.labelShiftFor(start);
     // Everything before the first frame fed is simply not held.
     this.decodedUntil =
       start === 0
@@ -310,8 +327,7 @@ export class AudioStream {
     this.decoder = new AudioDecoder({
       output: (data) => {
         try {
-          // The decoder's labels run one frame ahead of its content when it
-          // starts at the head.
+          // Sound time from the decoder's label (labelShiftFor).
           const at = Math.round((data.timestamp / 1e6) * sampleRate) + this.labelShift;
           const count = data.numberOfFrames;
 
@@ -482,7 +498,7 @@ export class AudioStream {
     const firstSample = Math.round(fileFrom * sampleRate);
     const endSeconds = fileFrom + seconds;
     const start = Math.max(this.firstStartIndex, this.indexAt(fileFrom) - LEAD_IN_FRAMES);
-    const labelShift = start === 0 ? -AAC_FRAME_SAMPLES : 0;
+    const labelShift = this.labelShiftFor(start);
     const feedUntilSeconds = endSeconds - labelShift / sampleRate;
 
     let failure: Error | null = null;
