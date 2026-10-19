@@ -19,6 +19,7 @@ import { captionCues } from './captions/captionClips';
 import { captionWordLayout } from './captions/captionRender';
 import { glossarySuggestions } from './captions/glossary';
 import { parseSubtitles, writeSrt, writeVtt } from './captions/subtitleFiles';
+import { TITLE_TEMPLATES } from './text/templates';
 
 // Reduced motion, playing and exporting, as attributes on <html> for the CSS
 // to read - set before the first render so nothing animates it should not.
@@ -43,6 +44,12 @@ prepareGhosts();
 // stand-in, and the interface tests check exactly that - and that an export
 // still reads the original.
 (window as { __scfRenderer?: typeof getActiveFrameRenderer }).__scfRenderer = getActiveFrameRenderer;
+
+// The title library, for the test that places and renders every template: it
+// names the registry rather than keeping its own copy of the list.
+(window as { __scfTitleTemplates?: Array<{ id: string; category: string; vertical: boolean }> }).__scfTitleTemplates = TITLE_TEMPLATES.map(
+  (template) => ({ id: template.id, category: template.category, vertical: template.vertical }),
+);
 
 // Captions are checked against their own rules, and their job watched from
 // outside: the tests ask the same code the app runs, not a copy of it.

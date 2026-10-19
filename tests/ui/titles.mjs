@@ -217,8 +217,8 @@ async function main() {
         && (await inspectorTabs.allInnerTexts()).join('|') === 'Title|Video|Info',
       (await inspectorTabs.allInnerTexts()).join(' / '));
     const sections = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
-    check('its groups: Text, Font, Paragraph, Outline, Shadow, Background, Animation, Position',
-      sections.join('|') === 'Text|Font|Paragraph|Outline|Shadow|Background|Animation|Position', sections.join(' / '));
+    check('its groups: Text, Font, Paragraph, Outline, Shadow, Background, Shape, Animation, Position',
+      sections.join('|') === 'Text|Font|Paragraph|Outline|Shadow|Background|Shape|Animation|Position', sections.join(' / '));
 
     await window.keyboard.press('Control+Alt+Shift+T');
     await sleep(300);
@@ -504,7 +504,7 @@ async function main() {
     check('Edición > Añadir título writes the template text in Spanish', spanish === 'Título', String(spanish));
     const tabsEs = await window.getByTestId('inspector-panel').getByRole('tab').allInnerTexts();
     const sectionsEs = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
-    check('the tab and its groups in Spanish', tabsEs[0] === 'Título' && sectionsEs.join('|') === 'Texto|Fuente|Párrafo|Contorno|Sombra|Fondo|Animación|Posición',
+    check('the tab and its groups in Spanish', tabsEs[0] === 'Título' && sectionsEs.join('|') === 'Texto|Fuente|Párrafo|Contorno|Sombra|Fondo|Forma|Animación|Posición',
       `${tabsEs.join(' / ')} - ${sectionsEs.join(' / ')}`);
     await window.keyboard.press('Control+Alt+Shift+T');
     await sleep(300);
