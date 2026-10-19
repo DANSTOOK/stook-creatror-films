@@ -16,6 +16,77 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.50.0-beta.1 — Muchas más transiciones, efectos y títulos, voz por IA y mejor audio
+2026-10-19 · pre-release para probar
+
+Una entrega grande: una biblioteca enorme de transiciones, efectos y títulos,
+texto a voz sin internet, subtítulos sin descargar nada, y varios arreglos de
+audio y exportación. Todo de código abierto con licencia que permite incluirlo
+en el instalador, verificada pieza por pieza.
+
+### Aviso: el instalador es mucho más grande
+Pasa de ~131 MB a **~640 MB**, porque ahora incluye las voces (315 MB) y el
+modelo de subtítulos (182 MB) listos para usar, sin descargar nada. Es una
+decisión tomada a propósito, para que texto a voz y subtítulos funcionen al
+instante.
+
+### Añadido
+- **Muchas más transiciones y efectos.**
+  - **Transiciones: de 6 a 59** (fundidos, cortinillas, movimiento, zoom,
+    distorsión, estilizado), de la biblioteca GL Transitions, licencia MIT.
+    Se buscan por categoría con una vista previa en movimiento.
+  - **Efectos: de 4 a 24** (+20: 5 de desenfoque, 4 de color, 4 de
+    distorsión, 2 fílmicos, 5 de estilizado), de glfx.js, licencia MIT/BSD.
+    Se apilan, tienen parámetros en el inspector y se ven igual en la vista
+    previa y en la exportación.
+  - *Comprobado:* 85 comprobaciones en la app, cada shader compila y rinde
+    (59 transiciones, 20 efectos nuevos).
+- **Biblioteca de títulos: de 3 a 63 plantillas**, por categoría (básicos,
+  rótulos, cine, redes y vertical, llamadas y etiquetas, créditos, tipografía
+  en movimiento), cada una con animación de entrada y salida, y **17 fuentes
+  nuevas** (20 en total, todas licencia OFL). Funcionan en 16:9 y en vertical
+  9:16, respetan el área segura y el texto en español (acentos, ñ, ¿¡) se ve
+  correcto.
+  - *Comprobado:* cada plantilla colocada y dibujada dentro del área segura,
+    con texto en español, y exportada (12 comprobaciones en la app).
+- **Texto a voz, sin internet.** *Línea de tiempo → Texto a voz* (y en el
+  buscador de funciones): escribe, elige idioma y voz, ajusta la velocidad,
+  escúchala y se coloca en la línea de tiempo como un clip de audio.
+  - Motor **Piper** (binario aparte, como ffmpeg), con **5 voces incluidas**:
+    es-ES (davefx, CC0, masculina; sharvard, CC BY 3.0, femenina), es-MX
+    (claude, Apache-2.0) y en-US (kristin y norman, dominio público). La voz
+    es-AR (daniela) se descarga aparte.
+    Todas con licencia apta para uso comercial. Calidad medida en español:
+    0,9–3,4 % de error.
+  - *Comprobado:* 15 comprobaciones en la app; genera en español e inglés, el
+    clip cae en la línea de tiempo con la duración correcta, y los propios
+    subtítulos de la app lo leen de vuelta con **0 % de error**.
+- **Subtítulos sin descargar nada.** El modelo bueno (small, 190 MB) va dentro
+  del instalador. Se midió que el pequeño (60 MB) triplica el error en español,
+  así que se incluye el bueno. Los demás modelos siguen siendo descargables.
+
+### Arreglado
+- **El audio salía 23 ms adelantado** en casi todos los MP4 de móvil y
+  grabación de pantalla. La app quitaba de más un bloque de audio que no debía.
+  Ahora el sonido queda **sincronizado al sample** con la imagen. También se
+  arreglaron pistas de audio que empiezan tarde a propósito (hasta 500 ms de
+  desfase). Comprobado contra ffmpeg en 7 tipos de archivo, incluido Kratos.
+- **Chasquidos de audio.** Sonaba un chasquido **cada vez** que empezabas a
+  reproducir dentro de un clip con sonido, y en cada pausa. Ahora la imagen
+  espera al sonido y este entra y sale con un fundido: **0 chasquidos** en 40
+  pruebas. A cambio, el sonido tarda unos 30 ms más en empezar y suena 28 ms
+  más al pausar, imperceptible.
+- **La exportación nunca escribe un fotograma equivocado.** Si el decodificador
+  falla a mitad, ahora se reabre y comprueba cada fotograma en vez de arriesgar
+  el anterior. Las exportaciones normales nunca estuvieron afectadas.
+
+Cifras de esta versión, sobre todo lo integrado: **1499 pruebas unitarias**,
+**127/127** de interfaz, **22/22** de extremo a extremo, texto a voz 15/15,
+títulos 12/12, transiciones y efectos 85/85, audio 47/47, y los bancos de
+sincronía AAC 9/9.
+
+---
+
 ## v1.42.0-beta.1 — Funciones rescatadas: separar audio, bucle, capas y bordes del cuadro
 2026-10-17 · pre-release para probar
 
