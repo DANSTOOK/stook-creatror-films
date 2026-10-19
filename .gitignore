@@ -21,3 +21,10 @@ build/whisper/
 .whisper-dev/
 # Speech models, wherever one ends up.
 ggml-*.bin
+
+# TTS engine, bundled voices and bundled captions model: staged by the
+# release workflow (.github/workflows/release.yml), never committed - like
+# build/whisper above. The .onnx weights would be hundreds of MB in git.
+build/piper/
+build/tts-voices/
+build/whisper-models/

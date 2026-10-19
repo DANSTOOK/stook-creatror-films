@@ -117,6 +117,7 @@ export function buildMenuTemplate(
     label: t('menu.timeline'),
     submenu: [
       command('menu.generateCaptions', 'generateCaptions', { enabled: inEditor }),
+      command('menu.textToSpeech', 'textToSpeech', { enabled: inEditor }),
       { type: 'separator' },
       command('menu.importCaptions', 'importCaptions', { enabled: inEditor }),
       command('menu.exportCaptions', 'exportCaptions', { enabled: inEditor }),

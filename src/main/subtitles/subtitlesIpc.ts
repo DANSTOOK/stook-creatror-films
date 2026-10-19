@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain, net, type BrowserWindow } from 'electron';
-import { readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
@@ -15,7 +16,7 @@ import {
 import { resolveFfmpegPath } from '../exporter/HardwareAccel';
 import { allowPath, isFinishedExport } from '../ipc/fileSystem';
 import { lastLines, mt } from '../language';
-import { CAPTION_MODELS, MODEL_SOURCE, modelById } from './catalog';
+import { CAPTION_MODELS, MODEL_SOURCE, modelById, type CaptionModel } from './catalog';
 import { findEngine, type WhisperEngine } from './engine';
 import { ChecksumError, deleteModel, downloadModel, importModel, isModelReady, modelPath } from './models';
 import { Transcriber, TranscriptionError } from './transcriber';
@@ -32,6 +33,34 @@ import { Transcriber, TranscriptionError } from './transcriber';
 
 /** Models live with the app's other data, not in the project and not in the installer. */
 const modelsDir = (): string => process.env.SCF_WHISPER_MODELS_DIR || join(app.getPath('userData'), 'whisper-models');
+
+/**
+ * The folder of models that ship inside the installer, so captions work with
+ * no download on first use ("listo para usar"). One model is bundled there
+ * (resources/whisper-models, or build/whisper-models in a checkout); the rest
+ * are still downloaded on request into `modelsDir`. A bundled file is part of
+ * the trusted build and read-only, so it is checked by size alone - it cannot
+ * have a `.verified` marker written beside it the way a downloaded one does.
+ */
+const bundledModelsDir = (): string | null => {
+  if (process.env.SCF_WHISPER_BUNDLED_DIR) return process.env.SCF_WHISPER_BUNDLED_DIR;
+  return app.isPackaged ? join(process.resourcesPath, 'whisper-models') : join(app.getAppPath(), 'build', 'whisper-models');
+};
+
+/**
+ * Where a model is ready to use: the user's own folder first (it may hold a
+ * model they downloaded, including one that is also bundled), then the bundled
+ * folder. Null when it is on neither.
+ */
+async function readyModelDir(model: CaptionModel): Promise<string | null> {
+  if (await isModelReady(modelsDir(), model)) return modelsDir();
+  const bundled = bundledModelsDir();
+  if (bundled && existsSync(join(bundled, model.file))) {
+    const info = await stat(join(bundled, model.file)).catch(() => null);
+    if (info && info.size === model.bytes) return bundled;
+  }
+  return null;
+}
 
 let engine: WhisperEngine | null | undefined;
 const currentEngine = (): WhisperEngine | null => {
@@ -68,7 +97,7 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
           id: model.id,
           file: model.file,
           bytes: model.bytes,
-          present: await isModelReady(modelsDir(), model),
+          present: (await readyModelDir(model)) !== null,
           source: MODEL_SOURCE,
         })),
       ),
@@ -162,7 +191,8 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
     const model = modelById(request?.model);
     if (!model) throw new Error(mt('captions.errorUnknownModel'));
     const language = request.language === 'en' ? 'en' : 'es';
-    if (!(await isModelReady(modelsDir(), model))) {
+    const readyDir = await readyModelDir(model);
+    if (!readyDir) {
       await transcriber.cancel(jobId);
       throw new Error(mt('captions.errorNoModel'));
     }
@@ -170,7 +200,7 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
       return await transcriber.transcribe(
         jobId,
         model,
-        modelPath(modelsDir(), model),
+        modelPath(readyDir, model),
         language,
         (fraction) => send(IPC.captionsProgress, { jobId, fraction } satisfies CaptionProgressEvent),
         { prompt: typeof request.prompt === 'string' ? request.prompt : '', vad: request.vad !== false },

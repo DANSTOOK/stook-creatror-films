@@ -20,6 +20,7 @@ import { SHOW_INSPECTOR_EVENT } from './components/Timeline/Timeline';
 import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { GenerateCaptionsDialog } from './components/Captions/GenerateCaptionsDialog';
+import { TextToSpeechDialog } from './components/TextToSpeech/TextToSpeechDialog';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
 import { exportCaptionsToDialog, importCaptionsFromDialog } from './captions/captionFiles';
 import { PreviewViewport } from './components/PreviewViewport';
@@ -155,6 +156,7 @@ export default function App(): JSX.Element {
   }, []);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [captionsOpen, setCaptionsOpen] = useState(false);
+  const [ttsOpen, setTtsOpen] = useState(false);
   /**
    * Areas that are put away.
    *
@@ -227,6 +229,7 @@ export default function App(): JSX.Element {
   const settingsPresence = usePresence(settingsOpen);
   const preferencesPresence = usePresence(preferencesOpen);
   const captionsPresence = usePresence(captionsOpen);
+  const ttsPresence = usePresence(ttsOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -540,6 +543,9 @@ export default function App(): JSX.Element {
       case 'generateCaptions':
         if (nativeAvailable) setCaptionsOpen(true);
         return;
+      case 'textToSpeech':
+        if (nativeAvailable) setTtsOpen(true);
+        return;
       case 'importCaptions':
         if (nativeAvailable) void importCaptionsFromDialog();
         return;
@@ -789,6 +795,7 @@ export default function App(): JSX.Element {
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
+          {ttsPresence.mounted && <TextToSpeechDialog closing={ttsPresence.closing} onClose={() => setTtsOpen(false)} />}
           {preferencesPresence.mounted && (
             <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
           )}

@@ -37,6 +37,31 @@ extraResources:
     to: whisper
     filter:
       - '**/*'
+  # The text-to-speech engine: Piper (main/tts/engine.ts), a standalone
+  # program spawned as a child process the way whisper and ffmpeg are. Its
+  # espeak-ng phonemiser (GPL-3.0) lives inside this separate executable with
+  # its licence beside it, and is never linked into the app. The release
+  # workflow stages it into build/piper; a checkout without it says text to
+  # speech is not part of the build.
+  - from: build/piper
+    to: piper
+    filter:
+      - '**/*'
+  # The voices that ship ready to use (main/tts/catalog.ts BUNDLED_VOICES):
+  # five Piper voices with commercially usable licences (CC0, public domain,
+  # Apache, permissive attribution). Extra voices are downloaded on request
+  # into the app's data folder. Each voice is its .onnx plus its .onnx.json.
+  - from: build/tts-voices
+    to: tts-voices
+    filter:
+      - '**/*'
+  # One speech model bundled so captions work with no download on first use
+  # (ggml-small-q5_1, chosen in .bench-tmp/tts-spike.md). The other models stay
+  # downloadable, into the app's data folder, as before.
+  - from: build/whisper-models
+    to: whisper-models
+    filter:
+      - '**/*'
 
 win:
   target: [nsis]

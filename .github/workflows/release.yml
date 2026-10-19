@@ -33,6 +33,22 @@ env:
   VAD_FILE: ggml-silero-v6.2.0.bin
   VAD_SHA256: 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
 
+  # The speech model bundled so captions work with no download on first use
+  # (chosen in .bench-tmp/tts-spike.md: ggml-small-q5_1, 190 MB, measured far
+  # more accurate than base-q5_1 in Spanish and English). The other models stay
+  # downloadable at run time. The same SHA-256 the catalogue pins (main/
+  # subtitles/catalog.ts); a different file fails the build.
+  CAPTIONS_BUNDLE_FILE: ggml-small-q5_1.bin
+  CAPTIONS_BUNDLE_SHA256: ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb
+
+  # The text-to-speech engine: Piper's Windows build, spawned as a child
+  # process the way whisper and ffmpeg are. Piper and piper_phonemize are MIT;
+  # the espeak-ng data inside the zip is GPL-3.0 and ships in its own
+  # executable, never linked into the app. Pinned by release tag and checksum.
+  PIPER_VERSION: '2023.11.14-2'
+  PIPER_ZIP: piper_windows_amd64.zip
+  PIPER_SHA256: f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea
+
 jobs:
   release:
     runs-on: windows-latest
@@ -162,6 +178,112 @@ jobs:
             if (-not (Test-Path build/whisper/LICENSE-silero-vad.txt)) { throw "The voice detector's licence is not beside it" }
             if ($help -notmatch '--vad') { throw "This whisper-cli has no --vad option:`n$help" }
           }
+
+      # --- The bundled captions model ------------------------------------------
+      # Fetched here so the installer carries it (electron-builder.yml ships
+      # build/whisper-models as resources/whisper-models). Verified against the
+      # catalogue's SHA-256.
+      - name: Stage the bundled captions model
+        shell: pwsh
+        run: |
+          $out = 'build/whisper-models'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $file = "$out/$env:CAPTIONS_BUNDLE_FILE"
+          curl.exe -fL -o $file "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$env:CAPTIONS_BUNDLE_FILE"
+          if ($LASTEXITCODE -ne 0) { throw 'The captions model could not be downloaded' }
+          $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:CAPTIONS_BUNDLE_SHA256) {
+            Remove-Item $file
+            throw "The captions model's checksum is $hash, not $env:CAPTIONS_BUNDLE_SHA256"
+          }
+
+      # --- The text-to-speech engine -------------------------------------------
+      - name: Cache the text-to-speech engine
+        id: piper
+        uses: actions/cache@v4
+        with:
+          path: build/piper
+          key: piper-${{ env.PIPER_VERSION }}-${{ env.PIPER_SHA256 }}
+
+      - name: Stage Piper
+        if: steps.piper.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP $env:PIPER_ZIP
+          curl.exe -fL -o $zip "https://github.com/rhasspy/piper/releases/download/$env:PIPER_VERSION/$env:PIPER_ZIP"
+          if ($LASTEXITCODE -ne 0) { throw 'Piper could not be downloaded' }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:PIPER_SHA256) { throw "Piper's checksum is $hash, not $env:PIPER_SHA256" }
+          # The zip holds a top-level piper/ folder; its contents become build/piper.
+          Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP/piper-x -Force
+          New-Item -ItemType Directory -Force build/piper | Out-Null
+          Copy-Item "$env:RUNNER_TEMP/piper-x/piper/*" build/piper -Recurse -Force
+          if (-not (Test-Path build/piper/piper.exe)) { throw 'piper.exe is not in build/piper' }
+          # espeak-ng is GPL-3.0; its licence and a source offer travel with it.
+          @"
+          Piper (piper.exe, piper_phonemize.dll) is MIT-licensed:
+            https://github.com/rhasspy/piper  (release $env:PIPER_VERSION)
+          It bundles espeak-ng, licensed GPL-3.0:
+            https://github.com/espeak-ng/espeak-ng
+          espeak-ng is provided here as a separate executable and is not linked
+          into STOOK CREATOR FILMS. Its complete corresponding source for this
+          version is available from the espeak-ng project above; a copy can also
+          be obtained from the publisher of this application on request.
+          "@ | Out-File -FilePath build/piper/LICENSE-piper-espeak-ng.txt -Encoding utf8
+
+      # --- The bundled voices --------------------------------------------------
+      # Each voice is its .onnx weights and .onnx.json configuration, fetched
+      # from rhasspy/piper-voices and verified against the SHA-256 recorded with
+      # the spike. Only voices with commercially usable licences are listed.
+      - name: Stage the bundled voices
+        shell: pwsh
+        run: |
+          $base = 'https://huggingface.co/rhasspy/piper-voices/resolve/main'
+          $out = 'build/tts-voices'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          # path (under the repo) | sha256
+          $voices = @(
+            @{ path = 'es/es_ES/davefx/medium/es_ES-davefx-medium.onnx'; sha = '6658b03b1a6c316ee4c265a9896abc1393353c2d9e1bca7d66c2c442e222a917' },
+            @{ path = 'es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json'; sha = '0e0dda87c732f6f38771ff274a6380d9252f327dca77aa2963d5fbdf9ec54842' },
+            @{ path = 'es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx'; sha = '40febfb1679c69a4505ff311dc136e121e3419a13a290ef264fdf43ddedd0fb1' },
+            @{ path = 'es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json'; sha = '7438c9b699c72b0c3388dae1b68d3f364dc66a2150fe554a1c11f03372957b2c' },
+            @{ path = 'es/es_MX/claude/high/es_MX-claude-high.onnx'; sha = '3ef40a71ea63852cd8ab7e6fa7d2ecdcfa67a0b47c9c48e3f10e02ee02083ea0' },
+            @{ path = 'es/es_MX/claude/high/es_MX-claude-high.onnx.json'; sha = '1afc81f703c0e4cb3b4d7c0dca096b8b54a98806807f0170cf5eb5557723c12d' }
+          )
+          foreach ($v in $voices) {
+            $name = Split-Path $v.path -Leaf
+            $dest = "$out/$name"
+            curl.exe -fL -o $dest "$base/$($v.path)"
+            if ($LASTEXITCODE -ne 0) { throw "Could not download $name" }
+            $hash = (Get-FileHash $dest -Algorithm SHA256).Hash.ToLower()
+            if ($hash -ne $v.sha) { Remove-Item $dest; throw "$name checksum is $hash, not $($v.sha)" }
+          }
+          # The English voices come from the sherpa-onnx mirror, where the
+          # rhasspy originals are republished unchanged.
+          $en = @(
+            @{ url = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-kristin-medium.tar.bz2'; file = 'en_US-kristin-medium'; sha = 'f9a5c375c70ddc33ccdb3969c76a4d7cc5255ac08119a312b0034a1d07041be6' },
+            @{ url = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-norman-medium.tar.bz2'; file = 'en_US-norman-medium'; sha = 'fa06b6b8b280e176b17f8424e05ca12d0223eeac9a31c87230937fe7120fbe2a' }
+          )
+          foreach ($v in $en) {
+            $tar = Join-Path $env:RUNNER_TEMP "$($v.file).tar.bz2"
+            curl.exe -fL -o $tar $v.url
+            if ($LASTEXITCODE -ne 0) { throw "Could not download $($v.file)" }
+            tar -xjf $tar -C $env:RUNNER_TEMP
+            $src = "$env:RUNNER_TEMP/vits-piper-$($v.file)"
+            Copy-Item "$src/$($v.file).onnx" "$out/" -Force
+            Copy-Item "$src/$($v.file).onnx.json" "$out/" -Force
+            $hash = (Get-FileHash "$out/$($v.file).onnx" -Algorithm SHA256).Hash.ToLower()
+            if ($hash -ne $v.sha) { throw "$($v.file).onnx checksum is $hash, not $($v.sha)" }
+          }
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Check the text-to-speech engine runs
+        shell: pwsh
+        run: |
+          Get-ChildItem build/piper | Format-Table Name, Length
+          'Hola, esto es una prueba.' | & build/piper/piper.exe --model build/tts-voices/es_ES-davefx-medium.onnx --output_file $env:RUNNER_TEMP/piper-check.wav
+          if ($LASTEXITCODE -ne 0) { throw 'piper.exe did not run' }
+          if (-not (Test-Path $env:RUNNER_TEMP/piper-check.wav)) { throw 'piper produced no audio' }
 
       - name: Build installer
         run: npm run build && node ./node_modules/electron-builder/cli.js --win --publish never

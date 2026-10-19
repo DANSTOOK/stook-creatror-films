@@ -14,6 +14,10 @@ import {
   type CaptionModelProgress,
   type CaptionProgressEvent,
   type CaptionTranscribeResult,
+  type TtsEngineStatus,
+  type TtsVoiceProgress,
+  type TtsProgressEvent,
+  type TtsResult,
   type MatteEngineStatus,
   type MatteModelProgress,
   type MattePartial,
@@ -210,6 +214,28 @@ const api: FilmoraApi = {
   captionsSaveFile: (suggestedName, srt, vtt) => ipcRenderer.invoke(IPC.captionsSaveFile, suggestedName, srt, vtt) as Promise<string | null>,
   captionsWriteSidecar: (videoPath, format, contents, tag) => ipcRenderer.invoke(IPC.captionsWriteSidecar, videoPath, format, contents, tag) as Promise<string>,
   captionsWriteTemp: (srt) => ipcRenderer.invoke(IPC.captionsWriteTemp, srt) as Promise<string>,
+
+  ttsStatus: () => ipcRenderer.invoke(IPC.ttsStatus) as Promise<TtsEngineStatus>,
+  ttsVoiceDownload: (id) => ipcRenderer.invoke(IPC.ttsVoiceDownload, id) as Promise<TtsEngineStatus>,
+  ttsVoiceCancel: (id) => ipcRenderer.invoke(IPC.ttsVoiceCancel, id) as Promise<void>,
+  ttsVoiceDelete: (id) => ipcRenderer.invoke(IPC.ttsVoiceDelete, id) as Promise<TtsEngineStatus>,
+  onTtsVoiceProgress(listener) {
+    const handler = (_event: unknown, progress: TtsVoiceProgress): void => listener(progress);
+    ipcRenderer.on(IPC.ttsVoiceProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.ttsVoiceProgress, handler);
+    };
+  },
+  ttsPreview: (request) => ipcRenderer.invoke(IPC.ttsPreview, request) as Promise<string>,
+  ttsGenerate: (jobId, request) => ipcRenderer.invoke(IPC.ttsGenerate, jobId, request) as Promise<TtsResult>,
+  ttsCancel: (jobId) => ipcRenderer.invoke(IPC.ttsCancel, jobId) as Promise<void>,
+  onTtsProgress(listener) {
+    const handler = (_event: unknown, progress: TtsProgressEvent): void => listener(progress);
+    ipcRenderer.on(IPC.ttsProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.ttsProgress, handler);
+    };
+  },
 
   mattesStatus: () => ipcRenderer.invoke(IPC.mattesStatus) as Promise<MatteEngineStatus>,
   mattesModelDownload: (id) => ipcRenderer.invoke(IPC.mattesModelDownload, id) as Promise<MatteEngineStatus>,
