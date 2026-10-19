@@ -1,6 +1,7 @@
 import type { Clip, Keyframe, KeyframeValue, ProjectState, Vector2D } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { evaluateKeyframes } from '@renderer/engine/KeyframeEvaluator';
+import { shiftEffectKeyframes } from '@renderer/fx/effects/catalog';
 
 /**
  * Pure timeline editing operations.
@@ -168,6 +169,8 @@ export function shiftClipKeyframes(clip: Clip, delta: number): Clip {
       rotation: shift(clip.transform.rotation),
       opacity: shift(clip.transform.opacity),
     },
+    // An effect's keyframes are in timeline frames too, and go with the clip.
+    ...(clip.effects ? { effects: shiftEffectKeyframes(clip.effects, delta) } : {}),
   };
 }
 

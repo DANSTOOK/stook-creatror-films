@@ -20,6 +20,7 @@ import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
+import { readFrameTimes } from '../media/frameTimes';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
 import { detectHardwareEncoders, resolveFfmpegPath } from '../exporter/HardwareAccel';
@@ -715,6 +716,17 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     if (!file) return null;
     allowedPaths.add(file);
     return mediaUrlFor(file);
+  });
+
+  /**
+   * Every frame's presentation time, for checking a seeked <video> in an
+   * export (see media/frameTimes). Not queued with the filmstrips: an export
+   * is waiting on it, and it only reads the file.
+   */
+  ipcMain.handle(IPC.videoFrameTimes, async (_event, path: unknown) => {
+    if (typeof path !== 'string') return null;
+    assertAllowed(path);
+    return readFrameTimes(resolveFfmpegPath(), path);
   });
 
   ipcMain.handle(IPC.contentThumbs, async (_event, path: unknown, kind: unknown, seconds: unknown) => {

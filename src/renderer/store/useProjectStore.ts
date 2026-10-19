@@ -1482,8 +1482,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       get().addTransitions(preset, [cut]);
       return;
     }
-    const { kind, color, direction } = presetKind(preset);
-    get().updateTransition(existing.id, { kind, color, direction });
+    // Kind, colour, direction - and for a shader transition which one, its
+    // settings starting from the defaults.
+    get().updateTransition(existing.id, presetKind(preset));
     get().selectTransition(existing.id);
   },
 

@@ -254,6 +254,49 @@ export class MediaSourceRegistry {
     }
   }
 
+  /**
+   * Seek a video to exactly `seconds` of its own clock and wait for it to
+   * land. Unlike `seekExact` it aims where it is told, for a caller that knows
+   * the file's frame times (see frameCheck), and it always seeks unless the
+   * element is already at that very time.
+   */
+  async seekTo(uri: string, seconds: number): Promise<void> {
+    const element = this.elements.get(uri);
+    if (!(element instanceof HTMLVideoElement)) return;
+    if (!element.paused) element.pause();
+    // Seeking past the end never completes.
+    const duration = Number.isFinite(element.duration) ? element.duration : Infinity;
+    const target = Math.max(0, Math.min(seconds, duration - 1e-3));
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (element.seeking) await waitForSeek(element);
+      if (Math.abs(element.currentTime - target) < 1e-6 && element.readyState >= 2) return;
+      element.currentTime = target;
+      await waitForSeek(element);
+    }
+  }
+
+  /**
+   * The picture a video element is showing, as a frame of its own: its
+   * timestamp says which frame of the file it is, and drawing it draws
+   * exactly what was checked. Null when the element has nothing to give.
+   * The caller closes it.
+   */
+  grabFrame(uri: string): VideoFrame | null {
+    const element = this.elements.get(uri);
+    if (!(element instanceof HTMLVideoElement) || typeof VideoFrame === 'undefined' || element.readyState < 2) return null;
+    try {
+      return new VideoFrame(element);
+    } catch {
+      return null;
+    }
+  }
+
+  /** A video's length in seconds, as its element knows it; Infinity until it does. */
+  durationOf(uri: string): number {
+    const element = this.elements.get(uri);
+    return element instanceof HTMLVideoElement && Number.isFinite(element.duration) ? element.duration : Infinity;
+  }
+
   /** Pause every video, e.g. when the transport stops. */
   pauseAll(): void {
     for (const element of this.elements.values()) {

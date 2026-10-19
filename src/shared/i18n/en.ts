@@ -1,3 +1,5 @@
+import { fxEn } from './fx.en';
+
 /**
  * English, the default and the fallback.
  *
@@ -700,6 +702,8 @@ export const en = {
   'export.encoderError': 'Encoder error: {detail}',
   'export.cancelled': 'Export cancelled.',
   'export.slowPath': 'Rendering with {encoder} - slow path: {files} cannot be decoded forwards, so each frame is sought separately.',
+  'export.frameNotExact': 'the video player would not show frame {frame} of “{name}” exactly, so the export stopped rather than write a wrong frame. Try again, or convert the clip to MP4.',
+  'export.frameUnchecked': 'there is no way to check which frame of “{name}” the video player shows, so the export stopped rather than risk a wrong frame. Convert the clip to MP4 and export again.',
   'export.failed': 'Export failed: {detail}',
   'export.folderSuffix': '/ (folder)',
   'export.progressRendering': 'Rendering',
@@ -991,7 +995,7 @@ export const en = {
   'menu.addTitle': 'Add title',
   'menu.addLowerThird': 'Add lower third',
   'menu.addCredits': 'Add end credits',
-  'menu.fontLicenses': 'Font licenses',
+  'menu.fontLicenses': 'Font licenses and credits',
   'menu.ok': 'OK',
   'inspector.tabTitle': 'Title',
   'inspector.kindTitle': 'Title',
@@ -1569,6 +1573,8 @@ export const en = {
   'keys.loopKeys': 'Ctrl+/',
   'keys.loop': 'Loop playback on or off: In to Out, else the selected clips, else the whole edit',
   'viewer.loopHint': 'Goes round In to Out when marked, else the selected clips, else the whole edit. The ruler shows what.',
+  // The transitions and effects library, in a file of its own (fx.en.ts).
+  ...fxEn,
 };
 
 export type Messages = typeof en;

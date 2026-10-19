@@ -1,4 +1,5 @@
 import type { Messages } from './en';
+import { fxEs } from './fx.es';
 
 /**
  * Spanish. Natural, neutral Spanish as a video editor in Spanish speaks it:
@@ -700,6 +701,8 @@ export const es: Messages = {
   'export.encoderError': 'Error del codificador: {detail}',
   'export.cancelled': 'Exportación cancelada.',
   'export.slowPath': 'Renderizando con {encoder}, por el camino lento: {files} no se puede decodificar hacia delante, así que cada fotograma se busca por separado.',
+  'export.frameNotExact': 'el reproductor de vídeo no mostraba exactamente el fotograma {frame} de «{name}», así que la exportación se ha detenido antes que escribir un fotograma equivocado. Vuelve a intentarlo o convierte el clip a MP4.',
+  'export.frameUnchecked': 'no hay forma de comprobar qué fotograma de «{name}» muestra el reproductor de vídeo, así que la exportación se ha detenido antes que arriesgarse a uno equivocado. Convierte el clip a MP4 y vuelve a exportar.',
   'export.failed': 'La exportación falló: {detail}',
   'export.folderSuffix': '/ (carpeta)',
   'export.progressRendering': 'Renderizando',
@@ -991,7 +994,7 @@ export const es: Messages = {
   'menu.addTitle': 'Añadir título',
   'menu.addLowerThird': 'Añadir rótulo inferior',
   'menu.addCredits': 'Añadir créditos finales',
-  'menu.fontLicenses': 'Licencias de las fuentes',
+  'menu.fontLicenses': 'Licencias de las fuentes y créditos',
   'menu.ok': 'Aceptar',
   'inspector.tabTitle': 'Título',
   'inspector.kindTitle': 'Título',
@@ -1569,4 +1572,5 @@ export const es: Messages = {
   'keys.loopKeys': 'Ctrl+/ (Ctrl+Mayús+7)',
   'keys.loop': 'Bucle activado o no: de entrada a salida, si no los clips seleccionados, si no toda la edición',
   'viewer.loopHint': 'Repite de entrada a salida si están marcadas; si no, los clips seleccionados; si no, toda la edición. La regla muestra qué.',
+  ...fxEs,
 };

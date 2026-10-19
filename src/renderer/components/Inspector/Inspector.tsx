@@ -29,6 +29,7 @@ import { TransitionPanel } from './TransitionPanel';
 import { MultiInspector } from './MultiInspector';
 import { LayerRow } from './LayerRow';
 import { BackgroundRemovalRows } from './BackgroundRemovalRows';
+import { EffectStack, addStackEffect, effectMenuItems } from './EffectStack';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
@@ -590,8 +591,10 @@ export function Inspector(): JSX.Element {
         </Section>
       )}
 
-      {addable.length > 0 && (
-        <div className="p-2">
+      {/* The effect stack (fx/effects): after the grade, before the mask. */}
+      <EffectStack clip={clip} frame={frame} sectionProps={sectionProps} />
+
+      <div className="p-2">
           <button
             ref={addButton}
             type="button"
@@ -602,7 +605,16 @@ export function Inspector(): JSX.Element {
               const box = addButton.current?.getBoundingClientRect();
               openMenu(
                 { preventDefault: () => undefined, clientX: box?.left ?? 0, clientY: (box?.bottom ?? 0) + 4 },
-                addable.map((effect) => ({ label: t(effect.label), onSelect: () => addEffect(effect.id) })),
+                [
+                  // Keying and shape: the four that are always part of a clip.
+                  ...(addable.length > 0
+                    ? [
+                        { label: t('fx.keying'), submenu: addable.map((effect) => ({ label: t(effect.label), onSelect: () => addEffect(effect.id) })) },
+                        { separator: true },
+                      ]
+                    : []),
+                  ...effectMenuItems(t, (type) => addStackEffect(clip, type)),
+                ],
                 { label: t('inspector.addEffect') },
               );
             }}
@@ -610,8 +622,7 @@ export function Inspector(): JSX.Element {
             <Plus size={13} />
             {t('inspector.addEffect')}
           </button>
-        </div>
-      )}
+      </div>
     </>
   );
 

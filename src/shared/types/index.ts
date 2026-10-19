@@ -159,6 +159,26 @@ export interface PixelArtConfig {
   alphaThreshold: number; // Alpha below this is cut to 0 to keep sprites crisp
 }
 
+/**
+ * One effect in a clip's stack: blur, glitch, film grain and the rest (see
+ * renderer/fx/effects/catalog.ts for the types and their settings). The
+ * stack runs top to bottom, after the grade and its LUT and before the mask
+ * and pixel art.
+ */
+export interface ClipEffect {
+  id: string;
+  /** Which effect; one this build does not know is dropped when the project opens. */
+  type: string;
+  enabled: boolean;
+  /** Every setting, by name, as a number (a switch is 0 or 1). */
+  params: Record<string, number>;
+  /**
+   * Settings that animate: keyframes in timeline frames, as the transform's
+   * are, moved with the clip. Absent for a setting that holds still.
+   */
+  keyframes?: Record<string, Keyframe<number>[]>;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Audio                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -604,6 +624,11 @@ export interface Clip {
   chromaKey: ChromaKeyConfig;
   backgroundRemoval: BackgroundRemovalConfig;
   pixelArt: PixelArtConfig;
+  /**
+   * The effect stack, top first. Absent (or empty) on a clip with none,
+   * which is every clip made before effects existed.
+   */
+  effects?: ClipEffect[];
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;
   /** Stereo position, -1 hard left to +1 hard right. */
@@ -692,9 +717,13 @@ export interface Track {
  * A cross dissolve; a dip through a colour (black, white, any); a wipe (an
  * edge crossing the picture); a slide (the incoming picture moving in over
  * the outgoing one); or a push (the incoming picture pushing the outgoing
- * one out).
+ * one out). Or a shader transition: one of the library's GL Transitions,
+ * named by `shader` (renderer/fx/transitions/catalog.ts).
  */
-export type TransitionKind = 'crossDissolve' | 'dip' | 'wipe' | 'slide' | 'push';
+export type TransitionKind = 'crossDissolve' | 'dip' | 'wipe' | 'slide' | 'push' | 'shader';
+
+/** A shader transition's setting: a number, a switch, or a vector or colour (0..1 each). */
+export type TransitionParamValue = number | boolean | number[];
 
 /** Which way a wipe's edge, a slide or a push travels across the frame. */
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
@@ -736,6 +765,13 @@ export interface Transition {
    * equal power. On unless switched off in the inspector.
    */
   audioCrossfade: boolean;
+  /** With kind 'shader': which one. Absent on every other kind. */
+  shader?: string;
+  /**
+   * With kind 'shader': the settings changed from its defaults, by uniform
+   * name. Absent when none are, which is every one nobody has touched.
+   */
+  params?: Record<string, TransitionParamValue>;
 }
 
 /** Frame rates offered in the project settings UI. */
