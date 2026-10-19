@@ -47,8 +47,8 @@ prepareGhosts();
 
 // The title library, for the test that places and renders every template: it
 // names the registry rather than keeping its own copy of the list.
-(window as { __scfTitleTemplates?: Array<{ id: string; category: string; vertical: boolean }> }).__scfTitleTemplates = TITLE_TEMPLATES.map(
-  (template) => ({ id: template.id, category: template.category, vertical: template.vertical }),
+(window as { __scfTitleTemplates?: Array<{ id: string; category: string; vertical: boolean; roll: boolean }> }).__scfTitleTemplates = TITLE_TEMPLATES.map(
+  (template) => ({ id: template.id, category: template.category, vertical: template.vertical, roll: template.animation.roll }),
 );
 
 // Captions are checked against their own rules, and their job watched from

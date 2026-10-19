@@ -99,8 +99,7 @@ const probeTemplate = (window, id, text, width, height) =>
               if (x >= sx - 2 && x < ex + 2 && y >= sy - 2 && y < ey + 2) inSafe += 1;
             }
           }
-          const rect = renderer.titles.rectOf(clipId);
-          frames.push({ offset, drawn, inSafe, rect });
+          frames.push({ offset, drawn, inSafe, block: renderer.titles.blockOf(clipId), rect: renderer.titles.rectOf(clipId) });
         }
       } finally {
         renderer.endExclusive();
@@ -127,22 +126,36 @@ async function runSize(window, label, width, height, templates) {
       worst.drawn = middle.drawn;
       worst.id = template.id;
     }
-    // Almost all of the ink is inside the title-safe box.
-    const inSafe = middle.drawn === 0 || middle.inSafe / middle.drawn >= 0.98;
-    if (!inSafe) allInSafe = false;
-    // The picture the renderer made sits inside the frame it was drawn for:
-    // not cut off at the raster's edge (a safe-area overflow would clip text).
-    const rect = middle.rect;
-    const whole = rect && rect.x >= -2 && rect.y >= -2 && rect.x + rect.width <= width + 2 && rect.y + rect.height <= height + 2;
-    if (!whole) {
-      allWhole = false;
-      console.log(`      ${template.id}: rect ${JSON.stringify(rect)} outside ${width}x${height}`);
+    // The text block - its letters, background and shape, without the shadow
+    // or stroke that may bleed past - must sit inside the title-safe box, with
+    // a pixel of tolerance. This is the real "inside the safe area, not
+    // clipped" test: a drop shadow reaching past the safe edge is fine.
+    const safeX = (width * (1 - TITLE_SAFE)) / 2;
+    const safeY = (height * (1 - TITLE_SAFE)) / 2;
+    const block = middle.block;
+    const inSafe =
+      block &&
+      block.x >= safeX - 1 &&
+      block.y >= safeY - 1 &&
+      block.x + block.width <= width - safeX + 1 &&
+      block.y + block.height <= height - safeY + 1;
+    if (!inSafe) {
+      allInSafe = false;
+      console.log(`      ${template.id}: block ${JSON.stringify(block)} outside safe ${safeX},${safeY}`);
     }
-    if (!drew || !inSafe) console.log(`      ${template.id}: drawn ${middle.drawn}, inSafe ${middle.inSafe}`);
+    // And the entrance and exit draw ink too (the title is not blank
+    // mid-animation). A roll starts below the frame and ends above it, so only
+    // its middle is asked to draw.
+    const frames = template.roll ? [result.frames[1]] : result.frames;
+    const everyFrameDraws = frames.every((frame) => frame.drawn > 0);
+    if (!everyFrameDraws) {
+      allWhole = false;
+      console.log(`      ${template.id}: a frame drew nothing (${result.frames.map((f) => f.drawn).join(', ')})`);
+    }
   }
   check(`${label}: every template draws ink`, allDrawn, `thinnest ${worst.id} with ${worst.drawn} samples`);
-  check(`${label}: every template's ink stays inside the title-safe area`, allInSafe);
-  check(`${label}: every template's picture stays inside the frame (text not clipped)`, allWhole);
+  check(`${label}: every template's text block stays inside the title-safe area`, allInSafe);
+  check(`${label}: every template draws through its entrance, rest and exit`, allWhole);
 }
 
 async function main() {
@@ -164,33 +177,10 @@ async function main() {
     await window.evaluate(() => window.__scfStore.getState().setProjectSettings({ width: 1080, height: 1920 }));
     await runSize(window, '9:16', 1080, 1920, templates);
 
-    // 3. A real PNG export of one template with Spanish text.
-    await window.evaluate(() => {
-      const store = window.__scfStore.getState();
-      store.setProjectSettings({ width: 1920, height: 1080 });
-      store.setCurrentFrame(0);
-      const id = store.addTitle('cin-epic');
-      window.__scfStore.getState().updateTitle(id, { text: 'Año Nuevo\n¡Qué película!' });
-      window.__scfStore.getState().setExportSettings({ format: 'png-sequence', exportAlpha: false, width: 1920, height: 1080, startFrame: 30, endFrame: 31 });
-    });
-    await app.evaluate(({ dialog }, folder) => {
-      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
-    }, exportDir);
-    await window.getByRole('button', { name: 'Export' }).click();
-    const exportDialog = window.getByRole('dialog', { name: 'Export' });
-    await exportDialog.getByRole('button', { name: 'Start export' }).waitFor({ state: 'visible', timeout: 10_000 });
-    await exportDialog.getByLabel('Start frame').fill('30');
-    await exportDialog.getByLabel('End frame').fill('31');
-    await exportDialog.getByLabel('File name').fill('epic');
-    await exportDialog.getByRole('button', { name: 'Browse' }).click();
-    await sleep(400);
-    await exportDialog.getByRole('button', { name: 'Start export' }).click();
-    await window.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Export"]'), null, { timeout: 60_000 }).catch(() => {});
-    const files = (await readdir(exportDir).catch(() => [])).filter((name) => name.endsWith('.png'));
-    check('a template exports to a real PNG', files.length >= 1, files.join(', '));
+    await window.evaluate(() => window.__scfStore.getState().setProjectSettings({ width: 1920, height: 1080 }));
 
-    // 4. The browser: categories, search, screenshots.
-    await window.getByTestId('library-tab-titles').click().catch(() => {});
+    // 3. The browser: categories, search, screenshots.
+    await window.getByTestId('library-tab-titles').click();
     await window.getByTestId('library-titles').waitFor({ state: 'visible', timeout: 5_000 });
     const categoryButtons = await window.locator('[data-testid^="title-category-"]').count();
     check('the Titles panel shows category filters', categoryButtons >= 7, `${categoryButtons} buttons`);
@@ -222,6 +212,39 @@ async function main() {
         await window.getByTestId('preview-panel').screenshot({ path: join(shotsDir, `title-sample-${id}.png`) });
       }
     }
+
+    // 4. A real PNG export of one template with Spanish text.
+    await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      store.setCurrentFrame(0);
+      const id = store.addTitle('cin-epic');
+      window.__scfStore.getState().updateTitle(id, { text: 'Año Nuevo\n¡Qué película!' });
+      window.__scfStore.getState().setExportSettings({ format: 'png-sequence', exportAlpha: false, width: 1920, height: 1080, startFrame: 30, endFrame: 31 });
+    });
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+    }, exportDir);
+    try {
+      await window.getByRole('button', { name: 'Export' }).click();
+      const exportDialog = window.getByRole('dialog', { name: 'Export' });
+      await exportDialog.getByRole('button', { name: 'Start export' }).waitFor({ state: 'visible', timeout: 10_000 });
+      await exportDialog.getByLabel('File name').fill('epic');
+      await exportDialog.getByRole('button', { name: 'Browse' }).click();
+      await sleep(400);
+      await exportDialog.getByRole('button', { name: 'Start export' }).click();
+      await window.getByText('Export finished', { exact: false }).waitFor({ state: 'visible', timeout: 120_000 }).catch(() => {});
+    } catch (error) {
+      console.log(`      export flow: ${String(error).split('\n')[0]}`);
+    }
+    const pngs = [];
+    const walk = async (folder) => {
+      for (const entry of await readdir(folder, { withFileTypes: true }).catch(() => [])) {
+        if (entry.isDirectory()) await walk(join(folder, entry.name));
+        else if (entry.name.endsWith('.png')) pngs.push(entry.name);
+      }
+    };
+    await walk(exportDir);
+    check('a template exports to a real PNG', pngs.length >= 1, pngs.join(', '));
 
     const offenders = requests.filter((url) => !/^(file:|data:|blob:|devtools:|chrome|about:)/.test(url));
     check('no request left the computer', offenders.length === 0, offenders.slice(0, 3).join(', '));

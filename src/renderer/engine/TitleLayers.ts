@@ -147,6 +147,15 @@ export class TitleLayers {
     return this.resident.get(clipId)?.rect ?? null;
   }
 
+  /**
+   * The title's text block (with its background and shape, not the shadow or
+   * stroke bleed), as last drawn: what must sit inside the title-safe area.
+   * The interface tests read it to check a template is not clipped.
+   */
+  blockOf(clipId: string): Rect | null {
+    return this.resident.get(clipId)?.geometry.block ?? null;
+  }
+
   /** Wait for the fonts of a title, so the next draw of it is the real one. */
   async prepare(clip: Clip): Promise<void> {
     if (!clip.title) return;
