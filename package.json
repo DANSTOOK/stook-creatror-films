@@ -28,6 +28,7 @@
     "test:curves:ui": "node ./tests/ui/curves.mjs",
     "test:titles:ui": "node ./tests/ui/titles.mjs",
     "test:titles:motion": "node ./tests/ui/titles-motion.mjs",
+    "test:titles:library": "node ./tests/ui/title-library.mjs",
     "test:transitions:ui": "node ./tests/ui/transitions.mjs",
     "test:transitions-f4:ui": "node ./tests/ui/transitions-f4.mjs",
     "test:fx:ui": "node ./tests/ui/fx.mjs",

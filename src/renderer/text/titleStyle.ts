@@ -1,4 +1,4 @@
-import type { Clip, TitleAlign, TitleAnchor, TitleContent, TitlePreset, TitleStyle } from '@shared/types';
+import type { Clip, TitleAlign, TitleAnchor, TitleContent, TitlePreset, TitleShape, TitleShapeKind, TitleStyle } from '@shared/types';
 import { normalizeAnimation } from './animation';
 
 /**
@@ -171,7 +171,51 @@ export function normalizeTitleStyle(raw: unknown, preset: TitlePreset): TitleSty
       padding: clampNumber(box.padding, 0, 200, base.box.padding),
       radius: clampNumber(box.radius, 0, 200, base.box.radius),
     },
+    ...libraryExtras(source),
   };
+}
+
+/**
+ * The title library's optional fields, each kept only when it is there and
+ * valid. Absent stays absent - so a title from before the library reads
+ * back exactly as it was saved - and one that is damaged is dropped rather
+ * than guessed at: the title still draws, only without that extra.
+ */
+function libraryExtras(source: Partial<Record<keyof TitleStyle, unknown>>): Partial<TitleStyle> {
+  const extras: Partial<TitleStyle> = {};
+  if (typeof source.secondaryColor === 'string' && HEX.test(source.secondaryColor)) extras.secondaryColor = source.secondaryColor.toLowerCase();
+  if (typeof source.gradientColor === 'string' && HEX.test(source.gradientColor)) extras.gradientColor = source.gradientColor.toLowerCase();
+  if (typeof source.uppercase === 'boolean') extras.uppercase = source.uppercase;
+  if (typeof source.fit === 'boolean') extras.fit = source.fit;
+  const shape = normalizeShape(source.shape);
+  if (shape) extras.shape = shape;
+  return extras;
+}
+
+export const SHAPE_KINDS: readonly TitleShapeKind[] = [
+  'bar',
+  'underline',
+  'rules',
+  'brackets',
+  'frame',
+  'band',
+  'tail',
+  'arrow',
+  'dot',
+  'play',
+  'bell',
+  'heart',
+  'pin',
+  'star',
+];
+
+/** A shape read from a file, or null when it is not one this build draws. */
+export function normalizeShape(raw: unknown): TitleShape | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const source = raw as Partial<Record<keyof TitleShape, unknown>>;
+  if (!SHAPE_KINDS.includes(source.kind as TitleShapeKind)) return null;
+  if (typeof source.color !== 'string' || !HEX.test(source.color)) return null;
+  return { kind: source.kind as TitleShapeKind, color: source.color.toLowerCase(), size: clampNumber(source.size, 0, 60, 4) };
 }
 
 export function normalizeTitle(raw: unknown): TitleContent {
@@ -184,8 +228,14 @@ export function normalizeTitle(raw: unknown): TitleContent {
     // Titles from before animations have none, and keep none.
     ...(source.animation ? { animation: normalizeAnimation(source.animation) } : {}),
     ...(source.origin === 'text' || source.origin === 'frame' ? { origin: source.origin } : {}),
+    // Kept even when this build does not know it: a newer build's template
+    // draws from its saved style, and survives a round trip through here.
+    ...(typeof source.template === 'string' && TEMPLATE_ID.test(source.template) ? { template: source.template } : {}),
   };
 }
+
+/** What a template id looks like: a letter, then letters, digits and hyphens. */
+export const TEMPLATE_ID = /^[a-zA-Z][a-zA-Z0-9-]{0,47}$/;
 
 /**
  * Titles scale and turn about their text's centre; the first ones scaled and

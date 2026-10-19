@@ -222,11 +222,11 @@ export function SliderRow({
   );
 }
 
-export function SwitchRow({ label, checked, onChange }: { label: string; checked: boolean; onChange(value: boolean): void }): JSX.Element {
+export function SwitchRow({ label, checked, onChange, testId }: { label: string; checked: boolean; onChange(value: boolean): void; testId?: string }): JSX.Element {
   return (
     <label className="grid grid-cols-[76px_1fr] items-center gap-2 text-xs text-slate-300">
       <span className="field-label truncate">{label}</span>
-      <input type="checkbox" role="switch" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" role="switch" data-testid={testId} checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }

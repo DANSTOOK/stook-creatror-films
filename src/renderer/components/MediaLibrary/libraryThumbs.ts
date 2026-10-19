@@ -1,12 +1,8 @@
-import type { TitleContent, TitlePreset, TransitionDirection } from '@shared/types';
+import type { TransitionDirection } from '@shared/types';
 import { presetKind, type TransitionPreset } from '@renderer/timing/transitions';
-import { rasterizeTitle } from '@renderer/text/render';
-import { presetStyle } from '@renderer/text/titleStyle';
-import { presetAnimation, titleAnimationAt } from '@renderer/text/animation';
-import { loadTitleFonts } from '@renderer/text/fonts';
 
 /**
- * The pictures on the Titles and Transitions panels.
+ * The pictures on the Transitions panel (the Titles panel's are titleThumbs.ts).
  *
  * Drawn with Canvas2D on the panel's own small canvases, never by the
  * compositor: a thumbnail must not cost the viewer a frame. They are still
@@ -155,110 +151,4 @@ export function drawTransitionThumb(
 export function transitionLoopProgress(seconds: number): number {
   const at = seconds % TRANSITION_LOOP_SECONDS;
   return Math.min(1, Math.max(0, (at - TRANSITION_LOOP.holdA) / TRANSITION_LOOP.run));
-}
-
-/* Titles -------------------------------------------------------------------------- */
-
-/** The loop a title plays on hover: its template's in and out, or a whole roll. */
-export const titleLoopSeconds = (preset: TitlePreset): number => (preset === 'credits' ? 4 : 2.4);
-/** A beat of nothing between loops, so the entrance is seen as one. */
-const TITLE_GAP_SECONDS = 0.4;
-const THUMB_FPS = 60;
-
-interface TitlePicture {
-  canvas: HTMLCanvasElement;
-  rect: { x: number; y: number; width: number; height: number };
-}
-
-const titlePictures = new Map<string, TitlePicture>();
-
-/**
- * A template's text drawn by the title renderer itself, at the thumbnail's
- * size, once (per text and size): the loop only moves and fades it.
- */
-export function titlePicture(preset: TitlePreset, text: string, width: number, height: number): TitlePicture | null {
-  const key = `${preset}:${width}x${height}:${text}`;
-  const cached = titlePictures.get(key);
-  if (cached) return cached;
-  const title = thumbTitle(preset, text);
-  try {
-    const raster = rasterizeTitle(title, { width, height });
-    // The renderer's canvas is shared with the viewer's titles: copied out.
-    const canvas = document.createElement('canvas');
-    canvas.width = raster.canvas.width;
-    canvas.height = raster.canvas.height;
-    canvas.getContext('2d')?.drawImage(raster.canvas, 0, 0);
-    const picture = { canvas, rect: raster.rect };
-    titlePictures.set(key, picture);
-    return picture;
-  } catch {
-    return null;
-  }
-}
-
-export const thumbTitle = (preset: TitlePreset, text: string): TitleContent => ({
-  preset,
-  text,
-  style: presetStyle(preset),
-  animation: presetAnimation(preset),
-  origin: 'text',
-});
-
-/** Ready to draw once the template's faces are in (bundled: milliseconds). */
-export const titleThumbReady = (preset: TitlePreset, text: string): Promise<void> => loadTitleFonts(thumbTitle(preset, text));
-
-/**
- * Draw a template's title over a neutral backdrop, `seconds` into its hover
- * loop, or resting (fully on) when seconds is null.
- */
-export function drawTitleThumb(
-  context: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  preset: TitlePreset,
-  text: string,
-  seconds: number | null,
-): void {
-  context.save();
-  context.clearRect(0, 0, width, height);
-  // A dim scene for the text to sit on, as it will sit on footage.
-  const backdrop = context.createLinearGradient(0, 0, 0, height);
-  backdrop.addColorStop(0, '#3b4a61');
-  backdrop.addColorStop(1, '#1b2432');
-  context.fillStyle = backdrop;
-  context.fillRect(0, 0, width, height);
-
-  const picture = titlePicture(preset, text, width, height);
-  if (picture) {
-    const loop = titleLoopSeconds(preset);
-    const duration = Math.round(loop * THUMB_FPS);
-    let frame: number;
-    if (seconds === null) {
-      // Resting: the middle of a title; for a roll, its first lines in view.
-      frame = preset === 'credits' ? Math.round(duration * 0.3) : Math.round(duration / 2);
-    } else {
-      frame = Math.round((seconds % (loop + TITLE_GAP_SECONDS)) * THUMB_FPS);
-    }
-    if (frame <= duration) {
-      const { rect } = picture;
-      // A whole frame this small makes the letters a few pixels high, so the
-      // view closes in on the text - about the frame's corner or edge nearest
-      // it, so a lower third still sits low and to the left.
-      const zoom = Math.max(1, Math.min(2.2, (width * 0.8) / rect.width));
-      const third = (at: number, size: number): number => (at < size / 3 ? 0 : at > (size * 2) / 3 ? size : size / 2);
-      const pivotX = third(rect.x + rect.width / 2, width);
-      const pivotY = preset === 'credits' ? height / 2 : third(rect.y + rect.height / 2, height);
-      context.translate(pivotX, pivotY);
-      context.scale(zoom, zoom);
-      context.translate(-pivotX, -pivotY);
-      const state = titleAnimationAt(presetAnimation(preset), frame, duration, THUMB_FPS, height, { y: rect.y, height: rect.height });
-      const cx = rect.x + rect.width / 2 + state.offset.x;
-      const cy = rect.y + rect.height / 2 + state.offset.y;
-      context.globalAlpha = Math.min(1, Math.max(0, state.opacity));
-      context.translate(cx, cy);
-      context.scale(state.scale, state.scale);
-      context.drawImage(picture.canvas, -rect.width / 2, -rect.height / 2, rect.width, rect.height);
-    }
-  }
-  context.restore();
 }

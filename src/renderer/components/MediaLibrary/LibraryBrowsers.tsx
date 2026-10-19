@@ -1,8 +1,6 @@
-import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
-import type { TitlePreset } from '@shared/types';
+import { useEffect, useId, useRef, useState, type DragEvent, type RefObject } from 'react';
 import type { MessageKey } from '@shared/i18n';
-import { TITLE_PRESETS } from '@renderer/text/titleStyle';
-import { TITLE_NAME, TITLE_TEXT } from '@renderer/text/titleClip';
+import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { TRANSITION_PRESETS, presetLabel, type BuiltinTransitionPreset, type TransitionPreset } from '@renderer/timing/transitions';
 import { SHADER_TRANSITION_CATEGORIES, SHADER_TRANSITIONS, transitionCategoryLabel, type ShaderTransitionCategory } from '@renderer/fx/transitions/catalog';
 import { cancelShaderThumbs, drawShaderThumb, shaderStillProgress, shaderThumbReady } from './shaderThumbs';
@@ -10,12 +8,7 @@ import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { notify } from '@renderer/notifications/notifications';
 import { useT } from '@renderer/i18n';
-import {
-  drawTitleThumb,
-  drawTransitionThumb,
-  titleThumbReady,
-  transitionLoopProgress,
-} from './libraryThumbs';
+import { drawTransitionThumb, transitionLoopProgress } from './libraryThumbs';
 import { TITLE_DRAG_TYPE, TRANSITION_DRAG_TYPE, useLibraryDragStore, type LibraryDragKind } from './libraryDrag';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 
@@ -31,8 +24,8 @@ import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
  */
 
 /** Canvas pixels of a thumbnail: sharp at the panel's widest tiles on a 2x screen. */
-const THUMB_WIDTH = 256;
-const THUMB_HEIGHT = 144;
+export const THUMB_WIDTH = 256;
+export const THUMB_HEIGHT = 144;
 
 const TRANSITION_LABEL: Record<BuiltinTransitionPreset, MessageKey> = {
   crossDissolve: 'transition.crossDissolve',
@@ -43,7 +36,7 @@ const TRANSITION_LABEL: Record<BuiltinTransitionPreset, MessageKey> = {
   push: 'transition.push',
 };
 
-type Draw = (context: CanvasRenderingContext2D, seconds: number | null) => void;
+export type Draw = (context: CanvasRenderingContext2D, seconds: number | null) => void;
 
 /**
  * A thumbnail that is still, and plays its loop while `playing` - unless the
@@ -92,15 +85,19 @@ interface ItemProps {
   hintId: string;
   draw: Draw;
   ready: boolean;
+  /** A small mark over the picture's corner, such as a vertical template's 9:16. */
+  badge?: { text: string; hint: string };
+  /** The tile's list item, for a panel that draws pictures only once they scroll into view. */
+  itemRef?: RefObject<HTMLLIElement>;
   onAdd(): void;
 }
 
-function LibraryItem({ label, testId, dragKind, dragValue, hintId, draw, ready, onAdd }: ItemProps): JSX.Element {
+export function LibraryItem({ label, testId, dragKind, dragValue, hintId, draw, ready, badge, itemRef, onAdd }: ItemProps): JSX.Element {
   const [pointed, setPointed] = useState(false);
   const [focused, setFocused] = useState(false);
   const setDragging = useLibraryDragStore((state) => state.setDragging);
   return (
-    <li className="min-w-0">
+    <li ref={itemRef} className="min-w-0">
       <button
         type="button"
         data-testid={testId}
@@ -126,8 +123,13 @@ function LibraryItem({ label, testId, dragKind, dragValue, hintId, draw, ready, 
         }}
         onDragEnd={() => setDragging(null)}
       >
-        <span className="block overflow-hidden rounded-control ring-1 ring-transparent group-hover:ring-panel-600">
+        <span className="relative block overflow-hidden rounded-control ring-1 ring-transparent group-hover:ring-panel-600">
           <Thumb draw={draw} playing={pointed || focused} ready={ready} />
+          {badge && (
+            <span className="absolute right-1 top-1 rounded-sm bg-black/70 px-1 text-[10px] font-semibold leading-4 text-slate-100" {...tip(badge.hint)}>
+              {badge.text}
+            </span>
+          )}
         </span>
         <span className="mt-1 block truncate px-0.5 text-xs text-slate-200">{label}</span>
       </button>
@@ -144,54 +146,6 @@ function Hint({ id, text }: { id: string; text: string }): JSX.Element {
 }
 
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-x-2 gap-y-2.5';
-
-export function TitlesBrowser(): JSX.Element {
-  const t = useT();
-  const hintId = useId();
-  return (
-    <div data-testid="library-titles" className="min-h-0 flex-1 overflow-y-auto p-2">
-      <Hint id={hintId} text={t('library.titlesHint')} />
-      <ul className={GRID} aria-label={t('library.titles')}>
-        {TITLE_PRESETS.map((preset) => (
-          <TitleItem key={preset} preset={preset} hintId={hintId} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function TitleItem({ preset, hintId }: { preset: TitlePreset; hintId: string }): JSX.Element {
-  const t = useT();
-  const text = t(TITLE_TEXT[preset]);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    let live = true;
-    // Drawn in the template's own faces, never in a fallback caught mid-load.
-    void titleThumbReady(preset, text).finally(() => {
-      if (live) setReady(true);
-    });
-    return () => {
-      live = false;
-    };
-  }, [preset, text]);
-  const drawRef = useRef<{ key: string; draw: Draw } | null>(null);
-  const key = `${preset}|${text}`;
-  if (drawRef.current?.key !== key) {
-    drawRef.current = { key, draw: (context, seconds) => drawTitleThumb(context, THUMB_WIDTH, THUMB_HEIGHT, preset, text, seconds) };
-  }
-  return (
-    <LibraryItem
-      label={t(TITLE_NAME[preset])}
-      testId={`library-title-${preset}`}
-      dragKind="title"
-      dragValue={preset}
-      hintId={hintId}
-      draw={drawRef.current.draw}
-      ready={ready}
-      onAdd={() => useProjectStore.getState().addTitle(preset)}
-    />
-  );
-}
 
 /** Stable per preset, so a re-render does not restart a playing thumbnail. */
 const TRANSITION_DRAW = Object.fromEntries(

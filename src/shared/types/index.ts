@@ -306,12 +306,97 @@ export interface TitleStyle {
   stroke: { enabled: boolean; color: string; width: number };
   shadow: { enabled: boolean; color: string; opacity: number; distance: number; angle: number; blur: number };
   box: { enabled: boolean; color: string; opacity: number; padding: number; radius: number };
+  /*
+   * The rest came with the title library. Each is optional, and absent on
+   * every title made before it, which therefore draws exactly as it did.
+   */
+  /** Every line after the first in this colour, `#rrggbb`: a lower third's role in an accent colour. */
+  secondaryColor?: string;
+  /** The first line's letters shade from `color` at their top to this at their foot. */
+  gradientColor?: string;
+  /** Drawn in capitals, whatever was typed: the text itself keeps its case. */
+  uppercase?: boolean;
+  /**
+   * Shrunk - never grown - until no word has to be broken across lines and
+   * the whole title fits the title-safe area, so any text a user types into
+   * a template stays legible and inside the frame.
+   */
+  fit?: boolean;
+  /** A shape drawn with the text: an accent bar, a rule, a frame, an icon. */
+  shape?: TitleShape;
 }
 
-/** How a title comes on. */
-export type TitleEntrance = 'none' | 'fade' | 'rise' | 'pop' | 'wipe';
+/**
+ * The shapes a title can carry, all drawn from paths (text/shapes.ts): no
+ * picture files, so they scale to any frame and recolour with one value.
+ *
+ * Lines and frames: `bar` (beside the text), `underline`, `rules` (above
+ * and below), `brackets` (corners), `frame` (all round), `band` (a stripe
+ * across the title-safe width behind the text), `tail` (a speech bubble's
+ * point under the background). Marks before the text: `arrow`, `dot`, and
+ * the icons `play`, `bell`, `heart`, `pin` and `star`.
+ */
+export type TitleShapeKind =
+  | 'bar'
+  | 'underline'
+  | 'rules'
+  | 'brackets'
+  | 'frame'
+  | 'band'
+  | 'tail'
+  | 'arrow'
+  | 'dot'
+  | 'play'
+  | 'bell'
+  | 'heart'
+  | 'pin'
+  | 'star';
+
+export interface TitleShape {
+  kind: TitleShapeKind;
+  color: string;
+  /** Thickness of a line or frame, in pixels of a 1080-line frame; marks and icons size with the text. */
+  size: number;
+}
+
+/**
+ * How a title comes on. The first nine move the whole title; `blur`,
+ * `typewriter`, `letters`, `words`, `bounce`, `tracking` and `lines` redraw
+ * its letters for each frame of the entrance (text/textMotion.ts).
+ */
+export type TitleEntrance =
+  | 'none'
+  | 'fade'
+  | 'rise'
+  | 'pop'
+  | 'wipe'
+  | 'fall'
+  | 'fromLeft'
+  | 'fromRight'
+  | 'zoom'
+  | 'blur'
+  | 'typewriter'
+  | 'letters'
+  | 'words'
+  | 'bounce'
+  | 'tracking'
+  | 'lines';
 /** How it goes off: shorter than coming on, and never with a bounce. */
-export type TitleExit = 'none' | 'fade' | 'drop' | 'vanish';
+export type TitleExit =
+  | 'none'
+  | 'fade'
+  | 'drop'
+  | 'vanish'
+  | 'lift'
+  | 'toLeft'
+  | 'toRight'
+  | 'zoom'
+  | 'blur'
+  | 'typewriter'
+  | 'letters'
+  | 'words'
+  | 'tracking'
+  | 'lines';
 
 /**
  * A title's own animation, worked out per frame by the compositor (see
@@ -352,6 +437,12 @@ export interface TitleContent {
   animation?: TitleAnimation;
   /** Absent on titles made before it existed: see TitleOrigin. */
   origin?: TitleOrigin;
+  /**
+   * The library template it was made from (text/templates.ts), whose look a
+   * reset goes back to. Absent on titles from before the library; one this
+   * build does not know - from a newer one - is kept and treated as `preset`.
+   */
+  template?: string;
 }
 
 /* -------------------------------------------------------------------------- */
