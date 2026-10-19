@@ -103,6 +103,15 @@ export const IPC = {
   captionsSaveFile: 'captions:save-file',
   captionsWriteSidecar: 'captions:write-sidecar',
   captionsWriteTemp: 'captions:write-temp',
+  ttsStatus: 'tts:status',
+  ttsVoiceDownload: 'tts:voice-download',
+  ttsVoiceCancel: 'tts:voice-cancel',
+  ttsVoiceDelete: 'tts:voice-delete',
+  ttsVoiceProgress: 'tts:voice-progress',
+  ttsPreview: 'tts:preview',
+  ttsGenerate: 'tts:generate',
+  ttsCancel: 'tts:cancel',
+  ttsProgress: 'tts:progress',
   mattesStatus: 'mattes:status',
   mattesModelDownload: 'mattes:model-download',
   mattesModelCancel: 'mattes:model-cancel',
@@ -260,6 +269,66 @@ export interface CaptionProgressEvent {
   fraction: number;
 }
 
+/* Text to speech ------------------------------------------------------------- */
+
+/** A voice id from main/tts/catalog.ts, e.g. 'es-ES-davefx'. */
+export type TtsVoiceId = string;
+
+export interface TtsVoiceStatus {
+  id: TtsVoiceId;
+  language: 'es' | 'en';
+  region: string;
+  sex: 'male' | 'female';
+  licence: string;
+  /** Part of the installer: always here, never downloaded. */
+  bundled: boolean;
+  /** On this computer and ready to use (bundled, or downloaded and verified). */
+  present: boolean;
+  /** Bytes to fetch for a downloadable voice not yet here; 0 when bundled or present. */
+  downloadBytes: number;
+}
+
+export interface TtsEngineStatus {
+  /** The text-to-speech program is part of this build. */
+  available: boolean;
+  /** This engine (Piper) controls speed but not pitch. */
+  supportsPitch: boolean;
+  /**
+   * The audio is machine-generated; the chosen engine's licence may require
+   * the user to disclose that when publishing. Shown in the panel when true.
+   */
+  disclosureRequired: boolean;
+  voices: TtsVoiceStatus[];
+  /** Where downloadable voices come from, as the permission prompt names it. */
+  voiceSource: string;
+}
+
+export interface TtsVoiceProgress {
+  id: TtsVoiceId;
+  received: number;
+  total: number;
+}
+
+export interface TtsRequest {
+  text: string;
+  voice: TtsVoiceId;
+  /** 0.5-2, where 1 is the voice's natural pace. */
+  speed: number;
+}
+
+export interface TtsResult {
+  cancelled: boolean;
+  /** The WAV written, ready to import; null when cancelled. */
+  path: string | null;
+  durationSeconds: number;
+}
+
+export interface TtsProgressEvent {
+  jobId: string;
+  /** 0-1 through synthesis. */
+  fraction: number;
+}
+
 export interface PickedFile {
   path: string;
   name: string;
@@ -322,6 +391,7 @@ export type MenuCommand =
   | 'generateCaptions'
   | 'importCaptions'
   | 'exportCaptions'
+  | 'textToSpeech'
   | 'fontLicenses'
   | 'detachAudio'
   | 'rejoinAudio'
@@ -692,6 +762,20 @@ export interface FilmoraApi {
    * file input. The export deletes it when it ends.
    */
   captionsWriteTemp?(srt: string): Promise<string>;
+
+  /* Text to speech: voices synthesised on this computer. Optional, like captions. */
+  ttsStatus?(): Promise<TtsEngineStatus>;
+  /** Download an optional voice from its pinned source and verify it. Uses the network: ask first. */
+  ttsVoiceDownload?(id: TtsVoiceId): Promise<TtsEngineStatus>;
+  ttsVoiceCancel?(id: TtsVoiceId): Promise<void>;
+  ttsVoiceDelete?(id: TtsVoiceId): Promise<TtsEngineStatus>;
+  onTtsVoiceProgress?(listener: (progress: TtsVoiceProgress) => void): () => void;
+  /** Synthesise a short preview and return a playable data URL. */
+  ttsPreview?(request: TtsRequest): Promise<string>;
+  /** Synthesise the full text to a WAV on disk; returns the path for import. */
+  ttsGenerate?(jobId: string, request: TtsRequest): Promise<TtsResult>;
+  ttsCancel?(jobId: string): Promise<void>;
+  onTtsProgress?(listener: (progress: TtsProgressEvent) => void): () => void;
 
   /* Remove background: mattes computed on this computer. Optional, like captions. */
   mattesStatus?(): Promise<MatteEngineStatus>;

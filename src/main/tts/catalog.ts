@@ -132,12 +132,12 @@ export const DOWNLOADABLE_VOICES: readonly TtsVoice[] = [
     licence: 'CC BY-SA 4.0 - openslr.org/61',
     onnx: {
       bytes: 114199011,
-      sha256: '', // filled from the published file at build time; see release.yml note.
+      sha256: '7ceb1fc0dab349418c5b54a639ae9ee595212d7c9ea422220d8419163d5cc985',
       url: `${PIPER}/es/es_AR/daniela/high/es_AR-daniela-high.onnx`,
     },
     json: {
       bytes: 7248,
-      sha256: '',
+      sha256: 'aedbf69647e1d754c62ecf8e0366ca5f16af3e768e3c6b5329af6eb6bde3852b',
       url: `${PIPER}/es/es_AR/daniela/high/es_AR-daniela-high.onnx.json`,
     },
   },
