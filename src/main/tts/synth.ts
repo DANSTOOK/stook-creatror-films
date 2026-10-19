@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { piperCommand, splitText, type PiperEngine } from './engine';
 import { readWav, silence, writeWav } from './wav';
 
