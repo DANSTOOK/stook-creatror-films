@@ -21,7 +21,8 @@ export interface TitleGeometry {
 
 /** The geometry of a laid-out title. */
 export function geometryFromLayout(layout: TitleLayout, title: TitleContent, frame: FrameSize): TitleGeometry {
-  const block = layout.box ?? layout.block;
+  // The background with its shape: without either, just the lines (or their box).
+  const block = layout.outer;
   const pivot =
     originOf(title) === 'text'
       ? { x: block.x + block.width / 2, y: block.y + block.height / 2 }

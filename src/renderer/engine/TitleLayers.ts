@@ -5,6 +5,7 @@ import type { Rect } from '@renderer/text/layout';
 import { geometryFromLayout, titleGeometry, type TitleGeometry } from '@renderer/text/geometry';
 import { wordAnimationOf, wordFrameAt, type WordAnimation } from '@renderer/text/wordAnimation';
 import { rasterizeWords } from '@renderer/text/words';
+import { textMotionAt } from '@renderer/text/textMotion';
 import { speedOf } from '@renderer/timing/clipSpeed';
 import type { ClipSource } from './Compositor';
 import type { TextureManager } from './TextureManager';
@@ -70,13 +71,16 @@ export class TitleLayers {
    * but only when that differs from what the texture already holds: between
    * one word and the next, once its spring has settled, nothing is drawn.
    */
-  sourceFor(clip: Clip, width: number, height: number, at?: { frame: number; fps: number }): ClipSource | null {
+  sourceFor(clip: Clip, width: number, height: number, at?: { frame: number; fps: number; resting?: boolean }): ClipSource | null {
     const title = clip.title;
     if (!title) return null;
     const scale = largestScale(clip);
     const animation = at ? wordAnimationOf(title) : undefined;
     if (animation && at) return this.animatedSourceFor(clip, title, animation, width, height, scale, at);
-    const key = this.keyFor(title, width, height, scale);
+    // An entrance or exit that brings the letters on one at a time is drawn
+    // anew for each of its frames; the rest of the clip uses the picture at rest.
+    const motion = at && !at.resting ? textMotionAt(title.animation, at.frame - clip.startFrame, clip.durationFrames, at.fps) : null;
+    const key = motion ? `${this.keyFor(title, width, height, scale)}|${motion.key}` : this.keyFor(title, width, height, scale);
     const textureKey = TitleLayers.textureKey(clip);
     const resident = this.resident.get(clip.id);
 
@@ -92,8 +96,9 @@ export class TitleLayers {
       return held && resident ? { texture: held, flipY: true, rect: resident.rect, title: resident.geometry } : null;
     }
 
-    const raster = rasterizeTitle(title, { width, height }, scale);
+    const raster = rasterizeTitle(title, { width, height }, scale, motion);
     const texture = this.textures.upload(textureKey, raster.canvas, key);
+    if (motion) this.drawn += 1;
     // Where the text is and what it turns about, as the viewer measures it too.
     const geometry = titleGeometry(title, { width, height });
     this.resident.set(clip.id, { key, rect: raster.rect, geometry });
@@ -134,12 +139,21 @@ export class TitleLayers {
     return { texture, flipY: true, rect: raster.rect, title: geometry };
   }
 
-  /** Pictures of moving words drawn so far: for measuring what animated captions cost. */
+  /** Pictures of moving words or letters drawn so far: for measuring what animated captions and titles cost. */
   drawn = 0;
 
   /** Where a title's picture sits on the frame, as last drawn. */
   rectOf(clipId: string): Rect | null {
     return this.resident.get(clipId)?.rect ?? null;
+  }
+
+  /**
+   * The title's text block (with its background and shape, not the shadow or
+   * stroke bleed), as last drawn: what must sit inside the title-safe area.
+   * The interface tests read it to check a template is not clipped.
+   */
+  blockOf(clipId: string): Rect | null {
+    return this.resident.get(clipId)?.geometry.block ?? null;
   }
 
   /** Wait for the fonts of a title, so the next draw of it is the real one. */

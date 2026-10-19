@@ -159,6 +159,26 @@ export interface PixelArtConfig {
   alphaThreshold: number; // Alpha below this is cut to 0 to keep sprites crisp
 }
 
+/**
+ * One effect in a clip's stack: blur, glitch, film grain and the rest (see
+ * renderer/fx/effects/catalog.ts for the types and their settings). The
+ * stack runs top to bottom, after the grade and its LUT and before the mask
+ * and pixel art.
+ */
+export interface ClipEffect {
+  id: string;
+  /** Which effect; one this build does not know is dropped when the project opens. */
+  type: string;
+  enabled: boolean;
+  /** Every setting, by name, as a number (a switch is 0 or 1). */
+  params: Record<string, number>;
+  /**
+   * Settings that animate: keyframes in timeline frames, as the transform's
+   * are, moved with the clip. Absent for a setting that holds still.
+   */
+  keyframes?: Record<string, Keyframe<number>[]>;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Audio                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -286,12 +306,97 @@ export interface TitleStyle {
   stroke: { enabled: boolean; color: string; width: number };
   shadow: { enabled: boolean; color: string; opacity: number; distance: number; angle: number; blur: number };
   box: { enabled: boolean; color: string; opacity: number; padding: number; radius: number };
+  /*
+   * The rest came with the title library. Each is optional, and absent on
+   * every title made before it, which therefore draws exactly as it did.
+   */
+  /** Every line after the first in this colour, `#rrggbb`: a lower third's role in an accent colour. */
+  secondaryColor?: string;
+  /** The first line's letters shade from `color` at their top to this at their foot. */
+  gradientColor?: string;
+  /** Drawn in capitals, whatever was typed: the text itself keeps its case. */
+  uppercase?: boolean;
+  /**
+   * Shrunk - never grown - until no word has to be broken across lines and
+   * the whole title fits the title-safe area, so any text a user types into
+   * a template stays legible and inside the frame.
+   */
+  fit?: boolean;
+  /** A shape drawn with the text: an accent bar, a rule, a frame, an icon. */
+  shape?: TitleShape;
 }
 
-/** How a title comes on. */
-export type TitleEntrance = 'none' | 'fade' | 'rise' | 'pop' | 'wipe';
+/**
+ * The shapes a title can carry, all drawn from paths (text/shapes.ts): no
+ * picture files, so they scale to any frame and recolour with one value.
+ *
+ * Lines and frames: `bar` (beside the text), `underline`, `rules` (above
+ * and below), `brackets` (corners), `frame` (all round), `band` (a stripe
+ * across the title-safe width behind the text), `tail` (a speech bubble's
+ * point under the background). Marks before the text: `arrow`, `dot`, and
+ * the icons `play`, `bell`, `heart`, `pin` and `star`.
+ */
+export type TitleShapeKind =
+  | 'bar'
+  | 'underline'
+  | 'rules'
+  | 'brackets'
+  | 'frame'
+  | 'band'
+  | 'tail'
+  | 'arrow'
+  | 'dot'
+  | 'play'
+  | 'bell'
+  | 'heart'
+  | 'pin'
+  | 'star';
+
+export interface TitleShape {
+  kind: TitleShapeKind;
+  color: string;
+  /** Thickness of a line or frame, in pixels of a 1080-line frame; marks and icons size with the text. */
+  size: number;
+}
+
+/**
+ * How a title comes on. The first nine move the whole title; `blur`,
+ * `typewriter`, `letters`, `words`, `bounce`, `tracking` and `lines` redraw
+ * its letters for each frame of the entrance (text/textMotion.ts).
+ */
+export type TitleEntrance =
+  | 'none'
+  | 'fade'
+  | 'rise'
+  | 'pop'
+  | 'wipe'
+  | 'fall'
+  | 'fromLeft'
+  | 'fromRight'
+  | 'zoom'
+  | 'blur'
+  | 'typewriter'
+  | 'letters'
+  | 'words'
+  | 'bounce'
+  | 'tracking'
+  | 'lines';
 /** How it goes off: shorter than coming on, and never with a bounce. */
-export type TitleExit = 'none' | 'fade' | 'drop' | 'vanish';
+export type TitleExit =
+  | 'none'
+  | 'fade'
+  | 'drop'
+  | 'vanish'
+  | 'lift'
+  | 'toLeft'
+  | 'toRight'
+  | 'zoom'
+  | 'blur'
+  | 'typewriter'
+  | 'letters'
+  | 'words'
+  | 'tracking'
+  | 'lines';
 
 /**
  * A title's own animation, worked out per frame by the compositor (see
@@ -332,6 +437,12 @@ export interface TitleContent {
   animation?: TitleAnimation;
   /** Absent on titles made before it existed: see TitleOrigin. */
   origin?: TitleOrigin;
+  /**
+   * The library template it was made from (text/templates.ts), whose look a
+   * reset goes back to. Absent on titles from before the library; one this
+   * build does not know - from a newer one - is kept and treated as `preset`.
+   */
+  template?: string;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -513,6 +624,11 @@ export interface Clip {
   chromaKey: ChromaKeyConfig;
   backgroundRemoval: BackgroundRemovalConfig;
   pixelArt: PixelArtConfig;
+  /**
+   * The effect stack, top first. Absent (or empty) on a clip with none,
+   * which is every clip made before effects existed.
+   */
+  effects?: ClipEffect[];
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;
   /** Stereo position, -1 hard left to +1 hard right. */
@@ -601,9 +717,13 @@ export interface Track {
  * A cross dissolve; a dip through a colour (black, white, any); a wipe (an
  * edge crossing the picture); a slide (the incoming picture moving in over
  * the outgoing one); or a push (the incoming picture pushing the outgoing
- * one out).
+ * one out). Or a shader transition: one of the library's GL Transitions,
+ * named by `shader` (renderer/fx/transitions/catalog.ts).
  */
-export type TransitionKind = 'crossDissolve' | 'dip' | 'wipe' | 'slide' | 'push';
+export type TransitionKind = 'crossDissolve' | 'dip' | 'wipe' | 'slide' | 'push' | 'shader';
+
+/** A shader transition's setting: a number, a switch, or a vector or colour (0..1 each). */
+export type TransitionParamValue = number | boolean | number[];
 
 /** Which way a wipe's edge, a slide or a push travels across the frame. */
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
@@ -645,6 +765,13 @@ export interface Transition {
    * equal power. On unless switched off in the inspector.
    */
   audioCrossfade: boolean;
+  /** With kind 'shader': which one. Absent on every other kind. */
+  shader?: string;
+  /**
+   * With kind 'shader': the settings changed from its defaults, by uniform
+   * name. Absent when none are, which is every one nobody has touched.
+   */
+  params?: Record<string, TransitionParamValue>;
 }
 
 /** Frame rates offered in the project settings UI. */

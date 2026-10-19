@@ -23,7 +23,8 @@ import type {
   Transition,
   Vector2D,
 } from '@shared/types';
-import { createTitleClip, planTitlePlacement, titleDropPlacement, TITLE_NAME, TITLE_SECONDS, TITLE_TEXT } from '@renderer/text/titleClip';
+import { createTitleClip, planTitlePlacement, titleDropPlacement, TITLE_NAME, TITLE_SECONDS } from '@renderer/text/titleClip';
+import { templateById, templateOf } from '@renderer/text/templates';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
 import {
@@ -320,15 +321,25 @@ interface ProjectStore {
    * A new title from a template, at the playhead, above the picture there
    * (see text/titleClip). Selected and shown. Returns its id. `at` is a
    * drop from the Titles panel: that track and frame when they are free.
+   * `template` is a library template's id (text/templates) - the three
+   * presets among them; one this build does not know makes a plain title.
    */
-  addTitle(preset: TitlePreset, at?: { trackId: string | null; startFrame: number }): string;
+  addTitle(template: TitlePreset | string, at?: { trackId: string | null; startFrame: number }): string;
   /**
    * Change a title's text or look. The clip's name follows its first line.
    * A typing run or a drag with one `mergeKey` is one undo step.
    */
   updateTitle(
     clipId: string,
-    patch: { text?: string; preset?: TitlePreset; style?: Partial<TitleStyle>; animation?: Partial<TitleAnimation>; origin?: TitleOrigin },
+    patch: {
+      text?: string;
+      preset?: TitlePreset;
+      /** A template's look: `style` is then the whole style, not merged into the old one. */
+      template?: string;
+      style?: Partial<TitleStyle>;
+      animation?: Partial<TitleAnimation>;
+      origin?: TitleOrigin;
+    },
     mergeKey?: string,
   ): void;
   /**
@@ -1322,15 +1333,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
-  addTitle(preset, at) {
+  addTitle(id, at) {
     const { project } = get();
-    const duration = Math.max(1, Math.round(TITLE_SECONDS * project.fps));
+    const template = templateById(id) ?? templateOf({ preset: 'title' });
+    const duration = Math.max(1, Math.round((template.seconds ?? TITLE_SECONDS) * project.fps));
     const placement = at
       ? titleDropPlacement(project, at.trackId, at.startFrame, duration)
       : planTitlePlacement(project, project.currentFrame, duration);
     // Written in the language on screen; from then on it is the user's text.
-    const text = translateNow(TITLE_TEXT[preset]);
-    const fallbackName = translateNow(TITLE_NAME[preset]);
+    const text = translateNow(template.text);
+    const fallbackName = translateNow(TITLE_NAME[template.preset]);
+    const frame = { width: project.width, height: project.height };
     let createdId = '';
 
     get().transact('Add title', (current) => {
@@ -1342,7 +1355,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         rows.splice(insertionRow(rows, 'video'), 0, track);
         trackId = track.id;
       }
-      const clip = createTitleClip(preset, text, trackId, placement.startFrame, placement.durationFrames, fallbackName);
+      const clip = createTitleClip(template, text, trackId, placement.startFrame, placement.durationFrames, fallbackName, frame);
       createdId = clip.id;
       return { ...current, tracks: withRowOrders(rows), clips: { ...current.clips, [clip.id]: clip } };
     });
@@ -1360,10 +1373,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         if (!clip?.title) return project;
         const preset = patch.preset ?? clip.title.preset;
         const text = patch.text ?? clip.title.text;
-        const style = normalizeTitleStyle({ ...clip.title.style, ...patch.style }, preset);
+        // A new template's look replaces the old one whole: an accent colour or
+        // a shape the old template had must not linger.
+        const retemplated = patch.template !== undefined;
+        const style = normalizeTitleStyle(retemplated ? { ...patch.style } : { ...clip.title.style, ...patch.style }, preset);
         const animation = patch.animation ? normalizeAnimation({ ...(clip.title.animation ?? NO_ANIMATION), ...patch.animation }) : clip.title.animation;
         const origin = patch.origin ?? clip.title.origin;
-        const title: TitleContent = { preset, text, style, ...(animation ? { animation } : {}), ...(origin ? { origin } : {}) };
+        // The three original templates go by their preset alone, as they always did.
+        const template = retemplated ? (patch.template === preset ? undefined : patch.template) : clip.title.template;
+        const title: TitleContent = {
+          preset,
+          text,
+          style,
+          ...(animation ? { animation } : {}),
+          ...(origin ? { origin } : {}),
+          ...(template ? { template } : {}),
+        };
         const name = titleName(text, translateNow(TITLE_NAME[preset]));
         return { ...project, clips: { ...project.clips, [clipId]: { ...clip, name, title } } };
       },
@@ -1457,8 +1482,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       get().addTransitions(preset, [cut]);
       return;
     }
-    const { kind, color, direction } = presetKind(preset);
-    get().updateTransition(existing.id, { kind, color, direction });
+    // Kind, colour, direction - and for a shader transition which one, its
+    // settings starting from the defaults.
+    get().updateTransition(existing.id, presetKind(preset));
     get().selectTransition(existing.id);
   },
 

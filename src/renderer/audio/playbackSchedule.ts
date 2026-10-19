@@ -142,3 +142,55 @@ export function forgetPassed(
   }
   return next;
 }
+
+/** Where a span goes on the audio clock, decided as it is handed to the graph. */
+export interface SpanPlacement {
+  /** Audio clock time the source starts. */
+  startAt: number;
+  /** Timeline seconds of the span not played, because their moment has gone. */
+  skip: number;
+  /** Fade in from silence at `startAt`, instead of starting on whatever sample is there. */
+  fadeIn: boolean;
+}
+
+export interface PlacementInputs {
+  /** Audio clock time the span is meant to sound from. */
+  when: number;
+  /** Its length, in timeline seconds. */
+  seconds: number;
+  /**
+   * The soonest a source can be started and be sure to start then: the audio
+   * clock's time plus a margin. `currentTime` is only brought up to date once
+   * per audio callback (about 10 ms on Windows), and the page's thread can be
+   * held up between reading it and starting a source; a source started at a
+   * time already gone starts late from the offset it was given, so it ends
+   * late too, over the start of the next span - the same stretch twice, which
+   * is a step at either end.
+   */
+  earliest: number;
+  /** The span carries straight on from the one before it on the same strip, with no hole between. */
+  followsOn: boolean;
+  /** The clip is already sounding at the span's start: it is not the clip's own first sample. */
+  startsMidSound: boolean;
+  /** How long a fade in or out takes. */
+  fadeSeconds: number;
+}
+
+/**
+ * When and how a decoded span starts.
+ *
+ * On time, it starts on its moment. It fades in only when it starts mid-sound
+ * after silence - the start of play part-way into a clip, or a span after a
+ * hole - since a clip's own first sample is the edit's, and a span carrying on
+ * from the one before must not dip. Late, it starts at the soonest safe moment,
+ * that far into itself, and always fades in: what was before it is a hole.
+ * What is left of a late span that cannot fade in and out is dropped (null):
+ * a short silence is better than a blip.
+ */
+export function placeSpan(inputs: PlacementInputs): SpanPlacement | null {
+  const { when, seconds, earliest, followsOn, startsMidSound, fadeSeconds } = inputs;
+  if (when >= earliest) return { startAt: when, skip: 0, fadeIn: startsMidSound && !followsOn };
+  const skip = earliest - when;
+  if (seconds - skip < 2 * fadeSeconds) return null;
+  return { startAt: earliest, skip, fadeIn: true };
+}

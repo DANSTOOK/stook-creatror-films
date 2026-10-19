@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/p
 import { constants as osConstants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import { proxyKey, type SourceStamp } from './proxies';
+import { sourceClockArgs } from './audioExtract';
 
 /**
  * What a clip shows on the timeline: a filmstrip of its pictures and the peaks
@@ -96,11 +97,23 @@ export function parseShowinfoTimes(stderr: string): number[] {
   return times;
 }
 
-/** ffmpeg's arguments for the sound: mono float samples on stdout. */
+/**
+ * ffmpeg's arguments for the sound: mono float samples on stdout.
+ *
+ * Every decoded frame lands at its own timestamp, from time zero: silence
+ * where a track starts late (an empty edit), and the gap kept where a packet
+ * is stamped later than the last one ended - which every fragmented MP4
+ * ffmpeg writes has after its first packet. A plain decode butts the frames
+ * together instead, and drew the user's game capture 33 ms early and a
+ * late-starting sound half a second early. This is the same placement the
+ * page's streamed reader uses, so the drawing and the sound agree.
+ * `min_hard_comp=0` makes ffmpeg pad or trim at once rather than stretch.
+ */
 export function peakArgs(source: string): string[] {
   return [
-    '-v', 'error', '-nostdin', '-threads', '2', '-i', source,
-    '-map', '0:a:0', '-vn', '-ac', '1', '-ar', String(PEAK_SAMPLE_RATE),
+    '-v', 'error', '-nostdin', '-threads', '2', ...sourceClockArgs(source), '-i', source,
+    '-map', '0:a:0', '-vn', '-ac', '1',
+    '-af', `aresample=${PEAK_SAMPLE_RATE}:async=1:min_hard_comp=0:first_pts=0`,
     '-f', 'f32le', 'pipe:1',
   ];
 }

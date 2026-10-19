@@ -1,16 +1,16 @@
 import { useId, type ReactNode } from 'react';
 import { AlignCenter, AlignLeft, AlignRight } from 'lucide-react';
-import type { Clip, TitleAlign, TitleAnchor, TitleAnimation, TitleEntrance, TitleExit, TitlePreset, TitleStyle, Vector2D } from '@shared/types';
+import type { Clip, TitleAlign, TitleAnchor, TitleAnimation, TitleEntrance, TitleExit, TitleShapeKind, TitleStyle, Vector2D } from '@shared/types';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { useT, type MessageKey } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { BUNDLED_FONTS, isBundledFamily, isFamilyMissing } from '@renderer/text/fonts';
-import { FALLBACK_FAMILY, presetStyle, TITLE_ANCHORS, TITLE_PRESETS } from '@renderer/text/titleStyle';
-import { TITLE_NAME } from '@renderer/text/titleClip';
-import { NO_ANIMATION, presetAnimation, TITLE_ENTRANCES, TITLE_EXITS } from '@renderer/text/animation';
+import { FALLBACK_FAMILY, SHAPE_KINDS, TITLE_ANCHORS } from '@renderer/text/titleStyle';
+import { CATEGORY_NAME, styleForFrame, TEMPLATE_CATEGORIES, TITLE_TEMPLATES, templateById, templateOf } from '@renderer/text/templates';
+import { NO_ANIMATION, TITLE_ENTRANCES, TITLE_EXITS } from '@renderer/text/animation';
 import { titleGeometry } from '@renderer/text/geometry';
 import { useLocalFamilies } from '@renderer/text/useLocalFamilies';
-import { PairRow, Section, SliderRow, type SectionProps } from './rows';
+import { PairRow, Section, SliderRow, SwitchRow, type SectionProps } from './rows';
 
 /**
  * The Title tab: what a title says and how it looks.
@@ -53,6 +53,17 @@ const ENTRANCE_NAME: Record<TitleEntrance, MessageKey> = {
   rise: 'title.inRise',
   pop: 'title.inPop',
   wipe: 'title.inWipe',
+  fall: 'title.inFall',
+  fromLeft: 'title.inFromLeft',
+  fromRight: 'title.inFromRight',
+  zoom: 'title.inZoom',
+  blur: 'title.inBlur',
+  typewriter: 'title.inTypewriter',
+  letters: 'title.inLetters',
+  words: 'title.inWords',
+  bounce: 'title.inBounce',
+  tracking: 'title.inTracking',
+  lines: 'title.inLines',
 };
 
 const EXIT_NAME: Record<TitleExit, MessageKey> = {
@@ -60,6 +71,16 @@ const EXIT_NAME: Record<TitleExit, MessageKey> = {
   fade: 'title.outFade',
   drop: 'title.outDrop',
   vanish: 'title.outVanish',
+  lift: 'title.outLift',
+  toLeft: 'title.outToLeft',
+  toRight: 'title.outToRight',
+  zoom: 'title.outZoom',
+  blur: 'title.outBlur',
+  typewriter: 'title.outTypewriter',
+  letters: 'title.outLetters',
+  words: 'title.outWords',
+  tracking: 'title.outTracking',
+  lines: 'title.outLines',
 };
 
 const seconds = (value: number): string => `${value.toFixed(2)} s`;
@@ -117,13 +138,16 @@ export function TitleTab({ clip, frame, sectionProps, position, onPosition }: Ti
   const familyId = useId();
   const weightId = useId();
   const templateId = useId();
+  const shapeId = useId();
   const entranceId = useId();
   const exitId = useId();
 
   const title = clip.title;
   if (!title) return null;
   const { style } = title;
-  const defaults = presetStyle(title.preset);
+  // The template's look, sized for this project: what each section's reset goes back to.
+  const template = templateOf(title);
+  const defaults = styleForFrame(template, frame);
 
   const animation: TitleAnimation = title.animation ?? NO_ANIMATION;
   const setAnimation = (patch: Partial<TitleAnimation>, control: string | false): void =>
@@ -152,17 +176,22 @@ export function TitleTab({ clip, frame, sectionProps, position, onPosition }: Ti
             id={templateId}
             data-testid="title-template"
             className="numeric-input h-control-dense min-w-0 flex-1"
-            value={title.preset}
+            value={template.id}
             {...tip(t('title.templateHint'))}
             onChange={(event) => {
-              const preset = event.target.value as TitlePreset;
-              updateTitle(clip.id, { preset, style: presetStyle(preset), animation: presetAnimation(preset) });
+              const next = templateById(event.target.value);
+              if (!next) return;
+              updateTitle(clip.id, { preset: next.preset, template: next.id, style: styleForFrame(next, frame), animation: next.animation });
             }}
           >
-            {TITLE_PRESETS.map((preset) => (
-              <option key={preset} value={preset}>
-                {t(TITLE_NAME[preset])}
-              </option>
+            {TEMPLATE_CATEGORIES.map((category) => (
+              <optgroup key={category} label={t(CATEGORY_NAME[category])}>
+                {TITLE_TEMPLATES.filter((candidate) => candidate.category === category).map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {t(candidate.name)}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </FieldRow>
@@ -196,7 +225,12 @@ export function TitleTab({ clip, frame, sectionProps, position, onPosition }: Ti
             data-testid="title-font"
             className="numeric-input h-control-dense min-w-0 flex-1"
             value={style.fontFamily}
-            onChange={(event) => setStyle({ fontFamily: event.target.value }, false)}
+            onChange={(event) => {
+              // A family with one weight takes that weight: a bolder one would be faked.
+              const font = BUNDLED_FONTS.find((candidate) => candidate.family === event.target.value);
+              const fontWeight = font ? Math.min(font.maxWeight, Math.max(font.minWeight, style.fontWeight)) : style.fontWeight;
+              setStyle({ fontFamily: event.target.value, fontWeight }, false);
+            }}
           >
             {!listed && (
               <option value={style.fontFamily}>
@@ -251,6 +285,29 @@ export function TitleTab({ clip, frame, sectionProps, position, onPosition }: Ti
           onChange={(fontSize) => setStyle({ fontSize }, 'size')}
         />
         <ColorRow label={t('title.color')} name={t('title.textColor')} testId="title-color" value={style.color} onChange={(color) => setStyle({ color }, 'color')} />
+        <ColorRow
+          label={t('title.otherLinesColor')}
+          name={t('title.otherLinesColorName')}
+          testId="title-secondary-color"
+          value={style.secondaryColor ?? style.color}
+          onChange={(secondaryColor) => setStyle({ secondaryColor }, 'secondaryColor')}
+        />
+        <SwitchRow
+          label={t('title.gradient')}
+          testId="title-gradient"
+          checked={style.gradientColor !== undefined}
+          onChange={(on) => setStyle({ gradientColor: on ? defaults.gradientColor ?? '#f59e0b' : undefined }, false)}
+        />
+        {style.gradientColor !== undefined && (
+          <ColorRow
+            label=""
+            name={t('title.gradientName')}
+            testId="title-gradient-color"
+            value={style.gradientColor}
+            onChange={(gradientColor) => setStyle({ gradientColor }, 'gradientColor')}
+          />
+        )}
+        <SwitchRow label={t('title.capitals')} testId="title-uppercase" checked={style.uppercase === true} onChange={(uppercase) => setStyle({ uppercase }, false)} />
       </Section>
 
       <Section
@@ -421,9 +478,54 @@ export function TitleTab({ clip, frame, sectionProps, position, onPosition }: Ti
       </Section>
 
       <Section
+        {...sectionProps('titleShape')}
+        title={t('title.sectionShape')}
+        enabled={style.shape !== undefined}
+        onEnabledChange={(enabled) =>
+          setStyle({ shape: enabled ? style.shape ?? defaults.shape ?? { kind: 'bar', color: '#f59e0b', size: 6 } : undefined }, false)
+        }
+        onReset={() => setStyle({ shape: defaults.shape }, false)}
+      >
+        {style.shape && (
+          <>
+            <FieldRow label={t('title.shapeKind')} htmlFor={shapeId}>
+              <select
+                id={shapeId}
+                data-testid="title-shape-kind"
+                className="numeric-input h-control-dense min-w-0 flex-1"
+                value={style.shape.kind}
+                onChange={(event) => setStyle({ shape: { ...style.shape!, kind: event.target.value as TitleShapeKind } }, false)}
+              >
+                {SHAPE_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {t(`title.shape.${kind}` as MessageKey)}
+                  </option>
+                ))}
+              </select>
+            </FieldRow>
+            <ColorRow
+              label={t('title.color')}
+              name={t('title.shapeColor')}
+              testId="title-shape-color"
+              value={style.shape.color}
+              onChange={(color) => setStyle({ shape: { ...style.shape!, color } }, 'shapeColor')}
+            />
+            <SliderRow
+              label={t('title.thickness')}
+              value={style.shape.size}
+              max={40}
+              step={0.5}
+              format={px}
+              onChange={(size) => setStyle({ shape: { ...style.shape!, size } }, 'shapeSize')}
+            />
+          </>
+        )}
+      </Section>
+
+      <Section
         {...sectionProps('titleAnimation')}
         title={t('title.sectionAnimation')}
-        onReset={() => updateTitle(clip.id, { animation: presetAnimation(title.preset) })}
+        onReset={() => updateTitle(clip.id, { animation: template.animation })}
       >
         <FieldRow label={t('title.entrance')} htmlFor={entranceId}>
           <select
@@ -527,6 +629,8 @@ export function TitleTab({ clip, frame, sectionProps, position, onPosition }: Ti
           typed={{ factor: 100, unit: '%', step: 1 }}
           onChange={(maxWidth) => setStyle({ maxWidth }, 'maxWidth')}
         />
+        <SwitchRow label={t('title.fit')} testId="title-fit" checked={style.fit === true} onChange={(fit) => setStyle({ fit }, false)} />
+        <p className="text-2xs leading-relaxed text-slate-400">{t('title.fitHint')}</p>
         <PairRow
           label={t('inspector.position')}
           xLabel={t('inspector.positionX')}

@@ -40,6 +40,7 @@ export const IPC = {
   relinkFind: 'relink:find',
   relinkApply: 'relink:apply',
   contentThumbs: 'content:thumbs',
+  videoFrameTimes: 'media:video-frame-times',
   documentState: 'app:document-state',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
@@ -614,6 +615,13 @@ export interface FilmoraApi {
   relinkApply?(url: string, path: string): Promise<string>;
   /** The file's filmstrip, made the same way: a `media://` URL, or null. */
   contentThumbs?(path: string, kind: 'video' | 'image', seconds: number): Promise<string | null>;
+  /**
+   * The presentation time of every frame of the file's video, in seconds and
+   * ascending, listed by ffmpeg without decoding, with the container's start
+   * time; null when ffmpeg finds none. The export checks a seeked <video>
+   * against it. Optional so a bridge without it still satisfies the type.
+   */
+  videoFrameTimes?(path: string): Promise<{ times: number[]; startSeconds: number } | null>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
   /** The window asked to save before closing; save, then call closeAfterSave. */

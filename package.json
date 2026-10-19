@@ -28,8 +28,10 @@
     "test:curves:ui": "node ./tests/ui/curves.mjs",
     "test:titles:ui": "node ./tests/ui/titles.mjs",
     "test:titles:motion": "node ./tests/ui/titles-motion.mjs",
+    "test:titles:library": "node ./tests/ui/title-library.mjs",
     "test:transitions:ui": "node ./tests/ui/transitions.mjs",
     "test:transitions-f4:ui": "node ./tests/ui/transitions-f4.mjs",
+    "test:fx:ui": "node ./tests/ui/fx.mjs",
     "test:captions:ui": "node ./tests/ui/captions.mjs",
     "test:captions-f2:ui": "node ./tests/ui/captions-f2.mjs",
     "test:captions-f3:ui": "node ./tests/ui/captions-f3.mjs",
@@ -51,6 +53,7 @@
     "test:bench:audio-seek": "node ./tests/bench/audio-seek.mjs",
     "test:bench:audio-chunks": "node ./tests/bench/audio-chunks.mjs",
     "test:bench:audio-irregular-head": "node ./tests/bench/audio-irregular-head.mjs",
+    "test:bench:aac-priming": "node ./tests/bench/aac-priming.mjs",
     "dist:dir": "npm run build && node ./node_modules/electron-builder/cli.js --dir",
     "release": "node ./scripts/release.mjs",
     "rollback": "node ./scripts/rollback.mjs"

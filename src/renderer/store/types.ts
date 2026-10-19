@@ -32,6 +32,7 @@ import { migrateTitleOrigin, normalizeTitle } from '@renderer/text/titleStyle';
 import { normalizeTransitions, tidyTransitions, type TransitionPreset } from '@renderer/timing/transitions';
 import { normalizeCaption, normalizeCaptionSettings } from '@renderer/captions/normalize';
 import { normalizeGlossary } from '@renderer/captions/glossary';
+import { normalizeEffects } from '@renderer/fx/effects/catalog';
 
 /** What a project runs at when nothing better is known. */
 const DEFAULT_FPS = 30;
@@ -420,6 +421,12 @@ function normalizeAudio(audio: unknown): ProjectAudioState {
  * playback time. Reopening a v1 project must sound identical to how it sounded
  * when it was saved, or the mixer has quietly re-mixed somebody's edit.
  */
+/** A clip's effects as read from a file, or undefined for none (fx/effects/catalog). */
+function normalizedEffectsOrNone(raw: unknown): Clip['effects'] {
+  const effects = normalizeEffects(raw);
+  return effects.length > 0 ? effects : undefined;
+}
+
 export function normalizeProject(project: ProjectState): ProjectState {
   return withGlossary(withParkedCaptions(withTransitions(normalizeClipsAndTracks(project), project.transitions), project.parkedCaptions), project.glossary);
 }
@@ -523,6 +530,9 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             // looks exactly as it did.
             colorGrading: normalizeGrading(clip.colorGrading),
             backgroundRemoval: normalizeBackgroundRemoval(clip.backgroundRemoval),
+            // The effect stack: written plainly, so a clip with none carries
+            // no field, and an effect from a later version is dropped.
+            effects: normalizedEffectsOrNone(clip.effects),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
             ...(clip.caption ? { caption: normalizeCaption(clip.caption) } : {}),

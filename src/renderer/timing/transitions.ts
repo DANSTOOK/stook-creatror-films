@@ -3,6 +3,8 @@ import { createId } from '@shared/utils/id';
 import { isReversed, sourceFramesUsed, speedOf } from './clipSpeed';
 import { moveClip } from '@renderer/components/Timeline/timelineOps';
 import { partnersOf } from '@renderer/components/Timeline/linkGroups';
+import type { MessageKey } from '@shared/i18n';
+import { isShaderTransitionId, normalizeShaderParams, SHADER_TRANSITIONS, shaderTransitionLabel } from '@renderer/fx/transitions/catalog';
 
 /**
  * Transitions, the arithmetic: where one sits on its cut, what footage it
@@ -34,16 +36,56 @@ export const MIN_TRANSITION_FRAMES = 2;
 export const DIP_BLACK = '#000000';
 export const DIP_WHITE = '#ffffff';
 
-/** The three a menu offers: a dissolve, and a dip to black or white. */
-export type TransitionPreset = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'wipe' | 'slide' | 'push';
+/** The six built in: a dissolve, a dip to black or white, a wipe, a slide and a push. */
+export type BuiltinTransitionPreset = 'crossDissolve' | 'dipToBlack' | 'dipToWhite' | 'wipe' | 'slide' | 'push';
 
-export const TRANSITION_PRESETS: readonly TransitionPreset[] = ['crossDissolve', 'dipToBlack', 'dipToWhite', 'wipe', 'slide', 'push'];
+/**
+ * What a menu, the library or a drag offers: one of the six built in, or a
+ * shader transition by its id (fx/transitions/catalog), which never takes
+ * one of the six's names.
+ */
+export type TransitionPreset = BuiltinTransitionPreset | (string & { readonly shaderPreset?: never });
+
+/** The built-in six, which the timeline's menus list. */
+export const TRANSITION_PRESETS: readonly BuiltinTransitionPreset[] = ['crossDissolve', 'dipToBlack', 'dipToWhite', 'wipe', 'slide', 'push'];
+
+/** Every preset there is: the six, then the shader transitions in the library's order. */
+export const ALL_TRANSITION_PRESETS: readonly TransitionPreset[] = [...TRANSITION_PRESETS, ...SHADER_TRANSITIONS.map((entry) => entry.id)];
+
+export const isBuiltinPreset = (value: unknown): value is BuiltinTransitionPreset => (TRANSITION_PRESETS as readonly unknown[]).includes(value);
+
+/** A preset this build knows: what a drop onto the timeline accepts. */
+export const isTransitionPreset = (value: unknown): value is TransitionPreset => isBuiltinPreset(value) || isShaderTransitionId(value);
+
+/** A preset's name in the interface. */
+export const presetLabel = (preset: TransitionPreset): MessageKey =>
+  isBuiltinPreset(preset) ? (`transition.${preset}` as MessageKey) : shaderTransitionLabel(preset);
 export const TRANSITION_DIRECTIONS: readonly TransitionDirection[] = ['left', 'right', 'up', 'down'];
 
 /** A wipe's edge by default: soft enough not to look like a cut, 10% of the frame. */
 export const DEFAULT_SOFTNESS = 0.5;
 
-export function presetKind(preset: TransitionPreset): { kind: TransitionKind; color: string; direction: TransitionDirection } {
+/**
+ * The fields a preset sets on a transition. `shader` and `params` are
+ * always there - undefined for the six - so applying a preset to an existing
+ * transition clears what another kind left behind.
+ */
+export interface PresetFields {
+  kind: TransitionKind;
+  color: string;
+  direction: TransitionDirection;
+  shader: string | undefined;
+  params: Transition['params'];
+}
+
+export function presetKind(preset: TransitionPreset): PresetFields {
+  if (!isBuiltinPreset(preset) && isShaderTransitionId(preset)) {
+    return { kind: 'shader', color: DIP_BLACK, direction: 'left', shader: preset, params: undefined };
+  }
+  return { ...builtinKind(preset as BuiltinTransitionPreset), shader: undefined, params: undefined };
+}
+
+function builtinKind(preset: BuiltinTransitionPreset): { kind: TransitionKind; color: string; direction: TransitionDirection } {
   switch (preset) {
     case 'dipToBlack':
       return { kind: 'dip', color: DIP_BLACK, direction: 'left' };
@@ -64,8 +106,9 @@ export function presetKind(preset: TransitionPreset): { kind: TransitionKind; co
 }
 
 /** The preset a transition is, for menus and the panel. */
-export function presetOf(transition: Pick<Transition, 'kind' | 'color'>): TransitionPreset {
+export function presetOf(transition: Pick<Transition, 'kind' | 'color' | 'shader'>): TransitionPreset {
   if (transition.kind === 'dip') return transition.color === DIP_WHITE ? 'dipToWhite' : 'dipToBlack';
+  if (transition.kind === 'shader') return isShaderTransitionId(transition.shader) ? transition.shader : 'crossDissolve';
   return transition.kind;
 }
 
@@ -245,7 +288,7 @@ export function tidyTransitions(project: ProjectState): ProjectState {
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
-const KINDS: readonly TransitionKind[] = ['crossDissolve', 'dip', 'wipe', 'slide', 'push'];
+const KINDS: readonly TransitionKind[] = ['crossDissolve', 'dip', 'wipe', 'slide', 'push', 'shader'];
 const ALIGNMENTS: readonly TransitionAlignment[] = ['center', 'start', 'end'];
 
 /** Transitions read from a file: every field present and valid, anything broken dropped. */
@@ -257,11 +300,19 @@ export function normalizeTransitions(raw: unknown): Record<string, Transition> {
     if (typeof source.fromClipId !== 'string' || typeof source.toClipId !== 'string') continue;
     const id = typeof source.id === 'string' && source.id ? source.id : createId('transition');
     const duration = typeof source.durationFrames === 'number' && Number.isFinite(source.durationFrames) ? source.durationFrames : 30;
+    // A shader transition this build does not have (one from a later
+    // version, say) opens as a cross dissolve: the cut keeps a transition of
+    // the same length, and the project opens.
+    const known = KINDS.includes(source.kind as TransitionKind) ? (source.kind as TransitionKind) : 'crossDissolve';
+    const shader = known === 'shader' && isShaderTransitionId(source.shader) ? source.shader : undefined;
+    const params = shader ? normalizeShaderParams(shader, source.params) : undefined;
     result[id] = {
       id,
       fromClipId: source.fromClipId,
       toClipId: source.toClipId,
-      kind: KINDS.includes(source.kind as TransitionKind) ? (source.kind as TransitionKind) : 'crossDissolve',
+      kind: known === 'shader' && !shader ? 'crossDissolve' : known,
+      ...(shader ? { shader } : {}),
+      ...(params ? { params } : {}),
       durationFrames: Math.max(MIN_TRANSITION_FRAMES, Math.round(duration)),
       alignment: ALIGNMENTS.includes(source.alignment as TransitionAlignment) ? (source.alignment as TransitionAlignment) : 'center',
       color: typeof source.color === 'string' && HEX.test(source.color) ? source.color.toLowerCase() : DIP_BLACK,

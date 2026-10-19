@@ -4,7 +4,8 @@ import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
 import { ScrubDecoder } from './ScrubDecoder';
 import { keepScrubbers } from './scrubHandover';
-import { SequentialVideoReader } from './SequentialVideoReader';
+import { SequentialVideoReader, presentationTimes } from './SequentialVideoReader';
+import { FrameCheck } from './frameCheck';
 import { TextureManager } from './TextureManager';
 import { TitleLayers } from './TitleLayers';
 import { activeTransitionsAt } from '@renderer/timing/transitions';
@@ -145,6 +146,9 @@ export class FrameRenderer {
   registerAssets(assets: readonly MediaAsset[]): void {
     for (const asset of assets) {
       this.media.register(asset);
+      // A relinked file keeps its URL: the frame times listed for the old
+      // file are not this one's.
+      if (this.assets.get(asset.uri)?.sourcePath !== asset.sourcePath) this.frameChecks.delete(asset.uri);
       this.assets.set(asset.uri, asset);
     }
   }
@@ -379,7 +383,8 @@ export class FrameRenderer {
       project.currentFrame,
       (clip, sourceFrame) => {
         // A title has no file: its picture is drawn from its text.
-        if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: project.currentFrame, fps: project.fps });
+        // The one being typed into stands still, as the compositor draws it.
+        if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: project.currentFrame, fps: project.fps, resting: clip.id === restingTitleId });
         // The preview - and only the preview - draws the proxy when there
         // is one and proxies are on.
         // A transition's incoming side, cut from the same file as its
@@ -439,6 +444,7 @@ export class FrameRenderer {
     this.stopSequentialDecode();
     this.sequential = new Map();
     this.seekingSources.clear();
+    this.seekCounts = FrameRenderer.noSeekCounts();
   }
 
   /**
@@ -506,6 +512,9 @@ export class FrameRenderer {
     const readers = this.sequential;
     this.sequential = null;
     this.decodedFrames.clear();
+    this.releaseGrabbed();
+    for (const clipId of this.grabbedTextures) this.textures.release(`clip:${clipId}`);
+    this.grabbedTextures.clear();
     if (!readers) return;
     for (const [clipId, reader] of readers) {
       void reader.then((open) => open?.close());
@@ -528,6 +537,8 @@ export class FrameRenderer {
   private async seekSources(project: ProjectState, frame: number): Promise<void> {
     this.ensureExactReaders();
     this.decodedFrames.clear();
+    // The last render's checked frames are uploaded by now.
+    this.releaseGrabbed();
     // Every clip drawn at this frame, at the frame of footage it shows - a
     // transition's sides past their ends included.
     const drawn = Compositor.drawList(project, frame, this.compositor.sourceLengthOf).flatMap((entry) =>
@@ -538,7 +549,13 @@ export class FrameRenderer {
             { clip: entry.to, sourceFrame: entry.toFrame },
           ],
     );
-    this.retireReaders(new Set(drawn.map(({ clip }) => clip.id)));
+    const visible = new Set(drawn.map(({ clip }) => clip.id));
+    this.retireReaders(visible);
+    for (const clipId of this.grabbedTextures) {
+      if (visible.has(clipId)) continue;
+      this.grabbedTextures.delete(clipId);
+      this.textures.release(`clip:${clipId}`);
+    }
 
     // Seeking, rather than decoding forwards: the incoming side of a
     // transition cut from the same file as the outgoing one needs an element
@@ -587,7 +604,8 @@ export class FrameRenderer {
               this.decodedFrames.set(clip.id, await open.frameAt(sourceFrame, project.fps));
               return;
             } catch (error) {
-              // A decoder that fails mid-render hands the clip to the seek path.
+              // The reader has already tried fresh decoders from the keyframe
+              // before; one that still fails hands the clip to the checked seek.
               console.info(`[export] ${clip.name}: decoding forwards failed at frame ${sourceFrame}, seeking instead (${String(error)})`);
               open.close();
               this.sequential.set(clip.id, Promise.resolve(null));
@@ -597,9 +615,176 @@ export class FrameRenderer {
         }
         const lane = this.exactLanes.get(clip.id);
         if (lane) await this.media.whenLoaded(lane);
-        await this.media.seekExact(lane ?? clip.sourceUri, sourceFrame, project.fps);
+        await this.checkedSeek(clip, lane ?? clip.sourceUri, sourceFrame, project.fps);
       }),
     );
+  }
+
+  /** Each sought file's frame times, by URI: see frameCheck. Null when there are none to be had. */
+  private readonly frameChecks = new Map<string, Promise<FrameCheck | null>>();
+
+  private frameCheckFor(uri: string): Promise<FrameCheck | null> {
+    let check = this.frameChecks.get(uri);
+    if (!check) {
+      check = (async () => {
+        // An MP4 or MOV: the tables the readers decode by, so a clip that
+        // fell back mid-export keeps to the rule it started with.
+        const own = await presentationTimes(uri);
+        if (own && own.length > 0) return new FrameCheck(own);
+        // Anything else: ffmpeg lists the frames, without decoding them.
+        const path = this.assets.get(uri)?.sourcePath;
+        const bridge = (window as { filmora?: { videoFrameTimes?: (path: string) => Promise<{ times: number[]; startSeconds: number } | null> } }).filmora;
+        const listed = path ? await bridge?.videoFrameTimes?.(path) : null;
+        if (!listed || listed.times.length === 0) return null;
+        return new FrameCheck(listed.times, listed.startSeconds < 0 ? [0, -listed.startSeconds] : [0]);
+      })().catch(() => null);
+      this.frameChecks.set(uri, check);
+    }
+    return check;
+  }
+
+  /** Frames grabbed from a sought element once checked, by clip id; closed at the next render. */
+  private readonly grabbed = new Map<string, VideoFrame>();
+
+  private releaseGrabbed(): void {
+    for (const frame of this.grabbed.values()) frame.close();
+    this.grabbed.clear();
+  }
+
+  /** Clips whose checked frames have a texture of their own, to release when they leave. */
+  private readonly grabbedTextures = new Set<string>();
+
+  /** What the checked seek did since the last `startSequentialDecode`: for tests. */
+  private seekCounts = FrameRenderer.noSeekCounts();
+
+  private static noSeekCounts() {
+    return { checked: 0, rightFirstTime: 0, recovered: 0, failed: 0, unchecked: 0, recoveredBy: {} as Record<string, number>, wrongSeen: [] as string[] };
+  }
+
+  /** The checked seek's counts: frames checked, put right, and not. */
+  seekStats(): ReturnType<typeof FrameRenderer.noSeekCounts> & { decoderReopens: number } {
+    return {
+      ...this.seekCounts,
+      recoveredBy: { ...this.seekCounts.recoveredBy },
+      wrongSeen: [...this.seekCounts.wrongSeen],
+      // Decoders replaced after a failure, by every reader so far this session.
+      decoderReopens: SequentialVideoReader.reopenedTotal,
+    };
+  }
+
+  /** Lanes opened to retry a frame on a fresh element: numbered so each is new. */
+  private checkLanes = 0;
+
+  /**
+   * The seek path, checked frame by frame.
+   *
+   * After the seek, the element's picture is grabbed as a VideoFrame and its
+   * timestamp judged against the file's frame times (see frameCheck). A
+   * right frame is drawn from that very grab, so what was checked is what
+   * goes out. A wrong one is not drawn: the element is moved off the frame
+   * and back - from the frame before, two before, the one after - and as a
+   * last resort the frame is sought on a fresh element. That puts right the
+   * misses another decoder's contention causes, but not every miss: on a
+   * variable-rate MP4 the element shows a neighbour for the last frame
+   * before every keyframe, whatever the aim and even on a fresh element.
+   * Those frames have no seek that reaches them, which is why a reader whose
+   * decoder fails first opens a fresh decoder (see SequentialVideoReader)
+   * rather than come here.
+   *
+   * In an export a frame that cannot be put right, or cannot be checked at
+   * all, stops the export with a message: a wrong frame written silently is
+   * the one thing this path must not do. An exact render outside an export
+   * (a thumbnail, a cover) draws its best attempt and says so in the console.
+   */
+  private async checkedSeek(clip: Clip, uri: string, sourceFrame: number, fps: number): Promise<void> {
+    const strict = this.isExclusive;
+    const seconds = (sourceFrame + 0.5) / fps;
+    // An image shows one picture at every frame: there is nothing to seek and
+    // nothing to check. seekExact is a no-op for it, as it always was.
+    if (!(this.media.get(uri) instanceof HTMLVideoElement)) {
+      await this.media.seekExact(uri, sourceFrame, fps);
+      return;
+    }
+    const check = await this.frameCheckFor(clip.sourceUri);
+    if (!check) {
+      this.seekCounts.unchecked += 1;
+      if (strict) throw new Error(t('export.frameUnchecked', { name: clip.name }));
+      await this.media.seekExact(uri, sourceFrame, fps);
+      return;
+    }
+    this.seekCounts.checked += 1;
+    const end = this.media.durationOf(uri);
+    const aim = check.aimFor(seconds, end);
+
+    /** Grab what `on` shows; true and kept when it is the frame the rule picks. */
+    let last = { expected: -1, shown: -1 };
+    let grabbedAny = false;
+    const judge = (on: string): boolean => {
+      const frame = this.media.grabFrame(on);
+      if (!frame) return false;
+      grabbedAny = true;
+      const verdict = check.judge(seconds, frame.timestamp / 1e6);
+      last = verdict;
+      if (!verdict.right) {
+        frame.close();
+        return false;
+      }
+      this.grabbed.get(clip.id)?.close();
+      this.grabbed.set(clip.id, frame);
+      this.decodedFrames.set(clip.id, frame);
+      this.grabbedTextures.add(clip.id);
+      return true;
+    };
+
+    await this.media.seekTo(uri, aim);
+    if (judge(uri)) {
+      this.seekCounts.rightFirstTime += 1;
+      return;
+    }
+    if (grabbedAny && this.seekCounts.wrongSeen.length < 50) this.seekCounts.wrongSeen.push(`${clip.name}@${sourceFrame}:${last.shown}!=${last.expected}`);
+
+    const expected = check.expectedAt(seconds);
+    const retries: [string, number][] = [
+      ['from the frame before', expected > 0 ? expected - 1 : expected + 1],
+      ['from two frames before', expected > 1 ? expected - 2 : expected + 2],
+      ['from the frame after', expected + 1],
+    ];
+    for (const [how, from] of retries) {
+      await this.media.seekTo(uri, check.middle(from, end));
+      await this.media.seekTo(uri, aim);
+      if (judge(uri)) {
+        this.recovered(how);
+        return;
+      }
+    }
+
+    // A fresh element, with a decoder that has seen nothing else.
+    const fresh = `${clip.sourceUri}#scf-check=${(this.checkLanes += 1)}`;
+    this.media.ensureLane(fresh, clip.sourceUri);
+    try {
+      await this.media.whenLoaded(fresh);
+      await this.media.seekTo(fresh, aim);
+      if (judge(fresh)) {
+        this.recovered('on a fresh element');
+        return;
+      }
+    } finally {
+      this.media.release(fresh);
+    }
+
+    this.seekCounts[grabbedAny ? 'failed' : 'unchecked'] += 1;
+    const detail = grabbedAny ? `${clip.name}: frame ${last.shown} shown for ${last.expected}` : `${clip.name}: no frame to check`;
+    if (strict) {
+      throw new Error(grabbedAny
+        ? t('export.frameNotExact', { name: clip.name, frame: String(sourceFrame) })
+        : t('export.frameUnchecked', { name: clip.name }));
+    }
+    console.warn(`[exact] ${detail}; drawing it anyway, this is not an export`);
+  }
+
+  private recovered(how: string): void {
+    this.seekCounts.recovered += 1;
+    this.seekCounts.recoveredBy[how] = (this.seekCounts.recoveredBy[how] ?? 0) + 1;
   }
 
   /** Second elements for the seek path of an exact render: see seekSources. */
