@@ -3,7 +3,9 @@ import type { TitlePreset } from '@shared/types';
 import type { MessageKey } from '@shared/i18n';
 import { TITLE_PRESETS } from '@renderer/text/titleStyle';
 import { TITLE_NAME, TITLE_TEXT } from '@renderer/text/titleClip';
-import { TRANSITION_PRESETS, type TransitionPreset } from '@renderer/timing/transitions';
+import { TRANSITION_PRESETS, presetLabel, type BuiltinTransitionPreset, type TransitionPreset } from '@renderer/timing/transitions';
+import { SHADER_TRANSITION_CATEGORIES, SHADER_TRANSITIONS, transitionCategoryLabel, type ShaderTransitionCategory } from '@renderer/fx/transitions/catalog';
+import { cancelShaderThumbs, drawShaderThumb, shaderStillProgress, shaderThumbReady } from './shaderThumbs';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { notify } from '@renderer/notifications/notifications';
@@ -32,7 +34,7 @@ import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 const THUMB_WIDTH = 256;
 const THUMB_HEIGHT = 144;
 
-const TRANSITION_LABEL: Record<TransitionPreset, MessageKey> = {
+const TRANSITION_LABEL: Record<BuiltinTransitionPreset, MessageKey> = {
   crossDissolve: 'transition.crossDissolve',
   dipToBlack: 'transition.dipToBlack',
   dipToWhite: 'transition.dipToWhite',
@@ -198,7 +200,48 @@ const TRANSITION_DRAW = Object.fromEntries(
     ((context, seconds) =>
       drawTransitionThumb(context, THUMB_WIDTH, THUMB_HEIGHT, preset, seconds === null ? null : transitionLoopProgress(seconds))) as Draw,
   ]),
-) as Record<TransitionPreset, Draw>;
+) as Record<BuiltinTransitionPreset, Draw>;
+
+/** A shader transition's picture: the real shader, still at its still point or looping. */
+const SHADER_DRAW = new Map<string, Draw>();
+const shaderDraw = (id: string): Draw => {
+  let draw = SHADER_DRAW.get(id);
+  if (!draw) {
+    draw = (context, seconds) =>
+      drawShaderThumb(context, THUMB_WIDTH, THUMB_HEIGHT, id, seconds === null ? shaderStillProgress(id) : transitionLoopProgress(seconds));
+    SHADER_DRAW.set(id, draw);
+  }
+  return draw;
+};
+
+type Filter = 'all' | 'basic' | ShaderTransitionCategory;
+
+/** A shader transition's tile: still until its program is compiled (see shaderThumbs). */
+function ShaderItem({ id, hintId, onAdd }: { id: string; hintId: string; onAdd(): void }): JSX.Element {
+  const t = useT();
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void shaderThumbReady(id).then(() => {
+      if (live) setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id]);
+  return (
+    <LibraryItem
+      label={t(presetLabel(id))}
+      testId={`library-transition-${id}`}
+      dragKind="transition"
+      dragValue={id}
+      hintId={hintId}
+      draw={shaderDraw(id)}
+      ready={ready}
+      onAdd={onAdd}
+    />
+  );
+}
 
 export function TransitionsBrowser(): JSX.Element {
   const t = useT();
@@ -212,24 +255,72 @@ export function TransitionsBrowser(): JSX.Element {
     // nothing happened, instead of nothing.
     if (after.project === before && !after.ui.pendingTransition) notify(t('library.noCut'), 'info');
   };
+  const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
+  useEffect(() => cancelShaderThumbs, []);
+  // Searched by name in the interface's language, and by the id as well.
+  const needle = query.trim().toLocaleLowerCase();
+  const matches = (preset: TransitionPreset): boolean =>
+    !needle || t(presetLabel(preset)).toLocaleLowerCase().includes(needle) || preset.toLowerCase().includes(needle);
+  const groups: Array<{ id: 'basic' | ShaderTransitionCategory; presets: TransitionPreset[] }> = [
+    { id: 'basic' as const, presets: [...TRANSITION_PRESETS] as TransitionPreset[] },
+    ...SHADER_TRANSITION_CATEGORIES.map((category) => ({ id: category, presets: SHADER_TRANSITIONS.filter((entry) => entry.category === category).map((entry) => entry.id) })),
+  ]
+    .filter((group) => filter === 'all' || group.id === filter)
+    .map((group) => ({ ...group, presets: group.presets.filter(matches) }))
+    .filter((group) => group.presets.length > 0);
+  const filters: Filter[] = ['all', 'basic', ...SHADER_TRANSITION_CATEGORIES];
   return (
     <div data-testid="library-transitions" className="min-h-0 flex-1 overflow-y-auto p-2">
       <Hint id={hintId} text={t('library.transitionsHint')} />
-      <ul className={GRID} aria-label={t('library.transitions')}>
-        {TRANSITION_PRESETS.map((preset) => (
-          <LibraryItem
-            key={preset}
-            label={t(TRANSITION_LABEL[preset])}
-            testId={`library-transition-${preset}`}
-            dragKind="transition"
-            dragValue={preset}
-            hintId={hintId}
-            draw={TRANSITION_DRAW[preset]}
-            ready
-            onAdd={() => add(preset)}
-          />
+      <input
+        type="search"
+        data-testid="library-transitions-search"
+        aria-label={t('fx.search')}
+        placeholder={t('fx.search')}
+        className="numeric-input mb-2 h-control-dense w-full px-2 text-left"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div role="group" aria-label={t('library.transitions')} className="mb-2 flex flex-wrap gap-1">
+        {filters.map((id) => (
+          <button
+            key={id}
+            type="button"
+            data-testid={`library-transitions-filter-${id}`}
+            aria-pressed={filter === id}
+            className={`tool-button tool-button-dense px-2 text-2xs ${filter === id ? 'tool-button-active' : ''}`}
+            onClick={() => setFilter(id)}
+          >
+            {t(id === 'all' ? 'fx.category.all' : transitionCategoryLabel(id))}
+          </button>
         ))}
-      </ul>
+      </div>
+      {groups.length === 0 && <p className="px-1 text-2xs text-slate-400">{t('fx.noMatch', { query })}</p>}
+      {groups.map((group) => (
+        <section key={group.id} className="mb-3">
+          <h3 className="section-title mb-1.5 px-0.5">{t(transitionCategoryLabel(group.id))}</h3>
+          <ul className={GRID} aria-label={t(transitionCategoryLabel(group.id))}>
+            {group.presets.map((preset) =>
+              (TRANSITION_PRESETS as readonly string[]).includes(preset) ? (
+                <LibraryItem
+                  key={preset}
+                  label={t(TRANSITION_LABEL[preset as BuiltinTransitionPreset])}
+                  testId={`library-transition-${preset}`}
+                  dragKind="transition"
+                  dragValue={preset}
+                  hintId={hintId}
+                  draw={TRANSITION_DRAW[preset as BuiltinTransitionPreset]}
+                  ready
+                  onAdd={() => add(preset)}
+                />
+              ) : (
+                <ShaderItem key={preset} id={preset} hintId={hintId} onAdd={() => add(preset)} />
+              ),
+            )}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }
