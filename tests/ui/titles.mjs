@@ -485,8 +485,13 @@ async function main() {
     await licences.waitFor({ state: 'visible', timeout: 5_000 });
     const licenceTexts = await licences.locator('pre').allInnerTexts();
     const licenceNames = await licences.locator('h3').allInnerTexts();
-    check('Help > Font licenses shows the OFL text of Inter, Source Serif 4 and Oswald',
-      licenceNames.join('|') === 'Inter|Source Serif 4|Oswald' && licenceTexts.every((text) => /SIL OPEN FONT LICENSE/i.test(text)),
+    // The dialog lists every bundled font (twenty with the title library),
+    // each under the OFL, and may carry other sections (the effects library's).
+    const fontNames = ['Inter', 'Source Serif 4', 'Oswald', 'Outfit', 'Space Grotesk', 'Bebas Neue', 'Anton', 'League Gothic', 'Archivo Black',
+      'Playfair Display', 'Cinzel', 'Abril Fatface', 'Caveat', 'Dancing Script', 'Knewave', 'Bangers', 'Righteous', 'Monoton', 'Press Start 2P', 'Courier Prime'];
+    const fontLicenceTexts = fontNames.map((name) => licenceTexts[licenceNames.indexOf(name)]);
+    check('Help > Font licenses shows the OFL text of all twenty bundled fonts',
+      fontNames.every((name) => licenceNames.includes(name)) && fontLicenceTexts.every((text) => /SIL OPEN FONT LICENSE/i.test(text ?? '')),
       licenceNames.join(' / '));
     if (shotsDir) await window.screenshot({ path: join(shotsDir, 'titles-licenses-en.png') });
     await window.keyboard.press('Escape');
