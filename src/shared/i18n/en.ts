@@ -700,6 +700,8 @@ export const en = {
   'export.encoderError': 'Encoder error: {detail}',
   'export.cancelled': 'Export cancelled.',
   'export.slowPath': 'Rendering with {encoder} - slow path: {files} cannot be decoded forwards, so each frame is sought separately.',
+  'export.frameNotExact': 'the video player would not show frame {frame} of “{name}” exactly, so the export stopped rather than write a wrong frame. Try again, or convert the clip to MP4.',
+  'export.frameUnchecked': 'there is no way to check which frame of “{name}” the video player shows, so the export stopped rather than risk a wrong frame. Convert the clip to MP4 and export again.',
   'export.failed': 'Export failed: {detail}',
   'export.folderSuffix': '/ (folder)',
   'export.progressRendering': 'Rendering',
