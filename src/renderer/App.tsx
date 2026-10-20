@@ -626,6 +626,8 @@ export default function App(): JSX.Element {
         onMixer={() => setMixerOpen((open) => !open)}
         onHome={() => void actions.goHome()}
         onExport={() => setExportOpen(true)}
+        onCommandPalette={() => setPaletteOpen((open) => !open)}
+        onPreferences={() => setPreferencesOpen(true)}
         nativeAvailable={nativeAvailable}
       />
 

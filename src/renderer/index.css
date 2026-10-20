@@ -606,6 +606,45 @@
     }
   }
 
+  /*
+    The library's tab row. Docked (~220px) five names will not fit, so only the
+    open tab wears its name and the rest show their icon alone - their name kept
+    as a tooltip and, hidden this way rather than with display:none, still in
+    the accessibility tree and still read aloud. Detached into a wide window
+    there is room, so every tab shows its name. This is the browser-naming of
+    Final Cut and Resolve, not a truncation to "Tra…".
+  */
+  .library-tabs {
+    container-type: inline-size;
+  }
+
+  .library-tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .library-tab[aria-selected='true'] .library-tab-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  @container (min-width: 440px) {
+    .library-tab-label {
+      position: static;
+      width: auto;
+      height: auto;
+      overflow: visible;
+      clip: auto;
+    }
+  }
+
   .media-tile-selected {
     @apply bg-panel-800;
   }

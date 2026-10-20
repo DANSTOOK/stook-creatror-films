@@ -18,7 +18,14 @@ import {
   Rows3,
   Trash2,
   Upload,
+  Film,
+  Type,
+  ArrowLeftRight,
+  Sparkles,
+  Captions,
+  type LucideProps,
 } from 'lucide-react';
+import type { ComponentType } from 'react';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import type { MediaAsset, MediaBin } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
@@ -43,6 +50,7 @@ import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useIndicator } from '@renderer/motion/useIndicator';
 import { TransitionsBrowser } from './LibraryBrowsers';
+import { EffectsBrowser } from './EffectsBrowser';
 import { TitlesBrowser } from './TitlesBrowser';
 import { TranscriptPanel } from '@renderer/components/Captions/TranscriptPanel';
 import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
@@ -82,13 +90,28 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'captions'];
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'captions'];
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
   transitions: 'library.transitions',
+  effects: 'library.effects',
   // The transcript: the captions as a list (components/Captions/TranscriptPanel).
   captions: 'library.captions',
+};
+
+/**
+ * An icon beside each tab's name. Four short words in a dark strip read as one
+ * grey block; a glyph gives each tab a shape the eye can aim for, the way
+ * Resolve marks Edit/Fusion/Color and Premiere its panel tabs. The active tab
+ * is the one in full white over the sliding highlight.
+ */
+const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
+  media: Film,
+  titles: Type,
+  transitions: ArrowLeftRight,
+  effects: Sparkles,
+  captions: Captions,
 };
 
 const LIBRARY_TAB_KEY = 'scf.libraryTab';
@@ -538,15 +561,25 @@ export function MediaLibrary(): JSX.Element {
         )}
       </header>
 
-      {/* The tabs, as the Inspector's: a segmented row, arrow keys between them. */}
+      {/*
+        The tabs, as the Inspector's: a segmented row, arrow keys between them.
+        Five names do not fit a docked 220px panel, so rather than cut them to
+        "Tra…" every tab shows its icon and only the open one wears its full
+        name (the rest keep theirs as a tooltip and for a screen reader) - the
+        way Final Cut and Resolve name the browser you are in. Detached into a
+        wide window, there is room and every tab shows its name (index.css,
+        .library-tabs).
+      */}
       <div
         ref={tabIndicator.containerRef}
         role="tablist"
         aria-label={tr('library.tabs')}
-        className="relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
+        className="library-tabs relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
       >
         <span ref={tabIndicator.indicatorRef} aria-hidden className="scf-indicator rounded-control bg-panel-700" />
-        {LIBRARY_TABS.map((id) => (
+        {LIBRARY_TABS.map((id) => {
+          const Icon = LIBRARY_TAB_ICON[id];
+          return (
           <button
             key={id}
             type="button"
@@ -556,11 +589,10 @@ export function MediaLibrary(): JSX.Element {
             aria-selected={tab === id}
             aria-controls="library-tabpanel"
             tabIndex={tab === id ? 0 : -1}
-            // Four names in a narrow panel: each tab is as wide as its name
-            // needs, not a quarter each, and one cut short still says its
-            // whole name when pointed at.
+            // The name is a tooltip whenever it is not shown, so an icon-only
+            // tab still says what it is on hover.
             title={tr(LIBRARY_TAB_LABEL[id])}
-            className={`relative h-control-dense min-w-0 max-w-36 flex-auto truncate rounded-control px-1 text-xs transition-colors ${
+            className={`library-tab relative flex h-control-dense min-w-0 max-w-36 shrink-0 items-center justify-center gap-1 rounded-control px-2 text-xs transition-colors ${
               tab === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
@@ -573,9 +605,11 @@ export function MediaLibrary(): JSX.Element {
               document.getElementById(`library-tab-${next}`)?.focus();
             }}
           >
-            {tr(LIBRARY_TAB_LABEL[id])}
+            <Icon size={13} aria-hidden className="shrink-0" strokeWidth={tab === id ? 2.2 : 1.8} />
+            <span className="library-tab-label min-w-0 truncate">{tr(LIBRARY_TAB_LABEL[id])}</span>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       <input
@@ -599,6 +633,7 @@ export function MediaLibrary(): JSX.Element {
       >
       {tab === 'titles' && <TitlesBrowser />}
       {tab === 'transitions' && <TransitionsBrowser />}
+      {tab === 'effects' && <EffectsBrowser />}
       {tab === 'captions' && <TranscriptPanel />}
       {/* Bins above the clips in a narrow panel; beside them, as Resolve's
           Media Pool keeps its bin list, once the panel is wide (index.css). */}
