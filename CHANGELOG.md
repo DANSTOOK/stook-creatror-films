@@ -16,6 +16,21 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.53.0-beta.1 — La app siempre abre
+2026-10-20 · pre-release para probar
+
+### Arreglado
+- **Las versiones nuevas a veces no abrían del todo:** los procesos
+  arrancaban pero no aparecía ninguna ventana. En un paquete pesado, la
+  interfaz podía tardar en avisar de que ya había pintado —o no avisar— y la
+  ventana se quedaba oculta aunque la app estuviera viva. Ahora la ventana se
+  muestra por lo que ocurra primero: el primer dibujado, la carga de la
+  página, o un tiempo de seguridad de 6 s. Nunca se queda invisible.
+  - *Comprobado:* la ventana aparece en ~0,5 s en arranque normal; instancia
+    única 5/5, interfaz 127/127, extremo a extremo 22/22.
+
+---
+
 ## v1.52.0-beta.1 — Barra superior más clara, pestañas con distintivo y exportación más intuitiva
 2026-10-20 · pre-release para probar
 
