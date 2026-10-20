@@ -178,25 +178,30 @@ function createWindow(): void {
 
   // In background mode shown without taking the focus, and kept off-screen.
   keepOffScreen(mainWindow);
-  mainWindow.once('ready-to-show', () => (BACKGROUND ? mainWindow?.showInactive() : mainWindow?.show()));
 
   /*
-    Background mode cannot wait for that event alone.
+    Show the window on whichever comes first, and never more than once.
 
-    'ready-to-show' arrives with the renderer's first paint, and a window that
-    has never been shown - parked off every display, as background mode parks
-    it - may produce no paint at all. Each then waits for the other: the window
-    stays invisible, nothing is ever drawn, and the page still answers
-    questions, which makes it look alive while every click waits for ever.
-
-    So the moment the page has loaded, show it. Showing twice is harmless, and
-    a normal launch still waits for the paint, with no white flash.
+    The window is created hidden (show: false) and normally revealed on
+    'ready-to-show', which arrives with the renderer's first paint. But that
+    event can be slow or, in a heavy packaged build, fail to arrive at all -
+    and then the app runs with its processes alive but no window on screen,
+    which looks exactly like "it won't open". So three triggers race to reveal
+    it: the first paint, the page finishing loading, and a safety timer. The
+    first to fire shows it; the rest find it already shown and do nothing.
   */
-  if (BACKGROUND) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.showInactive();
-    });
-  }
+  let revealed = false;
+  const reveal = (): void => {
+    if (revealed || !mainWindow || mainWindow.isDestroyed()) return;
+    revealed = true;
+    if (BACKGROUND) mainWindow.showInactive();
+    else mainWindow.show();
+  };
+  mainWindow.once('ready-to-show', reveal);
+  mainWindow.webContents.once('did-finish-load', reveal);
+  // A last resort: if neither event has shown the window a few seconds in,
+  // show it anyway rather than leave the app apparently dead.
+  setTimeout(reveal, 6000);
 
   // External links open in the user's browser, never inside the editor shell.
   // Only web links reach the OS: file:, ms-settings: or any other registered
