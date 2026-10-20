@@ -237,7 +237,7 @@ async function main() {
 
     console.log('1. the Captions tab');
     const tabNames = await window.getByTestId('media-panel').getByRole('tab').allInnerTexts();
-    check('the Library has a fourth tab: Media, Titles, Transitions, Captions', tabNames.join('|') === 'Media|Titles|Transitions|Captions', tabNames.join(' / '));
+    check('the Library has a Captions tab: Media, Titles, Transitions, Effects, Captions', tabNames.join('|') === 'Media|Titles|Transitions|Effects|Captions', tabNames.join(' / '));
     await window.getByTestId('library-tab-captions').click();
     const empty = await window.getByTestId('transcript-empty').innerText();
     check('with no captions it says so, and offers to generate or import them', /No captions yet/.test(empty) && /Generate captions…/.test(empty) && /Import captions…/.test(empty), empty.replace(/\s+/g, ' '));
@@ -452,7 +452,7 @@ async function main() {
       /every caption on “Captions 1”/.test(scope) && sections.join('|') === 'Preset|Font|Outline|Background|Position|Animation', `${scope} | ${sections.join(' / ')}`);
     await shot(window, 'f2-style-en.png');
     const fonts = await window.getByTestId('caption-style-font').locator('optgroup').first().locator('option').allInnerTexts();
-    check('the fonts that come with the app are offered: Inter, Source Serif 4, Oswald', fonts.join('|') === 'Inter|Source Serif 4|Oswald', fonts.join(' / '));
+    check('the fonts that come with the app are offered, Inter, Source Serif 4 and Oswald first', fonts.slice(0, 3).join('|') === 'Inter|Source Serif 4|Oswald' && fonts.length >= 3, fonts.join(' / '));
 
     const depth5 = await depthOf(window);
     await window.getByTestId('caption-style-font').selectOption('Oswald');
@@ -691,7 +691,7 @@ async function main() {
     await sleep(400);
     const tabNamesEs = await window.getByTestId('media-panel').getByRole('tab').allInnerTexts();
     const inspectorEs = await inspector.getByRole('tab').allInnerTexts();
-    check('las pestañas: Medios, Títulos, Transiciones, Subtítulos - y Subtítulo, Estilo, Info', tabNamesEs.join('|') === 'Medios|Títulos|Transiciones|Subtítulos' && inspectorEs.join('|') === 'Subtítulo|Estilo|Info',
+    check('las pestañas: Medios, Títulos, Transiciones, Efectos, Subtítulos - y Subtítulo, Estilo, Info', tabNamesEs.join('|') === 'Medios|Títulos|Transiciones|Efectos|Subtítulos' && inspectorEs.join('|') === 'Subtítulo|Estilo|Info',
       `${tabNamesEs.join(' / ')} - ${inspectorEs.join(' / ')}`);
     const captionEs = (await window.locator('#inspector-tabpanel').innerText()).replace(/\s+/g, ' ');
     check('la pestaña Subtítulo: saltos automáticos, en pantalla, a qué clip sigue', /Saltos de línea automáticos/.test(captionEs) && /En pantalla/.test(captionEs) && /Sigue al clip «talk\.mp4»/.test(captionEs) && /Soltar del clip/.test(captionEs),

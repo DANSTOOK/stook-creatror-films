@@ -16,6 +16,41 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.54.0-beta.1 — Texto a voz en su propia ventana y una app sin huecos
+2026-10-20 · pre-release para probar
+
+### Añadido
+- **Texto a voz es ahora una ventana aparte**, no un cuadro que bloquea el
+  editor. Se puede mover, cambiar de tamaño (recuerda tamaño y posición) y
+  seguir editando con ella abierta. Al generar, el clip cae en el cabezal y la
+  ventana se queda abierta con el texto vacío para generar la siguiente línea.
+  Si ya está abierta, el menú y la paleta la traen al frente en vez de abrir
+  otra.
+  - *Comprobado:* síntesis real en español e inglés 19/19 (WER 0 %); prueba de
+    ventana 10/10 (segunda ventana, editor vivo, no se duplica, reabre con el
+    tamaño guardado, cierra limpia).
+
+### Arreglado
+- **Separar audio del vídeo ahora separa siempre:** el sonido sale a la pista
+  de audio como clip propio, enlazado al vídeo, aunque no se hubiera extraído
+  al importar. La opción solo aparece en clips que tienen sonido; con un vídeo
+  mudo avisa al momento.
+  - *Comprobado:* edición de audio 47/47 (incluido un vídeo sin pista de
+    audio).
+- **Huecos muy pronunciados en la interfaz:** la pantalla de inicio sin
+  proyectos recientes, el inspector sin selección, Medios vacío y Subtítulos
+  vacío muestran ahora un estado vacío centrado que ocupa su área. En
+  Exportar, las dos columnas de ajustes terminan a la par.
+  - *Comprobado:* capturas antes y después a 1920×1080; interfaz 127/127 con
+    el escaneo de contraste en verde.
+
+### Pruebas
+- Unitarias 1507/1507, interfaz 127/127, extremo a extremo 22/22, cabezal y
+  capas 20/20, títulos 33/33, subtítulos 72/72 (la prueba esperaba aún 4
+  pestañas y 3 fuentes; ahora cuenta Efectos y la lista ampliada).
+
+---
+
 ## v1.53.0-beta.1 — La app siempre abre
 2026-10-20 · pre-release para probar
 
