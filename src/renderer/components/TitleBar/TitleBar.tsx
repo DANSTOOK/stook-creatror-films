@@ -212,6 +212,42 @@ export function TitleBar({
 
           <span aria-hidden className="mx-1 h-4 w-px bg-panel-700" />
 
+          {/*
+            Find a command, and the app's settings. They were on the right of
+            the bar; moved to the left, by the logo and home, where the eye
+            lands first and where editors keep their command search. The field
+            is wider and accent-bordered so it reads as the search bar it is,
+            and the gear is ringed so it is easy to find. The field opens the
+            same palette Ctrl+Shift+P does; the gear the same Preferences
+            dialog. On a narrow window the field's name hides, the icon staying,
+            so the bar still fits and the project name keeps its room.
+          */}
+          <div className="app-no-drag flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              data-testid="title-search"
+              aria-haspopup="dialog"
+              className="group flex h-7 min-w-0 items-center gap-2 rounded-control border border-accent/40 bg-panel-900 px-2.5 text-slate-200 transition-colors hover:border-accent/70 hover:bg-panel-800 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-hover sm:min-w-[12rem]"
+              onClick={onCommandPalette}
+              {...tip(t('titlebar.search'), { shortcut: 'Ctrl+Shift+P', hint: t('titlebar.searchHint'), named: false })}
+            >
+              <Search size={14} className="shrink-0 text-accent-hover" />
+              <span className="hidden min-w-0 flex-1 truncate text-left text-xs sm:inline">{t('titlebar.search')}</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="title-settings"
+              className="tool-button w-7 px-0 ring-1 ring-panel-600 transition-colors hover:text-accent-hover hover:ring-accent/60"
+              onClick={onPreferences}
+              {...tip(t('titlebar.settings'), { hint: t('titlebar.settingsHint') })}
+            >
+              <Settings size={15} />
+            </button>
+          </div>
+
+          <span aria-hidden className="mx-1 h-4 w-px bg-panel-700" />
+
           {/* The open project, and whether it has unsaved changes. Part of
               the drag area, as a window title is. */}
           <div className="flex min-w-0 items-center gap-2 px-1" title={projectPath ?? t('toolbar.notSaved')}>
@@ -233,39 +269,6 @@ export function TitleBar({
           </div>
 
           <div className="min-w-4 flex-1" />
-
-          {/*
-            Find a command, and the app's settings - both were only in the
-            application menu, where the user could not find them. They live in
-            the bar now, as a search field and a gear, where every modern editor
-            keeps them (VS Code's command palette, the HIG's toolbar). The field
-            opens the same palette Ctrl+Shift+P does; the gear the same
-            Preferences dialog. The field's name hides on a narrow window, the
-            icon staying, so the bar still fits.
-          */}
-          <button
-            type="button"
-            data-testid="title-search"
-            aria-haspopup="dialog"
-            className="app-no-drag group flex h-7 min-w-0 max-w-44 items-center gap-1.5 rounded-control border border-panel-700 bg-panel-900 px-2 text-slate-300 transition-colors hover:border-panel-600 hover:bg-panel-800 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-hover"
-            onClick={onCommandPalette}
-            {...tip(t('titlebar.search'), { shortcut: 'Ctrl+Shift+P', hint: t('titlebar.searchHint'), named: false })}
-          >
-            <Search size={14} className="shrink-0 text-slate-400 transition-colors group-hover:text-slate-200" />
-            <span className="hidden min-w-0 truncate text-xs sm:inline">{t('titlebar.search')}</span>
-          </button>
-
-          <button
-            type="button"
-            data-testid="title-settings"
-            className="tool-button app-no-drag w-7 px-0"
-            onClick={onPreferences}
-            {...tip(t('titlebar.settings'), { hint: t('titlebar.settingsHint') })}
-          >
-            <Settings size={15} />
-          </button>
-
-          <span aria-hidden className="mx-1 h-4 w-px bg-panel-700" />
 
           {/* Panels that are out in windows of their own, beside the buttons
               for the ones that are here. */}

@@ -48,6 +48,7 @@ import { canRelink, relinkMissing } from '@renderer/media/relink';
 import { errorText } from '@renderer/errorText';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { useSessionStore } from '@renderer/store/useSessionStore';
 import { useIndicator } from '@renderer/motion/useIndicator';
 import { TransitionsBrowser } from './LibraryBrowsers';
 import { EffectsBrowser } from './EffectsBrowser';
@@ -114,16 +115,18 @@ const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
   captions: Captions,
 };
 
-const LIBRARY_TAB_KEY = 'scf.libraryTab';
-
-function loadLibraryTab(): LibraryTab {
-  try {
-    const stored = window.localStorage.getItem(LIBRARY_TAB_KEY);
-    return LIBRARY_TABS.includes(stored as LibraryTab) ? (stored as LibraryTab) : 'media';
-  } catch {
-    return 'media';
-  }
-}
+/**
+ * The one-line "what is this?" each tab shows on hover and to a screen reader,
+ * so every tab - the open one included - says which window it is, not only the
+ * icon-only ones. Kept short, the way Final Cut and Resolve label a browser.
+ */
+const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
+  media: 'library.mediaTip',
+  titles: 'library.titlesTip',
+  transitions: 'library.transitionsTip',
+  effects: 'library.effectsTip',
+  captions: 'library.captionsTip',
+};
 
 /** File > Import media: the application menu asks the panel to run its Import. */
 export const MENU_IMPORT_EVENT = 'scf:menu-import';
@@ -164,15 +167,15 @@ export function MediaLibrary(): JSX.Element {
     setTileZoomState(next);
   };
   const waveforms = useMediaStore((state) => state.waveforms);
-  const [tab, setTabState] = useState<LibraryTab>(loadLibraryTab);
-  const setTab = useCallback((next: LibraryTab) => {
-    try {
-      window.localStorage.setItem(LIBRARY_TAB_KEY, next);
-    } catch {
-      // Remembered for this session only.
-    }
-    setTabState(next);
-  }, []);
+  // Opening a project always starts on Media - the files are where editing
+  // begins - so the tab is not remembered across opens. It is free to change
+  // for the rest of the session; the effect below only resets it on a fresh
+  // open (see projectEpoch).
+  const [tab, setTab] = useState<LibraryTab>('media');
+  const projectEpoch = useSessionStore((state) => state.projectEpoch);
+  useEffect(() => {
+    setTab('media');
+  }, [projectEpoch]);
   const tabIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(tab);
   // New captions bring their list forward, as a new title selects itself.
   useEffect(() => {
@@ -576,7 +579,10 @@ export function MediaLibrary(): JSX.Element {
         aria-label={tr('library.tabs')}
         className="library-tabs relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
       >
-        <span ref={tabIndicator.indicatorRef} aria-hidden className="scf-indicator rounded-control bg-panel-700" />
+        {/* The moving highlight is the accent now, not a grey tile: the open
+            tab is filled with the app's blue and underlined with it, so which
+            window is open reads at a glance. */}
+        <span ref={tabIndicator.indicatorRef} aria-hidden className="scf-indicator library-tab-indicator rounded-control" />
         {LIBRARY_TABS.map((id) => {
           const Icon = LIBRARY_TAB_ICON[id];
           return (
@@ -589,11 +595,13 @@ export function MediaLibrary(): JSX.Element {
             aria-selected={tab === id}
             aria-controls="library-tabpanel"
             tabIndex={tab === id ? 0 : -1}
-            // The name is a tooltip whenever it is not shown, so an icon-only
-            // tab still says what it is on hover.
-            title={tr(LIBRARY_TAB_LABEL[id])}
+            // Every tab says what window it is on hover and to a screen reader -
+            // the open one included - through the shared tooltip. `named: false`
+            // because the visible label (or its sr-only copy) is already the
+            // accessible name; the tip only adds the one-line description.
+            {...tip(tr(LIBRARY_TAB_LABEL[id]), { hint: tr(LIBRARY_TAB_TIP[id]), named: false })}
             className={`library-tab relative flex h-control-dense min-w-0 max-w-36 shrink-0 items-center justify-center gap-1 rounded-control px-2 text-xs transition-colors ${
-              tab === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
+              tab === id ? 'font-semibold text-white' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
             onKeyDown={(event) => {

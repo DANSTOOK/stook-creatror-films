@@ -21,6 +21,12 @@ interface SessionState {
   /** The .scf this project lives in; null until it is first saved. */
   projectPath: string | null;
   projectName: string;
+  /**
+   * Bumped each time a project is opened, created or started: a counter the
+   * panels watch to reset their per-project view (the Library always returns
+   * to Media), without the project store having to know about any of them.
+   */
+  projectEpoch: number;
   saved: SavedMarker | null;
   /** The "save changes?" question on screen, if any. */
   unsavedPrompt: { name: string; resolve(choice: SaveChoice): void } | null;
@@ -49,6 +55,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   view: initialView(),
   projectPath: null,
   projectName: t('home.untitled'),
+  projectEpoch: 0,
   saved: null,
   unsavedPrompt: null,
 
@@ -57,7 +64,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   startProject(path, name, marker) {
-    set({ projectPath: path, projectName: name, saved: path ? marker : null, view: 'editor' });
+    set((state) => ({
+      projectPath: path,
+      projectName: name,
+      saved: path ? marker : null,
+      view: 'editor',
+      // A new epoch so the panels know this is a fresh project, even when the
+      // editor was already on screen (File > New or Open while editing).
+      projectEpoch: state.projectEpoch + 1,
+    }));
   },
 
   closeProject() {

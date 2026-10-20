@@ -645,6 +645,21 @@
     }
   }
 
+  /*
+    The open tab's highlight. It used to be a faint grey tile that was easy to
+    miss; now it is filled with the app's accent, ringed in it, and carries a
+    2px accent underline, so which window is open is obvious at a glance. White
+    label text over this reads well past 4.5:1 on the dark tab row. The accent
+    is #2563eb (tailwind.config.js); written out here because the shared
+    .scf-indicator takes its colour from the class on the element.
+  */
+  .library-tab-indicator {
+    background-color: rgb(37 99 235 / 0.22);
+    box-shadow:
+      inset 0 0 0 1px rgb(37 99 235 / 0.55),
+      inset 0 -2px 0 0 #2563eb;
+  }
+
   .media-tile-selected {
     @apply bg-panel-800;
   }
