@@ -4,6 +4,7 @@ import { AudioLines, Download, Loader2, PanelsTopLeft, Play, Trash2 } from 'luci
 import type { TtsEngineStatus, TtsResult, TtsVoiceStatus } from '@shared/types/ipc';
 import { TooltipLayer, tip } from '@renderer/components/Tooltip/Tooltip';
 import { useDetachedWindow } from '@renderer/components/Layout/useDetachedWindow';
+import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
 import { currentLocale, useLanguageStore, useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { buildAsset, hasNativeBridge } from '@renderer/media/importMedia';
@@ -232,15 +233,20 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      {/* A column that fills the window: the text box takes whatever height
+          the window has, so making the window taller gives the script more
+          room instead of leaving a blank band under the controls. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
         {unavailable ? (
-          <p className="text-sm text-panel-200" data-testid="tts-unavailable">{t('tts.unavailable')}</p>
+          <div className="flex min-h-0 flex-1 flex-col" data-testid="tts-unavailable">
+            <PanelEmptyState icon={AudioLines} title={t('tts.unavailable')} hint={t('tts.unavailableHint')} />
+          </div>
         ) : (
           <>
-            <label className="block space-y-1">
+            <label className="flex min-h-[7rem] flex-1 flex-col gap-1">
               <span className="field-label">{t('tts.text')}</span>
               <textarea
-                className="input-field h-28 w-full resize-y p-2 text-sm"
+                className="input-field min-h-0 w-full flex-1 resize-none p-2 text-sm"
                 placeholder={t('tts.textPlaceholder')}
                 value={text}
                 data-testid="tts-text"
@@ -248,7 +254,7 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
               />
             </label>
 
-            <div className="flex gap-3">
+            <div className="flex shrink-0 gap-3">
               <label className="flex-1 space-y-1">
                 <span className="field-label">{t('tts.language')}</span>
                 <select
@@ -279,7 +285,7 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
             </div>
 
             {voice && (
-              <div className="flex items-center justify-between text-xs text-panel-300">
+              <div className="flex shrink-0 items-center justify-between text-xs text-panel-300">
                 <span>{describeVoice(voice)}</span>
                 <span className="flex items-center gap-2">
                   <span className="text-panel-400">{voice.licence}</span>
@@ -293,7 +299,7 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
               </div>
             )}
 
-            <label className="block space-y-1">
+            <label className="block shrink-0 space-y-1">
               <span className="flex items-center justify-between text-xs text-panel-200">
                 <span className="field-label">{t('tts.speed')}</span>
                 <span className="tabular-nums text-panel-300">{speed.toFixed(2)}×</span>
@@ -316,7 +322,7 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
               </p>
             )}
 
-            <p className="text-xs text-panel-400">{t('tts.pitchNote')}</p>
+            <p className="shrink-0 text-xs text-panel-400">{t('tts.pitchNote')}</p>
             {status?.disclosureRequired && <p className="text-xs text-amber-300" data-testid="tts-disclosure">{t('tts.disclosure')}</p>}
           </>
         )}

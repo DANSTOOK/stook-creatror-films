@@ -947,7 +947,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              {/* The picture: what it is, how big, and which stretch of the timeline. */}
+              {/* The picture: what it is and how big. */}
               <div className="space-y-3">
                 <Section title={t('export.sectionVideo')}>
                   <label className="flex flex-col gap-1">
@@ -1073,7 +1073,13 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     </div>
                   </details>
                 </Section>
+              </div>
 
+              {/* The range, cover image, captions and hardware. */}
+              <div className="space-y-3">
+                {/* Which stretch of the timeline, first in this column: the two
+                    columns used to end 270px apart, with Range alone under the
+                    picture settings and a hole beside it. */}
                 <Section title={t('export.sectionRange')}>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-1">
@@ -1128,10 +1134,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     )}
                   </div>
                 </Section>
-              </div>
 
-              {/* The cover image, captions and hardware: the optional half. */}
-              <div className="space-y-3">
                 <Section title={t('export.sectionThumbnail')}>
                   {coverArt ? (
                     <>
