@@ -49,8 +49,3 @@ export function clearMotionPreset(clipId: string): void {
     },
   });
 }
-
-/** Whether the clip is carrying position or scale keyframes (a motion preset, or a hand-made move). */
-export function hasMotion(clip: Clip): boolean {
-  return clip.transform.position.length > 0 || clip.transform.scale.length > 1;
-}

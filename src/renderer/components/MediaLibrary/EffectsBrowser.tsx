@@ -21,7 +21,7 @@ import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { EFFECT_CATEGORIES, EFFECTS, effectCategoryLabel, effectLabel, type EffectCategory } from '@renderer/fx/effects/catalog';
 import { addStackEffect } from '@renderer/components/Inspector/EffectStack';
-import { MOTION_PRESETS, motionPresetLabel, motionPreview, type MotionPresetId } from '@renderer/fx/motion/presets';
+import { MOTION_PRESETS, motionPresetHint, motionPresetLabel, motionPreview, type MotionPresetId } from '@renderer/fx/motion/presets';
 import { applyMotionPreset } from '@renderer/fx/motion/apply';
 import { drawTransitionThumb } from './libraryThumbs';
 import { THUMB_HEIGHT, THUMB_WIDTH } from './LibraryBrowsers';
@@ -143,19 +143,22 @@ interface TileProps {
   label: string;
   testId: string;
   hintId: string;
+  /** A per-tile description, shown on hover - the specific move or effect. */
+  title?: string;
   Icon: ComponentType<LucideProps>;
   thumb: JSX.Element;
   onPointed(pointed: boolean): void;
   onApply(): void;
 }
 
-function Tile({ label, testId, hintId, Icon, thumb, onPointed, onApply }: TileProps): JSX.Element {
+function Tile({ label, testId, hintId, title, Icon, thumb, onPointed, onApply }: TileProps): JSX.Element {
   return (
     <li className="min-w-0">
       <button
         type="button"
         data-testid={testId}
         aria-describedby={hintId}
+        title={title}
         className="media-tile group w-full cursor-pointer text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-hover"
         onPointerEnter={() => onPointed(true)}
         onPointerLeave={() => onPointed(false)}
@@ -188,6 +191,7 @@ function MotionTile({ preset, hintId, onApply }: { preset: MotionPresetId; hintI
       label={t(motionPresetLabel(preset))}
       testId={`library-motion-${preset}`}
       hintId={hintId}
+      title={t(motionPresetHint(preset))}
       Icon={MOTION_ICON[preset]}
       thumb={<MotionThumb preset={preset} playing={pointed} />}
       onPointed={setPointed}
