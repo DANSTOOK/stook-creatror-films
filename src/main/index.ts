@@ -354,8 +354,19 @@ app.whenReady().then(() => {
 });
 
 app.on('second-instance', () => {
-  if (!mainWindow || BACKGROUND) return;
+  // A second launch must always leave a usable window on screen. The first
+  // copy holds the single-instance lock, so this copy quit at once; it is
+  // this handler that has to surface the window. If the first copy still has
+  // one, raise it; if its window was closed but the process lingered, make a
+  // new one. Without the last case the app looks unlaunchable - every
+  // double-click does nothing - until the stray process is killed by hand.
+  if (BACKGROUND) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
   if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
 });
 
