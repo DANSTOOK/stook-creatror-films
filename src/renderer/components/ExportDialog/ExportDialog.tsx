@@ -860,8 +860,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               </p>
             )}
 
-            {/* Quick presets: format, size and transparency set together. */}
-            <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label={t('export.presets')}>
+            {/* Step 1: a quick preset sets format, size and transparency together. */}
+            <div className="mb-4 space-y-1.5">
+              <h3 className="field-label">{t('export.stepPreset')}</h3>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={t('export.presets')}>
               {QUICK_PRESETS.map((preset) => {
                 const Icon = preset.icon;
                 // At most one is pressed. "Project" and "YouTube 1080p" are the
@@ -888,6 +890,60 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                   </button>
                 );
               })}
+              </div>
+            </div>
+
+            {/* Step 2 (the primary path): name the file and choose where it goes.
+                Accent-bordered so it reads as the field to fill in before Export -
+                the way Resolve's Custom Export leads with File name and Location. */}
+            <section className="mb-4 space-y-2 rounded-lg border border-accent/40 bg-accent/[0.05] p-3">
+              <h3 className="field-label text-slate-200">{t('export.stepSave')}</h3>
+              <label className="flex flex-col gap-1">
+                <span className="text-2xs text-slate-400">{t('export.fileName')}</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={fileNameRef}
+                    className="numeric-input"
+                    value={fileName}
+                    spellCheck={false}
+                    onChange={(event) => setFileName(event.target.value)}
+                  />
+                  <span className="shrink-0 text-2xs text-slate-400">{extension}</span>
+                </div>
+              </label>
+              <div className="flex items-end gap-2">
+                <label className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="text-2xs text-slate-400">{t('export.saveIn')}</span>
+                  <input readOnly className="numeric-input" value={folder ?? ''} placeholder={t('export.notChosen')} />
+                </label>
+                <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
+                  <FolderOpen size={14} />
+                  {t('export.browse')}
+                </button>
+              </div>
+              {folder && settings.outputPath && (
+                <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-400'}`}>
+                  {targetExists ? t('export.willReplace') : t('export.willSave')}{' '}
+                  <span className="text-slate-300">{settings.outputPath}</span>
+                </p>
+              )}
+              {/*
+                The export name defaults to the first video's name, so a folder the
+                footage came from aims the render at the footage itself. That is
+                not a replace, it is a loss - said plainly, and the button is off.
+              */}
+              {targetInUse && (
+                <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
+                  {t('export.sourceFootage')}
+                </p>
+              )}
+            </section>
+
+            {/* Everything else, grouped under one heading: the dialog reads as a
+                short primary path with the detail below, not one dense wall. */}
+            <div className="mb-2 flex items-baseline gap-2 border-t border-panel-700 pt-3">
+              <h3 className="field-label">{t('export.moreSettings')}</h3>
+              <span className="text-2xs text-slate-500">{t('export.moreSettingsHint')}</span>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -1074,52 +1130,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 </Section>
               </div>
 
-              {/* The file: where it goes, what it is called, and its cover. */}
+              {/* The cover image, captions and hardware: the optional half. */}
               <div className="space-y-3">
-                <Section title={t('export.sectionFile')}>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-2xs text-slate-400">{t('export.fileName')}</span>
-                    <div className="flex items-center gap-1">
-                      <input
-                        ref={fileNameRef}
-                        className="numeric-input"
-                        value={fileName}
-                        spellCheck={false}
-                        onChange={(event) => setFileName(event.target.value)}
-                      />
-                      <span className="shrink-0 text-2xs text-slate-400">{extension}</span>
-                    </div>
-                  </label>
-
-                  <div className="flex items-end gap-2">
-                    <label className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="text-2xs text-slate-400">{t('export.saveIn')}</span>
-                      <input readOnly className="numeric-input" value={folder ?? ''} placeholder={t('export.notChosen')} />
-                    </label>
-                    <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
-                      <FolderOpen size={14} />
-                      {t('export.browse')}
-                    </button>
-                  </div>
-
-                  {folder && settings.outputPath && (
-                    <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-400'}`}>
-                      {targetExists ? t('export.willReplace') : t('export.willSave')}{' '}
-                      <span className="text-slate-300">{settings.outputPath}</span>
-                    </p>
-                  )}
-                  {/*
-                    The export name defaults to the first video's name, so a folder the
-                    footage came from aims the render at the footage itself. That is
-                    not a replace, it is a loss - said plainly, and the button is off.
-                  */}
-                  {targetInUse && (
-                    <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
-                      {t('export.sourceFootage')}
-                    </p>
-                  )}
-                </Section>
-
                 <Section title={t('export.sectionThumbnail')}>
                   {coverArt ? (
                     <>

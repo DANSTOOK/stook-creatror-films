@@ -679,6 +679,12 @@ export const es: Messages = {
   'export.rendering': 'Renderizando…',
   'export.start': 'Empezar a exportar',
   'export.presets': 'Preajustes rápidos',
+  // Los tres pasos del camino sencillo: elegir un preajuste, nombrar y ubicar
+  // el archivo, exportar. Todo lo demás se agrupa en "Ajustes de exportación".
+  'export.stepPreset': '1. Empieza con un preajuste',
+  'export.stepSave': '2. Dale un nombre y elige dónde se guarda',
+  'export.moreSettings': 'Ajustes de exportación',
+  'export.moreSettingsHint': 'Formato, resolución, intervalo, miniatura y hardware',
   'export.presetProject': 'Proyecto',
   'export.presetProjectHint': 'MP4 al tamaño del proyecto',
   'export.presetYouTube': 'YouTube 1080p',
@@ -1328,6 +1334,12 @@ export const es: Messages = {
   'library.media': 'Medios',
   'library.titles': 'Títulos',
   'library.transitions': 'Transiciones',
+  // Descripción de una línea que cada pestaña muestra al pasar el cursor.
+  'library.mediaTip': 'Medios: los clips, imágenes y audio de este proyecto',
+  'library.titlesTip': 'Títulos: textos listos para arrastrar a la línea de tiempo',
+  'library.transitionsTip': 'Transiciones: efectos para el corte entre dos clips',
+  'library.effectsTip': 'Efectos: filtros y movimiento para aplicar a un clip',
+  'library.captionsTip': 'Subtítulos: lo hablado como una lista editable',
   'library.titlesHint': 'Arrastra un título a una pista, o pulsa Intro para añadirlo en el cursor.',
   'library.transitionsHint': 'Arrastra una transición a un corte, o pulsa Intro para ponerla en los clips seleccionados o en el corte del cursor.',
   'library.noCut': 'No hay dónde ponerla: selecciona clips o lleva el cursor a un corte.',
