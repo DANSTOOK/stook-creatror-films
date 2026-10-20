@@ -294,6 +294,9 @@ export async function detachSelectionAudio(clipIds?: string[]): Promise<void> {
   for (const id of ids) {
     const clip = store.project.clips[id];
     const asset = clip ? assetByUri.get(clip.sourceUri) : undefined;
+    // A file the probe found silent is not worth an ffmpeg run: skipping it
+    // keeps "nothing to detach" immediate rather than a wait for a failure.
+    if (asset?.hasAudio === false) continue;
     if (asset && asset.kind === 'video' && !asset.audioUri && asset.sourcePath && !clip?.audioDetached && !clip?.audioOnly) {
       toExtract.set(asset.id, asset.sourcePath);
     }
