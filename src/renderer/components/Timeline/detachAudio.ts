@@ -47,9 +47,12 @@ const endOf = (clip: Pick<Clip, 'startFrame' | 'durationFrames'>): number => cli
  * path (dropped into a browser) was never asked, and is given the benefit of
  * the doubt.
  */
-export function assetHasSound(asset: Pick<MediaAsset, 'kind' | 'audioUri' | 'sourcePath'> | undefined): boolean {
+export function assetHasSound(asset: Pick<MediaAsset, 'kind' | 'audioUri' | 'sourcePath' | 'hasAudio'> | undefined): boolean {
   if (!asset || asset.kind !== 'video') return false;
-  return Boolean(asset.audioUri) || !asset.sourcePath;
+  // Sound already pulled out, or the probe found an audio track; a file not
+  // probed gets the benefit of the doubt (an old project, a browser drop),
+  // and only a probe that found no audio hides detach for good.
+  return Boolean(asset.audioUri) || asset.hasAudio === true || (asset.hasAudio === undefined && !asset.sourcePath);
 }
 
 /** Whether a clip's sound can be detached: a picture clip of a video file, still carrying it. */

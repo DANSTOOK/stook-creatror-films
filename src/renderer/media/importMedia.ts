@@ -87,6 +87,7 @@ export interface RawImport {
   /** A streaming URL - the desktop path; the file never enters memory. */
   uri?: string;
   audioUri?: string;
+  hasAudio?: boolean;
   sourcePath?: string;
   /** Frame rate from ffmpeg, which is more authoritative than measuring. */
   hintFps?: number;
@@ -124,6 +125,7 @@ export async function buildAsset(input: RawImport, fps: number): Promise<MediaAs
     ...(input.hintFps || probe.fps ? { sourceFps: input.hintFps ?? probe.fps } : {}),
     ...(probe.thumbnailUri ? { thumbnailUri: probe.thumbnailUri } : {}),
     ...(input.audioUri ? { audioUri: input.audioUri } : {}),
+    ...(input.hasAudio !== undefined ? { hasAudio: input.hasAudio } : {}),
   };
 }
 
@@ -319,6 +321,7 @@ async function importPickedFiles(
           uri,
           sourcePath: file.path,
           ...(audioUri ? { audioUri } : {}),
+          ...(probe ? { hasAudio: probe.hasAudio } : {}),
           ...(probe?.fps ? { hintFps: probe.fps } : {}),
         },
         fps,

@@ -280,9 +280,35 @@ export function runPlaybackClock(frames: FrameSource = editorFrames, startTime =
  * to detach - a key that does nothing silently reads as a key that is broken.
  * Shared by the key, the menu and the timeline's right-click menu.
  */
-export function detachSelectionAudio(clipIds?: string[]): void {
+export async function detachSelectionAudio(clipIds?: string[]): Promise<void> {
   const store = useProjectStore.getState();
-  const made = store.detachAudio(clipIds);
+  const ids = clipIds ?? store.ui.selectedClipIds;
+
+  // A video whose sound was never pulled out at import (extraction skipped or
+  // failed) has no `audioUri`, so detaching it would otherwise do nothing and
+  // wrongly report "nothing to detach". Pull the sound out now, on demand, for
+  // every selected video clip that is missing it, before detaching - so the
+  // sound literally lands on an audio track as the user expects.
+  const assetByUri = new Map(store.assets.map((asset) => [asset.uri, asset]));
+  const toExtract = new Map<string, string>();
+  for (const id of ids) {
+    const clip = store.project.clips[id];
+    const asset = clip ? assetByUri.get(clip.sourceUri) : undefined;
+    // A file the probe found silent is not worth an ffmpeg run: skipping it
+    // keeps "nothing to detach" immediate rather than a wait for a failure.
+    if (asset?.hasAudio === false) continue;
+    if (asset && asset.kind === 'video' && !asset.audioUri && asset.sourcePath && !clip?.audioDetached && !clip?.audioOnly) {
+      toExtract.set(asset.id, asset.sourcePath);
+    }
+  }
+  if (toExtract.size > 0) {
+    const results = await Promise.all(
+      [...toExtract].map(async ([assetId, path]) => ({ assetId, uri: await window.filmora.extractAudio(path).catch(() => null) })),
+    );
+    for (const { assetId, uri } of results) if (uri) useProjectStore.getState().setAssetAudio(assetId, uri);
+  }
+
+  const made = useProjectStore.getState().detachAudio(ids);
   if (made.length === 0) notify(t('detach.nothing'), 'warning');
 }
 

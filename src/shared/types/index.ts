@@ -880,6 +880,13 @@ export interface MediaAsset {
    * gigabytes of pictures; this is megabytes. Session-only, like `uri`.
    */
   audioUri?: string;
+  /**
+   * Whether the file has an audio track, as the probe found at import. True
+   * for a video with sound, false for a silent one (a screen recording, a
+   * drone shot); absent when it was never probed. Detach audio is offered
+   * unless this is explicitly false, and the sound is pulled out on demand.
+   */
+  hasAudio?: boolean;
   /** Set when a reopened project could not restore this asset from disk. */
   missing?: boolean;
   /** The library bin this asset is filed in; absent means the top level. */

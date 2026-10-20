@@ -549,6 +549,13 @@ interface ProjectStore {
    * it had to change) and is no longer missing; clips follow the URL.
    */
   relinkAssets(changes: ReadonlyArray<{ assetId: string; sourcePath: string; uri: string; audioUri?: string }>): void;
+  /**
+   * Record the sound pulled out of a video asset, so a clip of it can be
+   * detached and played apart from the picture. Set when the audio was not
+   * extracted at import (or extraction had failed) and is pulled out later,
+   * on demand, the moment the user asks to detach it.
+   */
+  setAssetAudio(assetId: string, audioUri: string): void;
 
   /* Media bins ----------------------------------------------------------- */
   setCurrentBin(binId: string | null): void;
@@ -2524,6 +2531,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // browser session has no media:// URL to keep, and follows the new one.
     const project = remap.size > 0 ? remapClipSources(get().project, remap) : get().project;
     set({ assets, project });
+  },
+
+  setAssetAudio(assetId, audioUri) {
+    set({ assets: get().assets.map((asset) => (asset.id === assetId ? { ...asset, audioUri } : asset)) });
   },
 
   setAssetProxy(assetId, proxyUri) {

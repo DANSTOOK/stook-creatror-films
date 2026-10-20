@@ -454,6 +454,11 @@ export function Timeline(): JSX.Element {
       const { project, assets } = state;
       const kindOf = (uri: string) => assets.find((asset) => asset.uri === uri)?.kind;
       const trackOf = (id: string) => project.tracks.find((track) => track.id === project.clips[id]?.trackId);
+      // A video clip with sound is offered detach - a probed audio track or
+      // sound already pulled out. The sound is extracted on demand when it was
+      // not pulled out at import (detachSelectionAudio), so a clip whose
+      // audioUri is merely missing is still offered; only a video the probe
+      // found silent is not.
       const detachable = selected.filter(
         (id) => canDetachAudio(project.clips[id], trackOf(id), kindOf) && assetHasSound(assets.find((asset) => asset.uri === project.clips[id].sourceUri)),
       );
