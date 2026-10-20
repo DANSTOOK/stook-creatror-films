@@ -16,6 +16,41 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.51.0-beta.1 — Buscador y ajustes arriba, pestaña de Efectos y zoom de pantalla
+2026-10-19 · pre-release para probar
+
+Mejoras de interfaz pedidas, y un grupo de efectos de movimiento muy usados.
+
+### Añadido
+- **Buscador de funciones, ahora visible arriba.** Un campo **Search** en la
+  barra superior abre el buscador de funciones; el atajo Ctrl+Mayús+P sigue
+  funcionando. Antes solo estaba en el menú.
+- **Botón de ajustes visible.** Un engranaje en la barra superior abre
+  Preferencias. Antes estaba escondido en el menú.
+- **Pestaña de Efectos nueva** en el panel de biblioteca, junto a Medios,
+  Títulos, Transiciones y Subtítulos. Explora los efectos por categoría
+  (Movimiento, Color, Desenfoque, Distorsión, Estilizado, Fílmico), busca y
+  aplica al clip seleccionado o al que está bajo el cabezal con un clic.
+- **Zoom de pantalla y movimientos** (grupo «Movimiento»): **Acercar zoom,
+  Alejar zoom, Ken Burns, Paneo a izquierda/derecha/arriba/abajo**. Se hacen
+  con fotogramas clave de escala y posición del clip —no son filtros—, así
+  que se ven igual en el visor y en la exportación. El Ken Burns y los paneos
+  mantienen el encuadre sin bordes negros, con suavizado en los extremos. Se
+  quitan limpiando los fotogramas clave.
+
+### Arreglado / mejorado
+- **Pestañas de biblioteca más fáciles de usar.** Cada pestaña tiene icono, y
+  en el panel estrecho la pestaña abierta muestra su nombre completo mientras
+  las demás quedan como icono (con el nombre en el tooltip), en vez de
+  recortarse a «Tra…». En una ventana ancha se ven todos los nombres.
+
+Cifras de esta versión: **1507 pruebas unitarias**, **127/127** de interfaz,
+**22/22** de extremo a extremo, presets de movimiento 8/8, y 18 comprobaciones
+en la app (el buscador abre, el engranaje abre Preferencias, los efectos
+cambian los píxeles y el zoom amplía la imagen).
+
+---
+
 ## v1.50.0-beta.1 — Muchas más transiciones, efectos y títulos, voz por IA y mejor audio
 2026-10-19 · pre-release para probar
 
