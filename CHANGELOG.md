@@ -16,6 +16,41 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.52.0-beta.1 — Barra superior más clara, pestañas con distintivo y exportación más intuitiva
+2026-10-20 · pre-release para probar
+
+Ajustes de interfaz pedidos al probar la 1.51, y un arreglo de arranque.
+
+### Arreglado
+- **La app podía quedarse «sin ejecutarse».** Si un proceso de la app quedaba
+  colgado (su ventana cerrada pero el proceso vivo), cada nuevo doble clic no
+  hacía nada, porque la app solo permite una copia a la vez. Ahora un segundo
+  arranque **trae la ventana al frente, la muestra si estaba oculta, o crea
+  una nueva** si se había cerrado. Ya no hace falta matar procesos a mano.
+
+### Mejorado (interfaz)
+- **Al abrir, siempre empieza en la pestaña Medios.** Antes recordaba la
+  última pestaña usada, y un proyecto podía abrir en Títulos o Efectos. Dentro
+  de la sesión la pestaña sigue siendo libre.
+- **Cada pestaña de la biblioteca dice qué es** al pasar el cursor (Medios,
+  Títulos, Transiciones, Efectos, Subtítulos).
+- **La pestaña activa se distingue de un vistazo:** fondo de acento, texto
+  blanco y subrayado, en vez del resalte gris tenue de antes.
+- **Buscador y ajustes, ahora a la izquierda.** El campo de búsqueda y el
+  engranaje pasan al lado izquierdo de la barra superior, junto al logo. La
+  búsqueda es más larga y llamativa (borde de acento); el engranaje, más
+  visible. Ambos siguen funcionando (y Ctrl+Mayús+P sigue abriendo la
+  búsqueda).
+- **La ventana de Exportar, más fácil de seguir.** Se reorganizó en un camino
+  claro: **1) elige un preset → 2) ponle nombre y elige la carpeta** (tarjeta
+  destacada), y debajo, agrupados, los ajustes de formato, resolución, tramo,
+  portada y hardware. No se quitó ninguna opción; lo avanzado queda plegado.
+
+Cifras de esta versión: **1507 pruebas unitarias**, **127/127** de interfaz,
+**22/22** de extremo a extremo.
+
+---
+
 ## v1.51.0-beta.1 — Buscador y ajustes arriba, pestaña de Efectos y zoom de pantalla
 2026-10-19 · pre-release para probar
 
