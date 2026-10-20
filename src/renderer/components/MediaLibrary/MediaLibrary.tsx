@@ -561,12 +561,20 @@ export function MediaLibrary(): JSX.Element {
         )}
       </header>
 
-      {/* The tabs, as the Inspector's: a segmented row, arrow keys between them. */}
+      {/*
+        The tabs, as the Inspector's: a segmented row, arrow keys between them.
+        Five names do not fit a docked 220px panel, so rather than cut them to
+        "Tra…" every tab shows its icon and only the open one wears its full
+        name (the rest keep theirs as a tooltip and for a screen reader) - the
+        way Final Cut and Resolve name the browser you are in. Detached into a
+        wide window, there is room and every tab shows its name (index.css,
+        .library-tabs).
+      */}
       <div
         ref={tabIndicator.containerRef}
         role="tablist"
         aria-label={tr('library.tabs')}
-        className="relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
+        className="library-tabs relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
       >
         <span ref={tabIndicator.indicatorRef} aria-hidden className="scf-indicator rounded-control bg-panel-700" />
         {LIBRARY_TABS.map((id) => {
@@ -581,11 +589,10 @@ export function MediaLibrary(): JSX.Element {
             aria-selected={tab === id}
             aria-controls="library-tabpanel"
             tabIndex={tab === id ? 0 : -1}
-            // Five names in a narrow panel: each tab is as wide as its icon and
-            // name need, not a fifth each, and one cut short still says its
-            // whole name when pointed at. The icon stays whatever the width.
+            // The name is a tooltip whenever it is not shown, so an icon-only
+            // tab still says what it is on hover.
             title={tr(LIBRARY_TAB_LABEL[id])}
-            className={`relative flex h-control-dense min-w-0 max-w-36 flex-auto items-center justify-center gap-1 rounded-control px-1.5 text-xs transition-colors ${
+            className={`library-tab relative flex h-control-dense min-w-0 max-w-36 shrink-0 items-center justify-center gap-1 rounded-control px-2 text-xs transition-colors ${
               tab === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
@@ -599,7 +606,7 @@ export function MediaLibrary(): JSX.Element {
             }}
           >
             <Icon size={13} aria-hidden className="shrink-0" strokeWidth={tab === id ? 2.2 : 1.8} />
-            <span className="min-w-0 truncate">{tr(LIBRARY_TAB_LABEL[id])}</span>
+            <span className="library-tab-label min-w-0 truncate">{tr(LIBRARY_TAB_LABEL[id])}</span>
           </button>
           );
         })}
