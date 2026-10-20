@@ -46,7 +46,7 @@ import { MAX_PIXELS_PER_FRAME, MIN_PIXELS_PER_FRAME } from './zoom';
 import { clipEndFrame, clipsInPaintOrder, clipsOnTrack, razorClick } from './timelineOps';
 import { trimTargetAt, type TrimTarget } from './trimModes';
 import { isLinked } from './linkGroups';
-import { assetHasSound, canDetachAudio, pairedClip, rejoinState, syncOffset, syncOffsetLabel, syncOffsets } from './detachAudio';
+import { canDetachAudio, pairedClip, rejoinState, syncOffset, syncOffsetLabel, syncOffsets } from './detachAudio';
 import { detachSelectionAudio, rejoinSelectionAudio } from '@renderer/hooks/useTransport';
 import { currentLoopRange } from '@renderer/timing/loopRange';
 import { SpeedDialog } from './SpeedDialog';
@@ -454,9 +454,10 @@ export function Timeline(): JSX.Element {
       const { project, assets } = state;
       const kindOf = (uri: string) => assets.find((asset) => asset.uri === uri)?.kind;
       const trackOf = (id: string) => project.tracks.find((track) => track.id === project.clips[id]?.trackId);
-      const detachable = selected.filter(
-        (id) => canDetachAudio(project.clips[id], trackOf(id), kindOf) && assetHasSound(assets.find((asset) => asset.uri === project.clips[id].sourceUri)),
-      );
+      // Any video clip still carrying its sound is offered - the sound is
+      // pulled out on demand when it was not extracted at import, so the menu
+      // no longer hides "Detach audio" from a clip whose audioUri is missing.
+      const detachable = selected.filter((id) => canDetachAudio(project.clips[id], trackOf(id), kindOf));
       const items: ContextMenuItem[] = [];
       const partner = pairedClip(project.clips, clip.id);
       const picture = clip.audioDetached ? clip : partner;
