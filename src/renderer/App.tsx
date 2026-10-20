@@ -20,7 +20,8 @@ import { SHOW_INSPECTOR_EVENT } from './components/Timeline/Timeline';
 import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { GenerateCaptionsDialog } from './components/Captions/GenerateCaptionsDialog';
-import { TextToSpeechDialog } from './components/TextToSpeech/TextToSpeechDialog';
+import { TextToSpeechWindow } from './components/TextToSpeech/TextToSpeechWindow';
+import { focusDetachedWindow } from './components/Layout/useDetachedWindow';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
 import { exportCaptionsToDialog, importCaptionsFromDialog } from './captions/captionFiles';
 import { PreviewViewport } from './components/PreviewViewport';
@@ -229,7 +230,6 @@ export default function App(): JSX.Element {
   const settingsPresence = usePresence(settingsOpen);
   const preferencesPresence = usePresence(preferencesOpen);
   const captionsPresence = usePresence(captionsOpen);
-  const ttsPresence = usePresence(ttsOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -544,7 +544,11 @@ export default function App(): JSX.Element {
         if (nativeAvailable) setCaptionsOpen(true);
         return;
       case 'textToSpeech':
-        if (nativeAvailable) setTtsOpen(true);
+        // Its own window now, not a modal: if it is already open, the menu
+        // brings that window to the front rather than opening a second.
+        if (nativeAvailable) {
+          if (!(ttsOpen && focusDetachedWindow('textToSpeech'))) setTtsOpen(true);
+        }
         return;
       case 'importCaptions':
         if (nativeAvailable) void importCaptionsFromDialog();
@@ -797,7 +801,9 @@ export default function App(): JSX.Element {
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
-          {ttsPresence.mounted && <TextToSpeechDialog closing={ttsPresence.closing} onClose={() => setTtsOpen(false)} />}
+          {/* Text to speech lives in a window of its own now, not a modal, so
+              the editor stays live while a voice is set up (TextToSpeechWindow). */}
+          {view === 'editor' && ttsOpen && <TextToSpeechWindow onClose={() => setTtsOpen(false)} />}
           {preferencesPresence.mounted && (
             <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
           )}

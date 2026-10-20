@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Diamond, FolderOpen, Palette, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -32,6 +32,7 @@ import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { EffectStack, addStackEffect, effectMenuItems } from './EffectStack';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
+import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
 import { pairedClip } from '@renderer/components/Timeline/detachAudio';
 import { rejoinSelectionAudio } from '@renderer/hooks/useTransport';
@@ -334,7 +335,10 @@ export function Inspector(): JSX.Element {
           <span className="min-w-0 flex-1 truncate">{t('inspector.title')}</span>
           <DetachButton panel="inspector" />
         </header>
-        <p className="p-4 text-xs text-slate-400">{t('inspector.noneSelected')}</p>
+        {/* Centred in the whole column, icon and two lines, the same empty
+            state the detached inspector window shows: a single line pinned to
+            the top of a tall panel read as broken. */}
+        <PanelEmptyState icon={SlidersHorizontal} title={t('panel.noneSelected')} hint={t('panel.noneSelectedHint')} />
       </aside>
     );
   }

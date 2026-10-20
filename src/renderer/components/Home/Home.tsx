@@ -277,9 +277,14 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
 
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             {recent === null ? null : recent.length === 0 ? (
-              <div className="scf-rise scf-surface flex h-64 flex-col items-center justify-center gap-2 rounded-panel text-center" style={stagger(2)}>
-                <Film size={28} className="text-slate-400" />
-                <p className="text-sm text-slate-300">{t('home.noRecent')}</p>
+              // The whole area beside the new-project column, not a 256px box at
+              // its top: on a 1080p screen that box left the rest of the page an
+              // empty field under a lone heading.
+              <div className="scf-rise scf-surface flex h-full min-h-64 flex-col items-center justify-center gap-2 rounded-panel text-center" style={stagger(2)}>
+                <span aria-hidden className="mb-1 grid h-12 w-12 place-items-center rounded-lg border border-panel-700 bg-panel-800 text-slate-400">
+                  <Film size={22} />
+                </span>
+                <p className="text-sm font-semibold text-slate-200">{t('home.noRecent')}</p>
                 <p className="max-w-sm text-2xs leading-relaxed text-slate-400">{t('home.noRecentHint')}</p>
               </div>
             ) : shown.length === 0 ? (

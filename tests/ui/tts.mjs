@@ -72,25 +72,40 @@ async function transcribe(wav, lang) {
   return stdout.trim();
 }
 
-async function generate(window, { language, voiceContains, text }) {
+/**
+ * The text-to-speech window: its own Electron window now, not a modal in the
+ * editor (components/TextToSpeech/TextToSpeechWindow). The menu opens it, or
+ * brings it to the front if it is already open.
+ */
+async function ttsWindow(app, window) {
   await appMenu(window, 'Timeline', /Text to speech|Texto a voz/);
-  const dialog = window.getByTestId('tts-dialog');
-  await dialog.waitFor({ state: 'visible', timeout: 10_000 });
-  await window.waitForFunction(() => (document.querySelector('[data-testid="tts-voice"]')?.options.length ?? 0) > 0, null, { timeout: 15_000 });
-  await window.getByTestId('tts-language').selectOption(language);
-  await window.getByTestId('tts-text').fill(text);
+  for (let tries = 0; tries < 50; tries += 1) {
+    for (const page of app.windows()) {
+      if (page !== window && (await page.locator('[data-testid="tts-dialog"]').count()) > 0) return page;
+    }
+    await sleep(200);
+  }
+  throw new Error('the text-to-speech window did not open');
+}
+
+async function generate(app, window, { language, voiceContains, text }) {
+  const tts = await ttsWindow(app, window);
+  check(`${language}: text to speech opens in a window of its own, not in the editor`, (await window.locator('[data-testid="tts-dialog"]').count()) === 0);
+  await tts.waitForFunction(() => (document.querySelector('[data-testid="tts-voice"]')?.options.length ?? 0) > 0, null, { timeout: 15_000 });
+  await tts.getByTestId('tts-language').selectOption(language);
+  await tts.getByTestId('tts-text').fill(text);
   // Pick the requested voice if present.
-  const picked = await window.evaluate((needle) => {
+  const picked = await tts.evaluate((needle) => {
     const sel = document.querySelector('[data-testid="tts-voice"]');
     const opt = Array.from(sel.options).find((o) => o.textContent.includes(needle));
     if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); return opt.textContent; }
     return sel.options[0]?.textContent ?? '';
   }, voiceContains);
   const before = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
-  await window.getByTestId('tts-generate').click();
-  // The dialog closes when the clip has landed.
-  await dialog.waitFor({ state: 'hidden', timeout: 60_000 });
+  await tts.getByTestId('tts-generate').click();
+  // The window stays open for the next line; the clip landing is the signal.
   await window.waitForFunction((n) => Object.keys(window.__scfStore.getState().project.clips).length > n, before, { timeout: 60_000 });
+  check(`${language}: the window stays open after generating, its text cleared`, !tts.isClosed() && (await tts.getByTestId('tts-text').inputValue()) === '');
   return picked;
 }
 
@@ -150,7 +165,7 @@ async function main() {
   ];
 
   for (const c of cases) {
-    const picked = await generate(window, c);
+    const picked = await generate(app, window, c);
     const info = await newestAudioClip(window);
     check(`${c.language}: a clip landed on an audio track`, info && info.trackType === 'audio', picked);
     check(`${c.language}: the clip is at the playhead`, info && Math.abs(info.start - info.playhead) <= 1, info ? `start ${info.start} vs playhead ${info.playhead}` : 'no clip');

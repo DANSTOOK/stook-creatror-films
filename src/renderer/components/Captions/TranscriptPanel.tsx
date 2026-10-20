@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CaseSensitive, ChevronDown, ChevronUp, Link2, ListPlus, Merge, Plus, Replace, ReplaceAll, Scissors, Search, SpellCheck, Trash2, TriangleAlert, Unlink, WandSparkles } from 'lucide-react';
+import { Captions, CaseSensitive, ChevronDown, ChevronUp, Link2, ListPlus, Merge, Plus, Replace, ReplaceAll, Scissors, Search, SpellCheck, Trash2, TriangleAlert, Unlink, WandSparkles } from 'lucide-react';
+import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
 import type { CaptionLanguage, Clip } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
@@ -411,9 +412,11 @@ export function TranscriptPanel(): JSX.Element {
 
   if (!track || !trackId) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-4 text-center" data-testid="transcript-empty">
-        <p className="text-xs leading-relaxed text-slate-300">{t('transcript.empty')}</p>
-        <div className="flex flex-col gap-1.5">
+      // The same empty state as the other panels - icon, title, hint - with
+      // the three ways to start right under it.
+      <div className="flex min-h-0 flex-1 flex-col" data-testid="transcript-empty">
+        <PanelEmptyState icon={Captions} title={t('transcript.emptyTitle')} hint={t('transcript.emptyHint')}>
+        <div className="mt-2 flex flex-col gap-1.5">
           <button type="button" className="tool-button h-control border border-panel-600 px-3" data-testid="transcript-generate" onClick={() => menuCommand('generateCaptions')}>
             {t('menu.generateCaptions')}
           </button>
@@ -424,6 +427,7 @@ export function TranscriptPanel(): JSX.Element {
             {t('transcript.newTrack')}
           </button>
         </div>
+        </PanelEmptyState>
       </div>
     );
   }
