@@ -660,15 +660,22 @@ export function MediaLibrary(): JSX.Element {
 
       <div className="media-clips min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
         {libraryEmpty ? (
-          <button
-            type="button"
-            onClick={handleImportClick}
-            className="flex w-full flex-col items-center gap-2 rounded border border-dashed border-panel-600 p-6 text-center hover:border-accent hover:bg-panel-800"
-          >
-            <Upload size={20} className="text-slate-400" />
-            <span className="text-xs text-slate-300">{tr('media.dropHere')}</span>
-            <span className="text-2xs leading-relaxed text-slate-400">{tr('media.dropHint')}</span>
-          </button>
+          // Centred in the whole clip area rather than pinned to the top: an
+          // empty media panel is a tall column, and a small box at the top of
+          // it left most of the panel an awkward void.
+          <div className="flex min-h-full flex-col items-center justify-center p-2">
+            <button
+              type="button"
+              onClick={handleImportClick}
+              className="flex w-full max-w-[300px] flex-col items-center gap-2 rounded-lg border border-dashed border-panel-600 px-6 py-8 text-center transition-colors hover:border-accent hover:bg-panel-800"
+            >
+              <span aria-hidden className="mb-1 grid h-11 w-11 place-items-center rounded-lg border border-panel-700 bg-panel-800 text-slate-400">
+                <Upload size={20} />
+              </span>
+              <span className="text-sm font-semibold text-slate-200">{tr('media.dropHere')}</span>
+              <span className="text-2xs leading-relaxed text-slate-400">{tr('media.dropHint')}</span>
+            </button>
+          </div>
         ) : (
           <>
             {/*
