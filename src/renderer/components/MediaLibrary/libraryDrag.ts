@@ -9,11 +9,13 @@ import { create } from 'zustand';
  * the edit points. So the panel says here what it has started dragging.
  */
 
-export type LibraryDragKind = 'title' | 'transition';
+export type LibraryDragKind = 'title' | 'transition' | 'effect';
 
 /** Drag payload types: custom, so a drop into a text field does nothing. */
 export const TITLE_DRAG_TYPE = 'application/x-scf-title';
 export const TRANSITION_DRAG_TYPE = 'application/x-scf-transition';
+/** An effect or a move from the Effects panel, as `effect:<type>` or `motion:<preset>`. */
+export const EFFECT_DRAG_TYPE = 'application/x-scf-effect';
 
 interface LibraryDragState {
   dragging: LibraryDragKind | null;
@@ -31,5 +33,6 @@ export const useLibraryDragStore = create<LibraryDragState>((set) => ({
 export function libraryDragKind(types: readonly string[]): LibraryDragKind | null {
   if (types.includes(TITLE_DRAG_TYPE)) return 'title';
   if (types.includes(TRANSITION_DRAG_TYPE)) return 'transition';
+  if (types.includes(EFFECT_DRAG_TYPE)) return 'effect';
   return null;
 }

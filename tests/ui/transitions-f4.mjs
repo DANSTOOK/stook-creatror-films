@@ -385,7 +385,13 @@ async function main() {
     await window.mouse.move(800, 20);
     await window.getByTestId('library-tab-titles').click();
     await window.getByTestId('library-title-credits').waitFor({ state: 'visible', timeout: 5_000 });
-    await sleep(500);
+    // A title tile draws once it scrolls into view: bring this one there first.
+    await window.getByTestId('library-title-lowerThird').scrollIntoViewIfNeeded();
+    await window.waitForFunction(() => {
+      const canvas = document.querySelector('[data-testid="library-title-lowerThird"] canvas');
+      const data = canvas?.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      return Boolean(data) && data[3] > 0 && data[data.length - 1] > 0;
+    }, null, { timeout: 5_000 }).catch(() => undefined);
     const titleThumb = await thumb('library-title-lowerThird');
     check('the title thumbnails are drawn by the title renderer', titleThumb.lit === titleThumb.total);
     await window.getByTestId('library-title-lowerThird').hover();

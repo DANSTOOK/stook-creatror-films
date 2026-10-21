@@ -443,6 +443,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
     // Captions not burnt in are simply not drawn; everything else is.
     const drawn = withoutCaptions(project, burnCaptions ? burnTrackIds : new Set());
+    // Whether the file will hold the frame's transparency; when not, it is flattened over black.
+    const keepsAlpha = settings.exportAlpha && FORMATS.find((format) => format.value === settings.format)?.alpha === true;
 
     try {
       await renderer.ensureLUTs(project);
@@ -564,7 +566,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
           await renderer.renderExactToCanvas(drawn, frame);
           await encoder.encodeCanvas(renderer.canvas);
         } else {
-          const rgba = await renderer.renderExact(drawn, frame, settings.premultiplyAlpha);
+          // A file with no alpha channel shows the frame over black, as the viewer
+          // does: ffmpeg drops alpha without blending, so a fade, an opacity
+          // keyframe or a Fade in left straight would come out at full strength.
+          const rgba = await renderer.renderExact(drawn, frame, settings.premultiplyAlpha || !keepsAlpha);
           await window.filmora.exportFrame(activeJobId, rgba.buffer as ArrayBuffer);
         }
       }

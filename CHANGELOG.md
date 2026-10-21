@@ -16,9 +16,53 @@ fotogramas exportados correctos).
 
 ---
 
-## Próxima versión (sin publicar) — Subtítulos que no se pisan
+## v1.55.0-beta.1 — Efectos que se aplican bien, animaciones de clip y subtítulos que no se pisan
+2026-10-20 · pre-release para probar
+
+### Añadido
+- **19 animaciones de clip** en el panel Efectos, filtro *Animación*, como la
+  pestaña Animación de Filmora o CapCut:
+  - *Entrada* (10): aparecer, saltar dentro, golpe de zoom, entrar desde la
+    izquierda, la derecha, abajo o arriba, entrar girando, caer y rebotar,
+    sacudida de impacto.
+  - *Salida* (6): desvanecer, saltar fuera, salir por la izquierda, la
+    derecha o abajo, salir girando.
+  - *En bucle* (3): latido, balanceo, flotar.
+
+  Se escriben como fotogramas clave del propio clip (posición, escala,
+  rotación y opacidad), así que se ven igual en el visor y en la exportación
+  y se pueden retocar en el inspector. Una entrada termina en el clip tal
+  como está, y una salida parte de él: un clip movido o escalado lo sigue
+  estando, y una entrada y una salida conviven en el mismo clip. Cada
+  miniatura muestra el movimiento al pasar el ratón.
+  - *Comprobado:* 26 pruebas unitarias (cada animación acaba exactamente en
+    el clip, entra desde fuera del cuadro, se combinan, conservan los
+    fotogramas clave de fuera); en la app, cada una cambia la imagen exportada
+    en su tramo y se deshace con un Ctrl+Z.
+- **Arrastrar efectos sobre un clip:** efectos, movimientos y animaciones se
+  pueden soltar sobre un clip de la línea de tiempo; mientras se arrastra se
+  ilumina el clip que lo recibirá. Soltado fuera de un clip no hace nada. El
+  clic sigue funcionando como antes.
+- **Las miniaturas de efectos muestran el efecto**, pasado por sus shaders
+  reales sobre una escena de muestra, en vez de la misma imagen veinte veces.
 
 ### Arreglado
+- **Brillo y contraste, y Tono y saturación, no hacían nada al aplicarlos:**
+  empezaban en cero. Ahora empiezan con un ajuste que se nota (algo más de
+  brillo y contraste; colores más vivos).
+- **En un MP4 exportado, lo semitransparente salía a plena intensidad:** un
+  fundido, una opacidad con fotogramas clave o un «Aparecer» se veían en el
+  visor pero no en el archivo cuando lo codificaba ffmpeg, porque ffmpeg tira
+  el canal alfa sin mezclarlo. Ahora, en un archivo sin alfa, el cuadro se
+  compone sobre negro, como lo muestra el visor.
+  - *Comprobado:* un «Aparecer» exportado a MP4 por ffmpeg y por el
+    codificador de la plataforma: fotograma 0 negro, 6 a 179 de 255, 30
+    entero, igual que el visor.
+- **Los nombres largos del panel Efectos se montaban** sobre el de al lado;
+  ahora ocupan hasta dos líneas.
+  - *Comprobado:* `tests/ui/effects.mjs` **11/11** (las 46 miniaturas cambian
+    la imagen y se deshacen, arrastre sobre el clip y fuera de él, miniaturas
+    distintas, nombres dentro, fundido en los dos codificadores).
 - **Dos pistas de subtítulos abajo se dibujaban una encima de otra** al
   grabarlas juntas. Ahora, mientras coinciden en pantalla, el subtítulo de la
   pista de arriba sube por encima del de abajo (su alto más un margen); solo,
@@ -45,9 +89,12 @@ fotogramas exportados correctos).
   Windows, un móvil): leída con ffmpeg, que es lo que hay en este equipo.
 
 ### Pruebas
-- Unitarias 1521/1521, interfaz 127/127, extremo a extremo 22/22,
-  subtítulos 74/74 · 72/72 · 39/39, títulos 33/33, texto a voz 19/19, edición
-  de audio 47/47, cabezal y capas 20/20.
+- Unitarias 1547/1547, interfaz 127/127, extremo a extremo 22/22, efectos
+  11/11, subtítulos 74/74 · 72/72 · 39/39, títulos 33/33, transiciones 24/24
+  y 35/35, texto a voz 19/19, edición de audio 47/47, cabezal y capas 20/20.
+- La prueba de transiciones F4 medía una miniatura de título que ya no
+  estaba a la vista (se dibujan al aparecer en pantalla); ahora la lleva a la
+  vista antes. Fallaba igual antes de estos cambios.
 
 ---
 

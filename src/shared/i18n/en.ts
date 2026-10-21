@@ -1344,7 +1344,7 @@ export const en = {
   'library.transitionsHint': 'Drag a transition onto a cut, or press Enter to put it on the selected clips or the cut at the playhead.',
   'library.noCut': 'Nothing to put it on: select clips, or move the playhead to a cut.',
   'library.effects': 'Effects',
-  'library.effectsHint': 'Click an effect or a movement to apply it to the selected clip, or the clip under the playhead.',
+  'library.effectsHint': 'Drag an effect or a movement onto a clip in the timeline, or click it to apply it to the selected clip (or the one under the playhead).',
   'library.noClip': 'Nothing to apply it to: select a clip, or move the playhead over one.',
   'prefs.transitionLength': 'Default transition length',
   'prefs.transitionLengthHint': 'What Ctrl+T, Ctrl+D and the Transitions panel give a new transition.',

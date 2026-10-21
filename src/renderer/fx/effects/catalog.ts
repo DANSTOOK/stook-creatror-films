@@ -80,7 +80,8 @@ export const EFFECTS: readonly EffectDef[] = [
     category: 'color',
     origin: 'glfx',
     cost: 'light',
-    params: [p('brightness', 'fxp.brightness', 0, -1, 1, 0.01, 'signedPercent'), p('contrast', 'fxp.contrast', 0, -1, 0.95, 0.01, 'signedPercent')],
+    // Applied, it does something you can see: a touch brighter, with more punch. At 0 and 0 it did nothing.
+    params: [p('brightness', 'fxp.brightness', 0.06, -1, 1, 0.01, 'signedPercent'), p('contrast', 'fxp.contrast', 0.2, -1, 0.95, 0.01, 'signedPercent')],
   },
   {
     type: 'hueSaturation',
@@ -88,7 +89,8 @@ export const EFFECTS: readonly EffectDef[] = [
     origin: 'glfx',
     cost: 'light',
     // Hue is a turn either way, -1 to 1; shown in degrees.
-    params: [p('hue', 'fxp.hue', 0, -1, 1, 0.005, 'degrees'), p('saturation', 'fxp.saturation', 0, -1, 1, 0.01, 'signedPercent')],
+    // Applied, the colours come up; hue stays where it is until it is turned.
+    params: [p('hue', 'fxp.hue', 0, -1, 1, 0.005, 'degrees'), p('saturation', 'fxp.saturation', 0.35, -1, 1, 0.01, 'signedPercent')],
   },
   { type: 'vibrance', category: 'color', origin: 'glfx', cost: 'light', params: [p('amount', 'fxp.amount', 0.5, -1, 1, 0.01, 'signedPercent')] },
   { type: 'sepia', category: 'color', origin: 'glfx', cost: 'light', params: [p('amount', 'fxp.amount', 1, 0, 1, 0.01, 'percent')] },

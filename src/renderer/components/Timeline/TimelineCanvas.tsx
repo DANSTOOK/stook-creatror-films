@@ -71,6 +71,8 @@ export interface LibraryDropHint {
   transition: { trackId: string; start: number; end: number } | null;
   /** The title the drop would make. */
   title: { trackId: string | null; start: number; end: number } | null;
+  /** The clip an effect would be dropped on. */
+  clip?: { trackId: string; start: number; end: number } | null;
 }
 
 export interface TimelineCanvasProps {
@@ -642,6 +644,11 @@ function drawLibraryDrop(
   }
   // A title that needs a new track: a bar along the top, where it will open.
   if (hint.title) ghost(rowOf(hint.title.trackId), hint.title.start, hint.title.end, 'rgba(130, 84, 142, 0.55)');
+  // An effect: the whole clip it lands on, lit.
+  if (hint.clip) {
+    const row = rowOf(hint.clip.trackId);
+    if (row >= 0) ghost(row, hint.clip.start, hint.clip.end, 'rgba(37, 99, 235, 0.32)');
+  }
   // The cuts over the ghost, so the one it lands on still shows.
   for (const cut of hint.cuts) {
     const row = rowOf(cut.trackId);

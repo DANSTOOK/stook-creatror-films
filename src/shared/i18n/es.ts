@@ -1343,7 +1343,7 @@ export const es: Messages = {
   'library.transitionsHint': 'Arrastra una transición a un corte, o pulsa Intro para ponerla en los clips seleccionados o en el corte del cursor.',
   'library.noCut': 'No hay dónde ponerla: selecciona clips o lleva el cursor a un corte.',
   'library.effects': 'Efectos',
-  'library.effectsHint': 'Haz clic en un efecto o un movimiento para aplicarlo al clip seleccionado, o al clip bajo el cursor.',
+  'library.effectsHint': 'Arrastra un efecto o un movimiento sobre un clip de la línea de tiempo, o haz clic para aplicarlo al clip seleccionado (o al que está bajo el cursor).',
   'library.noClip': 'No hay dónde aplicarlo: selecciona un clip o lleva el cursor sobre uno.',
   'prefs.transitionLength': 'Duración de las transiciones',
   'prefs.transitionLengthHint': 'La que dan Ctrl+T, Ctrl+D y el panel Transiciones a una transición nueva.',

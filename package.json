@@ -31,6 +31,7 @@
     "test:titles:library": "node ./tests/ui/title-library.mjs",
     "test:transitions:ui": "node ./tests/ui/transitions.mjs",
     "test:transitions-f4:ui": "node ./tests/ui/transitions-f4.mjs",
+    "test:effects:ui": "node ./tests/ui/effects.mjs",
     "test:fx:ui": "node ./tests/ui/fx.mjs",
     "test:captions:ui": "node ./tests/ui/captions.mjs",
     "test:captions-f2:ui": "node ./tests/ui/captions-f2.mjs",

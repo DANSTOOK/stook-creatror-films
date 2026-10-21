@@ -81,11 +81,14 @@ import { newTransitionFrames } from '@renderer/timing/transitionLength';
 import { TITLE_SECONDS, titleDropPlacement } from '@renderer/text/titleClip';
 import { isTemplateId } from '@renderer/text/templates';
 import {
+  EFFECT_DRAG_TYPE,
   TITLE_DRAG_TYPE,
   TRANSITION_DRAG_TYPE,
   libraryDragKind,
   useLibraryDragStore,
+  type LibraryDragKind,
 } from '@renderer/components/MediaLibrary/libraryDrag';
+import { applyLibraryItem, effectClipAt, isLibraryEffectItem } from '@renderer/fx/applyLibraryItem';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import TimelineCanvas, {
@@ -228,10 +231,13 @@ export function Timeline(): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragMode>({ kind: 'none' });
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
-  // A title or transition being dragged from the library, and where it would land.
+  // A title, transition or effect being dragged from the library, and where it would land.
   const libraryDragging = useLibraryDragStore((state) => state.dragging);
   const [libraryTarget, setLibraryTarget] = useState<
-    { kind: 'title'; trackId: string | null; start: number; end: number } | { kind: 'transition'; cut: TimelineCut | null } | null
+    | { kind: 'title'; trackId: string | null; start: number; end: number }
+    | { kind: 'transition'; cut: TimelineCut | null }
+    | { kind: 'effect'; clipId: string | null }
+    | null
   >(null);
   useEffect(() => {
     if (!libraryDragging) setLibraryTarget(null);
@@ -1297,9 +1303,16 @@ export function Timeline(): JSX.Element {
    * so the timeline shows it before the drop.
    */
   const libraryTargetAt = useCallback(
-    (event: React.DragEvent<HTMLDivElement>, kind: 'title' | 'transition') => {
+    (event: React.DragEvent<HTMLDivElement>, kind: LibraryDragKind) => {
       const target = dropTargetAt(event);
       const { project } = store.getState();
+      if (kind === 'effect') {
+        // The clip under the pointer, wherever on it: no snapping onto an edge.
+        const rect = event.currentTarget.getBoundingClientRect();
+        const frame = Math.max(0, Math.floor((event.clientX - rect.left) / store.getState().ui.pixelsPerFrame));
+        const clip = effectClipAt(project, target.trackId, frame);
+        return { target: { kind, clipId: clip?.id ?? null } as const, snap: null, frame, trackId: target.trackId };
+      }
       if (kind === 'title') {
         const placement = titleDropPlacement(project, target.trackId, target.frame, Math.max(1, Math.round(TITLE_SECONDS * project.fps)));
         return {
@@ -1321,8 +1334,8 @@ export function Timeline(): JSX.Element {
       if (library) {
         event.preventDefault();
         const { target, snap } = libraryTargetAt(event, library);
-        // A transition off every cut is refused at the pointer, not dropped.
-        event.dataTransfer.dropEffect = target.kind === 'transition' && !target.cut ? 'none' : 'copy';
+        // A transition off every cut, or an effect off every clip, is refused at the pointer, not dropped.
+        event.dataTransfer.dropEffect = (target.kind === 'transition' && !target.cut) || (target.kind === 'effect' && !target.clipId) ? 'none' : 'copy';
         setLibraryTarget((previous) => (JSON.stringify(previous) === JSON.stringify(target) ? previous : target));
         setActiveSnap(snap);
         return;
@@ -1353,7 +1366,11 @@ export function Timeline(): JSX.Element {
         useLibraryDragStore.getState().setDragging(null);
         const { target, frame, trackId } = libraryTargetAt(event, library);
         const state = store.getState();
-        if (target.kind === 'title') {
+        if (target.kind === 'effect') {
+          const item = event.dataTransfer.getData(EFFECT_DRAG_TYPE);
+          const clip = target.clipId ? state.project.clips[target.clipId] : undefined;
+          if (clip && isLibraryEffectItem(item)) applyLibraryItem(clip, item);
+        } else if (target.kind === 'title') {
           const template = event.dataTransfer.getData(TITLE_DRAG_TYPE);
           if (isTemplateId(template)) state.addTitle(template, { trackId, startFrame: frame });
         } else if (target.cut) {
@@ -1409,6 +1426,10 @@ export function Timeline(): JSX.Element {
     if (!libraryDragging) return null;
     if (libraryDragging === 'title') {
       return { cuts: [], title: libraryTarget?.kind === 'title' ? libraryTarget : null, transition: null };
+    }
+    if (libraryDragging === 'effect') {
+      const clip = libraryTarget?.kind === 'effect' && libraryTarget.clipId ? project.clips[libraryTarget.clipId] : undefined;
+      return { cuts: [], title: null, transition: null, clip: clip ? { trackId: clip.trackId, start: clip.startFrame, end: clip.startFrame + clip.durationFrames } : null };
     }
     const cuts = cutsOf(project);
     const cut = libraryTarget?.kind === 'transition' ? libraryTarget.cut : null;
