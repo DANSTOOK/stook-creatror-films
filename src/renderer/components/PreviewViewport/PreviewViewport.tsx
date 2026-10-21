@@ -4,6 +4,7 @@ import {
   ChevronFirst,
   ChevronLast,
   CircleSlash2,
+  Film,
   Frame,
   Maximize2,
   Minimize2,
@@ -14,6 +15,7 @@ import {
   SkipBack,
   SkipForward,
   SquareSplitHorizontal,
+  Upload,
 } from 'lucide-react';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -30,7 +32,9 @@ import { useCompositor } from './useCompositor';
 import { ViewportControls } from './ViewportControls';
 import { ScopesPanel } from './ScopesPanel';
 import { CompareCurtain } from './CompareCurtain';
+import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
+import { MENU_IMPORT_EVENT } from '@renderer/components/MediaLibrary/MediaLibrary';
 
 /**
  * The viewer: the picture, what is being shown, and the transport.
@@ -253,11 +257,16 @@ export function PreviewViewport(): JSX.Element {
   );
 
   const timecodes = (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span data-testid="viewer-timecode" className="timecode text-base font-semibold text-slate-100">
+    // Where the playhead is, over how long the edit runs - read as "1:10 of 6:00",
+    // the way every player shows it, rather than two times side by side.
+    <span className="flex min-w-0 items-baseline gap-1.5">
+      <span data-testid="viewer-timecode" className="timecode text-base font-semibold text-slate-100" title={t('viewer.positionHint')}>
         {timecode}
       </span>
-      <span className="timecode truncate text-xs text-slate-400" title={t('viewer.lengthHint')}>
+      <span aria-hidden className="text-xs text-slate-400">
+        /
+      </span>
+      <span data-testid="viewer-length" className="timecode truncate text-xs text-slate-400" title={t('viewer.lengthHint')}>
         {duration}
       </span>
     </span>
@@ -388,6 +397,30 @@ export function PreviewViewport(): JSX.Element {
             {/* Drag the picture itself: move, scale, rotate. */}
             <ViewportControls />
             <CompareCurtain />
+            {/* Aiming a zoom, from the inspector's Effects tab. */}
+            {!fullscreen && <ZoomZoneOverlay />}
+            {/* An empty edit: a black frame says nothing, so say how to start. */}
+            {!fullscreen && Object.keys(project.clips).length === 0 && (
+              <div data-testid="viewer-empty" className="scf-rise pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">
+                <span aria-hidden className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 text-slate-300 ring-1 ring-white/10">
+                  <Film size={20} />
+                </span>
+                <p className="text-sm font-semibold text-slate-200">{t('viewer.emptyTitle')}</p>
+                <p className="max-w-xs text-xs leading-relaxed text-slate-400">{t('viewer.emptyHint')}</p>
+                <button
+                  type="button"
+                  data-testid="viewer-empty-import"
+                  className="tool-button pointer-events-auto mt-1 bg-accent/15 text-accent-hover ring-1 ring-accent/40 hover:bg-accent/25"
+                  onClick={() => {
+                    if (hasNativeBridge()) window.filmora.appMenuInvoke('import');
+                    else window.dispatchEvent(new Event(MENU_IMPORT_EVENT));
+                  }}
+                >
+                  <Upload size={14} />
+                  {t('viewer.emptyImport')}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

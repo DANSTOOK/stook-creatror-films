@@ -187,7 +187,7 @@ export function TitleBar({
         aria-haspopup="menu"
         aria-expanded={menu !== null}
         disabled={!nativeAvailable}
-        className={`app-no-drag group flex h-7 items-center gap-1 rounded-control pl-1 pr-1.5 transition-colors duration-150 hover:bg-panel-800 ${
+        className={`press app-no-drag group flex h-7 items-center gap-1 rounded-control pl-1 pr-1.5 transition-colors duration-150 hover:bg-panel-800 ${
           menu ? 'bg-panel-800' : ''
         }`}
         onClick={() => (menu ? close() : void openMenu(false))}
@@ -227,7 +227,7 @@ export function TitleBar({
               type="button"
               data-testid="title-search"
               aria-haspopup="dialog"
-              className="group flex h-7 min-w-0 items-center gap-2 rounded-control border border-accent/40 bg-panel-900 px-2.5 text-slate-200 transition-colors hover:border-accent/70 hover:bg-panel-800 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-hover sm:min-w-[12rem]"
+              className="press group flex h-7 min-w-0 items-center gap-2 rounded-control border border-accent/40 bg-panel-900 px-2.5 text-slate-200 transition-colors hover:border-accent/70 hover:bg-panel-800 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-hover sm:min-w-[12rem]"
               onClick={onCommandPalette}
               {...tip(t('titlebar.search'), { shortcut: 'Ctrl+Shift+P', hint: t('titlebar.searchHint'), named: false })}
             >

@@ -6,6 +6,8 @@ import {
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { tickScopes } from '@renderer/scopes/scopeFeed';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { useZoneEditStore } from '@renderer/fx/motion/zoneEdit';
+import { withClipAtRest } from '@renderer/fx/motion/apply';
 
 /**
  * Wires the WebGL compositor to the store.
@@ -94,7 +96,10 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
       const renderer = rendererRef.current;
       if (!renderer) return;
 
-      const { project, ui } = useProjectStore.getState();
+      const { project: edit, ui, assets: media } = useProjectStore.getState();
+      // A zoom being aimed is drawn at rest, so its zone is drawn over the picture as it is.
+      const aiming = useZoneEditStore.getState().clipId;
+      const project = aiming ? withClipAtRest(edit, media, aiming) : edit;
 
       try {
         renderer.drawViewport(

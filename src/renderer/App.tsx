@@ -192,6 +192,17 @@ export default function App(): JSX.Element {
   // a window of its own there is nothing to make room for, and folding them
   // left a laptop's editor with nothing in it but the timeline.
   const folds = compact && !detached.viewer;
+  // A side panel open as a drawer over the picture goes again with Escape.
+  const drawerOpen = folds && (revealed.media || revealed.inspector);
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      setRevealed({ media: false, inspector: false });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
   const hidden: Record<PanelKey, boolean> = {
     timeline: chosenHidden.timeline,
     media: chosenHidden.media || (folds && !revealed.media),
@@ -588,6 +599,15 @@ export default function App(): JSX.Element {
   */
   const mediaHere = !hidden.media && !detached.media;
   const inspectorHere = !hidden.inspector && !detached.inspector;
+  /*
+    In a narrow window a side panel brought back does not squeeze the picture:
+    it slides in over it as a drawer, on a dimmed scrim, and goes again with a
+    click outside it or Escape - how a phone or a half-screen editor shows a
+    panel there is no room to dock.
+  */
+  const mediaDrawer = folds && mediaHere;
+  const inspectorDrawer = folds && inspectorHere;
+  const closeDrawers = (): void => setRevealed({ media: false, inspector: false });
   const timelineHere = !hidden.timeline && !detached.timeline;
   const rowFiller: 'viewer' | 'media' | 'inspector' | null = !detached.viewer
     ? 'viewer'
@@ -639,7 +659,7 @@ export default function App(): JSX.Element {
         <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col px-1.5 pb-1.5">
           <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
             <main
-              className={`flex min-h-0 ${rowFiller ? (browserRow ? 'shrink-0' : 'flex-1') : ''}`}
+              className={`relative flex min-h-0 ${rowFiller ? (browserRow ? 'shrink-0' : 'flex-1') : ''}`}
               style={browserRow ? { height: fitted.browserHeight } : undefined}
             >
               {/*
@@ -651,8 +671,18 @@ export default function App(): JSX.Element {
                 handle that does nothing. The same goes for the border of an
                 area that is filling the row: it has no size of its own to set.
               */}
-              <div data-panel="media" data-state={mediaHere ? 'open' : 'closed'} className={`flex min-h-0 ${grows(rowFiller === 'media')}`}>
-                {mediaHere && (
+              {(mediaDrawer || inspectorDrawer) && (
+                <div data-testid="drawer-scrim" aria-hidden className="scf-scrim absolute inset-0 z-20 rounded-panel bg-black/45" onPointerDown={closeDrawers} />
+              )}
+              {mediaDrawer && (
+                <div data-panel="media" data-state="open" data-drawer="true" className="absolute inset-y-0 left-0 z-30 flex min-h-0 shadow-2xl shadow-black/60" style={{ width: 'min(320px, 85%)' }}>
+                  <PanelSlot edge="left" className="flex min-h-0 min-w-0 flex-1">
+                    <MediaLibrary />
+                  </PanelSlot>
+                </div>
+              )}
+              <div data-panel="media" data-state={mediaHere && !mediaDrawer ? 'open' : 'closed'} className={`flex min-h-0 ${grows(rowFiller === 'media')}`}>
+                {mediaHere && !mediaDrawer && (
                   <>
                     <PanelSlot edge="left" className={`flex min-h-0 ${grows(rowFiller === 'media')}`}>
                       <div
@@ -667,12 +697,19 @@ export default function App(): JSX.Element {
                 )}
               </div>
               {rowFiller === 'viewer' && <PreviewViewport />}
+              {inspectorDrawer && (
+                <div data-panel="inspector" data-state="open" data-drawer="true" className="absolute inset-y-0 right-0 z-30 flex min-h-0 shadow-2xl shadow-black/60" style={{ width: 'min(340px, 85%)' }}>
+                  <PanelSlot edge="right" className="flex min-h-0 min-w-0 flex-1">
+                    <Inspector />
+                  </PanelSlot>
+                </div>
+              )}
               <div
                 data-panel="inspector"
-                data-state={inspectorHere ? 'open' : 'closed'}
+                data-state={inspectorHere && !inspectorDrawer ? 'open' : 'closed'}
                 className={`flex min-h-0 ${grows(rowFiller === 'inspector')}`}
               >
-                {inspectorHere && (
+                {inspectorHere && !inspectorDrawer && (
                   <>
                     {rowFiller !== 'inspector' && border('inspectorWidth', t('layout.resizeInspector'), 'vertical', -1)}
                     <PanelSlot edge="right" className={`flex min-h-0 ${grows(rowFiller === 'inspector')}`}>

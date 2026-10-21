@@ -9,6 +9,7 @@ import { shuttleRate } from './shuttle';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { heldClockFrom } from '@renderer/timing/playbackHold';
 import { spaceFromSlider } from './spaceFromSlider';
+import { smoothZoom } from '@renderer/components/Timeline/smoothZoom';
 
 /**
  * Playback transport.
@@ -482,16 +483,16 @@ export function useEditorShortcuts(): void {
         // the playhead.
         case '\\':
           event.preventDefault();
-          store.zoomToFit();
+          smoothZoom(useProjectStore, () => useProjectStore.getState().zoomToFit());
           return;
         case '=':
         case '+':
           event.preventDefault();
-          store.zoomBy(1.4);
+          smoothZoom(useProjectStore, () => useProjectStore.getState().zoomBy(1.4));
           return;
         case '-':
           event.preventDefault();
-          store.zoomBy(1 / 1.4);
+          smoothZoom(useProjectStore, () => useProjectStore.getState().zoomBy(1 / 1.4));
           return;
         case 'Delete':
         case 'Backspace':

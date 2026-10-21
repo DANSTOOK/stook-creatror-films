@@ -68,6 +68,77 @@ const MOTION_SPECS: Record<MotionPresetId, MotionSpec> = {
   panDown: { scaleStart: PAN_ZOOM, scaleEnd: PAN_ZOOM, fromX: 0, fromY: -PAN_DRIFT, toX: 0, toY: PAN_DRIFT },
 };
 
+/** How strong a move is, and where a zoom closes in. */
+export interface MotionOptions {
+  /** A factor on the preset's own zoom and drift: 1 as it comes. */
+  amount?: number;
+  /** The point a zoom closes in on, 0..1 of the frame from the top left. */
+  focus?: Vector2D;
+}
+
+const CENTRE: Vector2D = { x: 0.5, y: 0.5 };
+export const MOTION_AMOUNT_MIN = 0.25;
+/** Zoom in reaches 400 % at the most (1 + 0.3 x 10). */
+export const MOTION_AMOUNT_MAX = 10;
+/** The pans: past three times their own drift they race across the picture. */
+export const PAN_AMOUNT_MAX = 3;
+
+/** Whether a preset is a zoom with a point to close in on (the pans just slide). */
+export const motionHasFocus = (preset: MotionPresetId): boolean => preset === 'zoomIn' || preset === 'zoomOut' || preset === 'kenBurns';
+
+/** The preset's shape at `amount`: its zoom past 1 and its drift, both scaled. */
+function scaledSpec(preset: MotionPresetId, amount: number): MotionSpec {
+  const spec = MOTION_SPECS[preset];
+  const a = Math.min(MOTION_AMOUNT_MAX, Math.max(MOTION_AMOUNT_MIN, amount));
+  return {
+    scaleStart: 1 + (spec.scaleStart - 1) * a,
+    scaleEnd: 1 + (spec.scaleEnd - 1) * a,
+    fromX: spec.fromX * a,
+    fromY: spec.fromY * a,
+    toX: spec.toX * a,
+    toY: spec.toY * a,
+  };
+}
+
+/** The closest a move gets, at `amount`. */
+export const motionPeakScale = (preset: MotionPresetId, amount: number): number => {
+  const spec = scaledSpec(preset, amount);
+  return Math.max(spec.scaleStart, spec.scaleEnd);
+};
+
+/** A part of the frame, as fractions 0..1 from the top left. */
+export interface FrameZone {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * What a zoom shows at its closest: the zone of the frame that fills it. At a
+ * zoom of s about point F the frame shows [F - F/s, F + (1 - F)/s] - a zone
+ * 1/s wide whose own position says where F is.
+ */
+export function motionZone(preset: MotionPresetId, amount: number, focus: Vector2D): FrameZone {
+  const s = motionPeakScale(preset, amount);
+  const size = 1 / s;
+  return { x: focus.x * (1 - size), y: focus.y * (1 - size), width: size, height: size };
+}
+
+/** The amount and focus that make `zone` what the zoom shows at its closest - the inverse of motionZone. */
+export function motionFromZone(preset: MotionPresetId, zone: FrameZone): { amount: number; focus: Vector2D } {
+  const spec = MOTION_SPECS[preset];
+  const peak = Math.max(spec.scaleStart, spec.scaleEnd) - 1;
+  const size = Math.min(1, Math.max(1 / (1 + peak * MOTION_AMOUNT_MAX), zone.width));
+  const s = 1 / size;
+  const amount = peak > 0 ? (s - 1) / peak : 1;
+  const free = 1 - size;
+  const focus = free > 1e-6 ? { x: Math.min(1, Math.max(0, zone.x / free)), y: Math.min(1, Math.max(0, zone.y / free)) } : CENTRE;
+  return { amount: Math.min(MOTION_AMOUNT_MAX, Math.max(MOTION_AMOUNT_MIN, amount)), focus };
+}
+
+export const isMotionPreset = (value: string): value is MotionPresetId => (MOTION_PRESETS as readonly string[]).includes(value);
+
 export interface MotionClip {
   startFrame: number;
   durationFrames: number;
@@ -120,25 +191,46 @@ const vec = (frame: number, value: Vector2D, easing: Keyframe<Vector2D>['easing'
  * pan animates position and holds one zoom. The last keyframe lands on the
  * clip's final frame so the move finishes exactly as the clip ends.
  */
-export function buildMotionTransform(preset: MotionPresetId, clip: MotionClip, frame: MotionFrame, base: MotionBase): MotionTransform {
-  const spec = MOTION_SPECS[preset];
+export function buildMotionTransform(
+  preset: MotionPresetId,
+  clip: MotionClip,
+  frame: MotionFrame,
+  base: MotionBase,
+  options: MotionOptions = {},
+): MotionTransform {
+  const spec = scaledSpec(preset, options.amount ?? 1);
+  const focus = options.focus ?? CENTRE;
   const start = clip.startFrame;
   // Guard a one-frame or zero-length clip: a track needs two distinct frames.
   const end = Math.max(start + 1, start + Math.max(1, clip.durationFrames) - 1);
 
   const scaleAt = (factor: number): Vector2D => ({ x: base.scale.x * factor, y: base.scale.y * factor });
-  const posAt = (fx: number, fy: number): Vector2D => ({ x: base.position.x + fx * frame.width, y: base.position.y + fy * frame.height });
+  /*
+    The offset at a zoom of `scale`: the preset's drift, plus what holds the
+    focus point where it is on screen as the picture grows round it - scaling
+    about that point rather than the centre - kept inside the picture's
+    overhang, so no edge of the frame ever shows black.
+  */
+  const offsetAt = (scale: number, drift: number, at: number): number => {
+    const overhang = Math.max(0, (scale - 1) / 2);
+    return Math.min(overhang, Math.max(-overhang, drift - (scale - 1) * (at - 0.5)));
+  };
+  const posAt = (scale: number, fx: number, fy: number): Vector2D => ({
+    x: base.position.x + offsetAt(scale, fx, focus.x) * frame.width,
+    y: base.position.y + offsetAt(scale, fy, focus.y) * frame.height,
+  });
+  const fromPos = posAt(spec.scaleStart, spec.fromX, spec.fromY);
+  const toPos = posAt(spec.scaleEnd, spec.toX, spec.toY);
 
   const scaleMoves = spec.scaleStart !== spec.scaleEnd;
-  const posMoves = spec.fromX !== spec.toX || spec.fromY !== spec.toY;
+  const posMoves = fromPos.x !== toPos.x || fromPos.y !== toPos.y;
+  const posHeld = !posMoves && (fromPos.x !== base.position.x || fromPos.y !== base.position.y);
 
   return {
     scale: scaleMoves
       ? [vec(start, scaleAt(spec.scaleStart), 'bezier', EASE_IN_OUT), vec(end, scaleAt(spec.scaleEnd), 'linear')]
       : // A pan holds one zoom: a single keyframe is a fixed value, not an animation.
         [vec(start, scaleAt(spec.scaleStart), 'linear')],
-    position: posMoves
-      ? [vec(start, posAt(spec.fromX, spec.fromY), 'bezier', EASE_IN_OUT), vec(end, posAt(spec.toX, spec.toY), 'linear')]
-      : [],
+    position: posMoves ? [vec(start, fromPos, 'bezier', EASE_IN_OUT), vec(end, toPos, 'linear')] : posHeld ? [vec(start, fromPos, 'linear')] : [],
   };
 }

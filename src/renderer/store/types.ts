@@ -470,6 +470,26 @@ function withTransitions(project: ProjectState, raw: unknown): ProjectState {
   return Object.keys(tidy.transitions ?? {}).length > 0 ? tidy : rest;
 }
 
+/** A clip's chosen move and animations (Clip.fx), or nothing if there is nothing readable. */
+function normalizeClipFx(fx: unknown): Clip['fx'] {
+  if (!fx || typeof fx !== 'object') return undefined;
+  const source = fx as Record<string, unknown>;
+  const out: NonNullable<Clip['fx']> = {};
+  const unit = (value: unknown): number => Math.min(1, Math.max(0, finite(value, 0.5)));
+  const motion = source.motion as Record<string, unknown> | undefined;
+  if (motion && typeof motion.preset === 'string') {
+    const focus = (motion.focus ?? {}) as Record<string, unknown>;
+    out.motion = { preset: motion.preset, amount: Math.min(10, Math.max(0.25, finite(motion.amount, 1))), focus: { x: unit(focus.x), y: unit(focus.y) } };
+  }
+  for (const phase of ['in', 'out'] as const) {
+    const chosen = source[phase] as Record<string, unknown> | undefined;
+    if (chosen && typeof chosen.id === 'string') out[phase] = { id: chosen.id, seconds: Math.min(3, Math.max(0.2, finite(chosen.seconds, 0.6))) };
+  }
+  const loop = source.loop as Record<string, unknown> | undefined;
+  if (loop && typeof loop.id === 'string') out.loop = { id: loop.id };
+  return out.motion || out.in || out.out || out.loop ? out : undefined;
+}
+
 function normalizeClipsAndTracks(project: ProjectState): ProjectState {
   const markers = (Array.isArray(project.markers) ? project.markers : [])
     .map((marker, index) => ({
@@ -533,6 +553,8 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             // The effect stack: written plainly, so a clip with none carries
             // no field, and an effect from a later version is dropped.
             effects: normalizedEffectsOrNone(clip.effects),
+            // The move and animations as chosen: kept only in a shape this build can read.
+            fx: normalizeClipFx(clip.fx),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
             ...(clip.caption ? { caption: normalizeCaption(clip.caption) } : {}),

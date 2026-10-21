@@ -152,13 +152,29 @@ export function animationPreview(id: ClipAnimationId, t: number): AnimationPose 
   return animationPoseAt(id, (p * 2) % 1);
 }
 
-/** The frames an animation takes on a clip: its own length, at most 40 % of the clip, at least two frames. */
-export function animationWindow(id: ClipAnimationId, clip: { startFrame: number; durationFrames: number }, fps: number): { from: number; to: number } {
+/** How long an In or Out animation plays when nobody has said: its own length. */
+export const animationSeconds = (id: ClipAnimationId): number => SPECS[id].seconds;
+export const ANIMATION_SECONDS_MIN = 0.2;
+export const ANIMATION_SECONDS_MAX = 3;
+
+/**
+ * The frames an animation takes on a clip: `seconds` (its own length if not
+ * given), at most half the clip so an In and an Out never cross, at least
+ * two frames.
+ */
+export function animationWindow(
+  id: ClipAnimationId,
+  clip: { startFrame: number; durationFrames: number },
+  fps: number,
+  seconds?: number,
+): { from: number; to: number } {
   const spec = SPECS[id];
   const first = clip.startFrame;
   const last = clip.startFrame + Math.max(1, clip.durationFrames) - 1;
   if (spec.phase === 'loop') return { from: first, to: last };
-  const length = Math.max(2, Math.min(Math.round(spec.seconds * fps), Math.floor(clip.durationFrames * 0.4)));
+  const wanted = seconds ?? spec.seconds;
+  const share = seconds === undefined ? 0.4 : 0.5;
+  const length = Math.max(2, Math.min(Math.round(wanted * fps), Math.floor(clip.durationFrames * share)));
   return spec.phase === 'in' ? { from: first, to: Math.min(last, first + length) } : { from: Math.max(first, last - length), to: last };
 }
 
@@ -174,7 +190,7 @@ const key = <T extends KeyframeValue>(frame: number, value: T): Keyframe<T> => (
 const EASE_IN_OUT: BezierCurve = { cp1: { x: 0.42, y: 0 }, cp2: { x: 0.58, y: 1 } };
 
 /** Which of the four tracks an animation moves. */
-function touches(id: ClipAnimationId): { position: boolean; scale: boolean; rotation: boolean; opacity: boolean } {
+export function touches(id: ClipAnimationId): { position: boolean; scale: boolean; rotation: boolean; opacity: boolean } {
   const samples = [0, 0.13, 0.29, 0.5, 0.71, 0.87, 1].map((u) => animationPoseAt(id, u));
   return {
     position: samples.some((pose) => pose.x !== 0 || pose.y !== 0),
@@ -238,5 +254,21 @@ export function withAnimation(
     scale: moves.scale ? merge(transform.scale, (pose) => ({ x: rest.scale.x * pose.scale, y: rest.scale.y * pose.scale })) : transform.scale,
     rotation: moves.rotation ? merge(transform.rotation, (pose) => rest.rotation + pose.rotation) : transform.rotation,
     opacity: moves.opacity ? merge(transform.opacity, (pose) => Math.min(1, Math.max(0, rest.opacity * pose.opacity))) : transform.opacity,
+  };
+}
+
+/**
+ * `transform` with animation `id`'s keyframes taken out of `window` again,
+ * on the tracks it moves; keyframes outside it are left alone.
+ */
+export function withoutAnimation(transform: ClipTransform, id: ClipAnimationId, window: { from: number; to: number }): ClipTransform {
+  const moves = touches(id);
+  const keep = <T extends KeyframeValue>(track: Keyframe<T>[]): Keyframe<T>[] => track.filter((kf) => kf.frame < window.from || kf.frame > window.to);
+  return {
+    ...transform,
+    position: moves.position ? keep(transform.position) : transform.position,
+    scale: moves.scale ? keep(transform.scale) : transform.scale,
+    rotation: moves.rotation ? keep(transform.rotation) : transform.rotation,
+    opacity: moves.opacity ? keep(transform.opacity) : transform.opacity,
   };
 }

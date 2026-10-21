@@ -30,6 +30,7 @@ import {
   Scissors,
   Trash2,
   Volume2,
+  Upload,
   VolumeX,
   ZoomIn,
   ZoomOut,
@@ -89,6 +90,7 @@ import {
   type LibraryDragKind,
 } from '@renderer/components/MediaLibrary/libraryDrag';
 import { applyLibraryItem, effectClipAt, isLibraryEffectItem } from '@renderer/fx/applyLibraryItem';
+import { smoothZoom, zooming } from './smoothZoom';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import TimelineCanvas, {
@@ -348,6 +350,8 @@ export function Timeline(): JSX.Element {
     if (!element) return;
 
     const onScroll = (): void => {
+      // An eased zoom owns the offset until it lands (smoothZoom).
+      if (zooming()) return;
       store.getState().setUi({ scrollLeftPx: element.scrollLeft });
     };
     element.addEventListener('scroll', onScroll, { passive: true });
@@ -1697,7 +1701,7 @@ export function Timeline(): JSX.Element {
           <span aria-hidden className="h-4 w-px shrink-0 bg-panel-700" />
 
           <div className="flex shrink-0 items-center gap-1.5">
-            {iconButton(tr('timeline.zoomOut'), ZoomOut, () => store.getState().zoomBy(1 / 1.4), { shortcut: '-' })}
+            {iconButton(tr('timeline.zoomOut'), ZoomOut, () => smoothZoom(store, () => store.getState().zoomBy(1 / 1.4)), { shortcut: '-' })}
             <input
               type="range"
               aria-label={tr('timeline.zoom')}
@@ -1713,11 +1717,11 @@ export function Timeline(): JSX.Element {
               }}
               {...tip(tr('timeline.zoom'), { hint: tr('timeline.zoomHint'), named: false })}
             />
-            {iconButton(tr('timeline.zoomIn'), ZoomIn, () => store.getState().zoomBy(1.4), { shortcut: '=' })}
+            {iconButton(tr('timeline.zoomIn'), ZoomIn, () => smoothZoom(store, () => store.getState().zoomBy(1.4)), { shortcut: '=' })}
             <button
               type="button"
               className="tool-button tool-button-dense px-1.5"
-              onClick={() => store.getState().zoomToFit()}
+              onClick={() => smoothZoom(store, () => store.getState().zoomToFit())}
               {...tip(tr('timeline.fitHint'), { shortcut: '\\', named: false })}
             >
               <Maximize2 size={13} />
@@ -1899,6 +1903,19 @@ export function Timeline(): JSX.Element {
                 syncOffsets={syncMarks}
                 loopRange={loopRange}
               />
+              {/* An empty timeline says what goes here, over the tracks, out of the pointer's way. */}
+              {Object.keys(project.clips).length === 0 && !libraryDragging && (
+                <div
+                  data-testid="timeline-empty"
+                  className="scf-rise pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center p-3"
+                  style={{ top: RULER_HEIGHT }}
+                >
+                  <p className="flex items-center gap-2 rounded-lg border border-dashed border-panel-600 bg-panel-950/70 px-4 py-2 text-xs text-slate-300">
+                    <Upload size={14} aria-hidden className="text-accent-hover" />
+                    {t('timeline.emptyHint')}
+                  </p>
+                </div>
+              )}
             </div>
 
             {renamingMarker && (

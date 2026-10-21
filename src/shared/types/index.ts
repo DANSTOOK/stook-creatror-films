@@ -604,6 +604,32 @@ export const BLEND_MODES = [
 
 export type BlendMode = (typeof BLEND_MODES)[number];
 
+/**
+ * A screen move as chosen: which one, how strong, and where it zooms to.
+ * `amount` multiplies the preset's own zoom and drift (1 as it comes);
+ * `focus` is the point of the frame a zoom closes in on, 0..1 from the
+ * top left - the centre unless a zone was picked in the viewer.
+ */
+export interface ClipMotionChoice {
+  preset: string;
+  amount: number;
+  focus: Vector2D;
+}
+
+/** An In or Out animation as chosen: which one, and how long it plays. */
+export interface ClipAnimationChoice {
+  id: string;
+  seconds: number;
+}
+
+export interface ClipMotionFx {
+  motion?: ClipMotionChoice;
+  in?: ClipAnimationChoice;
+  out?: ClipAnimationChoice;
+  /** A loop plays over the whole clip; it has no length of its own. */
+  loop?: { id: string };
+}
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -629,6 +655,13 @@ export interface Clip {
    * which is every clip made before effects existed.
    */
   effects?: ClipEffect[];
+  /**
+   * The screen move and the animations put on from the Effects panel, as they
+   * were chosen - what the inspector's Effects tab lists and edits. The
+   * keyframes they wrote are in `transform`; this is how to write them again
+   * when a setting changes. Absent on a clip with none.
+   */
+  fx?: ClipMotionFx;
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;
   /** Stereo position, -1 hard left to +1 hard right. */

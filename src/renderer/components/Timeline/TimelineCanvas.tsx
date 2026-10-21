@@ -790,6 +790,8 @@ export const NOTE_WARM = '#fef3c7';
 /** A clip's name on the clip: slate-100, as NOTE_COOL. */
 export const CLIP_NAME = '#f1f5f9';
 export const NOTE_COOL = '#f1f5f9';
+/** The fx mark: violet-100, as light as slate-100, so it clears 4.5:1 where the other notes do. */
+export const NOTE_FX = '#ede9fe';
 
 /**
  * The corner a caption wears when it breaks a rule: amber-400, about 4:1 on the
@@ -978,6 +980,11 @@ function drawClip(
     const speed = speedLabel(clip);
     if (speed) noteX = note(speed, noteX, NOTE_WARM);
     if (content.fontMissing) noteX = note(labels.fontMissing, noteX, NOTE_WARM);
+    // What is on it from the Effects panel - effects, a move, animations - so a
+    // clip with something on it can be told from one without, as Filmora's fx mark.
+    const fx = clip.fx;
+    const fxCount = (clip.effects?.length ?? 0) + (fx?.motion ? 1 : 0) + (fx?.in ? 1 : 0) + (fx?.out ? 1 : 0) + (fx?.loop ? 1 : 0);
+    if (fxCount > 0) noteX = note(`fx ${fxCount}`, noteX, NOTE_FX);
     if (keyframeCount > 0) note(labels.keyframes(keyframeCount), noteX, NOTE_COOL);
     context.restore();
   }

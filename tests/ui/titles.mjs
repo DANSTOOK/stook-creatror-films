@@ -212,9 +212,9 @@ async function main() {
     // The inspector's tabs; the library panel has a tab list of its own.
     const inspectorTabs = window.getByTestId('inspector-panel').getByRole('tab');
     const titleTab = window.getByTestId('inspector-panel').getByRole('tab', { name: 'Title' });
-    check('the inspector opens on the Title tab: Title, Video, Info',
+    check('the inspector opens on the Title tab: Title, Video, Effects, Info',
       (await titleTab.getAttribute('aria-selected')) === 'true'
-        && (await inspectorTabs.allInnerTexts()).join('|') === 'Title|Video|Info',
+        && (await inspectorTabs.allInnerTexts()).join('|') === 'Title|Video|Effects|Info',
       (await inspectorTabs.allInnerTexts()).join(' / '));
     const sections = await window.locator('#inspector-tabpanel section h3').allInnerTexts();
     check('its groups: Text, Font, Paragraph, Outline, Shadow, Background, Shape, Animation, Position',

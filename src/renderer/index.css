@@ -1021,6 +1021,40 @@
   cannot be seen.
 */
 
+/*
+  Every press answers. Tabs, title-bar controls and anything marked .press go
+  down a touch at once and come back on the quick spring with its bounce, as
+  .tool-button does. Out here, unlayered and a tag deep, so a `transition-colors`
+  utility on the same element cannot take the transform off its transition.
+*/
+button.tool-button,
+button.button-primary,
+button[role='tab'],
+button.press {
+  transition-property: background-color, color, border-color, box-shadow, transform;
+  transition-duration: var(--dur-micro), var(--dur-micro), var(--dur-micro), var(--dur-micro), var(--settle-quick-bounce);
+  transition-timing-function: var(--ease-standard), var(--ease-standard), var(--ease-standard), var(--ease-standard), var(--spring-quick-bounce);
+}
+
+button[role='tab']:active:not(:disabled),
+button.press:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: var(--dur-micro), var(--dur-micro), var(--dur-micro), var(--dur-micro), 60ms;
+  transition-timing-function: var(--ease-standard), var(--ease-standard), var(--ease-standard), var(--ease-standard), var(--ease-out);
+}
+
+html[data-motion='reduced'] button[role='tab']:active,
+html[data-motion='reduced'] button.press:active,
+html[data-motion='reduced'] button.tool-button:active,
+html[data-motion='reduced'] button.button-primary:active {
+  transform: none;
+}
+
+/* The dim behind a side panel opened as a drawer in a narrow window. */
+.scf-scrim {
+  animation: scf-fade-in var(--settle-standard) var(--spring-standard) both;
+}
+
 /* Dialogs: the scrim fades, the box grows from its centre with the bounce. */
 .scf-overlay {
   backdrop-filter: blur(4px);

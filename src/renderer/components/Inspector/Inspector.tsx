@@ -30,6 +30,8 @@ import { MultiInspector } from './MultiInspector';
 import { LayerRow } from './LayerRow';
 import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { EffectStack, addStackEffect, effectMenuItems } from './EffectStack';
+import { ClipFxPanel } from './ClipFxPanel';
+import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
@@ -62,7 +64,7 @@ import { rejoinSelectionAudio } from '@renderer/hooks/useTransport';
  * and the typing are converted; the project stores what it always did.
  */
 
-type Tab = 'title' | 'caption' | 'captionStyle' | 'video' | 'audio' | 'color' | 'info';
+type Tab = 'title' | 'caption' | 'captionStyle' | 'video' | 'fx' | 'audio' | 'color' | 'info';
 type Effect = 'mask' | 'chromaKey' | 'backgroundRemoval' | 'pixelArt';
 
 const TAB_LABELS: Record<Tab, MessageKey> = {
@@ -70,6 +72,7 @@ const TAB_LABELS: Record<Tab, MessageKey> = {
   caption: 'inspector.tabCaption',
   captionStyle: 'inspector.tabCaptionStyle',
   video: 'inspector.tabVideo',
+  fx: 'inspector.tabFx',
   audio: 'inspector.tabAudio',
   color: 'inspector.tabColor',
   info: 'inspector.tabInfo',
@@ -180,6 +183,12 @@ export function Inspector(): JSX.Element {
   const frame = project.currentFrame;
 
   const [tab, setTab] = useState<Tab>('video');
+  // Something put on a clip from the library brings its Effects tab forward, where it can be seen and changed.
+  useEffect(() => {
+    const show = (): void => setTab('fx');
+    window.addEventListener(SHOW_CLIP_FX_EVENT, show);
+    return () => window.removeEventListener(SHOW_CLIP_FX_EVENT, show);
+  }, []);
   // A title opens on its own tab, where what it says and how it looks are.
   const isTitle = Boolean(clip?.title);
   // So does a caption: its text is what there is to change about it.
@@ -353,8 +362,8 @@ export function Inspector(): JSX.Element {
   const tabs: Tab[] = clip.caption
     ? ['caption', 'captionStyle', 'info']
     : clip.title
-    ? ['title', 'video', 'info']
-    : audioOnly ? ['audio', 'info'] : still ? ['video', 'color', 'info'] : ['video', 'audio', 'color', 'info'];
+    ? ['title', 'video', 'fx', 'info']
+    : audioOnly ? ['audio', 'info'] : still ? ['video', 'fx', 'color', 'info'] : ['video', 'fx', 'audio', 'color', 'info'];
   const current: Tab = tabs.includes(tab) ? tab : tabs[0];
 
   const sectionProps = (id: string): Pick<SectionProps, 'id' | 'open' | 'onOpenChange'> => ({
@@ -502,6 +511,18 @@ export function Inspector(): JSX.Element {
           )}
         </div>
       </Section>
+    </>
+  );
+
+  /*
+    Effects tab: everything put on the clip - the move and animations
+    (ClipFxPanel), then keying and shape, then the effect stack, and the one
+    button that adds more. They were at the foot of the Video tab, under the
+    transform, where what was on a clip was hard to find.
+  */
+  const fxTab = (
+    <>
+      <ClipFxPanel clip={clip} />
 
       {shownEffects.some((effect) => effect.id === 'mask') && (
         <Section
@@ -1012,6 +1033,7 @@ export function Inspector(): JSX.Element {
           />
         )}
         {current === 'video' && videoTab}
+        {current === 'fx' && fxTab}
         {current === 'audio' && audioTab}
         {current === 'color' && colorTab}
         {current === 'info' && <InfoRows clip={clip} asset={asset} fps={project.fps} />}

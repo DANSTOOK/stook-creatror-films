@@ -5,6 +5,7 @@ import { EFFECTS } from '@renderer/fx/effects/catalog';
 import { MOTION_PRESETS, type MotionPresetId } from '@renderer/fx/motion/presets';
 import { applyClipAnimation, applyMotionPreset } from '@renderer/fx/motion/apply';
 import { isClipAnimation, type ClipAnimationId } from '@renderer/fx/motion/animations';
+import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 
 /**
  * An item of the Effects panel - a shader effect, a screen move or a clip
@@ -34,11 +35,12 @@ export function effectClipAt(project: ProjectState, trackId: string | null, fram
   );
 }
 
-/** Put `item` on the clip, and bring the clip forward so it shows in the inspector. */
+/** Put `item` on the clip, and bring the clip forward in the inspector, on its Effects tab, where what is on it shows. */
 export function applyLibraryItem(clip: Clip, item: LibraryEffectItem): void {
   const [kind, id] = item.split(':');
   if (kind === 'effect') addStackEffect(clip, id);
   else if (kind === 'anim') applyClipAnimation(clip.id, id as ClipAnimationId);
   else applyMotionPreset(clip.id, id as MotionPresetId);
   useProjectStore.getState().setUi({ selectedClipIds: [clip.id], selectedTrackId: clip.trackId });
+  window.dispatchEvent(new Event(SHOW_CLIP_FX_EVENT));
 }

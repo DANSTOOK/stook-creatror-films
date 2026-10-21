@@ -16,6 +16,67 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.56.0-beta.1 — Ver y editar lo aplicado a cada clip, zoom con zona, y una interfaz que responde
+2026-10-20 · pre-release para probar
+
+### Añadido
+- **Pestaña «Efectos» en el inspector**, junto a Video, Audio y Color. Reúne
+  todo lo que lleva el clip:
+  - Un resumen arriba («En este clip (3)») con una etiqueta por cada cosa:
+    el movimiento, cada animación y cada efecto.
+  - Una tarjeta para el **movimiento**: cuál, cuánto zoom o intensidad, y
+    Quitar.
+  - Una tarjeta para la **animación de entrada**, la **de salida** y la **en
+    bucle**: cuál, su duración (0,2 a 3 s) y Quitar.
+  - Debajo, los efectos de siempre (croma, quitar fondo, píxel y la pila de
+    efectos) y «Añadir efecto», que antes estaban al fondo de la pestaña
+    Video.
+
+  Al aplicar algo desde la biblioteca, el inspector salta a esta pestaña.
+  Cada cambio es un solo paso de deshacer (un deslizador arrastrado
+  también).
+- **Elegir la zona del zoom en el visor:** en la tarjeta del movimiento,
+  «Elegir la zona en el visor» dibuja un recuadro sobre la imagen. Se
+  arrastra hasta donde debe ir el zoom y se tira de una esquina para acercar
+  (hasta 400 %) o alejar; lo de fuera se oscurece. Mientras se elige, el
+  visor muestra el clip sin zoom, para que la zona sea sobre la imagen real.
+  El zoom nunca deja ver bordes negros. Esc o «Listo» lo cierran sin
+  deseleccionar el clip.
+- **Marca «fx N» en los clips** de la línea de tiempo que llevan efectos,
+  movimiento o animaciones.
+- **Lo aplicado se guarda con el proyecto** y se puede cambiar después; un
+  proyecto con datos que esta versión no entiende se abre igualmente.
+- **La interfaz responde al tocarla:**
+  - Las pestañas de la biblioteca y del inspector, el menú, el buscador y el
+    engranaje se hunden un poco al pulsarlos, como los demás botones.
+  - Los botones de zoom de la línea de tiempo y sus atajos (= - \\) hacen el
+    zoom suave en 0,2 s, sin que el cabezal se mueva en pantalla.
+  - En una ventana estrecha (media pantalla), la biblioteca y el inspector se
+    abren como cajones sobre el visor, que no se encoge; se cierran con Esc o
+    con un clic fuera.
+  - El visor y la línea de tiempo vacíos dicen cómo empezar, con un botón
+    «Añadir medios».
+  - El reloj del visor se lee «posición / duración», cada uno con su
+    explicación al pasar el ratón.
+
+### Comprobado
+- `tests/ui/effects-edit.mjs` **9/9**, con el ratón: el zoom aplicado
+  aparece en la pestaña; arrastrar la zona apunta el zoom a la esquina
+  (un paso de deshacer); una esquina acerca de 100 % a 162 %; Esc la cierra
+  y el clip sigue seleccionado; entrada y duración cambiadas en su tarjeta;
+  quitar el movimiento deja la animación.
+- `tests/ui/interface-motion.mjs` **11/11**: avisos de vacío y su botón,
+  reloj, todos los botones responden al pulsar, zoom suave con el cabezal
+  quieto (menos de 1 px, cinco veces seguidas), cajones a 960 px.
+- 9 pruebas unitarias nuevas (zona ⇄ zoom, nunca bordes negros, cada cambio
+  y quitar, deshacer, guardar y abrir).
+- Cadencia de fotogramas con todo esto: `npm run test:motion` **26/26**.
+- Unitarias 1556/1556, interfaz 127/127, extremo a extremo 22/22, efectos
+  11/11, títulos 33/33, subtítulos 74/74 · 72/72 · 39/39, transiciones 24/24
+  y 35/35, texto a voz 19/19, edición de audio 47/47, cabezal y capas 20/20.
+
+---
+
 ## v1.55.0-beta.1 — Efectos que se aplican bien, animaciones de clip y subtítulos que no se pisan
 2026-10-20 · pre-release para probar
 
