@@ -85,9 +85,11 @@ export function layoutWordPages(title: TitleContent, animation: WordAnimation, f
     const words = laidWords(layout.lines, page.first, pageTokens, measure);
     const widest = Math.max(0, ...words.map((word) => word.width));
     const largest = Math.max(0, ...words.map((word) => word.size));
-    // Room for a word at the top of its spring, and for the box behind it.
+    // Room for a word at the top of its spring, and for the box behind it -
+    // across, twice that: the words of a line step aside for the one that
+    // grows (placedWords), and two may be grown at once as one hands over.
     const growth = (1 + EMPHASIS * SPRING_PEAK) * SPRING_PEAK - 1;
-    const sideways = Math.ceil((widest * growth) / 2 + largest * BOX_PAD_X * SPRING_PEAK + 2);
+    const sideways = Math.ceil(widest * growth + largest * BOX_PAD_X * SPRING_PEAK + 2);
     const upDown = Math.ceil(largest * (growth / 2 + BOX_PAD_Y) + 2);
     const { bounds } = layout;
     return {
@@ -118,6 +120,39 @@ function boxOf(word: LaidWord): Rect {
 }
 
 const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
+
+/**
+ * Where each word stands across its line at this moment. A word drawn larger
+ * than laid out grows into the spaces either side of it, and on a long word
+ * the 12 % of the one being said all but closed them ("cortosobre"). So the
+ * words of its line step aside by as much as it grows - those before it to
+ * the left, those after to the right - and every space stays as wide as
+ * layout made it. The line widens about its middle, staying centred; a word
+ * coming on smaller than its size moves nothing.
+ */
+export function placedWords(words: readonly LaidWord[], state: Pick<WordFrame, 'words'>): Map<LaidWord, number> {
+  const shifts = new Map<LaidWord, number>();
+  const lines = new Map<number, LaidWord[]>();
+  for (const word of words) {
+    const line = lines.get(word.line);
+    if (line) line.push(word);
+    else lines.set(word.line, [word]);
+  }
+  for (const line of lines.values()) {
+    const grown = line.map((word) => {
+      const standing = state.words[word.index];
+      return standing && standing.visible && standing.opacity > 0 ? Math.max(0, ((standing.scale - 1) * word.width) / 2) : 0;
+    });
+    const total = grown.reduce((sum, value) => sum + value, 0);
+    if (total <= 0) continue;
+    let before = 0;
+    line.forEach((word, i) => {
+      shifts.set(word, -total + before * 2 + grown[i]);
+      before += grown[i];
+    });
+  }
+  return shifts;
+}
 
 /** A title's pages, by frame size, raster scale and whether its fonts were there: a handful at most. */
 const layouts = new WeakMap<TitleContent, Map<string, WordPageLayout[]>>();
@@ -196,6 +231,11 @@ export function rasterizeWords(title: TitleContent, animation: WordAnimation, st
   const { style } = title;
   const unit = layout.unit * scale;
   const raster: WordRaster = { canvas, rect: { x: bounds.x, y: bounds.y, width: width / scale, height: height / scale }, scale, page };
+  const shifts = placedWords(page.words, state);
+  const at = (word: LaidWord): LaidWord => {
+    const shift = shifts.get(word);
+    return shift ? { ...word, x: word.x + shift } : word;
+  };
 
   // The band behind all of the text, as a title's.
   if (layout.box) {
@@ -210,12 +250,12 @@ export function rasterizeWords(title: TitleContent, animation: WordAnimation, st
     const to = page.words.find((word) => word.index === state.box?.to);
     const from = state.box.from === null ? undefined : page.words.find((word) => word.index === state.box?.from);
     if (to) {
-      const target = boxOf(to);
+      const target = boxOf(at(to));
       let rect = target;
       let opacity = state.box.opacity;
       if (from && from.line === to.line) {
         // Along its line it glides from the word before.
-        const start = boxOf(from);
+        const start = boxOf(at(from));
         const t = state.box.progress;
         rect = { x: mix(start.x, target.x, t), y: target.y, width: Math.max(1, mix(start.width, target.width, t)), height: target.height };
         opacity = 1;
@@ -241,7 +281,8 @@ export function rasterizeWords(title: TitleContent, animation: WordAnimation, st
 
   /** Run `draw` for each word on screen, with the canvas turned to that word's size about its middle. */
   const eachWord = (draw: (word: LaidWord, fill: number) => void): void => {
-    for (const word of page.words) {
+    for (const laid of page.words) {
+      const word = at(laid);
       const standing = state.words[word.index];
       if (!standing || !standing.visible || standing.opacity <= 0) continue;
       context.font = fontString(style.fontFamily, style.fontWeight, word.size * scale);

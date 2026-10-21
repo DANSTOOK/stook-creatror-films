@@ -7,6 +7,7 @@ import { degToRad } from '@shared/utils/math';
 import { evaluateTransform } from './KeyframeEvaluator';
 import { titleTransformAt, type TitleGeometry } from '@renderer/text/geometry';
 import { REVEAL_ALL, WIPE_SOFTNESS } from '@renderer/text/animation';
+import { captionOffsets } from '@renderer/captions/captionStack';
 import { cdlOf, DEFAULT_PIVOT } from '@renderer/color/grade';
 import { bakeCurves, CURVE_ROWS, CURVE_SIZE, type BakedCurves } from '@renderer/color/curves';
 import type { GradeCurves } from '@shared/types';
@@ -662,7 +663,7 @@ export class Compositor {
   }
 
   /** Rasterize one clip into `ping` with its resolved transform applied. */
-  private renderLayer(clip: Clip, frame: number, source: ClipSource): number {
+  private renderLayer(clip: Clip, frame: number, source: ClipSource, lift = 0): number {
     const { gl } = this;
     let transform = evaluateTransform(clip.transform, frame);
     let reveal = REVEAL_ALL;
@@ -675,6 +676,8 @@ export class Compositor {
       transform = effective.transform;
       reveal = effective.reveal;
     }
+    // A caption sharing the screen with one from a track below it, moved off it.
+    if (lift !== 0) transform = { ...transform, position: { x: transform.position.x, y: transform.position.y + lift } };
 
     this.ping.bind();
     this.ping.clearTransparent();
@@ -965,9 +968,10 @@ export class Compositor {
 
   /** Draw resolved layers, bottom first, onto `into`. `skipGrade` is the viewer's "before". */
   private drawLayers(layers: readonly Resolved[], frame: number, into: RenderTarget, skipGrade: boolean): void {
+    const lifts = this.captionLifts(layers);
     for (const layer of layers) {
       if (layer.kind === 'clip') {
-        const opacity = this.renderLayer(layer.clip, frame, layer.source);
+        const opacity = this.renderLayer(layer.clip, frame, layer.source, lifts.get(layer.clip.id) ?? 0);
         if (opacity <= 0) continue;
         this.applyEffectChain(layer.clip, skipGrade, frame);
         this.compositeLayer(opacity, into, layer.clip.blendMode);
@@ -976,6 +980,22 @@ export class Compositor {
       }
       this.drawTransition(layer, frame, into, skipGrade);
     }
+  }
+
+  /** Captions of several tracks on screen together, stacked (captions/captionStack). */
+  private captionLifts(layers: readonly Resolved[]): Map<string, number> {
+    const captions = [];
+    for (const layer of layers) {
+      if (layer.kind !== 'clip' || !layer.clip.caption || !layer.clip.title || !layer.source.title) continue;
+      const { style } = layer.clip.title;
+      captions.push({
+        id: layer.clip.id,
+        anchor: style.anchor,
+        height: layer.source.title.block.height,
+        gap: style.fontSize * (this.height / 1080) * 0.3,
+      });
+    }
+    return captions.length < 2 ? new Map<string, number>() : captionOffsets(captions);
   }
 
   /**

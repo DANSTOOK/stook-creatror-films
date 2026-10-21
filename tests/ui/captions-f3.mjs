@@ -377,6 +377,33 @@ async function main() {
     check('a few at a time: only the page with the word being said is drawn, in larger letters',
       page.map((word) => word.text).join(' ') === 'corto sobre' && wInk.left >= pageLeft - 40 && wInk.right <= pageRight + 40 && page[0].size >= 90,
       `page "${page.map((word) => word.text).join(' ')}" ${Math.round(pageLeft)}-${Math.round(pageRight)}, ink ${wInk.left}-${wInk.right}, ${page[0].size} px`);
+    // The word said is drawn larger; the space beside it must not close up ("cortosobre").
+    const wPicture = await exactFrame(window, wFrame);
+    const lettered = [];
+    const rowTop = Math.floor(page[0].baseline - page[0].size * 0.75);
+    const rowBottom = Math.ceil(page[0].baseline);
+    for (let x = Math.floor(pageLeft - 40); x <= Math.ceil(pageRight + 40); x += 1) {
+      let hit = false;
+      for (let y = rowTop; y <= rowBottom && !hit; y += 1) {
+        const i = (y * W + x) * 4;
+        const white = wPicture[i] > 225 && wPicture[i + 1] > 225 && wPicture[i + 2] > 225;
+        const cyan = Math.abs(wPicture[i] - CYAN[0]) <= 40 && Math.abs(wPicture[i + 1] - CYAN[1]) <= 40 && Math.abs(wPicture[i + 2] - CYAN[2]) <= 40;
+        hit = white || cyan;
+      }
+      lettered.push(hit);
+    }
+    const firstInk = lettered.indexOf(true);
+    const lastInk = lettered.lastIndexOf(true);
+    let letterGap = 0;
+    for (let x = firstInk, run = 0; x <= lastInk; x += 1) {
+      run = lettered[x] ? 0 : run + 1;
+      letterGap = Math.max(letterGap, run);
+    }
+    const laidGap = page[1].x - (page[0].x + page[0].width);
+    const activeWord = page.find((word) => word.index === wState.active);
+    check('a few at a time: the word said grows without closing the space beside it',
+      laidGap > 0 && letterGap >= laidGap * 0.85,
+      `letters ${letterGap} px apart, laid out ${Math.round(laidGap)} px; "${activeWord?.text ?? '?'}" grows ${Math.round(((activeWord?.width ?? 0) * 0.12) / 2)} px a side`);
     await setFrame(window, wFrame);
     await shot(window, 'f3-words-en.png');
 
@@ -509,6 +536,20 @@ async function main() {
     typed.push(...(await window.evaluate((id) => Object.values(window.__scfStore.getState().project.clips).filter((clip) => clip.trackId === id).sort((a, b) => a.startFrame - b.startFrame).map((clip) => clip.caption.text), english.id)));
     check('Add a caption at the playhead, typed straight away: two English captions', typed.join('|') === 'Today we are editing|a short video about the city', typed.join(' | '));
     await shot(window, 'f3-two-tracks-en.png');
+    // Both at the bottom, the English in yellow: stacked, not drawn over each other.
+    await window.evaluate((id) => window.__scfStore.getState().setCaptionLook(id, { color: '#ffe600' }), english.id);
+    await sleep(600);
+    let together = await exactFrame(window, c0.start + 12);
+    for (let tries = 0; tries < 10 && colourBox(together, [255, 230, 0], 30).count === 0; tries += 1) {
+      await sleep(300);
+      together = await exactFrame(window, c0.start + 12);
+    }
+    const yellow = colourBox(together, [255, 230, 0], 30);
+    const white = colourBox(together, [255, 255, 255], 12);
+    check('two tracks at the bottom at once stack: the upper track\'s caption sits wholly above the lower one\'s',
+      yellow.count > 200 && white.count > 200 && yellow.bottom < white.top && white.bottom > H * 0.8,
+      `yellow y ${yellow.top}..${yellow.bottom} (${yellow.count} px), white y ${white.top}..${white.bottom} (${white.count} px)`);
+    await window.evaluate((id) => window.__scfStore.getState().setCaptionLook(id, { color: '#ffffff' }), english.id);
     // At the top, so which track is in the picture can be told apart.
     await window.evaluate((id) => window.__scfStore.getState().setCaptionLook(id, { position: 'top' }), english.id);
 
