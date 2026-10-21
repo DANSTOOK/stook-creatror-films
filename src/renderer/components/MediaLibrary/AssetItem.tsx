@@ -6,6 +6,7 @@ import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { assetLengthSeconds } from '@renderer/media/assetLength';
 import { useT } from '@renderer/i18n';
+import { useMediaStore } from '@renderer/store/useMediaStore';
 
 /**
  * One clip in the media panel, as a thumbnail or as a row.
@@ -134,6 +135,7 @@ export const AssetItem = memo(function AssetItem({
   const Icon = KIND_ICONS[asset.kind];
   const seconds = assetLengthSeconds(asset, fps);
   const grid = view === 'grid';
+  const analysing = useMediaStore((state) => state.analysing.includes(asset.uri));
 
   // The picture: the poster frame, a sound's waveform, or its kind's icon.
   const picture = asset.thumbnailUri ? (
@@ -144,8 +146,13 @@ export const AssetItem = memo(function AssetItem({
       className={`h-full w-full object-cover ${asset.hasAlphaChannel ? 'alpha-checkerboard' : ''} ${asset.missing ? 'opacity-40 grayscale' : ''}`}
     />
   ) : asset.kind === 'audio' && peaks ? (
-    <span className="flex h-full w-full items-end bg-[#1f3d33] px-1 pb-1">
+    <span className="scf-tab-enter flex h-full w-full items-end bg-[#1f3d33] px-1 pb-1">
       <MiniWave peaks={peaks} />
+    </span>
+  ) : asset.kind === 'audio' && analysing ? (
+    // Its waveform is being read: a light sweeping where it will be.
+    <span data-testid="asset-skeleton" className="scf-skeleton flex h-full w-full items-center justify-center bg-[#1f3d33]/60">
+      <Icon size={grid ? 22 : 16} className="text-emerald-200/50" />
     </span>
   ) : (
     <span className="flex h-full w-full items-center justify-center bg-panel-950">

@@ -22,6 +22,7 @@ import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { GenerateCaptionsDialog } from './components/Captions/GenerateCaptionsDialog';
 import { RemoveSilencesDialog } from './components/RemoveSilences/RemoveSilencesDialog';
 import { useSilenceDialogStore } from './edit/silenceDialog';
+import { ActivityBar } from './components/Layout/ActivityBar';
 import { TextToSpeechWindow } from './components/TextToSpeech/TextToSpeechWindow';
 import { focusDetachedWindow } from './components/Layout/useDetachedWindow';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
@@ -660,6 +661,7 @@ export default function App(): JSX.Element {
       />
 
       <div className="relative min-h-0 flex-1">
+        {view === 'editor' && <ActivityBar />}
         <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col px-1.5 pb-1.5">
           <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
             <main

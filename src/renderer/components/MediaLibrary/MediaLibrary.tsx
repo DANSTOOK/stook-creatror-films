@@ -58,6 +58,7 @@ import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
 import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
+import { useActivityStore } from '@renderer/activity/activity';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 
 /**
@@ -148,6 +149,12 @@ export function MediaLibrary(): JSX.Element {
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const [busy, setBusy] = useState(false);
+  // An import in progress shows on the bar along the top of the editor (Layout/ActivityBar).
+  useEffect(() => {
+    const activity = useActivityStore.getState();
+    if (busy) activity.begin('library-import');
+    else activity.end('library-import');
+  }, [busy]);
   const [dragActive, setDragActive] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const [renamingBinId, setRenamingBinId] = useState<string | null>(null);
@@ -634,10 +641,12 @@ export function MediaLibrary(): JSX.Element {
       />
 
       <div
+        // A new tab's content comes in with a short fade, not a cut (index.css).
+        key={tab}
         id="library-tabpanel"
         role="tabpanel"
         aria-labelledby={`library-tab-${tab}`}
-        className={`flex min-h-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
+        className={`scf-tab-enter flex min-h-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
       >
       {tab === 'titles' && <TitlesBrowser />}
       {tab === 'transitions' && <TransitionsBrowser />}

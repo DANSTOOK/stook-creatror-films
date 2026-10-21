@@ -627,6 +627,10 @@
     white-space: nowrap;
   }
 
+  /* Pointed at or reached by keyboard, a tab says its name too: the row opens
+     up round it, so the icons never have to be guessed. */
+  .library-tab:hover .library-tab-label,
+  .library-tab:focus-visible .library-tab-label,
   .library-tab[aria-selected='true'] .library-tab-label {
     position: static;
     width: auto;
@@ -1050,6 +1054,77 @@ html[data-motion='reduced'] button.button-primary:active {
   transform: none;
 }
 
+/*
+  A tab's content, coming in: a short fade with a lift of a few pixels, so a
+  change of tab reads as one rather than a cut. Opacity and transform only.
+*/
+@keyframes scf-tab-in {
+  from { opacity: 0; transform: translateY(var(--shift-xs)); }
+}
+
+.scf-tab-enter {
+  animation: scf-tab-in var(--settle-quick) var(--spring-quick) both;
+}
+
+/*
+  The thin bar along the top while work runs in the background
+  (components/Layout/ActivityBar): it fades in and out; a captions job fills
+  it, anything else sends a band along it. Transform and opacity only.
+*/
+.scf-activity {
+  opacity: 0;
+  transition: opacity var(--settle-standard) var(--spring-standard);
+}
+
+.scf-activity[data-busy='true'] {
+  opacity: 1;
+}
+
+.scf-activity-fill {
+  transition: transform var(--settle-standard) var(--spring-standard);
+}
+
+@keyframes scf-activity-band {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+.scf-activity-band {
+  animation: scf-activity-band 1.3s var(--ease-standard) infinite;
+}
+
+/*
+  Something still loading - a sound's waveform being read: a soft light
+  sweeping across where it will be, instead of an empty box.
+*/
+@keyframes scf-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.scf-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+
+.scf-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.07), transparent);
+  animation: scf-shimmer 1.4s var(--ease-standard) infinite;
+}
+
+/* A razor cut, just made: a bright line on the cut that stretches and fades. */
+@keyframes scf-cut-flash {
+  from { opacity: 1; transform: scaleY(0.45); box-shadow: 0 0 10px 2px rgb(147 197 253 / 0.9); }
+  to { opacity: 0; transform: scaleY(1); box-shadow: 0 0 2px 0 rgb(147 197 253 / 0); }
+}
+
+.scf-cut-flash {
+  animation: scf-cut-flash 420ms var(--ease-out) both;
+}
+
 /* The dim behind a side panel opened as a drawer in a narrow window. */
 .scf-scrim {
   animation: scf-fade-in var(--settle-standard) var(--spring-standard) both;
@@ -1310,7 +1385,8 @@ section[data-section] > [id^='inspector-section-'],
   backdrop-filter: none;
 }
 
-:root:is([data-playing], [data-exporting], [data-hidden], [data-motion='reduced']) :is(.scf-dirty-dot, .scf-glow) {
+:root:is([data-playing], [data-exporting], [data-hidden], [data-motion='reduced']) :is(.scf-dirty-dot, .scf-glow, .scf-activity-band),
+:root:is([data-playing], [data-exporting], [data-hidden], [data-motion='reduced']) .scf-skeleton::after {
   animation: none;
 }
 

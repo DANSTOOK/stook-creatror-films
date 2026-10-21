@@ -1023,7 +1023,7 @@ export function Inspector(): JSX.Element {
 
       <div ref={tabPanelRef} id="inspector-tabpanel" role="tabpanel" aria-labelledby={tabId(current)} data-tab={current} className="inspector-flow min-h-0 flex-1 overflow-y-auto">
         {/* One column docked; columns of a readable width in a wide window (index.css). */}
-        <div className="inspector-flow-columns">
+        <div key={current} className="inspector-flow-columns scf-tab-enter">
         {current === 'title' && (
           <TitleTab
             clip={clip}

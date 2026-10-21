@@ -16,6 +16,43 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.58.0-beta.1 — La interfaz, terminada: fundidos, carga, cortes y cabezal
+2026-10-21 · pre-release para probar
+
+Lo que quedaba de la renovación visual de la v1.56.
+
+### Añadido
+- **Cambiar de pestaña tiene transición:** en la biblioteca y en el
+  inspector, el contenido nuevo entra con un fundido corto y un leve
+  desplazamiento, en lugar de aparecer de golpe.
+- **Barra de actividad arriba del editor:** una línea fina mientras se
+  importan medios, se lee el sonido o se generan subtítulos. Con los
+  subtítulos se va llenando según su avance; con lo demás, una banda la
+  recorre. Se desvanece al terminar.
+- **Esqueleto de carga:** un audio cuya forma de onda se está leyendo
+  muestra un brillo que lo recorre, en vez de una caja vacía, hasta que
+  aparece la forma de onda.
+- **Destello al cortar:** un corte con la cuchilla deja una línea brillante
+  que se estira y se desvanece en cada pista cortada.
+- **El tiempo junto al cabezal:** al arrastrarlo, una etiqueta en la regla
+  dice dónde está (00:00:06:00) y se va al soltar.
+- **Las pestañas de la biblioteca dicen su nombre** al pasar el ratón o al
+  llegar con el teclado, además de la que está abierta.
+
+Todas las animaciones nuevas son solo de opacidad y transformación, se
+pausan mientras se reproduce o exporta y se reducen si Windows pide menos
+movimiento.
+
+### Comprobado
+- `tests/ui/interface-motion.mjs` **17/17**: la barra se enciende al
+  importar y se apaga; la pestaña nueva se anima; la pestaña señalada dice
+  su nombre; el destello aparece y se va; la etiqueta del cabezal marca
+  00:00:06:00 en el fotograma 180 y se va al soltar; el esqueleto se ve
+  mientras se lee un audio de 10 minutos y deja paso a su forma de onda.
+- Cadencia de fotogramas `npm run test:motion` 26/26.
+
+---
+
 ## v1.57.0-beta.1 — Quitar silencios y animaciones más ligeras
 2026-10-21 · pre-release para probar
 

@@ -71,9 +71,18 @@ async function main() {
     check('the viewer and the timeline say how to start', emptyViewer && emptyTimeline && /Add media/.test(viewerText), viewerText);
     await shot(window, 'empty.png');
     await app.evaluate(({ dialog }, files) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: files }); }, [video]);
+    // Watch the bar along the top while the import runs.
+    await window.evaluate(() => {
+      const bar = document.querySelector('[data-testid="activity-bar"]');
+      window.__busySeen = [bar?.dataset.busy];
+      new MutationObserver(() => window.__busySeen.push(bar.dataset.busy)).observe(bar, { attributes: true, attributeFilter: ['data-busy'] });
+    });
     await window.getByTestId('viewer-empty-import').click();
     const imported = await window.waitForFunction(() => window.__scfStore.getState().assets.length === 1, null, { timeout: 60_000 }).then(() => true).catch(() => false);
     check('its Import button imports', imported);
+    await sleep(1500);
+    const busySeen = await window.evaluate(() => window.__busySeen);
+    check('the bar along the top shows while the import runs, and goes after', busySeen[0] === 'false' && busySeen.includes('true') && busySeen.at(-1) === 'false', busySeen.join(' -> '));
     await window.evaluate(() => {
       const s = window.__scfStore.getState();
       const track = s.project.tracks.find((t) => t.type === 'video');
@@ -165,6 +174,65 @@ async function main() {
     await sleep(500);
     const docked = await window.evaluate(() => Boolean(document.querySelector('[data-panel="media"][data-state="open"]')) && !document.querySelector('[data-drawer="true"]'));
     check('wide again, the panels are docked as before', docked);
+
+    console.log('6. tabs, cuts and the playhead');
+    await window.getByTestId('library-tab-titles').click();
+    const tabAnimates = await window.evaluate(() => {
+      const panel = document.getElementById('library-tabpanel');
+      return panel.classList.contains('scf-tab-enter') && panel.getAnimations().length > 0;
+    });
+    await window.getByTestId('library-tab-media').click();
+    check('the content of a new tab comes in with a fade', tabAnimates);
+    await window.getByTestId('library-tab-effects').hover();
+    await sleep(200);
+    const labelShown = await window.evaluate(() => document.querySelector('[data-testid="library-tab-effects"] .library-tab-label').getBoundingClientRect().width > 20);
+    check('a library tab pointed at says its name', labelShown);
+    await window.mouse.move(800, 20);
+
+    await window.evaluate(() => {
+      const s = window.__scfStore.getState();
+      s.setUi({ pixelsPerFrame: 2, scrollLeftPx: 0 });
+      s.razorAtFrame(120);
+    });
+    await sleep(60);
+    const flashing = await window.getByTestId('cut-flash').count();
+    await sleep(700);
+    const flashGone = await window.getByTestId('cut-flash').count();
+    check('a razor cut flashes on its track, and the flash goes', flashing === 1 && flashGone === 0, `${flashing} then ${flashGone}`);
+
+    const ruler = await window.getByTestId('timeline-canvas').boundingBox();
+    await window.mouse.move(ruler.x + 300, ruler.y + 10);
+    await window.mouse.down();
+    await window.mouse.move(ruler.x + 360, ruler.y + 10, { steps: 4 });
+    const chip = await window.getByTestId('scrub-time').innerText().catch(() => '');
+    const chipFrame = await window.evaluate(() => window.__scfStore.getState().project.currentFrame);
+    await window.mouse.up();
+    await sleep(150);
+    const chipGone = await window.getByTestId('scrub-time').count();
+    check('dragging the playhead shows where it is above it, and the chip goes on letting go', /^\d\d:\d\d:\d\d:\d\d$/.test(chip.trim()) && chipFrame === 180 && chipGone === 0, `"${chip.trim()}" at frame ${chipFrame}, ${chipGone} left after letting go`);
+
+    // A sound coming in: a skeleton where its waveform will be, while it is read.
+    const tone = join(work, 'tone.wav');
+    execFileSync(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=f=440:d=600', '-ar', '48000', '-ac', '2', tone]);
+    await window.getByTestId('library-tab-media').click();
+    await window.evaluate(() => {
+      window.__skeletonSeen = false;
+      new MutationObserver(() => {
+        if (document.querySelector('[data-testid="asset-skeleton"]')) window.__skeletonSeen = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await app.evaluate(({ dialog }, files) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: files }); }, [tone]);
+    await window.getByRole('button', { name: 'Import', exact: true }).click();
+    await window.waitForFunction(() => window.__scfStore.getState().assets.length === 2, null, { timeout: 60_000 });
+    // Its waveform is read when it is first played or put on the timeline.
+    await window.evaluate(() => {
+      const s = window.__scfStore.getState();
+      const audio = s.project.tracks.find((t) => t.type === 'audio');
+      s.addAssetToTimeline(s.assets.find((a) => a.kind === 'audio'), audio.id, 0);
+    });
+    const settled = await window.waitForFunction(() => !document.querySelector('[data-testid="asset-skeleton"]') && document.querySelector('svg rect[fill="#a7f3d0"]'), null, { timeout: 60_000 }).then(() => true).catch(() => false);
+    const skeletonSeen = await window.evaluate(() => window.__skeletonSeen);
+    check('a sound being read shows a skeleton where its waveform goes, then the waveform', skeletonSeen && settled, `skeleton seen ${skeletonSeen}, waveform drawn ${settled}`);
 
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {

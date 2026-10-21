@@ -146,6 +146,9 @@ import {
 import { createLibraryCommand } from './useHistoryStore';
 import { removeRanges, type FrameRange } from '@renderer/edit/silences';
 
+/** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
+export const CUT_EVENT = 'scf:cut';
+
 /**
  * Single source of truth for the editor.
  *
@@ -2232,6 +2235,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
 
     set({ ui: { ...ui, selectedClipIds: splits.map(([, right]) => right.id) } });
+    // The timeline marks the cut with a short flash on each track it went through.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(CUT_EVENT, { detail: { frame: cutFrame, trackIds: [...new Set(splits.map(([left]) => left.trackId))] } }));
+    }
   },
 
   /* Keyframes ------------------------------------------------------------ */

@@ -38,7 +38,8 @@ import {
 import type { Clip, Marker, MediaAsset, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { useMediaStore } from '@renderer/store/useMediaStore';
-import { useProjectStore } from '@renderer/store/useProjectStore';
+import { CUT_EVENT, useProjectStore } from '@renderer/store/useProjectStore';
+import { framesToTimecode } from '@shared/utils/timecode';
 import { dismissNotification, notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
@@ -93,6 +94,7 @@ import { applyLibraryItem, effectClipAt, isLibraryEffectItem } from '@renderer/f
 import { smoothZoom, zooming } from './smoothZoom';
 import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
+import { withActivity } from '@renderer/activity/activity';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import TimelineCanvas, {
@@ -237,6 +239,21 @@ export function Timeline(): JSX.Element {
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
   // A title, transition or effect being dragged from the library, and where it would land.
   const libraryDragging = useLibraryDragStore((state) => state.dragging);
+  const [, setScrubEnded] = useState(0);
+  // Razor cuts just made, each flashed for a moment on its tracks.
+  const [cutFlashes, setCutFlashes] = useState<Array<{ id: number; frame: number; trackIds: string[] }>>([]);
+  useEffect(() => {
+    let next = 0;
+    const onCut = (event: Event): void => {
+      const detail = (event as CustomEvent<{ frame: number; trackIds: string[] }>).detail;
+      if (!detail) return;
+      const id = (next += 1);
+      setCutFlashes((current) => [...current, { id, frame: detail.frame, trackIds: detail.trackIds }]);
+      window.setTimeout(() => setCutFlashes((current) => current.filter((flash) => flash.id !== id)), 450);
+    };
+    window.addEventListener(CUT_EVENT, onCut);
+    return () => window.removeEventListener(CUT_EVENT, onCut);
+  }, []);
   const [libraryTarget, setLibraryTarget] = useState<
     | { kind: 'title'; trackId: string | null; start: number; end: number }
     | { kind: 'transition'; cut: TimelineCut | null }
@@ -1409,7 +1426,7 @@ export function Timeline(): JSX.Element {
         if (asset && !asset.missing) assets = [asset];
       } else if (files.length > 0) {
         const importing = notify(t('notify.importing'), 'info', { persistent: true });
-        const outcome = await importDroppedFiles(files, state.project.fps).catch((error: unknown) => ({
+        const outcome = await withActivity('timeline-import', () => importDroppedFiles(files, state.project.fps)).catch((error: unknown) => ({
           assets: [],
           rejected: [{ name: 'drop', reason: error instanceof Error ? error.message : String(error) }],
         }));
@@ -1496,9 +1513,12 @@ export function Timeline(): JSX.Element {
         state.selectClips([drag.collapseTo], false, drag.collapseExact);
       }
 
+      const wasScrub = drag.kind === 'scrub';
       dragRef.current = { kind: 'none' };
       setActiveSnap(null);
       setMarquee(null);
+      // The drag lives in a ref: the playhead's time chip needs a render to go.
+      if (wasScrub) setScrubEnded((count) => count + 1);
     },
     [store, ui.pixelsPerFrame, ui.scrollLeftPx],
   );
@@ -1928,6 +1948,35 @@ export function Timeline(): JSX.Element {
                 </div>
               )}
             </div>
+
+            {/* A razor cut, just made: a short flash on each track it went through. */}
+            {cutFlashes.flatMap((flash) =>
+              flash.trackIds.map((trackId) => {
+                const row = tracks.findIndex((track) => track.id === trackId);
+                if (row < 0) return null;
+                return (
+                  <span
+                    key={`${flash.id}-${trackId}`}
+                    data-testid="cut-flash"
+                    aria-hidden
+                    className="scf-cut-flash pointer-events-none absolute w-0.5 rounded-full bg-white"
+                    style={{ left: flash.frame * ui.pixelsPerFrame - 1, top: trackRowTop(row) + 2, height: TRACK_HEIGHT - 4 }}
+                  />
+                );
+              }),
+            )}
+
+            {/* Dragging the playhead: where it is, in a chip above it on the ruler. */}
+            {drag.kind === 'scrub' && (
+              <span
+                data-testid="scrub-time"
+                aria-hidden
+                className="timecode pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded bg-accent px-1.5 py-0.5 text-2xs font-semibold leading-none text-white shadow-lg"
+                style={{ left: project.currentFrame * ui.pixelsPerFrame }}
+              >
+                {framesToTimecode(project.currentFrame, project.fps)}
+              </span>
+            )}
 
             {renamingMarker && (
               <input
