@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { ExportProgress, ExportSettings } from '@shared/types';
 import { subtitleCodecFor, subtitleStreamsOf } from '@shared/utils/subtitleStream';
 import { lastLines, mt } from '../language';
+import { switchOffSubtitleTracks } from './mp4Tracks';
 import {
   FORMAT_SUPPORTS_ALPHA,
   resolveFfmpegPath,
@@ -391,6 +392,10 @@ export class EncoderPipeline {
     const { thumbnailPath, outputPath, format } = job.settings;
     if (thumbnailPath && EncoderPipeline.supportsCoverArt(format)) {
       await EncoderPipeline.attachCoverArt(job.destination, thumbnailPath);
+    }
+    // After the cover's pass, which muxes again: its subtitle tracks off, as asked (mp4Tracks).
+    if (subtitleStreamsOf(job.settings).length > 0 && subtitleCodecFor(format) === 'mov_text') {
+      await switchOffSubtitleTracks(job.destination).catch(() => 0);
     }
 
     // Only now, with a complete and indexed file in hand, does the destination

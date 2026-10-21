@@ -575,6 +575,9 @@ async function main() {
       // An MP4 keeps a track's name as its handler name (ffmpeg prints it so).
       mp4.finished && subs.length === 2 && /\(eng\): Subtitle: mov_text/.test(subs[0].line) && subs[0].meta.handler_name === 'Captions 2' && /\(spa\): Subtitle: mov_text/.test(subs[1].line) && subs[1].meta.handler_name === 'Captions 1',
       subs.map((stream) => `${stream.line.replace(/\s+/g, ' ').slice(0, 64)} name=${stream.meta.handler_name}`).join(' | '));
+    check('both subtitle streams are left switched off: neither is "(default)", so a player does not show them unasked',
+      subs.length === 2 && subs.every((stream) => !/\(default\)/.test(stream.line)),
+      subs.map((stream) => stream.line.replace(/\s+/g, ' ').slice(0, 80)).join(' | '));
     const readBack = async (index) => {
       const out = join(workDir, `stream-${index}.srt`);
       await execFileAsync(ffmpeg, ['-y', '-v', 'error', '-i', video, '-map', `0:s:${index}`, out]).catch(() => undefined);

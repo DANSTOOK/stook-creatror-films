@@ -16,6 +16,41 @@ fotogramas exportados correctos).
 
 ---
 
+## Próxima versión (sin publicar) — Subtítulos que no se pisan
+
+### Arreglado
+- **Dos pistas de subtítulos abajo se dibujaban una encima de otra** al
+  grabarlas juntas. Ahora, mientras coinciden en pantalla, el subtítulo de la
+  pista de arriba sube por encima del de abajo (su alto más un margen); solo,
+  cada uno sigue en su sitio. Lo mismo arriba, hacia abajo.
+  - *Comprobado:* en la imagen exportada, con la pista inglesa en amarillo, el
+    amarillo queda en y 913–954 y el blanco en y 982–1023, sin tocarse;
+    5 pruebas unitarias del apilado.
+- **«Pocas palabras a la vez»: la palabra dicha casi tocaba a la siguiente**
+  («cortosobre»). Las palabras de su línea se apartan lo que ella crece, así
+  que el espacio entre palabras se queda como lo dejó la maquetación.
+  - *Comprobado:* en «corto sobre» las letras quedan a 28 px con un espacio
+    maquetado de 22 px («corto» crece 14 px por lado; antes el hueco bajaba a
+    unos 14 px); 5 pruebas unitarias.
+- **En MP4 y MOV la primera pista de subtítulos salía «activada»** aunque se
+  pedía apagada: ffmpeg la activa siempre. Al terminar la exportación se
+  apaga en la cabecera de cada pista de subtítulos (3 bytes en su sitio, sin
+  volver a codificar ni mover nada), también después de añadir la miniatura.
+  - *Comprobado:* exportación real con dos pistas: ninguna sale «(default)»
+    al leerla con ffmpeg, y las dos se leen enteras; pruebas sobre MP4, MP4
+    con *faststart* y MOV escritos por ffmpeg (antes, uno salía «(default)»).
+
+### Sin verificar
+- Qué hace con la pista apagada un reproductor de verdad (VLC, el de
+  Windows, un móvil): leída con ffmpeg, que es lo que hay en este equipo.
+
+### Pruebas
+- Unitarias 1521/1521, interfaz 127/127, extremo a extremo 22/22,
+  subtítulos 74/74 · 72/72 · 39/39, títulos 33/33, texto a voz 19/19, edición
+  de audio 47/47, cabezal y capas 20/20.
+
+---
+
 ## v1.54.0-beta.1 — Texto a voz en su propia ventana y una app sin huecos
 2026-10-20 · pre-release para probar
 
