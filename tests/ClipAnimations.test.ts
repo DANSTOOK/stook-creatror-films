@@ -58,6 +58,30 @@ describe('clip animations', () => {
     });
   }
 
+  it('keeps a handful of keyframes, not one every other frame, and plays the same to within what can be seen', () => {
+    const counts: string[] = [];
+    for (const id of CLIP_ANIMATIONS.filter((a) => animationPhase(a) !== 'loop')) {
+      const window = animationWindow(id, { startFrame: 0, durationFrames: 300 }, fps, 1.5);
+      const transform = withAnimation(still(), id, window, rest, frame, fps);
+      const total = transform.position.length + transform.scale.length + transform.rotation.length + transform.opacity.length;
+      counts.push(`${id} ${total}`);
+      // At every frame a sample was taken (every other one), the simplified move is within the tolerance of it.
+      for (let f = window.from; f <= window.to; f += 2) {
+        const want = animationPoseAt(id, (f - window.from) / (window.to - window.from));
+        const got = evaluateTransform(transform, f);
+        expect(Math.abs(got.position.x - want.x * frame.width)).toBeLessThanOrEqual(1 + 1e-6);
+        expect(Math.abs(got.position.y - want.y * frame.height)).toBeLessThanOrEqual(1 + 1e-6);
+        expect(Math.abs(got.scale.x - want.scale)).toBeLessThanOrEqual(0.002 + 1e-9);
+        expect(Math.abs(got.rotation - want.rotation)).toBeLessThanOrEqual(0.25 + 1e-9);
+        expect(Math.abs(got.opacity - want.opacity)).toBeLessThanOrEqual(0.01 + 1e-9);
+      }
+      expect(total).toBeLessThan(id === 'shakeIn' || id === 'dropIn' ? 60 : 8);
+    }
+    // A fade is one eased glide: two keyframes, the curve on the first.
+    const fade = withAnimation(still(), 'fadeIn', animationWindow('fadeIn', { startFrame: 0, durationFrames: 300 }, fps, 1.5), rest, frame, fps);
+    expect(fade.opacity.length).toBe(2);
+  });
+
   it('a slide in starts off the frame, so nothing of it shows on the first frame', () => {
     const window = animationWindow('slideInLeft', clip, fps);
     const first = evaluateTransform(withAnimation(still(), 'slideInLeft', window, rest, frame, fps), window.from);
