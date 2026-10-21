@@ -144,6 +144,7 @@ import {
   type LibrarySnapshot,
 } from '@renderer/media/bins';
 import { createLibraryCommand } from './useHistoryStore';
+import { removeRanges, type FrameRange } from '@renderer/edit/silences';
 
 /**
  * Single source of truth for the editor.
@@ -433,6 +434,12 @@ interface ProjectStore {
 
 
   removeClips(clipIds: string[]): void;
+  /**
+   * Take `ranges` (frames of the timeline) out of a clip and the clips linked
+   * to it, closing up what follows on their tracks: "Remove silences"
+   * (edit/silences.ts). One undo step. Returns how many frames came out.
+   */
+  removeClipRanges(clipId: string, ranges: readonly FrameRange[]): number;
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
   /** Ctrl+C: copy the selected clips. */
@@ -1842,6 +1849,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return { ...project, clips: tidyLinkGroups(clips) };
     });
     set({ ui: { ...get().ui, selectedClipIds: [] } });
+  },
+
+  removeClipRanges(clipId, ranges) {
+    const { project } = get();
+    const clip = project.clips[clipId];
+    if (!clip || ranges.length === 0) return 0;
+    const group = clip.linkGroup
+      ? Object.values(project.clips).filter((other) => other.linkGroup === clip.linkGroup).map((other) => other.id)
+      : [clip.id];
+    let removed = 0;
+    get().transact('Remove silences', (current) => {
+      const result = removeRanges(current.clips, group, ranges);
+      removed = result.removed;
+      return { ...current, clips: result.clips };
+    });
+    set({ ui: { ...get().ui, selectedClipIds: [] } });
+    return removed;
   },
 
   copySelection() {

@@ -16,6 +16,50 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.57.0-beta.1 — Quitar silencios y animaciones más ligeras
+2026-10-21 · pre-release para probar
+
+### Añadido
+- **Quitar silencios** (cortes en salto, como en los vídeos de alguien
+  hablando a cámara). Desde el menú del clip en la línea de tiempo («Quitar
+  silencios…») o desde la pestaña Audio del inspector:
+  - Tres ajustes: a partir de qué nivel es silencio (de -60 a -20 dB), la
+    pausa mínima (0,2 a 3 s) y cuánto silencio conservar a cada lado para no
+    cortar palabras (0 a 0,5 s).
+  - Cada cambio vuelve a buscar (ffmpeg, `silencedetect`, solo el tramo del
+    archivo que usa el clip). Una barra del clip marca en rojo lo que se va a
+    quitar, con cuántos silencios y cuántos segundos.
+  - «Quitar N silencios» corta el clip y lo que lleva enlazado (su imagen o
+    su sonido) en los mismos fotogramas, deja cada trozo enlazado con su
+    pareja y sincronizado, y cierra los huecos en esas pistas. Un solo paso
+    de deshacer.
+  - *Comprobado:* `tests/ui/silences.mjs` **5/5** con un tono que calla 1 s
+    y 1,5 s: encuentra los dos silencios, quedan tres trozos de 34, 38 y 34
+    fotogramas (el tono con el margen), un Ctrl+Z lo devuelve; con el audio
+    separado, imagen y sonido quedan cortados igual, enlazados por parejas y
+    en sincronía (abierto desde el menú del clip). 8 pruebas unitarias
+    (lectura de ffmpeg, fotogramas con margen, cortes enlazados).
+
+### Mejorado
+- **Las animaciones de clip ocupan muy pocos fotogramas clave:** aparecer,
+  desvanecer, los siete deslizamientos y el golpe de zoom son 2 fotogramas
+  clave con su curva; saltar y girar, 2 o 3 por propiedad; caer y sacudida
+  siguen muestreados, sin los puntos que sobran. Antes, una entrada podía
+  dejar «48 keyframes» en el clip. Se ve exactamente igual: la vista previa
+  del panel sigue las mismas curvas.
+- **Al cortar un clip con animaciones**, la entrada se queda en la mitad
+  izquierda y la salida en la derecha (antes las dos mitades decían tener
+  ambas).
+
+### Pruebas
+- Unitarias 1565/1565, interfaz 127/127, extremo a extremo 22/22, quitar
+  silencios 5/5, efectos 11/11 y 9/9, interfaz y movimiento 11/11, cadencia
+  de fotogramas 26/26, títulos 33/33, subtítulos 74/74 · 72/72 · 39/39,
+  transiciones 24/24 y 35/35, texto a voz 19/19, edición de audio 47/47,
+  cabezal y capas 20/20.
+
+---
+
 ## v1.56.0-beta.1 — Ver y editar lo aplicado a cada clip, zoom con zona, y una interfaz que responde
 2026-10-20 · pre-release para probar
 

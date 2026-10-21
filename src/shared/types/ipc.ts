@@ -15,6 +15,7 @@ export const IPC = {
   registerDroppedFolders: 'drop:register-folders',
   mediaUrl: 'media:url',
   extractAudio: 'media:extract-audio',
+  detectSilences: 'media:detect-silences',
   openProject: 'dialog:open-project',
   projectsList: 'projects:list',
   projectsOpenRecent: 'projects:open-recent',
@@ -559,6 +560,15 @@ export interface FilmoraApi {
    * null when there is none.
    */
   extractAudio(path: string): Promise<string | null>;
+  /**
+   * Where the sound of `path` goes quiet between two times of the file, for
+   * "Remove silences" (main/media/silence.ts). Seconds of the file; empty
+   * for a file with no sound.
+   */
+  detectSilences(
+    path: string,
+    request: { noiseDb: number; minSeconds: number; fromSeconds: number; toSeconds: number },
+  ): Promise<Array<{ start: number; end: number }>>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /** Recent projects, newest first, each with whether its file still exists. */
   projectsList(): Promise<RecentProject[]>;

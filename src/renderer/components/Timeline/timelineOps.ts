@@ -150,6 +150,17 @@ export function splitClip(clip: Clip, frame: number): [Clip, Clip] | null {
     transform: rightTransform,
   };
 
+  // An In animation plays at the start of what was the clip, an Out at its
+  // end: each half keeps the one whose keyframes it now holds (Clip.fx).
+  if (clip.fx) {
+    const { out: _out, ...leftFx } = clip.fx;
+    const { in: _in, ...rightFx } = clip.fx;
+    void _out;
+    void _in;
+    left.fx = leftFx.motion || leftFx.in || leftFx.loop ? leftFx : undefined;
+    right.fx = rightFx.motion || rightFx.out || rightFx.loop ? rightFx : undefined;
+  }
+
   return [left, right];
 }
 

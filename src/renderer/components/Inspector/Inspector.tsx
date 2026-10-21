@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Diamond, FolderOpen, Palette, Plus, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, RotateCcw, Scissors, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -31,6 +31,8 @@ import { LayerRow } from './LayerRow';
 import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { EffectStack, addStackEffect, effectMenuItems } from './EffectStack';
 import { ClipFxPanel } from './ClipFxPanel';
+import { canRemoveSilences } from '@renderer/edit/silences';
+import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
@@ -687,6 +689,20 @@ export function Inspector(): JSX.Element {
       >
         {levelRows}
       </Section>
+      {/* Jump cuts: the quiet stretches taken out (edit/silences). */}
+      {canRemoveSilences(clip) && (
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            data-testid="inspector-remove-silences"
+            className="tool-button h-control w-full justify-center border border-panel-600"
+            onClick={() => useSilenceDialogStore.getState().show(clip.id)}
+          >
+            <Scissors size={13} />
+            {t('silence.button')}
+          </button>
+        </div>
+      )}
       {audioOnly && (
         <Section {...sectionProps('eq')} title={t('inspector.equalizer')} onReset={() => updateClip(clip.id, { eq: { low: 0, mid: 0, high: 0 } }, `eq:${clip.id}`)}>
           <SliderRow label={t('inspector.eqLow')} value={eq.low} min={-24} max={24} step={0.5} format={signedDb} onChange={(low) => setEq({ low })} />

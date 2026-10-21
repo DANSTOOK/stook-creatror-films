@@ -91,6 +91,8 @@ import {
 } from '@renderer/components/MediaLibrary/libraryDrag';
 import { applyLibraryItem, effectClipAt, isLibraryEffectItem } from '@renderer/fx/applyLibraryItem';
 import { smoothZoom, zooming } from './smoothZoom';
+import { canRemoveSilences } from '@renderer/edit/silences';
+import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import TimelineCanvas, {
@@ -507,6 +509,15 @@ export function Timeline(): JSX.Element {
           label: t('timeline.rejoinAudio'),
           icon: AudioLines,
           onSelect: () => rejoinSelectionAudio(selected.includes(clip.id) ? [...selected] : [clip.id]),
+        });
+      }
+      // Jump cuts: the quiet stretches out of a clip with sound, or of a picture whose sound was detached.
+      const hasSound = clip.audioOnly || Boolean(sound) || assetHasSound(assets.find((asset) => asset.uri === clip.sourceUri));
+      if (hasSound && canRemoveSilences(clip)) {
+        items.push({
+          label: t('silence.menu'),
+          icon: Scissors,
+          onSelect: () => useSilenceDialogStore.getState().show(clip.id),
         });
       }
       return items;

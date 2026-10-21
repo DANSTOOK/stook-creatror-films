@@ -20,6 +20,7 @@ import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
+import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
 import { readFrameTimes } from '../media/frameTimes';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
@@ -430,6 +431,25 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const url = mediaUrlFor(target);
     extractedAudio.set(path, url);
     return url;
+  });
+
+  /** Where a file's sound goes quiet (main/media/silence.ts). */
+  ipcMain.handle(IPC.detectSilences, async (_event, path: string, request: SilenceRequest): Promise<SilenceSpan[]> => {
+    assertAllowed(path);
+    const finite = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+    const asked: SilenceRequest = {
+      noiseDb: finite(request?.noiseDb, -38),
+      minSeconds: finite(request?.minSeconds, 0.5),
+      fromSeconds: finite(request?.fromSeconds, 0),
+      toSeconds: finite(request?.toSeconds, 0),
+    };
+    if (!(asked.toSeconds > asked.fromSeconds)) return [];
+    // ffmpeg exits 0 and prints to stderr; a file with no sound fails, which is no silences to find.
+    const stderr = await execFileAsync(resolveFfmpegPath(), silenceArgs(path, asked), { maxBuffer: 32 * 1024 * 1024, windowsHide: true }).then(
+      (result) => String(result.stderr),
+      () => '',
+    );
+    return parseSilences(stderr, asked);
   });
 
   ipcMain.handle(IPC.openMedia, async (): Promise<PickedFile[]> => {

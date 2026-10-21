@@ -48,6 +48,7 @@ const api: FilmoraApi = {
   // constructed in JavaScript, so page code cannot talk its way into a path.
   mediaUrl: (path) => ipcRenderer.invoke(IPC.mediaUrl, path) as Promise<string>,
   extractAudio: (path) => ipcRenderer.invoke(IPC.extractAudio, path) as Promise<string | null>,
+  detectSilences: (path, request) => ipcRenderer.invoke(IPC.detectSilences, path, request) as Promise<Array<{ start: number; end: number }>>,
   registerDroppedFiles: (files) =>
     ipcRenderer.invoke(
       IPC.registerDroppedFiles,
