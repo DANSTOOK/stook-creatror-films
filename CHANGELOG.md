@@ -16,6 +16,43 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.59.0-beta.1 — Exportar para redes sociales, y la música bajo la voz a la vista
+2026-10-21 · pre-release para probar
+
+### Añadido
+- **Exportar para redes sociales, de una vez:** en Exportar, la sección
+  «Para redes sociales» lista YouTube, YouTube 4K, YouTube Shorts, TikTok,
+  Instagram Reels e Instagram (feed 4:5). Cada una dice el tamaño en que
+  saldrá y si **llena la pantalla** o se verá **con franjas** (a los lados,
+  o arriba y abajo).
+  - Marca las que quieras y «Exportar para N redes» crea un archivo para
+    cada una, uno tras otro, con su nombre («viaje - TikTok.mp4», «viaje -
+    YouTube.mp4»), en MP4/H.264 con la tasa de bits adecuada a su tamaño y
+    como mucho 60 fps. Nunca sobrescribe: si el nombre ya existe, añade (2).
+  - Mientras trabaja dice en qué versión va («Versión 2 de 3: TikTok»); al
+    final, cuántas se exportaron.
+  - **La imagen nunca se estira ni se recorta sin avisar:** se exporta con la
+    forma del proyecto. Si no coincide con la de la red, una nota explica que
+    se verá con franjas y que para llenar la pantalla hay que cambiar la forma
+    del proyecto en Ajustes del proyecto.
+- **«Bajar la música cuando alguien habla», en el propio clip de música:**
+  el ducking automático ya existía en el Mezclador (botón Ducking), pero
+  estaba escondido. Ahora la pestaña Audio de un clip de música tiene un
+  interruptor para activarlo, y explica dónde se ajusta y qué pistas cuentan
+  como voz (o que aún no hay ninguna).
+
+### Comprobado
+- `tests/ui/export-networks.mjs` **5/5**: un proyecto 16:9 con TikTok y
+  YouTube marcados dice «franjas arriba y abajo» y «llena la pantalla»; un
+  clic crea «trip - TikTok.mp4» y «trip - YouTube.mp4», los dos de 1920x1080
+  leídos con ffmpeg, pasando por «Version 1 of 2: YouTube» y «Version 2 of 2:
+  TikTok»; un proyecto vertical llena TikTok a 1080x1920. 6 pruebas
+  unitarias de los preajustes.
+- `tests/ui/interface-motion.mjs` **18/18**, con el interruptor de la música
+  que activa el ducking.
+
+---
+
 ## v1.58.0-beta.1 — La interfaz, terminada: fundidos, carga, cortes y cabezal
 2026-10-21 · pre-release para probar
 

@@ -34,6 +34,7 @@
     "test:effects:ui": "node ./tests/ui/effects.mjs",
     "test:interface:ui": "node ./tests/ui/interface-motion.mjs",
     "test:silences:ui": "node ./tests/ui/silences.mjs",
+    "test:export-networks:ui": "node ./tests/ui/export-networks.mjs",
     "test:effects-edit:ui": "node ./tests/ui/effects-edit.mjs",
     "test:fx:ui": "node ./tests/ui/fx.mjs",
     "test:captions:ui": "node ./tests/ui/captions.mjs",

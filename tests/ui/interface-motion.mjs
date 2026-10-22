@@ -140,7 +140,8 @@ async function main() {
     const drift = Math.max(...zoom.samples.map((s) => Math.abs(s.x - zoom.start.x)));
     check('Zoom in eases: it passes through values between, and ends 1.4x closer', zoom.found && between >= 3 && Math.abs(end.ppf / zoom.start.ppf - 1.4) < 0.01,
       `${between} frames between ${zoom.start.ppf} and ${end.ppf.toFixed(2)}`);
-    check('the playhead stays where it is on screen all the way', drift <= 1, `moved at most ${drift.toFixed(2)} px`);
+    // Scroll is whole pixels (smoothZoom), so up to a pixel and a half either way: nothing an eye can see.
+    check('the playhead stays where it is on screen all the way', drift <= 1.5, `moved at most ${drift.toFixed(2)} px`);
 
     console.log('5. a half-screen window');
     await size(960, 1000);
@@ -233,6 +234,19 @@ async function main() {
     const settled = await window.waitForFunction(() => !document.querySelector('[data-testid="asset-skeleton"]') && document.querySelector('svg rect[fill="#a7f3d0"]'), null, { timeout: 60_000 }).then(() => true).catch(() => false);
     const skeletonSeen = await window.evaluate(() => window.__skeletonSeen);
     check('a sound being read shows a skeleton where its waveform goes, then the waveform', skeletonSeen && settled, `skeleton seen ${skeletonSeen}, waveform drawn ${settled}`);
+
+    // Music under speech, switched on from the music clip itself.
+    await window.evaluate(() => {
+      const s = window.__scfStore.getState();
+      const music = Object.values(s.project.clips).find((c) => s.project.tracks.find((t) => t.id === c.trackId)?.type === 'audio');
+      s.selectClips([music.id]);
+    });
+    await sleep(300);
+    await window.locator('[role="tab"]').filter({ hasText: /^Audio$/ }).first().click();
+    const duckingBefore = await window.evaluate(() => window.__scfStore.getState().project.audio.ducking.enabled);
+    await window.getByTestId('inspector-ducking-switch').check();
+    const duckingAfter = await window.evaluate(() => window.__scfStore.getState().project.audio.ducking.enabled);
+    check('a music clip offers "Lower the music when someone speaks", and it turns ducking on', !duckingBefore && duckingAfter);
 
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {

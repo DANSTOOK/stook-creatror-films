@@ -13,6 +13,7 @@ import {
 import type {
   ExportFormat,
   ExportProgress,
+  ExportSettings,
   GpuPreference,
   GpuReport,
   HardwareEncoder,
@@ -21,6 +22,7 @@ import type {
 import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPlan';
 import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
+import { SOCIAL_PLATFORMS, socialFit, socialSettings, socialSize, type SocialPlatformId } from './socialPresets';
 import { streamTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
@@ -411,15 +413,23 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const pressedPreset =
     matchingPresets.find((preset) => preset.id === chosenPreset)?.id ?? matchingPresets[0]?.id ?? null;
 
-  const startExport = useCallback(async () => {
+  /**
+   * Render and encode the range. `override` changes settings for this run
+   * only - a network's size, its own file name - so an export for several
+   * networks runs this once each (exportForNetworks). True once the file is
+   * written; false when it could not start, was cancelled or failed.
+   */
+  const dialogSettings = settings;
+  const startExport = useCallback(async (override?: Partial<ExportSettings>): Promise<boolean> => {
+    const settings: ExportSettings = { ...dialogSettings, ...override };
     const renderer = getActiveFrameRenderer();
     if (!renderer) {
       setMessage(t('export.notReady'));
-      return;
+      return false;
     }
     if (!folder || !settings.outputPath) {
       setMessage(t('export.chooseFolderFirst'));
-      return;
+      return false;
     }
 
     cancelRef.current = false;
@@ -549,7 +559,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
           encoder?.close();
           await window.filmora.exportCancel(activeJobId);
           setMessage(t('export.cancelled'));
-          return;
+          return false;
         }
 
         // Say so when a source fell back to seeking: that path is more than an
@@ -613,20 +623,58 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       setMessage(null);
       setSettingsOpen(false);
       setTargetCheck((count) => count + 1);
+      return true;
     } catch (error) {
       setFailed(true);
       setMessage(t('export.failed', { detail: errorText(error) }));
       encoder?.close();
       if (jobId) await window.filmora.exportCancel(jobId).catch(() => undefined);
+      return false;
     } finally {
       renderer.stopSequentialDecode();
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, settings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, embedCaptions, deliverTracks, burnTrackIds, several, t]);
+  }, [project, assets, dialogSettings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, embedCaptions, deliverTracks, burnTrackIds, several, t]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const renderFps = settings.fps || project.fps;
+
+  /*
+    For social networks: tick the ones wanted, and one click renders a file
+    for each - its size and bitrate, the project's own shape, named after the
+    network ("My video - TikTok.mp4") - one after another (socialPresets.ts).
+  */
+  const [networks, setNetworks] = useState<ReadonlySet<SocialPlatformId>>(() => new Set());
+  const [batch, setBatch] = useState<{ index: number; total: number; name: string } | null>(null);
+  const toggleNetwork = (id: SocialPlatformId): void =>
+    setNetworks((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const exportForNetworks = async (): Promise<void> => {
+    if (!folder) {
+      setMessage(t('export.chooseFolderFirst'));
+      return;
+    }
+    const chosen = SOCIAL_PLATFORMS.filter((platform) => networks.has(platform.id));
+    const written: string[] = [];
+    for (const [index, platform] of chosen.entries()) {
+      setBatch({ index: index + 1, total: chosen.length, name: platform.name });
+      // Its own name; never over a file already there.
+      let target = await window.filmora.resolveExportTarget(folder, `${fileName} - ${platform.suffix}`, 'mp4-h264');
+      for (let n = 2; (target.exists || target.inUse) && n < 100; n += 1) {
+        target = await window.filmora.resolveExportTarget(folder, `${fileName} - ${platform.suffix} (${n})`, 'mp4-h264');
+      }
+      const ok = await startExport({ ...socialSettings(platform, project.width, project.height, renderFps), outputPath: target.path });
+      if (!ok) break;
+      written.push(splitPath(target.path).name);
+    }
+    setBatch(null);
+    if (written.length > 0) notify(t('export.networksDone', { count: written.length, names: written.join(', ') }), 'success');
+  };
   const view = describeExportProgress({
     frame: progress?.frame ?? 0,
     totalFrames: progress?.totalFrames || totalFrames,
@@ -738,6 +786,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         */}
         {!done && (
           <div className="shrink-0 space-y-2 border-b border-panel-700 bg-panel-950 px-4 py-3">
+            {batch && (
+              <p data-testid="export-networks-progress" className="text-2xs font-semibold uppercase tracking-wide text-accent-hover">
+                {t('export.networksProgress', { index: batch.index, total: batch.total, name: batch.name })}
+              </p>
+            )}
             {running || progress ? (
               <>
                 <div className="flex items-baseline justify-between gap-2">
@@ -897,6 +950,53 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               })}
               </div>
             </div>
+
+            {/* For social networks: one file each, in one go. */}
+            <section className="mb-4 space-y-2 rounded-lg border border-panel-700 bg-panel-950/60 p-3" data-testid="export-networks">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className="field-label text-slate-200">{t('export.stepNetworks')}</h3>
+                <span className="text-2xs text-slate-400">{t('export.networksHint')}</span>
+              </div>
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-1.5">
+                {SOCIAL_PLATFORMS.map((platform) => {
+                  const size = socialSize(platform, project.width, project.height);
+                  const fit = socialFit(platform, project.width, project.height);
+                  const on = networks.has(platform.id);
+                  return (
+                    <label
+                      key={platform.id}
+                      data-testid={`export-network-${platform.id}`}
+                      className={`press flex cursor-pointer items-start gap-2 rounded-md border px-2 py-1.5 text-left transition-colors ${
+                        on ? 'border-accent/60 bg-accent/15' : 'border-panel-700 bg-panel-900 hover:border-panel-600'
+                      }`}
+                    >
+                      <input type="checkbox" className="mt-0.5" checked={on} disabled={running} onChange={() => toggleNetwork(platform.id)} />
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium text-slate-100">{platform.name}</span>
+                        <span className="block text-2xs text-slate-400">
+                          {size.width}x{size.height} · {platform.aspect.w}:{platform.aspect.h}
+                        </span>
+                        <span className={`block text-2xs ${fit === 'fills' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                          {fit === 'fills' ? t('export.networkFills') : fit === 'pillarbox' ? t('export.networkBarsSides') : t('export.networkBarsTopBottom')}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {SOCIAL_PLATFORMS.some((platform) => networks.has(platform.id) && socialFit(platform, project.width, project.height) !== 'fills') && (
+                <p className="text-2xs leading-relaxed text-amber-200/90">{t('export.networkShapeHint')}</p>
+              )}
+              <button
+                type="button"
+                data-testid="export-networks-start"
+                className="tool-button h-control w-full justify-center border border-accent/50 bg-accent/10 text-accent-hover hover:bg-accent/20"
+                disabled={running || networks.size === 0 || !folder}
+                onClick={() => void exportForNetworks()}
+              >
+                {networks.size === 0 ? t('export.networksNone') : t('export.networksStart', { count: networks.size })}
+              </button>
+            </section>
 
             {/* Step 2 (the primary path): name the file and choose where it goes.
                 Accent-bordered so it reads as the field to fill in before Export -

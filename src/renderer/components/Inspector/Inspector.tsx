@@ -689,6 +689,24 @@ export function Inspector(): JSX.Element {
       >
         {levelRows}
       </Section>
+      {/* Music under speech: the mixer's auto ducking, where a music clip is. */}
+      {project.tracks.find((candidate) => candidate.id === clip.trackId)?.bus === 'music' && (
+        <div className="mx-3 mb-2 space-y-1.5 rounded-lg border border-panel-700 bg-panel-900/60 p-2.5" data-testid="inspector-ducking">
+          <label className="flex items-center justify-between gap-2 text-xs font-medium text-slate-100">
+            {t('inspector.duckMusic')}
+            <input
+              type="checkbox"
+              role="switch"
+              data-testid="inspector-ducking-switch"
+              checked={project.audio.ducking.enabled}
+              onChange={(event) => useProjectStore.getState().setDucking({ enabled: event.target.checked })}
+            />
+          </label>
+          <p className="text-2xs leading-relaxed text-slate-400">
+            {project.tracks.some((track) => track.bus === 'dialogue') ? t('inspector.duckMusicHint') : t('inspector.duckMusicNoVoice')}
+          </p>
+        </div>
+      )}
       {/* Jump cuts: the quiet stretches taken out (edit/silences). */}
       {canRemoveSilences(clip) && (
         <div className="px-3 pb-2">
