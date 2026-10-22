@@ -3,6 +3,7 @@ import {
   ArrowLeftRight,
   AudioLines,
   AudioWaveform,
+  Clapperboard,
   Film,
   GalleryHorizontal,
   Type,
@@ -94,6 +95,7 @@ import { applyLibraryItem, effectClipAt, isLibraryEffectItem } from '@renderer/f
 import { smoothZoom, zooming } from './smoothZoom';
 import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
+import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { withActivity } from '@renderer/activity/activity';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
@@ -535,6 +537,14 @@ export function Timeline(): JSX.Element {
           label: t('silence.menu'),
           icon: Scissors,
           onSelect: () => useSilenceDialogStore.getState().show(clip.id),
+        });
+      }
+      // One clip a take: the picture cut wherever it changes shot.
+      if (!clip.audioOnly && kindOf(clip.sourceUri) === 'video' && canRemoveSilences(clip)) {
+        items.push({
+          label: t('scenes.menu'),
+          icon: Clapperboard,
+          onSelect: () => useSceneDialog.getState().show(clip.id),
         });
       }
       return items;

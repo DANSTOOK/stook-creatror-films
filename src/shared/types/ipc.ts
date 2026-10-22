@@ -16,6 +16,7 @@ export const IPC = {
   mediaUrl: 'media:url',
   extractAudio: 'media:extract-audio',
   detectSilences: 'media:detect-silences',
+  detectScenes: 'media:detect-scenes',
   openProject: 'dialog:open-project',
   projectsList: 'projects:list',
   projectsOpenRecent: 'projects:open-recent',
@@ -569,6 +570,8 @@ export interface FilmoraApi {
     path: string,
     request: { noiseDb: number; minSeconds: number; fromSeconds: number; toSeconds: number },
   ): Promise<Array<{ start: number; end: number }>>;
+  /** Where the picture of `path` changes shot between two times of the file (main/media/scenes.ts), in seconds of the file. */
+  detectScenes(path: string, request: { threshold: number; fromSeconds: number; toSeconds: number }): Promise<number[]>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /** Recent projects, newest first, each with whether its file still exists. */
   projectsList(): Promise<RecentProject[]>;

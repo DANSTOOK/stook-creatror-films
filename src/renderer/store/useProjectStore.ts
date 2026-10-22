@@ -146,6 +146,7 @@ import {
 } from '@renderer/media/bins';
 import { createLibraryCommand } from './useHistoryStore';
 import { removeRanges, type FrameRange } from '@renderer/edit/silences';
+import { splitAtFrames } from '@renderer/edit/scenes';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
 export const CUT_EVENT = 'scf:cut';
@@ -451,6 +452,8 @@ interface ProjectStore {
    * (edit/silences.ts). One undo step. Returns how many frames came out.
    */
   removeClipRanges(clipId: string, ranges: readonly FrameRange[]): number;
+  /** Cut a clip and the clips linked to it at each of `frames`: "Split at scene changes" (edit/scenes.ts). One undo step. Returns the pieces. */
+  splitClipAtFrames(clipId: string, frames: readonly number[]): number;
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
   /** Ctrl+C: copy the selected clips. */
@@ -1900,6 +1903,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
     set({ ui: { ...get().ui, selectedClipIds: [] } });
     return removed;
+  },
+
+  splitClipAtFrames(clipId, frames) {
+    const { project } = get();
+    const clip = project.clips[clipId];
+    if (!clip || frames.length === 0) return 1;
+    const group = clip.linkGroup
+      ? Object.values(project.clips).filter((other) => other.linkGroup === clip.linkGroup).map((other) => other.id)
+      : [clip.id];
+    let pieces = 1;
+    get().transact('Split at scene changes', (current) => {
+      const result = splitAtFrames(current.clips, group, frames);
+      pieces = result.pieces;
+      return { ...current, clips: result.clips };
+    });
+    return pieces;
   },
 
   copySelection() {

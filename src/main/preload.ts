@@ -49,6 +49,7 @@ const api: FilmoraApi = {
   mediaUrl: (path) => ipcRenderer.invoke(IPC.mediaUrl, path) as Promise<string>,
   extractAudio: (path) => ipcRenderer.invoke(IPC.extractAudio, path) as Promise<string | null>,
   detectSilences: (path, request) => ipcRenderer.invoke(IPC.detectSilences, path, request) as Promise<Array<{ start: number; end: number }>>,
+  detectScenes: (path, request) => ipcRenderer.invoke(IPC.detectScenes, path, request) as Promise<number[]>,
   registerDroppedFiles: (files) =>
     ipcRenderer.invoke(
       IPC.registerDroppedFiles,

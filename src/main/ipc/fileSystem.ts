@@ -21,6 +21,7 @@ import { ProxyStore, proxySize } from '../media/proxies';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
+import { parseScenes, sceneArgs, type SceneRequest } from '../media/scenes';
 import { readFrameTimes } from '../media/frameTimes';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
@@ -450,6 +451,23 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       () => '',
     );
     return parseSilences(stderr, asked);
+  });
+
+  /** Where a file's picture changes shot (main/media/scenes.ts). */
+  ipcMain.handle(IPC.detectScenes, async (_event, path: string, request: SceneRequest): Promise<number[]> => {
+    assertAllowed(path);
+    const finite = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+    const asked: SceneRequest = {
+      threshold: finite(request?.threshold, 0.3),
+      fromSeconds: finite(request?.fromSeconds, 0),
+      toSeconds: finite(request?.toSeconds, 0),
+    };
+    if (!(asked.toSeconds > asked.fromSeconds)) return [];
+    const stderr = await execFileAsync(resolveFfmpegPath(), sceneArgs(path, asked), { maxBuffer: 64 * 1024 * 1024, windowsHide: true }).then(
+      (result) => String(result.stderr),
+      () => '',
+    );
+    return parseScenes(stderr, asked);
   });
 
   ipcMain.handle(IPC.openMedia, async (): Promise<PickedFile[]> => {
