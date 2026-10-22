@@ -16,6 +16,47 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.60.0-beta.1 — Reencuadre automático: de horizontal a vertical siguiendo a la persona
+2026-10-21 · pre-release para probar
+
+### Añadido
+- **Reencuadrar el proyecto** (como el Auto Reframe de CapCut o Premiere):
+  convierte un proyecto horizontal en **vertical 9:16**, **cuadrado 1:1** o
+  **retrato 4:5**, conservando su lado corto (1920x1080 → 1080x1920).
+  - Cada clip llena el cuadro nuevo **sin deformarse** ni dejar bordes negros.
+  - **Seguir a la persona** (activado por defecto): busca a la persona en cada
+    clip cinco veces por segundo con el modelo Rápido de Quitar fondo
+    (MODNet) y mueve el encuadre con ella como lo haría un operador de
+    cámara. No se mueve por pequeños gestos, la sigue con suavidad cuando se
+    desplaza y se queda donde estaba si no hay nadie. La cámara se ajusta de
+    «Ágil» a «Tranquila».
+  - Si el modelo no está en el equipo, el diálogo dice su tamaño y solo se
+    descarga al pulsar «Descargar». Cada archivo se analiza una vez (es el
+    mismo análisis que Quitar fondo, y se reutiliza).
+  - Se abre desde **Ajustes del proyecto** y desde **Exportar**, junto al
+    aviso de que el proyecto se verá con franjas en una red vertical.
+  - Sustituye la posición y la escala de los clips (lo avisa), y todo se
+    deshace con un Ctrl+Z.
+
+### Comprobado
+- `tests/ui/reframe.mjs` **7/7** con un presentador que está a la izquierda
+  3 s y luego a la derecha (recortado del clip DIVISAS de Descargas, que no
+  se modifica): el proyecto pasa a 1080x1920 con el clip cubriéndolo sin
+  deformar; el encuadre va a la izquierda y luego a la derecha (20 fotogramas
+  clave, ninguno pasado del borde); en la imagen exportada el presentador
+  queda en el 42 % del ancho antes del salto y en el 62 % después; un
+  Ctrl+Z lo devuelve todo. 8 pruebas unitarias (centro de la persona, cámara
+  quieta ante un vaivén, seguimiento sin saltos, sin nadie se queda, sin
+  bordes, tamaños).
+
+### Sin verificar
+- **Clips con varias personas:** el encuadre apunta al centro de todas
+  juntas.
+- **Clips largos:** el análisis recorre el archivo entero la primera vez (a
+  unos 21 ms por fotograma en la RTX 4060).
+
+---
+
 ## v1.59.0-beta.1 — Exportar para redes sociales, y la música bajo la voz a la vista
 2026-10-21 · pre-release para probar
 

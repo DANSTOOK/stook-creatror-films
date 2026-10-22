@@ -6,6 +6,7 @@ import type {
   CaptionPreset,
   CaptionTrackSettings,
   Clip,
+  ClipTransform,
   ColorGradingConfig,
   DuckingSettings,
   ExportSettings,
@@ -197,6 +198,13 @@ interface ProjectStore {
     /** Rescale the edit so it keeps its wall-clock timing when `fps` changes. */
     retime?: boolean,
   ): void;
+
+  /**
+   * Auto reframe (edit/reframe.ts): the project at a new size, and the clips
+   * given new position and scale tracks - their screen moves (fx.motion)
+   * dropped, being made for the old frame. One undo step.
+   */
+  reframeProject(size: { width: number; height: number }, transforms: Record<string, Pick<ClipTransform, 'position' | 'scale'>>): void;
 
   /* Markers -------------------------------------------------------------- */
   /** Drop a marker at `frame`, defaulting to the playhead. Returns its id. */
@@ -793,6 +801,29 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       width: project.width,
       height: project.height,
       fps: project.fps,
+      bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
+    });
+  },
+
+  reframeProject(size, transforms) {
+    get().transact('Reframe', (project) => {
+      const clips = { ...project.clips };
+      for (const [id, move] of Object.entries(transforms)) {
+        const clip = clips[id];
+        if (!clip) continue;
+        const fx = clip.fx ? { ...clip.fx, motion: undefined } : undefined;
+        clips[id] = {
+          ...clip,
+          transform: { ...clip.transform, position: move.position, scale: move.scale },
+          fx: fx && (fx.in || fx.out || fx.loop) ? fx : undefined,
+        };
+      }
+      return { ...project, width: size.width, height: size.height, clips };
+    });
+    const project = get().project;
+    get().setExportSettings({
+      width: project.width,
+      height: project.height,
       bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
     });
   },

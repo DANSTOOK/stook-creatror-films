@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Clock, History, Image as ImageIcon } from 'lucide-react';
+import { useReframeDialog } from '@renderer/components/Reframe/ReframeDialog';
+import { Clock, Crop, History, Image as ImageIcon } from 'lucide-react';
 import { COMMON_FPS } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -108,6 +109,21 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
             ))}
           </select>
         </label>
+
+        {/* A new shape with the clips filled into it and following the person, rather than letterboxed (Reframe). */}
+        <button
+          type="button"
+          data-testid="settings-reframe"
+          className="tool-button h-control w-full justify-center border border-panel-600"
+          onClick={() => {
+            // One dialog at a time: this one gives way to the reframe.
+            onClose();
+            useReframeDialog.getState().show();
+          }}
+        >
+          <Crop size={13} />
+          {t('reframe.open')}
+        </button>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">

@@ -23,6 +23,7 @@ import { GenerateCaptionsDialog } from './components/Captions/GenerateCaptionsDi
 import { RemoveSilencesDialog } from './components/RemoveSilences/RemoveSilencesDialog';
 import { useSilenceDialogStore } from './edit/silenceDialog';
 import { ActivityBar } from './components/Layout/ActivityBar';
+import { ReframeDialog, useReframeDialog } from './components/Reframe/ReframeDialog';
 import { TextToSpeechWindow } from './components/TextToSpeech/TextToSpeechWindow';
 import { focusDetachedWindow } from './components/Layout/useDetachedWindow';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
@@ -246,6 +247,8 @@ export default function App(): JSX.Element {
   const captionsPresence = usePresence(captionsOpen);
   const silenceOpen = useSilenceDialogStore((state) => state.open);
   const silencePresence = usePresence(silenceOpen);
+  const reframeOpen = useReframeDialog((state) => state.open);
+  const reframePresence = usePresence(reframeOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -845,6 +848,7 @@ export default function App(): JSX.Element {
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
           {silencePresence.mounted && <RemoveSilencesDialog closing={silencePresence.closing} onClose={() => useSilenceDialogStore.getState().close()} />}
+          {reframePresence.mounted && <ReframeDialog closing={reframePresence.closing} onClose={() => useReframeDialog.getState().close()} />}
           {/* Text to speech lives in a window of its own now, not a modal, so
               the editor stays live while a voice is set up (TextToSpeechWindow). */}
           {view === 'editor' && ttsOpen && <TextToSpeechWindow onClose={() => setTtsOpen(false)} />}

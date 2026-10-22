@@ -3,6 +3,7 @@ import {
   ChevronRight,
   CircleCheck,
   Clapperboard,
+  Crop,
   Film,
   FolderOpen,
   Loader2,
@@ -23,6 +24,7 @@ import { describeEncoder, resolveEncoderPlan } from '@renderer/engine/encoderPla
 import type { CodecSupport } from '@renderer/engine/WebCodecsEncoder';
 import { recommendedAudioBitrateKbps, recommendedBitrateKbps } from '@shared/utils/bitrate';
 import { SOCIAL_PLATFORMS, socialFit, socialSettings, socialSize, type SocialPlatformId } from './socialPresets';
+import { useReframeDialog } from '@renderer/components/Reframe/ReframeDialog';
 import { streamTimelineAudio } from '@renderer/audio/renderMix';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { matchPreset, resolutionPresets } from '@shared/utils/resolution';
@@ -985,7 +987,19 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 })}
               </div>
               {SOCIAL_PLATFORMS.some((platform) => networks.has(platform.id) && socialFit(platform, project.width, project.height) !== 'fills') && (
-                <p className="text-2xs leading-relaxed text-amber-200/90">{t('export.networkShapeHint')}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="min-w-0 flex-1 text-2xs leading-relaxed text-amber-200/90">{t('export.networkShapeHint')}</p>
+                  <button
+                    type="button"
+                    data-testid="export-reframe"
+                    className="tool-button h-control shrink-0 border border-amber-300/50 text-amber-100"
+                    disabled={running}
+                    onClick={() => useReframeDialog.getState().show()}
+                  >
+                    <Crop size={13} />
+                    {t('reframe.open')}
+                  </button>
+                </div>
               )}
               <button
                 type="button"
