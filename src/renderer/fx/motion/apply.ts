@@ -1,14 +1,13 @@
 import type { Clip, ClipMotionFx, ClipTransform, MediaAsset, ProjectState, Vector2D } from '@shared/types';
 import { fitScale } from '@renderer/media/fitToFrame';
 import { useProjectStore } from '@renderer/store/useProjectStore';
-import { evaluateTransform } from '@renderer/engine/KeyframeEvaluator';
-import { buildMotionTransform, isMotionPreset, type MotionBase, type MotionPresetId } from './presets';
+import { type MotionPresetId } from './presets';
+import { cleanFx, composeFx, fxIsEmpty } from './compose';
 import {
   animationPhase,
   animationSeconds,
   animationWindow,
   isClipAnimation,
-  withAnimation,
   withoutAnimation,
   type ClipAnimationId,
 } from './animations';
@@ -18,22 +17,15 @@ import {
  * clip, changing them, and taking them off. Kept out of the maths modules so
  * those stay free of the store and can be unit-tested on their own.
  *
- * What was chosen is kept on the clip (`clip.fx`), and every change goes
- * through setClipFx: the keyframes the old choice wrote come out, the new
- * choice's go in - move first, then the loop, then the In and the Out on
+ * What was chosen is kept on the clip (`clip.fx`), with the transform the
+ * clip had before any of it (`fx.base`), and every change goes through
+ * setClipFx: the transform is made again from that base with the new choice
+ * on it (compose.ts) - move first, then the loop, then the In and the Out on
  * top - as one undo step. So the inspector's Effects tab can show what is on
  * a clip and change any of it, and a single Ctrl+Z takes back each change.
  */
 
 const CENTRE: Vector2D = { x: 0.5, y: 0.5 };
-
-/** The clip's rest pose: the fit it was placed at (stills get bars, not a stretch), centred. */
-function motionBase(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): MotionBase {
-  const asset = assets.find((candidate) => candidate.uri === clip.sourceUri);
-  const fit = asset ? fitScale(asset, project) : null;
-  const scale: Vector2D = fit ?? { x: 1, y: 1 };
-  return { scale, position: { x: 0, y: 0 } };
-}
 
 /** Position and scale with no move on them: centred, at the clip's fit. */
 function restingMove(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): Pick<ClipTransform, 'position' | 'scale'> {
@@ -84,44 +76,32 @@ export function setClipFx(clipId: string, next: ClipMotionFx, mergeKey?: string)
   const clip = store.project.clips[clipId];
   if (!clip) return;
   const { project, assets } = store;
-  const { fps } = project;
-  const old = clip.fx ?? {};
-  let transform = clip.transform;
+  const base = clip.fx?.base ?? legacyBase(clip, project, assets);
+  const kept = cleanFx(next);
+  if (fxIsEmpty(kept)) {
+    // Nothing on it any more: the clip as it was before any of it.
+    store.updateClip(clipId, { transform: base, fx: undefined }, mergeKey);
+    return;
+  }
+  store.updateClip(clipId, { transform: composeFx(base, kept, clip, project, assets), fx: { ...kept, base } }, mergeKey);
+}
 
-  // Out with what the old choice wrote.
+/**
+ * The transform a clip had before its move and animations, for one saved
+ * before that was kept (v1.56 to v1.61): its tracks with what the old choice
+ * wrote taken out again - and a move's position and scale put back to rest.
+ */
+function legacyBase(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): ClipTransform {
+  const old = clip.fx;
+  if (!old) return clip.transform;
+  let transform = clip.transform;
   for (const phase of PHASES) {
     const chosen = old[phase];
     if (chosen && isClipAnimation(chosen.id)) {
-      transform = withoutAnimation(transform, chosen.id, windowOf(chosen.id, clip, fps, 'seconds' in chosen ? chosen.seconds : undefined));
+      transform = withoutAnimation(transform, chosen.id, windowOf(chosen.id, clip, project.fps, 'seconds' in chosen ? chosen.seconds : undefined));
     }
   }
-  // The move: written whole, or taken off.
-  if (next.motion && isMotionPreset(next.motion.preset)) {
-    const move = buildMotionTransform(next.motion.preset, clip, project, motionBase(clip, project, assets), {
-      amount: next.motion.amount,
-      focus: next.motion.focus,
-    });
-    transform = { ...transform, position: move.position, scale: move.scale };
-  } else if (old.motion) {
-    transform = { ...transform, ...restingMove(clip, project, assets) };
-  }
-  // The animations on top, each resting on the pose the clip has where it meets it.
-  for (const phase of PHASES) {
-    const chosen = next[phase];
-    if (!chosen || !isClipAnimation(chosen.id) || animationPhase(chosen.id) !== phase) continue;
-    const window = windowOf(chosen.id, clip, fps, 'seconds' in chosen ? chosen.seconds : undefined);
-    const pose = evaluateTransform(transform, phase === 'in' ? window.to : window.from);
-    const rest = { position: pose.position, scale: pose.scale, rotation: pose.rotation, opacity: pose.opacity };
-    transform = withAnimation(transform, chosen.id, window, rest, project, fps);
-  }
-
-  const kept: ClipMotionFx = {};
-  if (next.motion && isMotionPreset(next.motion.preset)) kept.motion = next.motion;
-  for (const phase of PHASES) {
-    const chosen = next[phase];
-    if (chosen && isClipAnimation(chosen.id) && animationPhase(chosen.id) === phase) (kept as Record<string, unknown>)[phase] = chosen;
-  }
-  store.updateClip(clipId, { transform, fx: hasClipFx(kept) ? kept : undefined }, mergeKey);
+  return old.motion ? { ...transform, ...restingMove(clip, project, assets) } : transform;
 }
 
 /** Put `preset` on the clip at its own strength, zooming to the centre; it replaces any move already there. */

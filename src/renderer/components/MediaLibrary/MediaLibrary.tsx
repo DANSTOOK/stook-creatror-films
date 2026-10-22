@@ -21,6 +21,7 @@ import {
   Film,
   Type,
   ArrowLeftRight,
+  Smile,
   Sparkles,
   Captions,
   type LucideProps,
@@ -52,6 +53,7 @@ import { useSessionStore } from '@renderer/store/useSessionStore';
 import { useIndicator } from '@renderer/motion/useIndicator';
 import { TransitionsBrowser } from './LibraryBrowsers';
 import { EffectsBrowser } from './EffectsBrowser';
+import { StickersBrowser } from './StickersBrowser';
 import { TitlesBrowser } from './TitlesBrowser';
 import { TranscriptPanel } from '@renderer/components/Captions/TranscriptPanel';
 import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
@@ -92,12 +94,13 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'captions'];
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'captions'];
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
   transitions: 'library.transitions',
   effects: 'library.effects',
+  stickers: 'library.stickers',
   // The transcript: the captions as a list (components/Captions/TranscriptPanel).
   captions: 'library.captions',
 };
@@ -113,6 +116,7 @@ const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
   titles: Type,
   transitions: ArrowLeftRight,
   effects: Sparkles,
+  stickers: Smile,
   captions: Captions,
 };
 
@@ -126,6 +130,7 @@ const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
   titles: 'library.titlesTip',
   transitions: 'library.transitionsTip',
   effects: 'library.effectsTip',
+  stickers: 'library.stickersTip',
   captions: 'library.captionsTip',
 };
 
@@ -651,6 +656,7 @@ export function MediaLibrary(): JSX.Element {
       {tab === 'titles' && <TitlesBrowser />}
       {tab === 'transitions' && <TransitionsBrowser />}
       {tab === 'effects' && <EffectsBrowser />}
+      {tab === 'stickers' && <StickersBrowser />}
       {tab === 'captions' && <TranscriptPanel />}
       {/* Bins above the clips in a narrow panel; beside them, as Resolve's
           Media Pool keeps its bin list, once the panel is wide (index.css). */}

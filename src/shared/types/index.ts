@@ -645,6 +645,11 @@ export interface ClipMotionFx {
   out?: ClipAnimationChoice;
   /** A loop plays over the whole clip; it has no length of its own. */
   loop?: { id: string };
+  /**
+   * The clip's transform before any of the above: what each change is made
+   * again from, and what the clip goes back to when all of it is taken off.
+   */
+  base?: ClipTransform;
 }
 
 export interface Clip {

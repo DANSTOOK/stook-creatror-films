@@ -148,6 +148,7 @@ import {
 import { createLibraryCommand } from './useHistoryStore';
 import { removeRanges, type FrameRange } from '@renderer/edit/silences';
 import { splitAtFrames } from '@renderer/edit/scenes';
+import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
 export const CUT_EVENT = 'scf:cut';
@@ -817,12 +818,12 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       for (const [id, move] of Object.entries(transforms)) {
         const clip = clips[id];
         if (!clip) continue;
-        const fx = clip.fx ? { ...clip.fx, motion: undefined } : undefined;
-        clips[id] = {
-          ...clip,
-          transform: { ...clip.transform, position: move.position, scale: move.scale },
-          fx: fx && (fx.in || fx.out || fx.loop) ? fx : undefined,
-        };
+        // The new tracks are the clip's base now; its animations are made again on them, its move dropped.
+        const base = { ...(clip.fx?.base ?? clip.transform), position: move.position, scale: move.scale };
+        const kept = cleanFx(clip.fx ? { ...clip.fx, motion: undefined } : undefined);
+        clips[id] = fxIsEmpty(kept)
+          ? { ...clip, transform: base, fx: undefined }
+          : { ...clip, transform: composeFx(base, kept, clip, { ...project, width: size.width, height: size.height }, get().assets), fx: { ...kept, base } };
       }
       return { ...project, width: size.width, height: size.height, clips };
     });

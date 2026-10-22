@@ -94,6 +94,20 @@ describe('what is on a clip, kept and changed', () => {
     expect(clip().transform.scale).toEqual([]);
   });
 
+  it('a clip’s own size at its first frame survives an In and a Loop, and comes back when they are taken off', () => {
+    // A still's fit, a sticker's size: one scale keyframe on the clip's first frame - inside the In's window.
+    state().updateClip(clipId, { transform: { ...clip().transform, scale: [{ id: 'own', frame: 0, value: { x: 0.3, y: 0.3 }, easing: 'linear' }] } });
+    applyClipAnimation(clipId, 'popIn');
+    applyClipAnimation(clipId, 'pulse');
+    // Settled after the pop, between pulses: the clip's own size, not the full frame.
+    const settled = evaluateTransform(clip().transform, 60).scale.x;
+    expect(settled).toBeGreaterThan(0.29);
+    expect(settled).toBeLessThan(0.32);
+    setClipFx(clipId, {});
+    expect(clip().fx).toBeUndefined();
+    expect(clip().transform.scale).toEqual([{ id: 'own', frame: 0, value: { x: 0.3, y: 0.3 }, easing: 'linear' }]);
+  });
+
   it('one undo takes back one change', () => {
     applyMotionPreset(clipId, 'zoomIn');
     setClipFx(clipId, { ...clip().fx, motion: { preset: 'zoomIn', amount: 2, focus: { x: 0.2, y: 0.3 } } });

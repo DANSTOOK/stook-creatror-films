@@ -77,6 +77,12 @@ interface HistoryState {
    * the UI never renders an intermediate state.
    */
   push(command: Command): void;
+  /**
+   * Make the steps pushed since the stack was `fromLength` long one step,
+   * labelled `label`: a gesture made of several edits (a sticker: added,
+   * sized, animated) that one Ctrl+Z should take back whole.
+   */
+  squash(fromLength: number, label: string): void;
   /** Pop the newest command and hand back the reverted project. */
   undo(current: ProjectState): ProjectState | null;
   redo(current: ProjectState): ProjectState | null;
@@ -93,6 +99,20 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
   redoStack: [],
   canUndo: false,
   canRedo: false,
+
+  squash(fromLength, label) {
+    const { undoStack } = get();
+    const steps = undoStack.slice(fromLength);
+    if (steps.length < 2 || steps.some((step) => step.library)) return;
+    const whole: Command = {
+      id: createId('cmd'),
+      label,
+      timestamp: Date.now(),
+      apply: (project) => steps.reduce((current, step) => step.apply(current), project),
+      revert: (project) => steps.reduceRight((current, step) => step.revert(current), project),
+    };
+    set({ undoStack: [...undoStack.slice(0, fromLength), whole] });
+  },
 
   push(command) {
     const { undoStack } = get();

@@ -487,7 +487,14 @@ function normalizeClipFx(fx: unknown): Clip['fx'] {
   }
   const loop = source.loop as Record<string, unknown> | undefined;
   if (loop && typeof loop.id === 'string') out.loop = { id: loop.id };
-  return out.motion || out.in || out.out || out.loop ? out : undefined;
+  if (!(out.motion || out.in || out.out || out.loop)) return undefined;
+  // The transform from before any of it, kept when it is a transform at all.
+  const base = source.base as Record<string, unknown> | undefined;
+  const tracks = ['position', 'scale', 'rotation', 'opacity'] as const;
+  if (base && typeof base === 'object' && tracks.every((track) => Array.isArray(base[track])) && base.anchorPoint && typeof base.anchorPoint === 'object') {
+    out.base = base as unknown as NonNullable<Clip['fx']>['base'];
+  }
+  return out;
 }
 
 function normalizeClipsAndTracks(project: ProjectState): ProjectState {

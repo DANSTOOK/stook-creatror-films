@@ -38,6 +38,7 @@
     "test:reframe:ui": "node ./tests/ui/reframe.mjs",
     "test:scenes:ui": "node ./tests/ui/scenes.mjs",
     "test:caption-style:ui": "node ./tests/ui/caption-style.mjs",
+    "test:stickers:ui": "node ./tests/ui/stickers.mjs",
     "test:effects-edit:ui": "node ./tests/ui/effects-edit.mjs",
     "test:fx:ui": "node ./tests/ui/fx.mjs",
     "test:captions:ui": "node ./tests/ui/captions.mjs",

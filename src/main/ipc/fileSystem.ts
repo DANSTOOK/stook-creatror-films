@@ -453,6 +453,18 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return parseSilences(stderr, asked);
   });
 
+  /** A sticker's picture, kept in the app's folder (renderer/stickers). */
+  ipcMain.handle(IPC.saveSticker, async (_event, id: string, png: ArrayBuffer): Promise<string> => {
+    const name = String(id).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'sticker';
+    if (!(png instanceof ArrayBuffer) || png.byteLength === 0 || png.byteLength > 16 * 1024 * 1024) throw new Error('Not a sticker');
+    const folder = join(app.getPath('userData'), 'scf', 'stickers');
+    await mkdir(folder, { recursive: true });
+    const path = join(folder, `${name}.png`);
+    await writeFile(path, Buffer.from(png));
+    allowedPaths.add(path);
+    return path;
+  });
+
   /** Where a file's picture changes shot (main/media/scenes.ts). */
   ipcMain.handle(IPC.detectScenes, async (_event, path: string, request: SceneRequest): Promise<number[]> => {
     assertAllowed(path);

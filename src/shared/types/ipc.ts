@@ -17,6 +17,7 @@ export const IPC = {
   extractAudio: 'media:extract-audio',
   detectSilences: 'media:detect-silences',
   detectScenes: 'media:detect-scenes',
+  saveSticker: 'media:save-sticker',
   openProject: 'dialog:open-project',
   projectsList: 'projects:list',
   projectsOpenRecent: 'projects:open-recent',
@@ -572,6 +573,12 @@ export interface FilmoraApi {
   ): Promise<Array<{ start: number; end: number }>>;
   /** Where the picture of `path` changes shot between two times of the file (main/media/scenes.ts), in seconds of the file. */
   detectScenes(path: string, request: { threshold: number; fromSeconds: number; toSeconds: number }): Promise<number[]>;
+  /**
+   * Keep a sticker's picture (a PNG the page drew, renderer/stickers) where
+   * it lasts - the app's own folder, not the temporary one - and return its
+   * path, ready to import. The same sticker in the same language is one file.
+   */
+  saveSticker(id: string, png: ArrayBuffer): Promise<string>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /** Recent projects, newest first, each with whether its file still exists. */
   projectsList(): Promise<RecentProject[]>;
