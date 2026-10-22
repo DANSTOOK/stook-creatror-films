@@ -639,6 +639,21 @@
     clip: auto;
   }
 
+  /* Docked at its narrowest, six icons and one name do not fit (the last icon
+     was cut off at 1280 px): icons alone, the open one marked by the
+     highlight, every name in its tooltip. */
+  @container (max-width: 239px) {
+    .library-tab:hover .library-tab-label,
+    .library-tab:focus-visible .library-tab-label,
+    .library-tab[aria-selected='true'] .library-tab-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+  }
+
   @container (min-width: 440px) {
     .library-tab-label {
       position: static;

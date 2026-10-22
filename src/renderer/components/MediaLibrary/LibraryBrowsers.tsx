@@ -225,7 +225,7 @@ export function TransitionsBrowser(): JSX.Element {
     .filter((group) => group.presets.length > 0);
   const filters: Filter[] = ['all', 'basic', ...SHADER_TRANSITION_CATEGORIES];
   return (
-    <div data-testid="library-transitions" className="min-h-0 flex-1 overflow-y-auto p-2">
+    <div data-testid="library-transitions" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
       <Hint id={hintId} text={t('library.transitionsHint')} />
       <input
         type="search"

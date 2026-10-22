@@ -64,7 +64,7 @@ export function StickersBrowser(): JSX.Element {
     }
   };
   return (
-    <div data-testid="library-stickers" className="min-h-0 flex-1 overflow-y-auto p-2">
+    <div data-testid="library-stickers" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
       <p id={hintId} className="px-1 pb-2 text-2xs leading-relaxed text-slate-400">
         {t('sticker.hint')}
       </p>

@@ -45,7 +45,7 @@ export function TitlesBrowser(): JSX.Element {
   }, [filter, query, t]);
 
   return (
-    <div data-testid="library-titles" className="min-h-0 flex-1 overflow-y-auto p-2">
+    <div data-testid="library-titles" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
       <p id={hintId} className="px-1 pb-2 text-2xs leading-relaxed text-slate-400">
         {t('library.titlesHint')}
       </p>

@@ -366,7 +366,7 @@ export function EffectsBrowser(): JSX.Element {
   const nothing = !showMotion && animationGroups.length === 0 && effectGroups.length === 0;
 
   return (
-    <div data-testid="library-effects" className="min-h-0 flex-1 overflow-y-auto p-2">
+    <div data-testid="library-effects" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
       <Hint id={hintId} text={t('library.effectsHint')} />
       <input
         type="search"
