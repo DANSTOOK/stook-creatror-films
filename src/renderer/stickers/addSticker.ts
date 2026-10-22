@@ -66,6 +66,11 @@ export async function addSticker(stickerId: string): Promise<string | null> {
   applyClipAnimation(clipId, 'popIn');
   applyClipAnimation(clipId, sticker.loop);
   useHistoryStore.getState().squash(mark, 'Add sticker');
+  // The playhead to where the pop has finished: at its first frame the sticker is still too small to see,
+  // and a viewer showing nothing after a click reads as a click that did nothing.
+  const added = useProjectStore.getState().project.clips[clipId];
+  const popped = added?.fx?.in ? Math.round(added.fx.in.seconds * useProjectStore.getState().project.fps) : 0;
+  if (added && popped > 0) useProjectStore.getState().setCurrentFrame(Math.min(added.startFrame + popped, added.startFrame + added.durationFrames - 1));
   useProjectStore.getState().setUi({ selectedClipIds: [clipId], selectedTrackId: useProjectStore.getState().project.clips[clipId]?.trackId ?? null });
   window.dispatchEvent(new Event(SHOW_CLIP_FX_EVENT));
   return clipId;

@@ -76,6 +76,8 @@ async function main() {
     await window.getByTestId('library-sticker-heart').click();
     await window.waitForFunction(() => Object.keys(window.__scfStore.getState().project.clips).length === 2, null, { timeout: 30_000 });
     const stickerId = await window.evaluate(() => window.__scfStore.getState().ui.selectedClipIds[0]);
+    // Marked where the square starts: the first frame (adding a sticker moves the playhead past its pop).
+    await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(0));
     await sleep(400);
 
     console.log('1. the card');

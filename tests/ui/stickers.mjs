@@ -76,10 +76,10 @@ async function main() {
       const clip = Object.values(s.project.clips)[0];
       const asset = s.assets.find((a) => a.uri === clip.sourceUri);
       const scale = clip.transform.scale.at(-1)?.value;
-      return { name: clip.name, path: asset?.sourcePath ?? '', kind: asset?.kind, scaleY: scale?.y, fx: clip.fx, start: clip.startFrame, tracks: s.project.tracks.filter((t) => t.type === 'video').length, selected: s.ui.selectedClipIds.includes(clip.id) };
+      return { name: clip.name, path: asset?.sourcePath ?? '', kind: asset?.kind, scaleY: scale?.y, fx: clip.fx, start: clip.startFrame, tracks: s.project.tracks.filter((t) => t.type === 'video').length, selected: s.ui.selectedClipIds.includes(clip.id), playhead: s.project.currentFrame };
     });
-    check('a click puts it on a track of its own, a third of the frame tall, popping on and with its loop',
-      added && heart.name === 'Heart' && heart.kind === 'image' && /stickers[\\/]heart\.png$/.test(heart.path) && Math.abs(heart.scaleY - 0.34) < 0.02 && heart.fx?.in?.id === 'popIn' && heart.fx?.loop?.id === 'pulse' && heart.tracks === 3 && heart.selected,
+    check('a click puts it on a track of its own, a third of the frame tall, popping on and with its loop, the playhead past the pop so it shows',
+      added && heart.name === 'Heart' && heart.kind === 'image' && /stickers[\\/]heart\.png$/.test(heart.path) && Math.abs(heart.scaleY - 0.34) < 0.02 && heart.fx?.in?.id === 'popIn' && heart.fx?.loop?.id === 'pulse' && heart.tracks === 3 && heart.selected && heart.playhead === heart.start + 15,
       JSON.stringify(heart));
     const reds = await window.evaluate(async () => {
       const renderer = window.__scfRenderer();
