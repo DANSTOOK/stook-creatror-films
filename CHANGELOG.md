@@ -7,12 +7,52 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1600 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1604 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.65.0-beta.1 — El seguimiento sigue también el tamaño
+2026-10-22 · pre-release para probar
+
+### Añadido
+- **Seguir un objeto, también su tamaño:** en la tarjeta «Seguir un objeto»,
+  la casilla **«También su tamaño (crece si se acerca)»** (activada por
+  defecto). Si el objeto se acerca a la cámara o se aleja, el sticker o título
+  que lo sigue crece o encoge con él. Tiene en cuenta también el zoom del
+  propio clip de vídeo. «Dejar de seguir» devuelve su tamaño propio.
+  - El tamaño se juzga contra cómo se veía el objeto al marcarlo: una plantilla
+    que aprende acaba pareciéndose a lo que ve y nunca «vería» crecer nada.
+  - Un objeto quieto no «respira»: el tamaño solo cambia cuando el parecido
+    mejora claramente.
+  - *Comprobado:* `tests/ui/tracking-size.mjs` **6/6** (dos pasadas) con un
+    cuadro que crece de 80 a 155 px en el centro: la estrella crece ×1,91
+    (el cuadro ×1,93) y se queda en su sitio (a menos de 3,5 px del rastreador);
+    en la imagen exportada crece ×1,60 entre 0,7 s y 2,5 s (el cuadro ×1,54);
+    sin la casilla conserva su tamaño; «Dejar de seguir» lo devuelve todo.
+    3 pruebas unitarias nuevas (crecer, el zoom del vídeo, quitarlo).
+
+### Arreglado
+- **Las animaciones ya no anulan el seguimiento.** Un latido, un «pop» o
+  cualquier animación sobre un clip que sigue algo se aplica encima de su
+  movimiento y su tamaño, fotograma a fotograma. Antes lo devolvía al sitio y
+  al tamaño de reposo durante la animación (un sticker con latido dejaba de
+  crecer con el objeto).
+  - *Comprobado:* prueba unitaria (un latido sobre un tamaño seguido late
+    alrededor de ese tamaño) y la prueba anterior en la imagen exportada.
+
+### Problemas conocidos
+- El seguimiento sigue la posición y el tamaño, pero **no el giro**: si el
+  objeto rota, el clip no rota con él.
+
+### Comprobado en conjunto
+- 1604 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  seguimiento 8/8, efectos 11/11, edición de efectos 9/9, stickers 6/6,
+  animación de títulos 30/30, reencuadre 7/7, paneles desprendidos 6/6.
 
 ---
 
