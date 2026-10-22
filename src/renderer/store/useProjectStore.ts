@@ -5,6 +5,7 @@ import type {
   CaptionLook,
   CaptionPreset,
   CaptionTrackSettings,
+  CaptionStyleOverride,
   Clip,
   ClipTransform,
   ColorGradingConfig,
@@ -454,6 +455,8 @@ interface ProjectStore {
   removeClipRanges(clipId: string, ranges: readonly FrameRange[]): number;
   /** Cut a clip and the clips linked to it at each of `frames`: "Split at scene changes" (edit/scenes.ts). One undo step. Returns the pieces. */
   splitClipAtFrames(clipId: string, frames: readonly number[]): number;
+  /** One caption's own look over its track's (CaptionContent.style); undefined takes it back to the track's. */
+  setCaptionStyle(clipId: string, style: CaptionStyleOverride | undefined, mergeKey?: string): void;
   /** Copy a clip and drop the copy immediately after the original. */
   duplicateClips(clipIds: string[]): void;
   /** Ctrl+C: copy the selected clips. */
@@ -1903,6 +1906,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
     set({ ui: { ...get().ui, selectedClipIds: [] } });
     return removed;
+  },
+
+  setCaptionStyle(clipId, style, mergeKey) {
+    const clip = get().project.clips[clipId];
+    if (!clip?.caption) return;
+    const { style: _old, ...rest } = clip.caption;
+    void _old;
+    const kept = style && Object.keys(style).length > 0 ? style : undefined;
+    get().updateClip(clipId, { caption: kept ? { ...rest, style: kept } : rest }, mergeKey);
   },
 
   splitClipAtFrames(clipId, frames) {

@@ -1,6 +1,8 @@
 import { useId, useRef } from 'react';
 import { Link2, Unlink } from 'lucide-react';
-import type { CaptionTrackSettings, Clip } from '@shared/types';
+import type { CaptionStyleOverride, CaptionTrackSettings, Clip } from '@shared/types';
+import { lookOf } from '@renderer/captions/look';
+import { SliderRow, SwitchRow } from './rows';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { useLanguageStore, useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -35,6 +37,10 @@ export function CaptionTab({ clip, settings, frame }: CaptionTabProps): JSX.Elem
   const setCaptionBreaks = useProjectStore((state) => state.setCaptionBreaks);
   const fixCaptionTiming = useProjectStore((state) => state.fixCaptionTiming);
   const linkCaptionsToClips = useProjectStore((state) => state.linkCaptionsToClips);
+  const setCaptionStyle = useProjectStore((state) => state.setCaptionStyle);
+  const own = clip.caption?.style;
+  const trackLook = lookOf(settings);
+  const restyle = (patch: Partial<CaptionStyleOverride>, merge?: string): void => setCaptionStyle(clip.id, { ...own, ...patch }, merge);
   const unlinkCaptionsFromClips = useProjectStore((state) => state.unlinkCaptionsFromClips);
   const anchorName = useProjectStore((state) => (clip.caption?.link ? state.project.clips[clip.caption.link.clipId]?.name ?? null : null));
   const textId = useId();
@@ -140,6 +146,36 @@ export function CaptionTab({ clip, settings, frame }: CaptionTabProps): JSX.Elem
           </button>
         </div>
       )}
+
+      {/* This caption's own look, to make one line stand out from the rest of its track. */}
+      <section className="space-y-2 border-t border-panel-800 pt-3" data-testid="caption-own-style">
+        <label className="flex items-center justify-between gap-2 text-xs font-medium text-slate-100">
+          {t('caption.ownStyle')}
+          <input
+            type="checkbox"
+            role="switch"
+            data-testid="caption-own-style-switch"
+            checked={Boolean(own)}
+            onChange={(event) => setCaptionStyle(clip.id, event.target.checked ? { color: '#ffd400', bold: true, scale: 1.15 } : undefined)}
+          />
+        </label>
+        <p className="text-2xs leading-relaxed text-slate-400">{t(own ? 'caption.ownStyleOn' : 'caption.ownStyleOff')}</p>
+        {own && (
+          <div className="space-y-2">
+            <label className="grid grid-cols-[76px_1fr] items-center gap-2">
+              <span className="field-label">{t('caption.ownColor')}</span>
+              <input type="color" data-testid="caption-own-color" className="h-7 w-full cursor-pointer rounded-control bg-transparent" value={own.color ?? trackLook.color} onChange={(event) => restyle({ color: event.target.value }, `caption-style:${clip.id}:color`)} />
+            </label>
+            <SwitchRow label={t('caption.ownBold')} testId="caption-own-bold" checked={own.bold === true} onChange={(bold) => restyle({ bold: bold || undefined })} />
+            <SliderRow label={t('caption.ownSize')} value={own.scale ?? 1} min={0.5} max={2} step={0.05} format={(value) => `${Math.round(value * 100)} %`} onChange={(scale) => restyle({ scale: scale === 1 ? undefined : scale }, `caption-style:${clip.id}:scale`)} />
+            <div className="grid grid-cols-[76px_1fr_auto] items-center gap-2">
+              <span className="field-label">{t('caption.ownBand')}</span>
+              <input type="color" data-testid="caption-own-band" disabled={!own.band} className="h-7 w-full cursor-pointer rounded-control bg-transparent disabled:opacity-40" value={own.band ?? '#000000'} onChange={(event) => restyle({ band: event.target.value }, `caption-style:${clip.id}:band`)} />
+              <input type="checkbox" role="switch" aria-label={t('caption.ownBand')} data-testid="caption-own-band-switch" checked={Boolean(own.band)} onChange={(event) => restyle({ band: event.target.checked ? '#000000' : undefined })} />
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="flex items-start justify-between gap-2 border-t border-panel-800 pt-3">
         <p className="min-w-0 text-2xs leading-relaxed text-slate-400" data-testid="caption-link" data-linked={linked}>

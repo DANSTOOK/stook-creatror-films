@@ -1,4 +1,4 @@
-import type { CaptionTrackSettings, Clip, ProjectState, TitleContent, TitleStyle } from '@shared/types';
+import type { CaptionStyleOverride, CaptionTrackSettings, Clip, ProjectState, TitleContent, TitleStyle } from '@shared/types';
 import { REFERENCE_HEIGHT, TITLE_SAFE } from '@renderer/text/titleStyle';
 import { captionSettingsOf, isCaptionTrack } from './captionClips';
 import { rulesFor } from './rules';
@@ -85,12 +85,31 @@ export function captionSpan(clip: Clip, fps: number): { from: number; to: number
 /** The second of a caption's content shown at a timeline frame. */
 export const captionSecondsAt = (clip: Clip, frame: number, fps: number): number => (clip.sourceOffsetFrames + (frame - clip.startFrame) * speedOf(clip)) / fps;
 
+/**
+ * The track's look with one caption's own over it (CaptionContent.style):
+ * its colour, heavier letters, larger or smaller ones, a band behind it.
+ */
+export function withCaptionOverride(style: TitleStyle, override: CaptionStyleOverride | undefined): TitleStyle {
+  if (!override) return style;
+  const band = override.band;
+  return {
+    ...style,
+    ...(override.color ? { color: override.color } : {}),
+    ...(override.bold ? { fontWeight: Math.max(style.fontWeight, 800) } : {}),
+    ...(override.scale ? { fontSize: Math.max(8, Math.round(style.fontSize * override.scale)) } : {}),
+    ...(band
+      ? { box: { ...style.box, enabled: true, color: band, opacity: 0.85 }, shadow: { ...style.shadow, enabled: false } }
+      : {}),
+  };
+}
+
 function asTitleClip(clip: Clip, settings: CaptionTrackSettings, frame: { width: number; height: number }, fps: number): Clip {
-  const key = `${settings.preset}|${frame.width}x${frame.height}@${fps}|${settings.look ? JSON.stringify(settings.look) : ''}|${settings.animation ? JSON.stringify(settings.animation) : ''}`;
+  const own = clip.caption?.style;
+  const key = `${settings.preset}|${frame.width}x${frame.height}@${fps}|${settings.look ? JSON.stringify(settings.look) : ''}|${settings.animation ? JSON.stringify(settings.animation) : ''}|${own ? JSON.stringify(own) : ''}`;
   const known = drawnAs.get(clip);
   if (known && known.key === key) return known.clip;
   const text = clip.caption?.text ?? '';
-  const title = captionTitle(text, captionStyle(settings, frame));
+  const title = captionTitle(text, withCaptionOverride(captionStyle(settings, frame), own));
   // Moving word by word: when each word is said goes beside the title, for
   // the compositor to draw each frame from (text/words).
   if (settings.animation && captionTokens(text).length > 0) {

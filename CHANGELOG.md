@@ -16,6 +16,41 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.61.0-beta.1 — Cortar en cada cambio de escena y estilo propio por subtítulo
+2026-10-21 · pre-release para probar
+
+### Añadido
+- **Cortar en cada cambio de escena:** desde el menú del clip en la línea de
+  tiempo o la pestaña Video del inspector. Busca dónde cambia de plano la
+  imagen (ffmpeg, puntuación de escena, solo el tramo que usa el clip) y la
+  corta ahí: un clip por toma, para reordenar, recortar o quitar.
+  - Un solo ajuste, la sensibilidad (de «solo cortes» a «todo cambio»), y
+    una barra del clip con una marca en cada cambio encontrado.
+  - El sonido enlazado se corta a la vez y cada trozo queda enlazado con su
+    pareja. Un solo paso de deshacer.
+  - *Comprobado:* `tests/ui/scenes.mjs` **5/5** con tres planos de 2 s:
+    encuentra los 2 cambios, deja tres clips de 60 fotogramas que empiezan
+    cada uno en su plano, un Ctrl+Z lo devuelve; con el audio separado,
+    imagen y sonido quedan cortados igual y enlazados por parejas (abierto
+    desde el menú del clip). 5 pruebas unitarias.
+- **Estilo propio para un subtítulo:** en la pestaña Subtítulo, «Estilo
+  propio» destaca solo ese subtítulo sobre el estilo de su pista: color,
+  negrita, tamaño (50 % a 200 %) y una franja de color detrás. Los demás
+  siguen el estilo de la pista. Se graba en el vídeo igual que se ve.
+  - *Comprobado:* `tests/ui/caption-style.mjs` **4/4** en la imagen
+    exportada: el subtítulo destacado sale amarillo y más alto (40 → 48 px
+    de letra, y 84 px a 200 %), el otro sigue blanco; la franja se guarda;
+    al apagarlo vuelve al de la pista y Ctrl+Z lo recupera. 4 pruebas
+    unitarias (mezcla con la pista, franja, guardado y lectura de proyectos).
+
+### Aclarado
+- **Transcribir solo un tramo ya existía:** el diálogo Generar subtítulos
+  tiene «Alcance» (todo, entre las marcas de entrada y salida, o los clips
+  seleccionados). Solo aparece cuando hay marcas o clips seleccionados; la
+  nota antigua de *Problemas conocidos* estaba desfasada.
+
+---
+
 ## v1.60.0-beta.1 — Reencuadre automático: de horizontal a vertical siguiendo a la persona
 2026-10-21 · pre-release para probar
 

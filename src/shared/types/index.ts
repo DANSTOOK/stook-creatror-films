@@ -577,6 +577,23 @@ export interface CaptionContent {
   manualBreaks?: boolean;
   /** The footage this caption follows; absent on one that stays where it is put. */
   link?: CaptionLink;
+  /**
+   * This caption's own look over its track's, to make one line stand out:
+   * absent on a caption that looks like the rest of its track.
+   */
+  style?: CaptionStyleOverride;
+}
+
+/** What one caption changes about its track's look; anything left out is the track's. */
+export interface CaptionStyleOverride {
+  /** Letter colour, `#rrggbb`. */
+  color?: string;
+  /** Heavier letters than the track's. */
+  bold?: boolean;
+  /** A factor on the track's letter size, 0.5 to 2. */
+  scale?: number;
+  /** A band behind it in this colour, `#rrggbb`. */
+  band?: string;
 }
 
 /**
