@@ -692,7 +692,7 @@ export function MediaLibrary(): JSX.Element {
             </button>
           </div>
         ) : (
-          <>
+          <div className="flex min-h-full flex-col">
             {/*
               Which bin the clips are from, and where an import will land.
               Its folders are in the list above and only there.
@@ -816,7 +816,24 @@ export function MediaLibrary(): JSX.Element {
                 />
               ))}
             </ul>
-          </>
+            {/* The room under the clips is where more go: a place to drop or
+                click, the height that is left - a few clips in a tall panel or
+                a window of its own no longer sit over an empty void. */}
+            {visibleAssets.length > 0 && (
+              <button
+                type="button"
+                data-testid="media-drop-more"
+                onClick={handleImportClick}
+                className="media-drop-more press group mt-3 flex min-h-[64px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-panel-700 bg-panel-900/30 px-4 text-center text-slate-500 transition-colors hover:border-accent/70 hover:bg-accent/5 hover:text-slate-300"
+              >
+                <span aria-hidden className="media-drop-more-icon grid h-9 w-9 place-items-center rounded-lg border border-panel-700 bg-panel-800/80 text-slate-400 transition-colors group-hover:border-accent/50 group-hover:text-accent-hover">
+                  <Upload size={16} />
+                </span>
+                <span className="text-xs font-medium text-slate-300">{tr('media.dropMore')}</span>
+                <span className="media-drop-more-hint max-w-[260px] text-2xs leading-relaxed text-slate-500">{tr('media.dropMoreHint')}</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
       </div>

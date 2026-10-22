@@ -25,7 +25,31 @@ import { syncOffsetLabel } from './detachAudio';
  * only re-renders the canvas element itself, never a node per clip.
  */
 
-export const TRACK_HEIGHT = 56;
+/**
+ * A track's height. Never under 56 px; taller when the timeline has the room -
+ * a few tracks in a tall panel, or a timeline in a window of its own - so the
+ * rows fill it and their pictures and sound grow, rather than three thin rows
+ * over an empty half-window. A live binding: the Timeline sets it from the
+ * room it has (fitTrackHeight) before it draws, and everything that places a
+ * row reads it from here.
+ */
+export let TRACK_HEIGHT = 56;
+export const MIN_TRACK_HEIGHT = 56;
+export const MAX_TRACK_HEIGHT = 144;
+
+/** The row height that fills `available` px of timeline body with `count` tracks, within the bounds. */
+export function fitTrackHeight(available: number, count: number): number {
+  if (!(available > 0) || count <= 0) return MIN_TRACK_HEIGHT;
+  const each = Math.floor((available - RULER_HEIGHT - 8) / count) - TRACK_GAP;
+  // A little spare room is not worth rows of a new size: the docked timeline keeps its familiar 56 px,
+  // and rows grow only where most of the panel would otherwise be empty.
+  if (each < 76) return MIN_TRACK_HEIGHT;
+  return Math.min(MAX_TRACK_HEIGHT, each);
+}
+
+export function setTrackHeight(height: number): void {
+  TRACK_HEIGHT = height;
+}
 
 /**
  * The outline of a selected clip: yellow, as Final Cut draws it. The pale blue
@@ -370,6 +394,19 @@ function drawRuler(
  * actually uses - which is what makes a trimmed clip show the right audio and a
  * split show two different halves.
  */
+/** Whether a sound never rises past -50 dB: a camera's empty track, nothing worth a band of its own. Measured once a waveform. */
+const silence = new WeakMap<WaveformPeaks, boolean>();
+function isSilent(peaks: WaveformPeaks): boolean {
+  let known = silence.get(peaks);
+  if (known === undefined) {
+    let loudest = 0;
+    for (let i = 0; i < peaks.peaks.length; i += 1) loudest = Math.max(loudest, Math.abs(peaks.peaks[i]));
+    known = loudest < 0.003;
+    silence.set(peaks, known);
+  }
+  return known;
+}
+
 function drawWaveform(
   context: CanvasRenderingContext2D,
   clip: Clip,
@@ -810,8 +847,8 @@ function captionHasIssue(clip: Clip, track: Track, project: ProjectState): boole
 export const NAME_BAND = 'rgba(10, 11, 14, 0.66)';
 /** The height of that band, from the top of the clip body. */
 const NAME_BAND_HEIGHT = 16;
-/** The pictures' share of a clip that shows both: the sound gets the rest (22 px). */
-const FILMSTRIP_SHARE = 30;
+/** The pictures' share of a clip that shows both - 30 of a standard 52 px body; the sound gets the rest. Taller rows grow both alike. */
+const FILMSTRIP_SHARE = 30 / 52;
 
 function drawClip(
   context: CanvasRenderingContext2D,
@@ -868,13 +905,15 @@ function drawClip(
     context.restore();
   } else if (appearance !== 'name') {
     const picture = track.type !== 'audio' && appearance !== 'waveform' ? content.filmstrip : undefined;
-    const peaks = track.type === 'audio' || appearance !== 'filmstrip' || !picture ? content.peaks : undefined;
+    const heard = track.type === 'audio' || appearance !== 'filmstrip' || !picture ? content.peaks : undefined;
+    // A video whose sound is silence gives its pictures the whole clip, not a band of flat line.
+    const peaks = heard && picture && isSilent(heard) ? undefined : heard;
 
     context.save();
     context.clip();
     if (picture) {
       // A clip without sound gives its pictures the whole body.
-      const pictureHeight = peaks ? FILMSTRIP_SHARE : bodyHeight;
+      const pictureHeight = peaks ? Math.round(bodyHeight * FILMSTRIP_SHARE) : bodyHeight;
       drawFilmstrip(context, clip, picture, x, clipWidth, bodyTop, pictureHeight, fps, canvasWidth);
       pictureBottom = bodyTop + pictureHeight;
     }

@@ -971,6 +971,8 @@ export const en = {
   'media.clips': '{count} clips',
   'media.emptyBin': 'This bin is empty. Import here, or drag clips onto a bin in the list above.',
   'media.onlyBins': 'No clips here - only bins, in the list above.',
+  'media.dropMore': 'Drop more files here, or click to add them',
+  'media.dropMoreHint': 'Video, audio and pictures - or a whole folder from Explorer.',
   'media.dropHere': 'Drop files here',
   'media.dropHint': 'or click to browse. Video, audio, and transparent PNG sprite sheets.',
   'media.dropToImport': 'Drop to import',

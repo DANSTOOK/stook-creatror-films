@@ -970,6 +970,8 @@ export const es: Messages = {
   'media.clips': '{count} clips',
   'media.emptyBin': 'Esta carpeta está vacía. Importa aquí o arrastra clips a una carpeta de la lista de arriba.',
   'media.onlyBins': 'Aquí no hay clips, solo carpetas, en la lista de arriba.',
+  'media.dropMore': 'Suelta más archivos aquí o haz clic para añadirlos',
+  'media.dropMoreHint': 'Vídeo, audio e imágenes, o una carpeta entera desde el Explorador.',
   'media.dropHere': 'Suelta aquí los archivos',
   'media.dropHint': 'o haz clic para buscarlos. Vídeo, audio y hojas de sprites PNG con transparencia.',
   'media.dropToImport': 'Suelta para importar',

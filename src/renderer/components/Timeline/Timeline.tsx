@@ -106,6 +106,8 @@ import TimelineCanvas, {
   TRACK_TYPE_COLORS,
   TRACK_GAP,
   TRACK_HEIGHT,
+  fitTrackHeight,
+  setTrackHeight,
   hitsPlayheadScissors,
   markerAtPixel,
   trackIndexAtY,
@@ -237,6 +239,8 @@ export function Timeline(): JSX.Element {
   const appearanceButtonRef = useRef<HTMLButtonElement>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [bodyHeight, setBodyHeight] = useState(0);
   const dragRef = useRef<DragMode>({ kind: 'none' });
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
   // A title, transition or effect being dragged from the library, and where it would land.
@@ -301,7 +305,18 @@ export function Timeline(): JSX.Element {
     viewportWidth,
     (project.durationFrames + project.fps * 5) * ui.pixelsPerFrame,
   );
+  // Rows as tall as the room allows (TimelineCanvas.fitTrackHeight), set before anything below places one.
+  setTrackHeight(fitTrackHeight(bodyHeight, tracks.length));
   const canvasHeight = RULER_HEIGHT + tracks.length * (TRACK_HEIGHT + TRACK_GAP) + 8;
+
+  // The height the rows have to fill.
+  useLayoutEffect(() => {
+    const element = bodyRef.current;
+    if (!element) return undefined;
+    const observer = new ResizeObserver(([entry]) => setBodyHeight(Math.round(entry.contentRect.height)));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
@@ -1774,7 +1789,7 @@ export function Timeline(): JSX.Element {
 
       {/* Scrolls vertically as one, headers and tracks together, so a timeline
           dragged shorter than its tracks still reaches every row. */}
-      <div className="flex min-h-0 flex-1 overflow-y-auto">
+      <div ref={bodyRef} className="flex min-h-0 flex-1 overflow-y-auto">
         <div
           className="shrink-0 overflow-hidden border-r border-panel-700 bg-panel-900"
           style={{ width: HEADER_WIDTH }}
