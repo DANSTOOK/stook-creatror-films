@@ -4,8 +4,8 @@ import type { Clip } from '@shared/types';
 import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { hasNativeBridge } from '@renderer/media/importMedia';
-import { followerKeyframes, trackEndFrame, trackRequest, trackTargetFor } from '@renderer/edit/track';
-import { applyFollow, followOrigin, removeFollow } from '@renderer/edit/trackApply';
+import { followerKeyframes, followerScaleKeyframes, trackEndFrame, trackRequest, trackTargetFor } from '@renderer/edit/track';
+import { applyFollow, followOrigin, followOwnScale, removeFollow } from '@renderer/edit/trackApply';
 import { useTrackEditStore } from '@renderer/edit/trackEdit';
 
 /**
@@ -25,6 +25,8 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
   const startMarking = useTrackEditStore((state) => state.start);
   const stopMarking = useTrackEditStore((state) => state.stop);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
+  // Size too, as CapCut's "position and scale" tracking: on by default; off keeps the clip's own size.
+  const [withSize, setWithSize] = useState(true);
 
   const frame = project.currentFrame;
   const target = hasNativeBridge() ? trackTargetFor(project, assets, clip, frame) : null;
@@ -62,7 +64,12 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
       const follower = now.clips[clip.id];
       const under = now.clips[target.id];
       if (!follower || !under) return;
-      applyFollow(clip.id, followerKeyframes(samples, under, followOrigin(follower, frame), frame, end, now), frame);
+      applyFollow(
+        clip.id,
+        followerKeyframes(samples, under, followOrigin(follower, frame), frame, end, now),
+        frame,
+        withSize ? followerScaleKeyframes(samples, under, followOwnScale(follower, frame), frame, end, now.fps) : undefined,
+      );
       stopMarking();
       setStatus({ kind: 'idle' });
     } catch {
@@ -105,6 +112,18 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
               >
                 {marking ? t('track.markDone') : t('track.mark')}
               </button>
+              {marking && (
+                <label className="flex w-full items-center gap-2 text-2xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    data-testid="clip-fx-follow-size"
+                    checked={withSize}
+                    disabled={status.kind === 'running'}
+                    onChange={(event) => setWithSize(event.target.checked)}
+                  />
+                  {t('track.withSize')}
+                </label>
+              )}
               {marking && (
                 <button
                   type="button"

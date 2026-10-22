@@ -23,9 +23,14 @@ export function followOrigin(clip: Clip, frame: number): Vector2D {
   return evaluateTransform(ownTransform(clip), frame).position;
 }
 
-function writePosition(clip: Clip, position: Keyframe<Vector2D>[], tracking: Clip['tracking']): void {
+/** The clip's own size at `frame`: what a follow that takes size starts from. */
+export function followOwnScale(clip: Clip, frame: number): Vector2D {
+  return evaluateTransform(ownTransform(clip), frame).scale;
+}
+
+function writePosition(clip: Clip, position: Keyframe<Vector2D>[], tracking: Clip['tracking'], scale?: Keyframe<Vector2D>[]): void {
   const store = useProjectStore.getState();
-  const own = { ...ownTransform(clip), position };
+  const own = { ...ownTransform(clip), position, ...(scale ? { scale } : {}) };
   const kept = clip.fx ? cleanFx(clip.fx) : undefined;
   if (kept && !fxIsEmpty(kept)) {
     store.updateClip(clip.id, { transform: composeFx(own, kept, clip, store.project, store.assets), fx: { ...kept, base: own }, tracking });
@@ -34,18 +39,23 @@ function writePosition(clip: Clip, position: Keyframe<Vector2D>[], tracking: Cli
   }
 }
 
-/** Make the clip follow: `path` from `fromFrame` on; before it, the clip's own keyframes stay. */
-export function applyFollow(clipId: string, path: Keyframe<Vector2D>[], fromFrame: number): void {
+/**
+ * Make the clip follow: `path` from `fromFrame` on, and `sizes` too when the
+ * follow takes size; before it, the clip's own keyframes stay.
+ */
+export function applyFollow(clipId: string, path: Keyframe<Vector2D>[], fromFrame: number, sizes?: Keyframe<Vector2D>[]): void {
   const clip = useProjectStore.getState().project.clips[clipId];
   if (!clip || path.length === 0) return;
   const before = clip.tracking?.before ?? ownTransform(clip).position;
+  const beforeScale = clip.tracking?.beforeScale ?? (sizes && sizes.length > 0 ? ownTransform(clip).scale : undefined);
   const earlier = before.filter((key) => key.frame < fromFrame);
-  writePosition(clip, [...earlier, ...path], { fromFrame, before });
+  const scale = sizes && sizes.length > 0 && beforeScale ? [...beforeScale.filter((key) => key.frame < fromFrame), ...sizes] : beforeScale;
+  writePosition(clip, [...earlier, ...path], { fromFrame, before, ...(beforeScale ? { beforeScale } : {}) }, scale);
 }
 
 /** Stop following: the clip's position as it was before. */
 export function removeFollow(clipId: string): void {
   const clip = useProjectStore.getState().project.clips[clipId];
   if (!clip?.tracking) return;
-  writePosition(clip, clip.tracking.before, undefined);
+  writePosition(clip, clip.tracking.before, undefined, clip.tracking.beforeScale);
 }

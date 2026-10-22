@@ -268,6 +268,7 @@ export const fxEs: Record<keyof typeof fxEn, string> = {
   'track.failed': 'No se pudo seguir el objeto en este vídeo.',
   'track.outside': 'Lleva el cabezal a un fotograma donde estén este clip y el vídeo.',
   'track.following': 'Sigue el vídeo desde el fotograma {frame}.',
+  'track.withSize': 'También su tamaño (crece si se acerca)',
   'track.remove': 'Dejar de seguir',
   'track.boxLabel': 'Objeto a seguir',
   'track.hint': 'Marca algo que se mueve en el vídeo bajo este clip, y el clip se mueve con ello; sus propias animaciones siguen.',

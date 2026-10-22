@@ -27,6 +27,8 @@ export interface TrackSample {
   x: number;
   y: number;
   score: number;
+  /** Its size against its size on the first frame. */
+  scale: number;
 }
 
 const SMALL_WIDTH = 320;
@@ -66,10 +68,10 @@ export function runTrack(ffmpeg: string, path: string, request: TrackRequest, on
         if (!tracker) {
           const box = request.box;
           tracker = new TemplateTracker(frame, SMALL_WIDTH, height, { x: box.x * SMALL_WIDTH, y: box.y * height, width: box.width * SMALL_WIDTH, height: box.height * height });
-          samples.push({ t, x: box.x, y: box.y, score: 1 });
+          samples.push({ t, x: box.x, y: box.y, score: 1, scale: 1 });
         } else {
           const point = tracker.next(frame);
-          samples.push({ t, x: point.x / SMALL_WIDTH, y: point.y / height, score: point.score });
+          samples.push({ t, x: point.x / SMALL_WIDTH, y: point.y / height, score: point.score, scale: point.scale });
         }
         if (samples.length % 15 === 0) onProgress?.(samples.length);
       }

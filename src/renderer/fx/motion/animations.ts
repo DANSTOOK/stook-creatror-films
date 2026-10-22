@@ -1,7 +1,7 @@
 import type { BezierCurve, ClipTransform, Keyframe, KeyframeValue, Vector2D } from '@shared/types';
 import type { MessageKey } from '@shared/i18n';
 import { createId } from '@shared/utils/id';
-import { cubicBezierEase } from '@renderer/engine/KeyframeEvaluator';
+import { cubicBezierEase, evaluateKeyframes } from '@renderer/engine/KeyframeEvaluator';
 
 /**
  * Clip animations: how a clip comes on, goes off, or keeps moving - the
@@ -301,8 +301,8 @@ export function withAnimation(
   const moves = touches(id);
   const frames: Array<{ frame: number; u: number; eased?: boolean }> = [];
   const span = Math.max(1, window.to - window.from);
+  const cycle = Math.max(4, Math.round(spec.seconds * fps));
   if (spec.phase === 'loop') {
-    const cycle = Math.max(4, Math.round(spec.seconds * fps));
     // A quarter of a cycle apart, eased between - a sway's two extremes and its two
     // crossings. Spacing them wider to save keyframes would land on the wrong
     // phases and play the loop slower, or backwards, so a long clip gets many.
@@ -320,7 +320,40 @@ export function withAnimation(
   const unique = [...new Map(frames.map((sample) => [sample.frame, sample])).values()];
 
   const keep = <T extends KeyframeValue>(track: Keyframe<T>[]): Keyframe<T>[] => track.filter((kf) => kf.frame < window.from || kf.frame > window.to);
-  const merge = <T extends KeyframeValue>(track: Keyframe<T>[], value: (pose: AnimationPose) => T, tolerance: number, name: TrackName): Keyframe<T>[] => {
+  /**
+   * The track under the animation, when it moves inside the window - a
+   * followed path, a size that tracks something - as a value at any frame.
+   * Null when it rests there, which is what every animation was made for.
+   */
+  const movingUnder = <T extends KeyframeValue>(track: Keyframe<T>[], resting: T): ((at: number) => T) | null => {
+    if (track.length < 2) return null;
+    const at = (frame: number): T => evaluateKeyframes(track, frame, resting);
+    const first = components(at(window.from));
+    const step = Math.max(1, Math.round(span / 32));
+    for (let frame = window.from; frame <= window.to; frame += step) {
+      if (components(at(frame)).some((v, c) => Math.abs(v - first[c]) > 1e-6)) return at;
+    }
+    return null;
+  };
+  const merge = <T extends KeyframeValue>(
+    track: Keyframe<T>[],
+    resting: T,
+    combine: (under: T, pose: AnimationPose) => T,
+    tolerance: number,
+    name: TrackName,
+  ): Keyframe<T>[] => {
+    const value = (pose: AnimationPose): T => combine(resting, pose);
+    const under = movingUnder(track, resting);
+    if (under) {
+      // On top of what the track does, frame by frame: a pulse on a sticker that follows something
+      // pulses where it now is, at the size it now is, instead of putting it back where it rested.
+      const dense: Keyframe<T>[] = [];
+      for (let at = window.from; at <= window.to; at += 1) {
+        const u = spec.phase === 'loop' ? ((at - window.from) % cycle) / cycle : (at - window.from) / span;
+        dense.push(key(at, combine(under(at), animationPoseAt(id, u))));
+      }
+      return [...keep(track), ...simplified(dense, tolerance)].sort((a, b) => a.frame - b.frame);
+    }
     const points = spec.keys?.[name];
     if (points) {
       // Each track on its own curve, keyframes where the spec puts them.
@@ -344,11 +377,11 @@ export function withAnimation(
     ...transform,
     // Tolerances below what can be seen on something in motion: a pixel, 0.2 % of the size, a quarter of a degree, 1 % opacity.
     position: moves.position
-      ? merge(transform.position, (pose) => ({ x: rest.position.x + pose.x * frame.width, y: rest.position.y + pose.y * frame.height }), 1, 'position')
+      ? merge(transform.position, rest.position, (under, pose) => ({ x: under.x + pose.x * frame.width, y: under.y + pose.y * frame.height }), 1, 'position')
       : transform.position,
-    scale: moves.scale ? merge(transform.scale, (pose) => ({ x: rest.scale.x * pose.scale, y: rest.scale.y * pose.scale }), 0.002, 'scale') : transform.scale,
-    rotation: moves.rotation ? merge(transform.rotation, (pose) => rest.rotation + pose.rotation, 0.25, 'rotation') : transform.rotation,
-    opacity: moves.opacity ? merge(transform.opacity, (pose) => Math.min(1, Math.max(0, rest.opacity * pose.opacity)), 0.01, 'opacity') : transform.opacity,
+    scale: moves.scale ? merge(transform.scale, rest.scale, (under, pose) => ({ x: under.x * pose.scale, y: under.y * pose.scale }), 0.002, 'scale') : transform.scale,
+    rotation: moves.rotation ? merge(transform.rotation, rest.rotation, (under, pose) => under + pose.rotation, 0.25, 'rotation') : transform.rotation,
+    opacity: moves.opacity ? merge(transform.opacity, rest.opacity, (under, pose) => Math.min(1, Math.max(0, under * pose.opacity)), 0.01, 'opacity') : transform.opacity,
   };
 }
 

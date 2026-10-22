@@ -28,6 +28,8 @@ export interface TrackSampleLike {
   x: number;
   y: number;
   score: number;
+  /** The thing's size against its size where it was marked (1 from a build that did not measure it). */
+  scale?: number;
 }
 
 /** A match under this holds the follower where it was (main/media/tracker.ts MIN_MATCH). */
@@ -113,6 +115,46 @@ export function followerKeyframes(
     byFrame.set(frame, { id: createId('kf'), frame, value: { x: origin.x + (here.x - first.x), y: origin.y + (here.y - first.y) }, easing: 'linear' });
   }
   return simplified([...byFrame.values()], 1.5);
+}
+
+/**
+ * The follower's size keyframes, for a follow that takes size too: from
+ * `startFrame` it grows and shrinks as the thing did on screen - its own size
+ * in the file, and the video clip's own zoom - from `own`, its size there.
+ * A lost sample holds the last good size. Keyframes only where the change
+ * shows (half a percent).
+ */
+export function followerScaleKeyframes(
+  samples: readonly TrackSampleLike[],
+  target: Clip,
+  own: Vector2D,
+  startFrame: number,
+  endFrame: number,
+  fps: number,
+): Keyframe<Vector2D>[] {
+  if (samples.length === 0) return [];
+  const speed = speedOf(target);
+  const zoomAt = (frame: number): Vector2D => evaluateTransform(target.transform, frame).scale;
+  const zoom0 = zoomAt(startFrame);
+  const first = samples[0].scale ?? 1;
+  let last = first;
+  const byFrame = new Map<number, Keyframe<Vector2D>>();
+  for (const sample of samples) {
+    const frame = startFrame + Math.round((sample.t * fps) / speed);
+    if (frame > endFrame) break;
+    const size = sample.score >= TRACK_MIN_SCORE && sample.scale ? sample.scale : last;
+    last = size;
+    const zoom = zoomAt(frame);
+    const grown = size / first;
+    byFrame.set(frame, {
+      id: createId('kf'),
+      frame,
+      value: { x: own.x * grown * (zoom.x / (zoom0.x || 1)), y: own.y * grown * (zoom.y / (zoom0.y || 1)) },
+      easing: 'linear',
+    });
+  }
+  // Half a percent of its own size: a change smaller than that does not show.
+  return simplified([...byFrame.values()], Math.max(0.0005, 0.005 * Math.max(own.x, own.y)));
 }
 
 /** The video clip a follower sits over at `frame`: the topmost one on a track below its own that can be followed. */

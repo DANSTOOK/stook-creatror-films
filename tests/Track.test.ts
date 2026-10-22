@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Clip } from '@shared/types';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { evaluateTransform } from '@renderer/engine/KeyframeEvaluator';
-import { followerKeyframes, frameBoxToSource, sourceToFrame, trackRequest } from '@renderer/edit/track';
+import { followerKeyframes, followerScaleKeyframes, frameBoxToSource, sourceToFrame, trackRequest } from '@renderer/edit/track';
 import { applyFollow, followOrigin, removeFollow } from '@renderer/edit/trackApply';
 import { applyClipAnimation } from '@renderer/fx/motion/apply';
 import { normalizeProject } from '@renderer/store/types';
@@ -88,6 +88,42 @@ describe('the follower’s path', () => {
   });
 });
 
+describe('the follower’s size', () => {
+  it('grows as the thing grew, from its own size, holding when the thing is lost', () => {
+    const samples = [
+      { t: 0, x: 0.5, y: 0.5, score: 1, scale: 1 },
+      { t: 1, x: 0.5, y: 0.5, score: 0.9, scale: 1.5 },
+      { t: 2, x: 0.5, y: 0.5, score: 0.1, scale: 3 },
+    ];
+    const keys = followerScaleKeyframes(samples, videoClip(), { x: 0.2, y: 0.2 }, 40, 400, 30);
+    const transform = { position: [], scale: keys, rotation: [], opacity: [], anchorPoint: { x: 0.5, y: 0.5 } };
+    expect(evaluateTransform(transform, 40).scale.x).toBeCloseTo(0.2, 6);
+    expect(evaluateTransform(transform, 70).scale.x).toBeCloseTo(0.3, 6);
+    expect(evaluateTransform(transform, 100).scale.x).toBeCloseTo(0.3, 6);
+  });
+
+  it('takes in the video clip’s own zoom: zoomed in twice, the thing looks twice as big', () => {
+    const clip = videoClip({
+      transform: {
+        position: [],
+        scale: [
+          { id: 'a', frame: 40, value: { x: 1, y: 1 }, easing: 'linear' },
+          { id: 'b', frame: 70, value: { x: 2, y: 2 }, easing: 'linear' },
+        ],
+        rotation: [],
+        opacity: [],
+        anchorPoint: { x: 0.5, y: 0.5 },
+      },
+    });
+    const samples = [
+      { t: 0, x: 0.5, y: 0.5, score: 1, scale: 1 },
+      { t: 1, x: 0.5, y: 0.5, score: 1, scale: 1 },
+    ];
+    const keys = followerScaleKeyframes(samples, clip, { x: 0.3, y: 0.3 }, 40, 400, 30);
+    expect(keys.at(-1)?.value.x).toBeCloseTo(0.6, 6);
+  });
+});
+
 describe('writing a follow onto a clip', () => {
   let clipId = '';
   beforeEach(() => {
@@ -114,6 +150,27 @@ describe('writing a follow onto a clip', () => {
     state().undo();
     expect(clip().tracking).toBeUndefined();
     expect(evaluateTransform(clip().transform, 60).position.x).toBeCloseTo(0, 4);
+  });
+
+  it('a follow that takes size changes it from the marked frame, and stopping puts the old size back', () => {
+    const sizes = [
+      { id: 's1', frame: 30, value: { x: 0.3, y: 0.3 }, easing: 'linear' as const },
+      { id: 's2', frame: 90, value: { x: 0.6, y: 0.6 }, easing: 'linear' as const },
+    ];
+    applyFollow(clipId, path, 30, sizes);
+    expect(evaluateTransform(clip().transform, 90).scale.x).toBeCloseTo(0.6, 4);
+    // A pulse put on after pulses around the followed size, rather than putting the old size back.
+    applyClipAnimation(clipId, 'pulse');
+    for (const frame of [40, 60, 89]) {
+      const followed = 0.3 + (0.3 * (frame - 30)) / 60;
+      const shown = evaluateTransform(clip().transform, frame).scale.x;
+      expect(shown / followed).toBeGreaterThan(0.85);
+      expect(shown / followed).toBeLessThan(1.15);
+    }
+    useProjectStore.getState().undo();
+    expect(clip().tracking?.beforeScale?.[0].id).toBe('own');
+    removeFollow(clipId);
+    expect(clip().transform.scale).toEqual([{ id: 'own', frame: 0, value: { x: 0.3, y: 0.3 }, easing: 'linear' }]);
   });
 
   it('stopping puts the position it had back, and a saved project keeps the follow', () => {

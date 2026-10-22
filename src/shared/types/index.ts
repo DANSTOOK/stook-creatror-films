@@ -655,6 +655,8 @@ export interface ClipMotionFx {
 export interface ClipTracking {
   fromFrame: number;
   before: Keyframe<Vector2D>[];
+  /** Its size keyframes before, when the follow took size too. */
+  beforeScale?: Keyframe<Vector2D>[];
 }
 
 export interface Clip {

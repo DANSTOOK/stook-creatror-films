@@ -274,6 +274,7 @@ export const fxEn = {
   'track.failed': 'The object could not be followed in this video.',
   'track.outside': 'Move the playhead to a frame where both this clip and the video are.',
   'track.following': 'Follows the video from frame {frame}.',
+  'track.withSize': 'Its size too (grows as it comes closer)',
   'track.remove': 'Stop following',
   'track.boxLabel': 'Object to follow',
   'track.hint': 'Marks a moving thing in the video under this clip, and this clip moves with it - its own animations still play.',

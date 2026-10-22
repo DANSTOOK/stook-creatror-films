@@ -597,7 +597,7 @@ export interface FilmoraApi {
       sourceWidth: number;
       sourceHeight: number;
     },
-  ): Promise<Array<{ t: number; x: number; y: number; score: number }>>;
+  ): Promise<Array<{ t: number; x: number; y: number; score: number; scale: number }>>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /** Recent projects, newest first, each with whether its file still exists. */
   projectsList(): Promise<RecentProject[]>;

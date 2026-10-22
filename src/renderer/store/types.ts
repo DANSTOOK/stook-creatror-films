@@ -502,7 +502,11 @@ function normalizeTracking(tracking: unknown): Clip['tracking'] {
   if (!tracking || typeof tracking !== 'object') return undefined;
   const source = tracking as Record<string, unknown>;
   if (!Array.isArray(source.before) || typeof source.fromFrame !== 'number' || !Number.isFinite(source.fromFrame)) return undefined;
-  return { fromFrame: Math.max(0, Math.round(source.fromFrame)), before: source.before as NonNullable<Clip['tracking']>['before'] };
+  return {
+    fromFrame: Math.max(0, Math.round(source.fromFrame)),
+    before: source.before as NonNullable<Clip['tracking']>['before'],
+    ...(Array.isArray(source.beforeScale) ? { beforeScale: source.beforeScale as NonNullable<Clip['tracking']>['before'] } : {}),
+  };
 }
 
 function normalizeClipsAndTracks(project: ProjectState): ProjectState {
