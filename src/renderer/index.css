@@ -699,24 +699,6 @@
     container-type: inline-size;
   }
 
-  /* The room under the clips (MediaLibrary): the whole invitation when it is
-     tall, its line alone when it is a strip - never cut off half-way. */
-  .media-drop-more {
-    container-type: size;
-  }
-
-  @container (max-height: 150px) {
-    .media-drop-more-hint {
-      display: none;
-    }
-  }
-
-  @container (max-height: 100px) {
-    .media-drop-more-icon {
-      display: none;
-    }
-  }
-
   .media-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(calc(clamp(104px, 20cqi, 200px) * var(--tile-zoom, 1)), 1fr));

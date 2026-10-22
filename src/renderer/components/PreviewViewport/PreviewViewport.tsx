@@ -35,6 +35,7 @@ import { CompareCurtain } from './CompareCurtain';
 import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { TrackBoxOverlay } from './TrackBoxOverlay';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
+import { useWorkspaceStore } from '@renderer/store/useWorkspaceStore';
 import { MENU_IMPORT_EVENT } from '@renderer/components/MediaLibrary/MediaLibrary';
 
 /**
@@ -98,6 +99,8 @@ export function PreviewViewport(): JSX.Element {
   };
 
   const length = useMemo(() => projectContentLength(project), [project]);
+  // The viewer and the timeline in different windows: this one needs a way along the edit of its own.
+  const apart = useWorkspaceStore((state) => state.detached.timeline || state.detached.viewer);
   const timecode = framesToTimecode(project.currentFrame, project.fps);
   const duration = framesToTimecode(length, project.fps);
   const fullscreen = ui.fullscreenViewer;
@@ -471,12 +474,30 @@ export function PreviewViewport(): JSX.Element {
           </div>
         </footer>
       ) : (
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-panel-700 bg-panel-800 px-3 py-2">
+        <>
+        {apart && (
+          // A scrubber along the edit, as CapCut's and Filmora's players have: the timeline is in another window.
+          <div className="shrink-0 border-t border-panel-700 bg-panel-800 px-3 pt-2">
+            <input
+              type="range"
+              data-testid="viewer-scrubber"
+              min={0}
+              max={Math.max(1, length)}
+              value={Math.min(project.currentFrame, Math.max(1, length))}
+              onChange={(event) => transport.scrub(Number(event.target.value))}
+              className="block w-full"
+              style={{ '--fill': `${(Math.min(project.currentFrame, length) / Math.max(1, length)) * 100}%` } as React.CSSProperties}
+              aria-label={t('viewer.playhead')}
+            />
+          </div>
+        )}
+        <footer className={`flex shrink-0 items-center justify-between gap-3 bg-panel-800 px-3 py-2 ${apart ? '' : 'border-t border-panel-700'}`}>
           <div className="min-w-0 flex-1">{timecodes}</div>
           {transportButtons}
           {/* Balances the timecode, so the transport sits in the middle. */}
           <div className="flex-1" />
         </footer>
+        </>
       )}
     </section>
   );

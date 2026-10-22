@@ -13,6 +13,7 @@ import { _electron as electron } from 'playwright';
  *   2. In a window of its own, a few tracks grow to fill it, rather than three
  *      thin rows over an empty half-window - and the clip's pictures grow with
  *      them, over the whole clip when its sound is silence.
+ *      The viewer left behind gets a scrubber of its own.
  *   3. The media library in a window of its own puts a place to drop more
  *      files in the room under its clips.
  *
@@ -100,6 +101,12 @@ async function main() {
         })
       : 0;
     check('a clip whose sound is silence shows its pictures down to its bottom edge', picture > 8, `${picture} distinct colours along the bottom`);
+    // The viewer left behind gets a way along the edit of its own.
+    const scrubber = window.getByTestId('viewer-scrubber');
+    const shown = await scrubber.isVisible().catch(() => false);
+    if (shown) await scrubber.fill('60');
+    const frame = await window.evaluate(() => window.__scfStore.getState().project.currentFrame);
+    check('the viewer left in the editor gets a scrubber, and it moves the playhead', shown && frame === 60, `shown ${shown}, frame ${frame}`);
     await timelineWindow?.getByTestId('dock-timeline').click().catch(() => undefined);
     await sleep(800);
 

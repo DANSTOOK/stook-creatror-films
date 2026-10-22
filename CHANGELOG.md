@@ -16,6 +16,41 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.64.0-beta.1 — Paneles desprendidos sin huecos vacíos
+2026-10-22 · pre-release para probar
+
+### Mejorado
+- **Línea de tiempo en su propia ventana:** antes eran tres pistas finas sobre
+  media ventana vacía. Ahora, cuando sobra espacio, las pistas crecen hasta
+  llenarlo (hasta 144 px) y las miniaturas crecen con ellas. Acoplada en la
+  ventana principal sigue con sus 56 px de siempre.
+- **Vídeos sin sonido real** (cámaras sin micrófono, bancos de vídeo):
+  las miniaturas ocupan todo el clip en lugar de dejar una franja azul vacía
+  para una onda plana.
+- **Biblioteca con pocos clips** (en ventana propia o muy alta): el espacio
+  bajo los clips es ahora una zona para soltar o añadir más archivos. Dice
+  tanto como cabe: icono, frase y pista si es alta; solo la frase si es una
+  tira.
+- **Visor y línea de tiempo en ventanas distintas:** el visor tiene su propia
+  barra para moverse por el vídeo, como el reproductor de CapCut o Filmora.
+- **Biblioteca estrecha (1280 px):** las seis pestañas caben; antes la última
+  salía cortada. Las listas de títulos y transiciones ya no muestran una
+  barra horizontal que no hacía nada.
+- **Al añadir un sticker se ve al instante:** el cabezal avanza hasta el final
+  de su animación de entrada (antes se veía a tamaño 0 y parecía que no se
+  había añadido).
+
+### Comprobado
+- `tests/ui/detached-fill.mjs` **6/6**: acoplada, filas de 56 px; desprendida,
+  las filas llegan al 98 % de la ventana (135 px cada una) y el clip silencioso
+  muestra imagen hasta su borde inferior; el visor que queda tiene barra y
+  mueve el cabezal; la biblioteca suelta llena su hueco con la zona de soltar.
+- 1600 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  animaciones de la interfaz 18/18, transiciones 24/24, stickers 6/6 (con el
+  cabezal tras la entrada), seguimiento 8/8, importar vídeos rechazados 7/7.
+
+---
+
 ## v1.63.0-beta.1 — Vídeos que antes no abrían, formato vertical en un clic y miniaturas al instante
 2026-10-22 · pre-release para probar
 

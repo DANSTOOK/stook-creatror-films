@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
+﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
 import {
   ArrowRightToLine,
   ChevronDown,
@@ -136,6 +136,41 @@ const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
 
 /** File > Import media: the application menu asks the panel to run its Import. */
 export const MENU_IMPORT_EVENT = 'scf:menu-import';
+
+/**
+ * The room under the clips is where more go: a place to drop or click, the
+ * height that is left - a few clips in a tall panel or a window of its own no
+ * longer sit over an empty void. It says as much as fits: the whole
+ * invitation when tall, its one line when it is a strip.
+ */
+function DropMore({ label, hint, onClick }: { label: string; hint: string; onClick(): void }): JSX.Element {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const observer = new ResizeObserver(([entry]) => setHeight(entry.contentRect.height));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-testid="media-drop-more"
+      onClick={onClick}
+      className="press group mt-3 flex min-h-[64px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-panel-700 bg-panel-900/30 px-4 text-center text-slate-500 transition-colors hover:border-accent/70 hover:bg-accent/5 hover:text-slate-300"
+    >
+      {height > 100 && (
+        <span aria-hidden className="grid h-9 w-9 place-items-center rounded-lg border border-panel-700 bg-panel-800/80 text-slate-400 transition-colors group-hover:border-accent/50 group-hover:text-accent-hover">
+          <Upload size={16} />
+        </span>
+      )}
+      <span className="text-xs font-medium text-slate-300">{label}</span>
+      {height > 150 && <span className="max-w-[260px] text-2xs leading-relaxed text-slate-500">{hint}</span>}
+    </button>
+  );
+}
 
 export function MediaLibrary(): JSX.Element {
   const assets = useProjectStore((state) => state.assets);
@@ -819,20 +854,7 @@ export function MediaLibrary(): JSX.Element {
             {/* The room under the clips is where more go: a place to drop or
                 click, the height that is left - a few clips in a tall panel or
                 a window of its own no longer sit over an empty void. */}
-            {visibleAssets.length > 0 && (
-              <button
-                type="button"
-                data-testid="media-drop-more"
-                onClick={handleImportClick}
-                className="media-drop-more press group mt-3 flex min-h-[64px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-panel-700 bg-panel-900/30 px-4 text-center text-slate-500 transition-colors hover:border-accent/70 hover:bg-accent/5 hover:text-slate-300"
-              >
-                <span aria-hidden className="media-drop-more-icon grid h-9 w-9 place-items-center rounded-lg border border-panel-700 bg-panel-800/80 text-slate-400 transition-colors group-hover:border-accent/50 group-hover:text-accent-hover">
-                  <Upload size={16} />
-                </span>
-                <span className="text-xs font-medium text-slate-300">{tr('media.dropMore')}</span>
-                <span className="media-drop-more-hint max-w-[260px] text-2xs leading-relaxed text-slate-500">{tr('media.dropMoreHint')}</span>
-              </button>
-            )}
+            {visibleAssets.length > 0 && <DropMore label={tr('media.dropMore')} hint={tr('media.dropMoreHint')} onClick={handleImportClick} />}
           </div>
         )}
       </div>
