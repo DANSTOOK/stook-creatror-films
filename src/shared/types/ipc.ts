@@ -661,7 +661,7 @@ export interface FilmoraApi {
   /** Point a missing clip's URL at its found file; the URL to use from now on. */
   relinkApply?(url: string, path: string): Promise<string>;
   /** The file's filmstrip, made the same way: a `media://` URL, or null. */
-  contentThumbs?(path: string, kind: 'video' | 'image', seconds: number): Promise<string | null>;
+  contentThumbs?(path: string, kind: 'video' | 'image', seconds: number, quick?: boolean): Promise<string | null>;
   /**
    * The presentation time of every frame of the file's video, in seconds and
    * ascending, listed by ffmpeg without decoding, with the container's start

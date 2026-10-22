@@ -7,12 +7,56 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1598 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1600 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.63.0-beta.1 — Vídeos que antes no abrían, formato vertical en un clic y miniaturas al instante
+2026-10-22 · pre-release para probar
+
+### Añadido
+- **Vídeos que el editor rechazaba ahora se importan.** Muchos MP4 de móvil o
+  de bancos de vídeo (por ejemplo, tu `368458.mp4` en 4K) daban «The browser
+  could not decode this file», aunque cualquier reproductor los abre. Ahora:
+  - Si solo falla el «envoltorio» (marcas de tiempo antes del cero), se
+    **reempaqueta sin pérdida** en 1–2 s. La imagen no cambia ni un píxel.
+  - Si el códec no está soportado (p. ej. MPEG-4 Part 2 de cámaras antiguas),
+    se **convierte a H.264** con calidad alta, avisando mientras tarda.
+  - Tu archivo original no se toca y sigue siendo el del proyecto (sonido,
+    escenas, quitar fondo y seguimiento lo leen a él). La copia se guarda y
+    se reutiliza al volver a abrir el proyecto.
+  - *Comprobado:* `tests/ui/import-rescue.mjs` **7/7**: el 4K entra en 1,5 s
+    reempaquetado y se renderiza; un MPEG-4 Part 2 entra convertido, con su
+    duración, y se renderiza; los avisos lo dicen. 2 pruebas unitarias.
+- **Formato del proyecto con un clic** en la pantalla de inicio: tarjetas
+  **Horizontal 16:9** (YouTube), **Vertical 9:16** (TikTok, Reels, Shorts),
+  **Cuadrado 1:1** y **Retrato 4:5**, más la calidad (720p, 1080p, 4K) con el
+  tamaño exacto a la vista. Antes el vertical estaba escondido en una lista.
+  - *Comprobado:* en la misma prueba, Vertical crea un proyecto de 1080x1920
+    y Retrato marca 1080x1350.
+- **Miniaturas de la línea de tiempo al instante:** primero aparece una tira
+  rápida (solo fotogramas clave, ~1 s) y después la completa ocupa su lugar.
+  Con un 4K de 22 s, la tira aparece a los ~2 s de importar en lugar de
+  tardar 15 s o más.
+
+### Arreglado
+- **Un vídeo con un códec no soportado entraba negro (0x0) y con sonido**, y
+  la exportación fallaba después con «no way to check which frame». Ahora se
+  detecta al importar y se convierte.
+- La exportación ya no se rinde con un MP4 cuyo códec no es H.264/HEVC: usa
+  la lista de fotogramas de ffmpeg como alternativa.
+- En Exportar → redes sociales, «1920x1080 · 9:16» parecía una contradicción.
+  Ahora dice el tamaño del archivo y, aparte, cómo se verá en la pantalla
+  de la red («Franjas arriba y abajo en su pantalla 9:16»).
+
+### Comprobado en conjunto
+- 1600 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  seguimiento 8/8, stickers 6/6, redes sociales 5/5.
 
 ---
 

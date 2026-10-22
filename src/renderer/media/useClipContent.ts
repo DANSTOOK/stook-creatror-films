@@ -48,15 +48,18 @@ export function useClipContent(): void {
           .catch(() => undefined);
       }
       if (asset.kind !== 'audio') {
-        void window.filmora.contentThumbs?.(path, asset.kind === 'image' ? 'image' : 'video', seconds)
-          .then(async (url) => {
-            const buffer = url ? await readArrayBuffer(url) : null;
-            const index = buffer ? parseThumbsFile(buffer) : null;
-            if (!index) return;
-            const media = useMediaStore.getState();
-            media.setFilmstrip(asset.uri, new Filmstrip(index, () => useMediaStore.getState().contentChanged()));
-          })
-          .catch(() => undefined);
+        // The keyframes' filmstrip first, in a second or two; every frame's after, in its place.
+        let full = false;
+        const show = (quick: boolean) => async (url: string | null): Promise<void> => {
+          const buffer = url ? await readArrayBuffer(url) : null;
+          const index = buffer ? parseThumbsFile(buffer) : null;
+          if (!index || (quick && full)) return;
+          if (!quick) full = true;
+          useMediaStore.getState().setFilmstrip(asset.uri, new Filmstrip(index, () => useMediaStore.getState().contentChanged()));
+        };
+        const kind = asset.kind === 'image' ? 'image' : 'video';
+        if (kind === 'video') void window.filmora.contentThumbs?.(path, kind, seconds, true).then(show(true)).catch(() => undefined);
+        void window.filmora.contentThumbs?.(path, kind, seconds).then(show(false)).catch(() => undefined);
       }
     }
   }, [assets]);

@@ -811,7 +811,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return readFrameTimes(resolveFfmpegPath(), path);
   });
 
-  ipcMain.handle(IPC.contentThumbs, async (_event, path: unknown, kind: unknown, seconds: unknown) => {
+  ipcMain.handle(IPC.contentThumbs, async (_event, path: unknown, kind: unknown, seconds: unknown, quick: unknown) => {
     if (typeof path !== 'string') return null;
     assertAllowed(path);
     const file = await content.get({
@@ -819,6 +819,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       path,
       seconds: Number(seconds) || 0,
       thumbKind: kind === 'image' ? 'image' : 'video',
+      quick: quick === true,
     });
     if (!file) return null;
     allowedPaths.add(file);

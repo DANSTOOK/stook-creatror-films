@@ -34,6 +34,8 @@ describe('how many pictures a filmstrip keeps', () => {
   it('decodes a short file whole and a long one by its keyframes only', () => {
     expect(thumbArgs('in.mp4', 'out', 'video', 20)).not.toContain('-skip_frame');
     expect(thumbArgs('in.mp4', 'out', 'video', FULL_DECODE_SECONDS + 1)).toContain('-skip_frame');
+    // The quick filmstrip, shown while the full one is made: keyframes only, whatever the length.
+    expect(thumbArgs('in.mp4', 'out', 'video', 20, true)).toContain('-skip_frame');
     expect(thumbArgs('in.png', 'out', 'image', 0)).toContain('-frames:v');
   });
 

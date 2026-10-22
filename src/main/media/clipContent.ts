@@ -64,14 +64,14 @@ export type ThumbKind = 'video' | 'image';
  * just to keep 240 of them would take minutes of CPU, where keyframes take
  * seconds. `showinfo` reports each kept frame's real time on stderr.
  */
-export function thumbArgs(source: string, folder: string, kind: ThumbKind, seconds: number): string[] {
+export function thumbArgs(source: string, folder: string, kind: ThumbKind, seconds: number, quick = false): string[] {
   const scale = `scale=-2:${THUMB_HEIGHT}:flags=bilinear`;
   const out = ['-f', 'image2', '-c:v', 'mjpeg', '-q:v', '5', join(folder, '%05d.jpg')];
   if (kind === 'image') {
     return ['-v', 'info', '-nostats', '-nostdin', '-y', '-i', source, '-frames:v', '1', '-vf', `${scale},showinfo`, ...out];
   }
   const interval = thumbInterval(seconds);
-  if (seconds > 0 && seconds <= FULL_DECODE_SECONDS) {
+  if (!quick && seconds > 0 && seconds <= FULL_DECODE_SECONDS) {
     return [
       '-v', 'info', '-nostats', '-nostdin', '-y', '-threads', '2', '-i', source,
       '-map', '0:v:0', '-an',
@@ -222,6 +222,13 @@ export interface ContentJob {
   path: string;
   seconds: number;
   thumbKind?: ThumbKind;
+  /**
+   * A first filmstrip from the keyframes alone, in a second or two, for the
+   * timeline to show while the full one - every frame decoded - is made.
+   * Asked for ahead of everything waiting. The same as the full one for a
+   * file long enough to be read by its keyframes anyway.
+   */
+  quick?: boolean;
 }
 
 /**
@@ -249,24 +256,33 @@ export class ClipContentStore {
     return info?.isFile() ? { path, bytes: info.size, modifiedMs: info.mtimeMs } : null;
   }
 
-  fileFor(key: string, kind: ContentJob['kind']): string {
-    return join(this.folder, `${key}-v${FORMAT_VERSION}.${kind === 'peaks' ? 'peaks' : 'thumbs'}`);
+  fileFor(key: string, kind: ContentJob['kind'], quick = false): string {
+    return join(this.folder, `${key}-v${FORMAT_VERSION}.${kind === 'peaks' ? 'peaks' : quick ? 'quickthumbs' : 'thumbs'}`);
   }
 
   /** The finished file for this job: from the cache, or made now (queued). Null when there is nothing to show. */
-  async get(job: ContentJob): Promise<string | null> {
-    const stamp = await this.stampFor(job.path);
+  async get(asked: ContentJob): Promise<string | null> {
+    const stamp = await this.stampFor(asked.path);
     if (!stamp) return null;
     const key = proxyKey(stamp);
-    const file = this.fileFor(key, job.kind);
+    // A long file's filmstrip is read by its keyframes already: its quick one is the same job.
+    const quick = asked.kind === 'thumbs' && asked.quick === true && asked.thumbKind !== 'image' && asked.seconds > 0 && asked.seconds <= FULL_DECODE_SECONDS;
+    const job: ContentJob = { ...asked, quick };
+    const file = this.fileFor(key, job.kind, quick);
     const cached = await stat(file).catch(() => null);
     if (cached?.isFile()) return cached.size > 16 ? file : null;
+    // The full one made since: nothing quicker to give.
+    if (quick) {
+      const full = await stat(this.fileFor(key, job.kind)).catch(() => null);
+      if (full?.isFile()) return full.size > 16 ? this.fileFor(key, job.kind) : null;
+    }
 
-    const id = `${job.kind}:${key}`;
+    const id = `${job.kind}${quick ? '-quick' : ''}:${key}`;
     const already = this.inFlight.get(id);
     if (already) return already;
     const promise = new Promise<string | null>((resolve) => {
-      this.queue.push({ job, key, resolve });
+      if (quick) this.queue.unshift({ job, key, resolve });
+      else this.queue.push({ job, key, resolve });
     }).finally(() => this.inFlight.delete(id));
     this.inFlight.set(id, promise);
     void this.pump();
@@ -281,7 +297,7 @@ export class ClipContentStore {
         while (this.busy()) await new Promise((done) => setTimeout(done, 500));
         const next = this.queue.shift();
         if (!next) break;
-        const file = this.fileFor(next.key, next.job.kind);
+        const file = this.fileFor(next.key, next.job.kind, next.job.quick === true);
         let result: string | null = null;
         try {
           result = next.job.kind === 'peaks'
@@ -345,12 +361,12 @@ export class ClipContentStore {
   }
 
   private async makeThumbs(job: ContentJob, key: string, file: string): Promise<string | null> {
-    const work = join(this.folder, `${key}.frames-${process.pid}`);
+    const work = join(this.folder, `${key}${job.quick ? '.quick' : ''}.frames-${process.pid}`);
     await rm(work, { recursive: true, force: true });
     await mkdir(work, { recursive: true });
     try {
       const stderr = await new Promise<string | null>((resolve) => {
-        const child = spawn(this.ffmpeg, thumbArgs(job.path, work, job.thumbKind ?? 'video', job.seconds), { windowsHide: true });
+        const child = spawn(this.ffmpeg, thumbArgs(job.path, work, job.thumbKind ?? 'video', job.seconds, job.quick === true), { windowsHide: true });
         this.lower(child.pid);
         this.stopCurrent = () => child.kill();
         let log = '';
