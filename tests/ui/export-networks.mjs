@@ -89,7 +89,7 @@ async function main() {
     const youtube = (await dialog.getByTestId('export-network-youtube').innerText()).replace(/\s+/g, ' ');
     const note = await dialog.getByText(/keeps your project.s shape/).count();
     const button = (await dialog.getByTestId('export-networks-start').innerText()).trim();
-    check('TikTok says bars above and below, YouTube fills the screen, and a note says why', /1920x1080 · 9:16 Bars above and below/.test(tiktok) && /1920x1080 · 16:9 Fills the screen/.test(youtube) && note === 1 && button === 'Export for 2 networks', `${tiktok} | ${youtube} | "${button}"`);
+    check('TikTok says bars above and below, YouTube fills the screen, and a note says why', /File 1920x1080 ?Bars above and below on its 9:16 screen/.test(tiktok) && /File 1920x1080 ?Fills its 16:9 screen/.test(youtube) && note === 1 && button === 'Export for 2 networks', `${tiktok} | ${youtube} | "${button}"`);
 
     console.log('2. one click, a file each');
     await window.evaluate(() => {
@@ -117,7 +117,7 @@ async function main() {
     const newExport = dialog.getByRole('button', { name: 'New export' });
     if (await newExport.count()) await newExport.click();
     const vertical = (await dialog.getByTestId('export-network-tiktok').innerText()).replace(/\s+/g, ' ');
-    check('a vertical project fills TikTok at 1080x1920', /1080x1920 · 9:16 Fills the screen/.test(vertical), vertical);
+    check('a vertical project fills TikTok at 1080x1920', /File 1080x1920 ?Fills its 9:16 screen/.test(vertical), vertical);
 
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {

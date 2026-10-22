@@ -975,11 +975,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       <input type="checkbox" className="mt-0.5" checked={on} disabled={running} onChange={() => toggleNetwork(platform.id)} />
                       <span className="min-w-0">
                         <span className="block truncate text-xs font-medium text-slate-100">{platform.name}</span>
-                        <span className="block text-2xs text-slate-400">
-                          {size.width}x{size.height} · {platform.aspect.w}:{platform.aspect.h}
-                        </span>
+                        {/* The file's own size; the network's screen shape goes with how it shows there. */}
+                        <span className="block text-2xs tabular-nums text-slate-400">{t('export.networkFile', { width: size.width, height: size.height })}</span>
                         <span className={`block text-2xs ${fit === 'fills' ? 'text-emerald-300' : 'text-amber-300'}`}>
-                          {fit === 'fills' ? t('export.networkFills') : fit === 'pillarbox' ? t('export.networkBarsSides') : t('export.networkBarsTopBottom')}
+                          {t(fit === 'fills' ? 'export.networkFills' : fit === 'pillarbox' ? 'export.networkBarsSides' : 'export.networkBarsTopBottom', {
+                            aspect: `${platform.aspect.w}:${platform.aspect.h}`,
+                          })}
                         </span>
                       </span>
                     </label>

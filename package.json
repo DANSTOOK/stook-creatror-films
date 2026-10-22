@@ -40,6 +40,7 @@
     "test:caption-style:ui": "node ./tests/ui/caption-style.mjs",
     "test:stickers:ui": "node ./tests/ui/stickers.mjs",
     "test:tracking:ui": "node ./tests/ui/tracking.mjs",
+    "test:import-rescue:ui": "node ./tests/ui/import-rescue.mjs",
     "test:effects-edit:ui": "node ./tests/ui/effects-edit.mjs",
     "test:fx:ui": "node ./tests/ui/fx.mjs",
     "test:captions:ui": "node ./tests/ui/captions.mjs",

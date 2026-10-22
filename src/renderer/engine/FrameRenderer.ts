@@ -629,7 +629,8 @@ export class FrameRenderer {
       check = (async () => {
         // An MP4 or MOV: the tables the readers decode by, so a clip that
         // fell back mid-export keeps to the rule it started with.
-        const own = await presentationTimes(uri);
+        // A codec those tables are not read for (MPEG-4 Part 2, say) throws: then ffmpeg's list.
+        const own = await presentationTimes(uri).catch(() => null);
         if (own && own.length > 0) return new FrameCheck(own);
         // Anything else: ffmpeg lists the frames, without decoding them.
         const path = this.assets.get(uri)?.sourcePath;
@@ -639,6 +640,11 @@ export class FrameRenderer {
         return new FrameCheck(listed.times, listed.startSeconds < 0 ? [0, -listed.startSeconds] : [0]);
       })().catch(() => null);
       this.frameChecks.set(uri, check);
+      // None, while the file's path was not known yet (its asset not registered): forgotten, to ask again when it is.
+      const pathKnown = Boolean(this.assets.get(uri)?.sourcePath);
+      void check.then((found) => {
+        if (!found && !pathKnown && this.frameChecks.get(uri) === check) this.frameChecks.delete(uri);
+      });
     }
     return check;
   }

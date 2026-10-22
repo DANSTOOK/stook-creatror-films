@@ -5,6 +5,7 @@ import { probeMediaElement } from '@renderer/engine/probeMedia';
 import { explainImportFailure } from '@renderer/engine/diagnoseContainer';
 import { t } from '@renderer/i18n';
 import { errorText } from '@renderer/errorText';
+import { dismissNotification, notify } from '@renderer/notifications/notifications';
 
 /**
  * One import path for every way a file can arrive.
@@ -89,6 +90,7 @@ export interface RawImport {
   audioUri?: string;
   hasAudio?: boolean;
   sourcePath?: string;
+  playable?: MediaAsset['playable'];
   /** Frame rate from ffmpeg, which is more authoritative than measuring. */
   hintFps?: number;
 }
@@ -116,6 +118,7 @@ export async function buildAsset(input: RawImport, fps: number): Promise<MediaAs
     name: input.name,
     uri,
     ...(input.sourcePath ? { sourcePath: input.sourcePath } : {}),
+    ...(input.playable ? { playable: input.playable } : {}),
     kind,
     durationFrames,
     durationSeconds: kind === 'image' ? 5 : probe.durationSeconds,
@@ -326,9 +329,18 @@ async function importPickedFiles(
         },
         fps,
       );
+      // Sound and no picture, from a file ffmpeg sees a picture in: a video codec the decoder has not got.
+      if (asset.kind === 'video' && !(asset.width > 0 && asset.height > 0) && (probe?.width ?? 0) > 0) throw new Error(t('import.cannotDecode'));
       assets.push(asset);
       if (file.relativeDir) folders[asset.id] = file.relativeDir;
     } catch (error) {
+      // A video every player opens but this decoder turns away: open a copy of it instead.
+      const rescued = classifyFile(file.name) === 'video' ? await playableAsset(file, fps).catch(() => null) : null;
+      if (rescued) {
+        assets.push(rescued);
+        if (file.relativeDir) folders[rescued.id] = file.relativeDir;
+        continue;
+      }
       const reported = errorText(error);
       // The decoder only ever says it could not decode the file. Read the
       // container's top-level boxes and, when they show the file simply stops
@@ -342,6 +354,38 @@ async function importPickedFiles(
   }
 
   return { assets, rejected, ...(Object.keys(folders).length > 0 ? { folders } : {}) };
+}
+
+/**
+ * A file the decoder would not open, opened through a copy: repacked first
+ * (seconds, nothing in the picture changes - what a phone's or a stock
+ * site's MP4 usually needs), and only if that will not play either, made
+ * H.264, which takes as long as the file and says so while it runs.
+ */
+async function playableAsset(file: { path: string; name: string }, fps: number): Promise<MediaAsset | null> {
+  const probe = await window.filmora.probeMedia(file.path).catch(() => null);
+  if (!probe || !(probe.durationSeconds > 0)) return null;
+  for (const mode of ['remux', 'transcode'] as const) {
+    const waiting = mode === 'transcode' ? notify(t('import.converting', { name: file.name }), 'info', { persistent: true }) : null;
+    try {
+      const uri = await window.filmora.playableCopy(file.path, mode, probe.durationSeconds);
+      if (!uri) continue;
+      const audioUri = await window.filmora.extractAudio(file.path).catch(() => null);
+      const asset = await buildAsset(
+        { name: file.name, uri, sourcePath: file.path, playable: mode, hasAudio: probe.hasAudio, ...(audioUri ? { audioUri } : {}), ...(probe.fps ? { hintFps: probe.fps } : {}) },
+        fps,
+      );
+      // Repacked, still no picture: the codec is the trouble, so on to converting it.
+      if (!(asset.width > 0 && asset.height > 0) && probe.width > 0) continue;
+      notify(t(mode === 'remux' ? 'import.repacked' : 'import.converted', { name: file.name }), 'info');
+      return asset;
+    } catch {
+      // Not this way: the next, or the reason it would not open.
+    } finally {
+      if (waiting !== null) dismissNotification(waiting);
+    }
+  }
+  return null;
 }
 
 /**
@@ -362,7 +406,10 @@ export async function rehydrateAssets(assets: MediaAsset[]): Promise<MediaAsset[
 
       try {
         const [uri, audioUri] = await Promise.all([
-          window.filmora.mediaUrl(asset.sourcePath),
+          // A file opened through a copy opens through it again: found, or made again, by the original.
+          asset.playable
+            ? window.filmora.playableCopy(asset.sourcePath, asset.playable, asset.durationSeconds ?? 0).then((url) => url ?? Promise.reject(new Error('no copy')))
+            : window.filmora.mediaUrl(asset.sourcePath),
           asset.kind === 'image'
             ? Promise.resolve(null)
             : window.filmora.extractAudio(asset.sourcePath).catch(() => null),

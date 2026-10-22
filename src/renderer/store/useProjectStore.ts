@@ -2608,10 +2608,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const change = byId.get(asset.id);
       if (!change) return asset;
       if (change.uri !== asset.uri) remap.set(asset.uri, change.uri);
-      // The proxy and extracted audio of the old file are not this one's.
-      const { proxyUri: _proxy, audioUri: _audio, ...rest } = asset;
+      // The proxy, extracted audio and playable copy of the old file are not this one's.
+      const { proxyUri: _proxy, audioUri: _audio, playable: _copy, ...rest } = asset;
       void _proxy;
       void _audio;
+      void _copy;
       return {
         ...rest,
         uri: change.uri,

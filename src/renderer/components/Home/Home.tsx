@@ -24,13 +24,28 @@ import { LanguageSelect } from '@renderer/components/Preferences/PreferencesDial
 
 const LOGO_URL = new URL('../../assets/logo.png', import.meta.url).href;
 
-const PRESETS = [
-  { id: '1080p', label: '1920 x 1080 (1080p)', width: 1920, height: 1080 },
-  { id: '4k', label: '3840 x 2160 (4K UHD)', width: 3840, height: 2160 },
-  { id: '720p', label: '1280 x 720 (720p)', width: 1280, height: 720 },
-  { id: 'vertical', label: '1080 x 1920 (vertical)', width: 1080, height: 1920 },
-  { id: 'square', label: '1080 x 1080 (square)', width: 1080, height: 1080 },
-];
+/**
+ * A new project's shape, picked by sight - where it will be watched decides
+ * it, as CapCut and Premiere Rush start - and its quality, the short side.
+ */
+const SHAPES = [
+  { id: 'landscape', w: 16, h: 9, label: 'home.shapeLandscape', where: 'YouTube' },
+  { id: 'vertical', w: 9, h: 16, label: 'home.shapeVertical', where: 'TikTok · Reels · Shorts' },
+  { id: 'square', w: 1, h: 1, label: 'home.shapeSquare', where: 'Instagram' },
+  { id: 'portrait', w: 4, h: 5, label: 'home.shapePortrait', where: 'Instagram feed' },
+] as const;
+const QUALITIES = [
+  { short: 720, label: '720p' },
+  { short: 1080, label: '1080p (Full HD)' },
+  { short: 2160, label: '4K' },
+] as const;
+type ShapeId = (typeof SHAPES)[number]['id'];
+
+/** The frame for a shape at a quality: the short side as asked, the long one from the shape, even. */
+export function frameFor(shape: { w: number; h: number }, short: number): { width: number; height: number } {
+  const long = Math.round((short * Math.max(shape.w, shape.h)) / Math.min(shape.w, shape.h) / 2) * 2;
+  return shape.w >= shape.h ? { width: long, height: short } : { width: short, height: long };
+}
 const RATES = [24, 25, 30, 50, 60];
 
 /** Entrance stagger: 30 ms a step, six steps at most, so a long list does not keep arriving. */
@@ -52,7 +67,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
   const [recent, setRecent] = useState<RecentProject[] | null>(null);
   const [query, setQuery] = useState('');
   const [name, setName] = useState('');
-  const [preset, setPreset] = useState(PRESETS[0].id);
+  const [shapeId, setShapeId] = useState<ShapeId>('landscape');
+  const [short, setShort] = useState(1080);
   const [fps, setFps] = useState(30);
   const [folder, setFolder] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -96,12 +112,13 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
   const cardsRef = useRef<HTMLUListElement>(null);
   useFlip(cardsRef, shown.map((project) => project.path).join('|'));
 
-  const chosenPreset = PRESETS.find((candidate) => candidate.id === preset) ?? PRESETS[0];
+  const chosenShape = SHAPES.find((candidate) => candidate.id === shapeId) ?? SHAPES[0];
+  const frame = frameFor(chosenShape, short);
 
   const create = async (): Promise<void> => {
     setCreating(true);
     try {
-      await onCreate({ name: name.trim() || t('home.untitled'), folder, width: chosenPreset.width, height: chosenPreset.height, fps });
+      await onCreate({ name: name.trim() || t('home.untitled'), folder, width: frame.width, height: frame.height, fps });
     } finally {
       setCreating(false);
     }
@@ -148,15 +165,58 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
               />
             </label>
 
+            <div className="flex flex-col gap-1">
+              <span className="field-label">{t('home.shape')}</span>
+              <div role="radiogroup" aria-label={t('home.shape')} className="grid grid-cols-4 gap-1.5">
+                {SHAPES.map((shape) => {
+                  const on = shape.id === shapeId;
+                  // The shape itself, drawn: 26 px on its long side.
+                  const scale = 26 / Math.max(shape.w, shape.h);
+                  return (
+                    <button
+                      key={shape.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      data-testid={`home-shape-${shape.id}`}
+                      title={shape.where}
+                      onClick={() => setShapeId(shape.id)}
+                      className={`press flex flex-col items-center gap-1 rounded-md border px-1 pb-1.5 pt-2 text-center transition-colors ${
+                        on ? 'border-accent/70 bg-accent/15 text-slate-100' : 'border-panel-700 bg-panel-900 text-slate-400 hover:border-panel-600 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="flex h-7 items-center justify-center">
+                        <span
+                          aria-hidden
+                          className={`block rounded-[3px] border-2 transition-colors ${on ? 'border-accent-hover bg-accent/25' : 'border-slate-500'}`}
+                          style={{ width: shape.w * scale, height: shape.h * scale }}
+                        />
+                      </span>
+                      <span className="text-2xs font-medium leading-tight">{t(shape.label)}</span>
+                      <span className="text-[10px] tabular-nums leading-none text-slate-500">
+                        {shape.w}:{shape.h}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-2xs text-slate-500" data-testid="home-shape-where">
+                {chosenShape.where}
+              </p>
+            </div>
+
             <div className="grid grid-cols-[1fr_96px] gap-2">
               <label className="flex flex-col gap-1">
                 <span className="field-label">{t('home.resolution')}</span>
-                <select className="numeric-input" value={preset} onChange={(event) => setPreset(event.target.value)}>
-                  {PRESETS.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
+                <select className="numeric-input" data-testid="home-quality" value={short} onChange={(event) => setShort(Number(event.target.value))}>
+                  {QUALITIES.map((option) => {
+                    const size = frameFor(chosenShape, option.short);
+                    return (
+                      <option key={option.short} value={option.short}>
+                        {option.label} · {size.width}x{size.height}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
               <label className="flex flex-col gap-1">

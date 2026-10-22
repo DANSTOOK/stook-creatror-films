@@ -918,6 +918,13 @@ export interface MediaAsset {
    * no path and are marked `missing` on reload.
    */
   sourcePath?: string;
+  /**
+   * The file would not open in the editor's decoder, so `uri` plays a copy
+   * of it made by ffmpeg (main/media/playable.ts): repacked as it was, or
+   * made H.264. `sourcePath` is still the original; reopening the project
+   * finds the copy again by it.
+   */
+  playable?: 'remux' | 'transcode';
   kind: MediaKind;
   /**
    * Length in frames at the rate the project had when this was imported.

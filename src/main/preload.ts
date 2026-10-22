@@ -114,6 +114,14 @@ const api: FilmoraApi = {
   proxiesBuild: (path, width, height, seconds) =>
     ipcRenderer.invoke(IPC.proxiesBuild, path, width, height, seconds) as Promise<string | null>,
   proxiesCancel: () => ipcRenderer.invoke(IPC.proxiesCancel) as Promise<void>,
+  playableCopy: (path, mode, seconds) => ipcRenderer.invoke(IPC.playableCopy, path, mode, seconds) as Promise<string | null>,
+  onPlayableProgress(listener) {
+    const handler = (_event: unknown, progress: ProxyProgressEvent): void => listener(progress);
+    ipcRenderer.on(IPC.playableProgress, handler);
+    return () => {
+      ipcRenderer.off(IPC.playableProgress, handler);
+    };
+  },
   proxiesClear: () => ipcRenderer.invoke(IPC.proxiesClear) as Promise<ProxyUsage>,
   proxiesUsage: () => ipcRenderer.invoke(IPC.proxiesUsage) as Promise<ProxyUsage>,
 

@@ -18,6 +18,7 @@ import {
 } from '../projects/recentProjects';
 import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
+import { PlayableStore } from '../media/playable';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
@@ -751,6 +752,18 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       return mediaUrlFor(built.file);
     },
   );
+
+  const playable = new PlayableStore(join(app.getPath('userData'), 'scf', 'playable'), resolveFfmpegPath());
+  ipcMain.handle(IPC.playableCopy, async (_event, path: unknown, mode: unknown, seconds: unknown) => {
+    if (typeof path !== 'string' || (mode !== 'remux' && mode !== 'transcode')) return null;
+    assertAllowed(path);
+    const copy = await playable.make(path, mode, Number(seconds) || 0, (fraction) => {
+      getWindow()?.webContents.send(IPC.playableProgress, { path, fraction });
+    });
+    if (!copy) return null;
+    allowedPaths.add(copy);
+    return mediaUrlFor(copy);
+  });
 
   ipcMain.handle(IPC.proxiesCancel, async () => {
     proxies.cancel();

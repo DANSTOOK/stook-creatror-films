@@ -35,6 +35,8 @@ export const IPC = {
   projectsRecoveryClear: 'projects:recovery-clear',
   proxiesFind: 'proxies:find',
   proxiesBuild: 'proxies:build',
+  playableCopy: 'media:playable-copy',
+  playableProgress: 'media:playable-progress',
   proxiesCancel: 'proxies:cancel',
   proxiesClear: 'proxies:clear',
   proxiesUsage: 'proxies:usage',
@@ -638,6 +640,14 @@ export interface FilmoraApi {
   /** How many proxies are kept, and how much room they take. */
   proxiesUsage(): Promise<ProxyUsage>;
   onProxyProgress(listener: (progress: ProxyProgressEvent) => void): () => void;
+  /**
+   * A copy of a video the decoder can open, for one it turned away
+   * (main/media/playable.ts): repacked as it is ('remux'), or made H.264
+   * ('transcode'). A URL to play, or null when ffmpeg could not make one.
+   * Reports progress on `onPlayableProgress`.
+   */
+  playableCopy(path: string, mode: 'remux' | 'transcode', seconds: number): Promise<string | null>;
+  onPlayableProgress(listener: (progress: ProxyProgressEvent) => void): () => void;
   /**
    * The file's waveform, measured by ffmpeg in the main process and kept on
    * disk: a `media://` URL of the peaks file, or null when it has no sound.
