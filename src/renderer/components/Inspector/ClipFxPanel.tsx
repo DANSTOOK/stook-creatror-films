@@ -27,6 +27,7 @@ import {
 import { setClipFx } from '@renderer/fx/motion/apply';
 import { useZoneEditStore } from '@renderer/fx/motion/zoneEdit';
 import { SliderRow } from './rows';
+import { FollowCard } from './FollowCard';
 
 /**
  * The top of the inspector's Effects tab: everything put on the clip from
@@ -105,6 +106,7 @@ export function ClipFxPanel({ clip }: { clip: Clip }): JSX.Element {
       return chosen && isClipAnimation(chosen.id) ? [{ key: phase, label: t(animationLabel(chosen.id)) }] : [];
     }),
     ...(clip.effects ?? []).map((effect) => ({ key: effect.id, label: t(effectLabel(effect.type)) })),
+    ...(clip.tracking ? [{ key: 'tracking', label: t('track.title') }] : []),
   ];
 
   const presetOptions = MOTION_PRESETS.map((preset) => ({ value: preset, label: t(motionPresetLabel(preset)) }));
@@ -223,6 +225,9 @@ export function ClipFxPanel({ clip }: { clip: Clip }): JSX.Element {
           </Card>
         );
       })}
+
+      {/* Following a thing in the video under it. */}
+      {!clip.caption && <FollowCard clip={clip} />}
     </div>
   );
 }

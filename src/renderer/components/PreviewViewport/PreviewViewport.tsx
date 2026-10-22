@@ -33,6 +33,7 @@ import { ViewportControls } from './ViewportControls';
 import { ScopesPanel } from './ScopesPanel';
 import { CompareCurtain } from './CompareCurtain';
 import { ZoomZoneOverlay } from './ZoomZoneOverlay';
+import { TrackBoxOverlay } from './TrackBoxOverlay';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { MENU_IMPORT_EVENT } from '@renderer/components/MediaLibrary/MediaLibrary';
 
@@ -399,6 +400,8 @@ export function PreviewViewport(): JSX.Element {
             <CompareCurtain />
             {/* Aiming a zoom, from the inspector's Effects tab. */}
             {!fullscreen && <ZoomZoneOverlay />}
+            {/* Marking what a clip is to follow, from the same tab. */}
+            {!fullscreen && <TrackBoxOverlay />}
             {/* An empty edit: a black frame says nothing, so say how to start. */}
             {!fullscreen && Object.keys(project.clips).length === 0 && (
               <div data-testid="viewer-empty" className="scf-rise pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">

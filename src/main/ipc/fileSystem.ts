@@ -22,6 +22,7 @@ import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
 import { parseScenes, sceneArgs, type SceneRequest } from '../media/scenes';
+import { runTrack, type TrackRequest, type TrackSample } from '../media/trackJob';
 import { readFrameTimes } from '../media/frameTimes';
 import { snapFrameRate } from '@shared/utils/frameRate';
 import { EncoderPipeline } from '../exporter/EncoderPipeline';
@@ -451,6 +452,24 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       () => '',
     );
     return parseSilences(stderr, asked);
+  });
+
+  /** Follow a thing through a stretch of a file (main/media/trackJob.ts). */
+  ipcMain.handle(IPC.trackObject, async (_event, path: string, request: TrackRequest): Promise<TrackSample[]> => {
+    assertAllowed(path);
+    const finite = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+    const unit = (value: unknown, fallback: number): number => Math.min(1, Math.max(0, finite(value, fallback)));
+    const box = request?.box ?? { x: 0.5, y: 0.5, width: 0.1, height: 0.1 };
+    const asked: TrackRequest = {
+      fromSeconds: finite(request?.fromSeconds, 0),
+      toSeconds: finite(request?.toSeconds, 0),
+      sampleFps: finite(request?.sampleFps, 30),
+      box: { x: unit(box.x, 0.5), y: unit(box.y, 0.5), width: Math.max(0.01, unit(box.width, 0.1)), height: Math.max(0.01, unit(box.height, 0.1)) },
+      sourceWidth: finite(request?.sourceWidth, 1920),
+      sourceHeight: finite(request?.sourceHeight, 1080),
+    };
+    if (!(asked.toSeconds > asked.fromSeconds)) return [];
+    return runTrack(resolveFfmpegPath(), path, asked);
   });
 
   /** A sticker's picture, kept in the app's folder (renderer/stickers). */

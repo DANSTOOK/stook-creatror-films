@@ -7,12 +7,57 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1077 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1598 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.62.0-beta.1 — Stickers y seguir un objeto con un clip
+2026-10-21 · pre-release para probar
+
+### Añadido
+- **Stickers:** una pestaña nueva en la biblioteca con 18 stickers (formas,
+  iconos y palabras como «Suscríbete»). Un clic lo pone sobre la imagen en el
+  cabezal, en su propia pista, a un tercio del alto del cuadro, entrando con
+  un «pop» y latiendo. Se mueve, escala o cambia de animación como cualquier
+  clip; los que llevan texto salen en el idioma de la interfaz.
+  - *Comprobado:* `tests/ui/stickers.mjs` **6/6**: los 18 se ven, cada uno
+    distinto; en la imagen exportada sale el corazón rojo con su borde
+    blanco; el mismo sticker reutiliza su archivo; un Ctrl+Z lo quita entero.
+- **Seguir un objeto** (seguimiento de movimiento, como el *tracking* de
+  CapCut o Filmora): selecciona un sticker, título o imagen que esté encima
+  de un vídeo y, en su pestaña **Efectos**, «Seguir un objeto» → «Marcar el
+  objeto». Dibuja un recuadro alrededor de lo que quieres seguir en el visor
+  y pulsa «Seguir desde aquí»: el clip se mueve con ese objeto desde el
+  cabezal hasta que acaba cualquiera de los dos clips.
+  - Sigue el objeto donde se ve, aunque el vídeo esté ampliado, movido o
+    acelerado. Si algo lo tapa un momento, el clip se queda quieto y lo
+    vuelve a encontrar después.
+  - Conserva las animaciones del clip (el «pop», el latido…).
+  - «Dejar de seguir» lo deja donde estaba; también un Ctrl+Z.
+  - *Comprobado:* `tests/ui/tracking.mjs` **8/8** con un cuadro que se
+    desliza y sube y baja: el recuadro se dibuja con el ratón en el visor;
+    el sticker recorre el mismo camino con un error máximo de **3,6 px**; en
+    la imagen exportada a los 3 s el corazón está a 4 px de donde debe;
+    conserva su pop y su latido; Ctrl+Z y «Dejar de seguir» lo devuelven.
+    9 pruebas unitarias (rastreador a 1,5 px y oclusión, conversión con
+    zoom y velocidad, camino, guardado).
+
+### Arreglado
+- **Las animaciones ya no borran el tamaño propio de un clip:** poner una
+  entrada y un bucle a una imagen o sticker podía devolverla a pantalla
+  completa. Ahora cada cambio se calcula desde la transformación propia del
+  clip, que se guarda aparte.
+  - *Comprobado:* prueba unitaria (una imagen al 30 % con «pop» y latido
+    sigue al 30 %, y vuelve a su fotograma clave original al quitarlos).
+
+### Problemas conocidos
+- El seguimiento sigue la **posición**; si el objeto gira o se acerca, el
+  clip no gira ni cambia de tamaño con él.
 
 ---
 

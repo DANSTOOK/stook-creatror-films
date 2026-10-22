@@ -91,7 +91,7 @@ export function setClipFx(clipId: string, next: ClipMotionFx, mergeKey?: string)
  * before that was kept (v1.56 to v1.61): its tracks with what the old choice
  * wrote taken out again - and a move's position and scale put back to rest.
  */
-function legacyBase(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): ClipTransform {
+export function legacyBase(clip: Clip, project: ProjectState, assets: readonly MediaAsset[]): ClipTransform {
   const old = clip.fx;
   if (!old) return clip.transform;
   let transform = clip.transform;

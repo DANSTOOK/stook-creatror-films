@@ -652,6 +652,11 @@ export interface ClipMotionFx {
   base?: ClipTransform;
 }
 
+export interface ClipTracking {
+  fromFrame: number;
+  before: Keyframe<Vector2D>[];
+}
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -684,6 +689,13 @@ export interface Clip {
    * when a setting changes. Absent on a clip with none.
    */
   fx?: ClipMotionFx;
+  /**
+   * Following a thing in the video under it (edit/track.ts): from which
+   * frame, and the position keyframes the clip had before, to go back to
+   * when the following is taken off. The followed path itself is in the
+   * position keyframes (in fx.base when there is a move or animation).
+   */
+  tracking?: ClipTracking;
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;
   /** Stereo position, -1 hard left to +1 hard right. */

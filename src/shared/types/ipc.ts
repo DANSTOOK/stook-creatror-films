@@ -18,6 +18,7 @@ export const IPC = {
   detectSilences: 'media:detect-silences',
   detectScenes: 'media:detect-scenes',
   saveSticker: 'media:save-sticker',
+  trackObject: 'media:track-object',
   openProject: 'dialog:open-project',
   projectsList: 'projects:list',
   projectsOpenRecent: 'projects:open-recent',
@@ -579,6 +580,22 @@ export interface FilmoraApi {
    * path, ready to import. The same sticker in the same language is one file.
    */
   saveSticker(id: string, png: ArrayBuffer): Promise<string>;
+  /**
+   * Follow a thing through a stretch of `path` from the box drawn round it
+   * on the first frame (main/media/trackJob.ts): its centre, 0..1 of the
+   * picture, at each sampled moment, with how well it matched.
+   */
+  trackObject(
+    path: string,
+    request: {
+      fromSeconds: number;
+      toSeconds: number;
+      sampleFps: number;
+      box: { x: number; y: number; width: number; height: number };
+      sourceWidth: number;
+      sourceHeight: number;
+    },
+  ): Promise<Array<{ t: number; x: number; y: number; score: number }>>;
   openProject(): Promise<{ path: string; contents: string } | null>;
   /** Recent projects, newest first, each with whether its file still exists. */
   projectsList(): Promise<RecentProject[]>;

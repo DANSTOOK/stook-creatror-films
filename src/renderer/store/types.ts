@@ -497,6 +497,14 @@ function normalizeClipFx(fx: unknown): Clip['fx'] {
   return out;
 }
 
+/** What a followed clip had before it followed, kept only when it reads as keyframes. */
+function normalizeTracking(tracking: unknown): Clip['tracking'] {
+  if (!tracking || typeof tracking !== 'object') return undefined;
+  const source = tracking as Record<string, unknown>;
+  if (!Array.isArray(source.before) || typeof source.fromFrame !== 'number' || !Number.isFinite(source.fromFrame)) return undefined;
+  return { fromFrame: Math.max(0, Math.round(source.fromFrame)), before: source.before as NonNullable<Clip['tracking']>['before'] };
+}
+
 function normalizeClipsAndTracks(project: ProjectState): ProjectState {
   const markers = (Array.isArray(project.markers) ? project.markers : [])
     .map((marker, index) => ({
@@ -562,6 +570,7 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             effects: normalizedEffectsOrNone(clip.effects),
             // The move and animations as chosen: kept only in a shape this build can read.
             fx: normalizeClipFx(clip.fx),
+            tracking: normalizeTracking(clip.tracking),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
             ...(clip.caption ? { caption: normalizeCaption(clip.caption) } : {}),
