@@ -153,6 +153,7 @@ import { withFreeze } from '@renderer/edit/freeze';
 import { withBeatMarkers, withCutsAtBeats, withoutBeatMarkers } from '@renderer/edit/beats';
 import { withCompound, withoutCompound } from '@renderer/edit/compound';
 import { withAngle, withMulticam } from '@renderer/edit/multicam';
+import { withSplitLayout, type SplitLayout } from '@renderer/edit/splitScreen';
 import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
@@ -467,6 +468,8 @@ interface ProjectStore {
   replaceWithCompound(clipIds: readonly string[], sourceUri: string, name: string): string | null;
   /** A compound clip broken apart: its clips back, moved as far as it was (edit/compound.ts). One undo step. */
   breakApartCompound(clipId: string): void;
+  /** Two to four clips laid out in the frame at once (edit/splitScreen.ts). One undo step. */
+  applySplitLayout(clipIds: readonly string[], layout: SplitLayout): void;
   /** Clips made one multicam clip, lined up by `sync` (edit/multicam.ts), its sound on a clip of its own. Its id. */
   makeMulticam(clipIds: readonly string[], sync: ReadonlyMap<string, number>, names: ReadonlyMap<string, string>): string | null;
   /** Multicam clip `clipId` showing `angle`: from `atFrame` on (cut there), or all through. One undo step. */
@@ -1976,6 +1979,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return result.project;
     });
     return shown;
+  },
+
+  applySplitLayout(clipIds, layout) {
+    const { assets } = get();
+    const aspectOf = (clip: Clip): number => {
+      const asset = assets.find((candidate) => candidate.uri === clip.sourceUri);
+      return asset && asset.width > 0 && asset.height > 0 ? asset.width / asset.height : 0;
+    };
+    get().transact('Split screen', (current) => withSplitLayout(current, clipIds, layout, aspectOf));
   },
 
   breakApartCompound(clipId) {

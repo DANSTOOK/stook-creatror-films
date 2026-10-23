@@ -22,6 +22,7 @@ import {
   Flag,
   Hand,
   Layers,
+  LayoutGrid,
   Lock,
   Video,
   Youtube,
@@ -48,7 +49,7 @@ import { useMediaStore } from '@renderer/store/useMediaStore';
 import { CUT_EVENT, useProjectStore } from '@renderer/store/useProjectStore';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { dismissNotification, notify } from '@renderer/notifications/notifications';
-import { keyLabel, t, useT } from '@renderer/i18n';
+import { keyLabel, t, useT, type MessageKey } from '@renderer/i18n';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { MAX_PIXELS_PER_FRAME, MIN_PIXELS_PER_FRAME } from './zoom';
@@ -108,6 +109,7 @@ import { makeCompound } from '@renderer/edit/compoundRun';
 import { canMulticam } from '@renderer/edit/multicam';
 import { makeMulticam } from '@renderer/edit/multicamRun';
 import { copyChapters } from '@renderer/edit/chaptersRun';
+import { layoutsFor, type SplitLayout } from '@renderer/edit/splitScreen';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { addAdjustmentLayer } from '@renderer/edit/adjustment';
@@ -592,6 +594,23 @@ export function Timeline(): JSX.Element {
           label: t('scenes.menu'),
           icon: Clapperboard,
           onSelect: () => useSceneDialog.getState().show(clip.id),
+        });
+      }
+      // Two to four pictures in the frame at once: a split screen, or one in a corner of the other.
+      const pictures = selected.filter((id) => {
+        const candidate = project.clips[id];
+        const track = trackOf(id);
+        return candidate && track && (track.type === 'video' || track.type === 'text') && !candidate.caption && !candidate.audioOnly && !candidate.adjustment;
+      });
+      const layouts = selected.includes(clip.id) && pictures.length === selected.length ? layoutsFor(pictures.length) : [];
+      if (layouts.length > 0) {
+        items.push({
+          label: t('split.menu'),
+          icon: LayoutGrid,
+          submenu: layouts.map((layout: SplitLayout) => ({
+            label: t(`split.${layout}` as MessageKey),
+            onSelect: () => state.applySplitLayout(pictures, layout),
+          })),
         });
       }
       // The cameras of one take made one clip; or, on one, the camera it shows.

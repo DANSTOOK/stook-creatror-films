@@ -22,6 +22,7 @@ const SPANISH: Record<string, string> = {
   'Break apart compound clip': 'Descomponer clip compuesto',
   'Make compound clip': 'Crear clip compuesto',
   'Make multicam clip': 'Crear clip multicámara',
+  'Split screen': 'Pantalla dividida',
   'Switch angle': 'Cambiar de ángulo',
   'Cut to the beat': 'Cortar al ritmo',
   'Caption animation': 'Animación de subtítulos',
