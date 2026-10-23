@@ -24,6 +24,7 @@ import {
   Layers,
   Lock,
   Video,
+  Youtube,
   LockOpen,
   Magnet,
   Maximize2,
@@ -106,6 +107,7 @@ import { canCompound } from '@renderer/edit/compound';
 import { makeCompound } from '@renderer/edit/compoundRun';
 import { canMulticam } from '@renderer/edit/multicam';
 import { makeMulticam } from '@renderer/edit/multicamRun';
+import { copyChapters } from '@renderer/edit/chaptersRun';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { addAdjustmentLayer } from '@renderer/edit/adjustment';
@@ -877,6 +879,12 @@ export function Timeline(): JSX.Element {
             const id = state.addMarker();
             if (id) setRenamingMarkerId(id);
           },
+        },
+        {
+          label: t('chapters.copy'),
+          icon: Youtube,
+          disabled: markerCount === 0,
+          onSelect: () => void copyChapters(),
         },
         { separator: true },
         {

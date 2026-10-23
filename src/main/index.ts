@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, screen, shell, systemPreferences } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -370,6 +370,10 @@ app.whenReady().then(() => {
       // Not kept: it applies for this session.
     }
     return appearance.resolved;
+  });
+
+  ipcMain.handle(IPC.clipboardWrite, (_event, text: unknown) => {
+    if (typeof text === 'string') clipboard.writeText(text);
   });
 
   ipcMain.on(IPC.documentState, (_event, state: unknown) => {

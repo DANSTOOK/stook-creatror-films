@@ -53,6 +53,7 @@ export const IPC = {
   videoFrameTimes: 'media:video-frame-times',
   documentState: 'app:document-state',
   setAppearance: 'app:set-appearance',
+  clipboardWrite: 'app:clipboard-write',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
   menuCommand: 'app:menu-command',
@@ -694,6 +695,8 @@ export interface FilmoraApi {
   videoFrameTimes?(path: string): Promise<{ times: number[]; startSeconds: number } | null>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
+  /** Text onto the system clipboard (YouTube chapters, for one). */
+  clipboardWrite(text: string): Promise<void>;
   /**
    * The look chosen in Preferences, for what the page cannot paint itself:
    * Windows' caption buttons and their strip, native scrollbars and menus,

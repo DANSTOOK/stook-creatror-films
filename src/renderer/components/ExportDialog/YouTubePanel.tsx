@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Loader2, LogOut, Upload, Youtube } from 'lucide-react';
+import { ExternalLink, ListOrdered, Loader2, LogOut, Upload, Youtube } from 'lucide-react';
+import { chaptersNote, projectChapters } from '@renderer/edit/chaptersRun';
+import { useProjectStore } from '@renderer/store/useProjectStore';
 import type {
   YouTubePrivacy,
   YouTubeProgressEvent,
@@ -61,6 +63,8 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
 
   const [title, setTitle] = useState(defaultTitle);
   const [description, setDescription] = useState('');
+  const [chaptersMessage, setChaptersMessage] = useState<{ message: string; tone: 'success' | 'warning' } | null>(null);
+  const markerCount = useProjectStore((state) => state.project.markers.length);
   const [privacy, setPrivacy] = useState<YouTubePrivacy>('private');
   const [madeForKids, setMadeForKids] = useState<boolean | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -275,13 +279,38 @@ export function YouTubePanel({ path, defaultTitle, onExpandedChange }: YouTubePa
             </label>
           </div>
           <label className="flex flex-col gap-1">
-            <span className="text-2xs text-slate-400">{t('yt.description')}</span>
+            <span className="flex items-center justify-between gap-2 text-2xs text-slate-400">
+              {t('yt.description')}
+              {/* The markers as chapters, at the end of the description, where YouTube reads them. */}
+              <button
+                type="button"
+                data-testid="youtube-chapters"
+                className="tool-button tool-button-dense h-6 gap-1 px-2 text-2xs"
+                disabled={uploading || markerCount === 0}
+                title={markerCount === 0 ? t('chapters.none') : t('chapters.addHint')}
+                onClick={(event) => {
+                  event.preventDefault();
+                  const chapters = projectChapters();
+                  setDescription((current) => (current.trim() ? `${current.trimEnd()}\n\n${chapters.text}` : chapters.text));
+                  setChaptersMessage(chaptersNote(chapters));
+                }}
+              >
+                <ListOrdered size={12} aria-hidden />
+                {t('chapters.add')}
+              </button>
+            </span>
             <textarea
+              data-testid="youtube-description"
               className="numeric-input h-16 resize-y py-1"
               value={description}
               disabled={uploading}
               onChange={(event) => setDescription(event.target.value)}
             />
+            {chaptersMessage && (
+              <span data-testid="youtube-chapters-note" className={`text-2xs ${chaptersMessage.tone === 'warning' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                {chaptersMessage.message}
+              </span>
+            )}
           </label>
           <fieldset className="flex flex-wrap items-center gap-3 text-xs text-slate-200" disabled={uploading}>
             <legend className="sr-only">{t('yt.kids')}</legend>
