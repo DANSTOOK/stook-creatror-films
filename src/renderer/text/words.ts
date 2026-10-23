@@ -191,10 +191,10 @@ const rgba = (hex: string, alpha: number): string => {
 };
 
 /** The raster scale for an animated title: the one its largest page needs. */
-export function wordRasterScale(title: TitleContent, animation: WordAnimation, frame: FrameSize, largestClipScale: number): number {
+export function wordRasterScale(title: TitleContent, animation: WordAnimation, frame: FrameSize, largestClipScale: number, detail = 1): number {
   const pages = wordPagesFor(title, animation, frame, 1);
-  let scale = Math.min(4, Math.max(1, largestClipScale));
-  for (const page of pages) scale = Math.min(scale, rasterScale({ ...page.layout, bounds: page.bounds }, largestClipScale));
+  let scale = Math.min(4, Math.max(1, largestClipScale)) * Math.min(1, Math.max(0.25, detail));
+  for (const page of pages) scale = Math.min(scale, rasterScale({ ...page.layout, bounds: page.bounds }, largestClipScale, detail));
   return scale;
 }
 
@@ -202,8 +202,8 @@ export function wordRasterScale(title: TitleContent, animation: WordAnimation, f
  * Draw one moment of an animated title. The canvas is shared and reused:
  * upload it before the next call.
  */
-export function rasterizeWords(title: TitleContent, animation: WordAnimation, state: WordFrame, frame: FrameSize, largestClipScale = 1): WordRaster {
-  const scale = wordRasterScale(title, animation, frame, largestClipScale);
+export function rasterizeWords(title: TitleContent, animation: WordAnimation, state: WordFrame, frame: FrameSize, largestClipScale = 1, detail = 1): WordRaster {
+  const scale = wordRasterScale(title, animation, frame, largestClipScale, detail);
   const pages = wordPagesFor(title, animation, frame, scale);
   scratch ??= document.createElement('canvas');
   const canvas = scratch;

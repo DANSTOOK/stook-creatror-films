@@ -71,16 +71,21 @@ export class TitleLayers {
    * but only when that differs from what the texture already holds: between
    * one word and the next, once its spring has settled, nothing is drawn.
    */
-  sourceFor(clip: Clip, width: number, height: number, at?: { frame: number; fps: number; resting?: boolean }): ClipSource | null {
+  sourceFor(clip: Clip, width: number, height: number, at?: { frame: number; fps: number; resting?: boolean; detail?: number }): ClipSource | null {
     const title = clip.title;
     if (!title) return null;
     const scale = largestScale(clip);
+    // Playing in a smaller preview, a title whose letters move is drawn no finer than it is seen:
+    // drawn anew every frame, a 4K one cost the CPU four times what reached the screen.
+    const detail = at?.detail ?? 1;
     const animation = at ? wordAnimationOf(title) : undefined;
-    if (animation && at) return this.animatedSourceFor(clip, title, animation, width, height, scale, at);
+    if (animation && at) return this.animatedSourceFor(clip, title, animation, width, height, scale, at, detail);
     // An entrance or exit that brings the letters on one at a time is drawn
     // anew for each of its frames; the rest of the clip uses the picture at rest.
     const motion = at && !at.resting ? textMotionAt(title.animation, at.frame - clip.startFrame, clip.durationFrames, at.fps) : null;
-    const key = motion ? `${this.keyFor(title, width, height, scale)}|${motion.key}` : this.keyFor(title, width, height, scale);
+    // A still title is drawn once, at full detail; only moving ones take the preview's.
+    const moveDetail = motion ? detail : 1;
+    const key = motion ? `${this.keyFor(title, width, height, scale)}|${motion.key}|${moveDetail}` : this.keyFor(title, width, height, scale);
     const textureKey = TitleLayers.textureKey(clip);
     const resident = this.resident.get(clip.id);
 
@@ -96,7 +101,7 @@ export class TitleLayers {
       return held && resident ? { texture: held, flipY: true, rect: resident.rect, title: resident.geometry } : null;
     }
 
-    const raster = rasterizeTitle(title, { width, height }, scale, motion);
+    const raster = rasterizeTitle(title, { width, height }, scale, motion, moveDetail);
     const texture = this.textures.upload(textureKey, raster.canvas, key);
     if (motion) this.drawn += 1;
     // Where the text is and what it turns about, as the viewer measures it too.
@@ -113,10 +118,11 @@ export class TitleLayers {
     height: number,
     scale: number,
     at: { frame: number; fps: number },
+    detail = 1,
   ): ClipSource | null {
     const seconds = (clip.sourceOffsetFrames + (at.frame - clip.startFrame) * speedOf(clip)) / at.fps;
     const state = wordFrameAt(animation, seconds);
-    const key = `${this.keyFor(title, width, height, scale)}|${animation.key}|${state.key}`;
+    const key = `${this.keyFor(title, width, height, scale)}|${animation.key}|${state.key}|${detail}`;
     const textureKey = TitleLayers.textureKey(clip);
     const resident = this.resident.get(clip.id);
 
@@ -130,7 +136,7 @@ export class TitleLayers {
       return held && resident ? { texture: held, flipY: true, rect: resident.rect, title: resident.geometry } : null;
     }
 
-    const raster = rasterizeWords(title, animation, state, { width, height }, scale);
+    const raster = rasterizeWords(title, animation, state, { width, height }, scale, detail);
     const texture = this.textures.upload(textureKey, raster.canvas, key);
     // The words on screen are what the viewer picks the caption by.
     const geometry = raster.page ? geometryFromLayout(raster.page.layout, title, { width, height }) : titleGeometry(title, { width, height });

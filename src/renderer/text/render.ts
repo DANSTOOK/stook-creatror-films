@@ -91,8 +91,9 @@ const rgba = (hex: string, alpha: number): string => {
  * The raster scale for a title: at least one canvas pixel per project pixel,
  * more when the clip is scaled up, never a picture larger than MAX_SIDE.
  */
-export function rasterScale(layout: TitleLayout, largestClipScale: number): number {
-  const wanted = Math.min(4, Math.max(1, largestClipScale));
+export function rasterScale(layout: TitleLayout, largestClipScale: number, detail = 1): number {
+  // `detail` under 1: a preview drawn smaller than the frame (engine/previewSize) needs no more pixels than it shows.
+  const wanted = Math.min(4, Math.max(1, largestClipScale)) * Math.min(1, Math.max(0.25, detail));
   const fit = MAX_SIDE / Math.max(layout.bounds.width, layout.bounds.height);
   return Math.max(0.25, Math.min(wanted, fit));
 }
@@ -157,18 +158,18 @@ const moving = new WeakMap<TitleContent, { key: string; layout: TitleLayout; sca
  * Draw a title - at rest, or as it stands in one frame of `motion`. The
  * canvas is shared and reused: upload it before the next call.
  */
-export function rasterizeTitle(title: TitleContent, frame: FrameSize, largestClipScale = 1, motion: TextMotion | null = null): TitleRaster {
+export function rasterizeTitle(title: TitleContent, frame: FrameSize, largestClipScale = 1, motion: TextMotion | null = null, detail = 1): TitleRaster {
   let layout: TitleLayout;
   let scale: number;
   let pieces: Piece[] = [];
   let bounds: Rect;
   if (motion) {
     const unit = unitOf(motion.kind);
-    const key = `${frame.width}x${frame.height}@${largestClipScale}|${unit}|${titleFontsReady(title) ? 1 : 0}`;
+    const key = `${frame.width}x${frame.height}@${largestClipScale}*${detail}|${unit}|${titleFontsReady(title) ? 1 : 0}`;
     let known = moving.get(title);
     if (known?.key !== key) {
       const first = layoutTitle(title, frame, canvasMeasurer(title, 1));
-      const chosen = rasterScale({ ...first, bounds: motionBounds(first) }, largestClipScale);
+      const chosen = rasterScale({ ...first, bounds: motionBounds(first) }, largestClipScale, detail);
       const measure = canvasMeasurer(title, chosen);
       const laid = chosen === 1 ? first : layoutTitle(title, frame, measure);
       known = { key, layout: laid, scale: chosen, pieces: piecesOf(laid, unit, measure) };
@@ -179,7 +180,7 @@ export function rasterizeTitle(title: TitleContent, frame: FrameSize, largestCli
   } else {
     // Laid out once at 1:1 to learn the size, then at the scale it is drawn.
     const first = layoutTitle(title, frame, canvasMeasurer(title, 1));
-    scale = rasterScale(first, largestClipScale);
+    scale = rasterScale(first, largestClipScale, detail);
     layout = scale === 1 ? first : layoutTitle(title, frame, canvasMeasurer(title, scale));
     bounds = layout.bounds;
   }

@@ -436,7 +436,15 @@ export class FrameRenderer {
       (clip, sourceFrame) => {
         // A title has no file: its picture is drawn from its text.
         // The one being typed into stands still, as the compositor draws it.
-        if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: project.currentFrame, fps: project.fps, resting: clip.id === restingTitleId });
+        if (clip.title) {
+          return this.titles.sourceFor(clip, project.width, project.height, {
+            frame: project.currentFrame,
+            fps: project.fps,
+            resting: clip.id === restingTitleId,
+            // As fine as the viewer draws now: the whole frame paused, what it shows while playing.
+            detail: size.width / this.frame.width,
+          });
+        }
         // The preview - and only the preview - draws the proxy when there
         // is one and proxies are on.
         // A transition's incoming side, cut from the same file as its
