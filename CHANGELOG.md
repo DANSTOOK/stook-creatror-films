@@ -7,12 +7,63 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1609 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1616 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.68.0-beta.1 — Teclas propias, reducir ruido y voz en off
+2026-10-22 · pre-release para probar · bloque B de la lista de mejoras
+
+### Añadido
+- **Atajos de teclado personalizables:** en la lista de teclas (tecla «?»),
+  la pestaña **«Mis teclas»**. Haz clic en la tecla de una acción y pulsa la
+  que quieras. Si otra acción ya la tenía, te avisa y esa se queda sin tecla.
+  La tecla antigua deja de hacer lo que hacía. Puedes restablecer una tecla
+  o todas, y se recuerdan. Cubre 26 acciones: reproducir, cortar, marcas,
+  marcador, insertar, sobrescribir, borrar, deshacer y rehacer, herramientas,
+  imán, zoom, transición, velocidad, separar audio, título, pantalla
+  completa, bucle, guardar, importar y exportar.
+  - Funciona traduciendo tu tecla a la del editor antes de que llegue a él,
+    así que los atajos internos siguen intactos; también desde paneles
+    desprendidos.
+  - *Comprobado:* `tests/ui/keys.mjs` **7/7**: se asigna F a «Cortar» pulsándola;
+    F corta el clip y B ya no hace nada; Ctrl+Z sigue deshaciendo; asignar C
+    avisa de que era la herramienta de corte; «Restablecer todas» devuelve B;
+    se recuerda tras recargar. 5 pruebas unitarias.
+- **Reducir ruido de la voz:** en la pestaña Audio del inspector, «Reducir
+  ruido» con No, Suave, Media y Fuerte. Quita siseo, ventiladores y zumbido y
+  conserva la voz. Se aplica a todos los clips de ese archivo, se reproduce y
+  se exporta limpio, y se recuerda al reabrir el proyecto. «No» devuelve el
+  original.
+  - Primero mide el suelo de ruido del propio archivo (el nivel de su décima
+    parte más silenciosa) y después lo reduce justo ahí. Con un nivel fijo o
+    con el seguimiento automático de ffmpeg, el ruido apenas bajaba en la
+    grabación de prueba.
+  - *Comprobado:* `tests/ui/denoise.mjs` **4/4** con un tono sobre un siseo:
+    en «Fuerte» el siseo baja de **−34,5 a −57,5 dB** y el tono no cambia
+    (−11,0 dB); «No» vuelve al sonido original. 2 pruebas unitarias.
+- **Grabar voz en off:** un botón de micrófono en la barra de la línea de
+  tiempo. Eliges el micrófono y ves su nivel. «Grabar» cuenta tres y graba
+  mientras la edición se reproduce desde el cabezal, con su sonido apagado
+  para que no se cuele en el micro (se puede activar si usas auriculares).
+  «Detener» pone la grabación en una pista propia «Voz en off», en el bus de
+  diálogo, empezando donde estaba el cabezal.
+  - *Comprobado:* `tests/ui/voiceover.mjs` **6/6** con el micrófono simulado
+    de Chromium: el medidor se mueve; cuenta 3, graba con la edición en
+    marcha; queda una pista «Voice-over» de 2,6 s en el bus de diálogo que
+    empieza en el fotograma 30; el sonido grabado está a −17,7 dB, no es
+    silencio; la edición se detiene y su sonido vuelve.
+
+### Comprobado en conjunto
+- 1616 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  animaciones de la interfaz 18/18, edición de audio 47/47, silencios 5/5,
+  transiciones 35/35, GIF/audio 5/5, tema 7/7, historial 6/6,
+  congelar 6/6.
 
 ---
 

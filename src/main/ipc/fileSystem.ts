@@ -20,6 +20,7 @@ import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
 import { PlayableStore } from '../media/playable';
 import { audioArgs, gifArgs, type DeliverableKind } from '../exporter/deliverables';
+import { DenoiseStore, type DenoiseStrength } from '../media/denoise';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
@@ -1113,6 +1114,35 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       allowedPaths.delete(path);
       await rm(path, { force: true });
     }
+  });
+
+  const denoised = new DenoiseStore(join(app.getPath('userData'), 'scf', 'clean'), resolveFfmpegPath());
+  /** A file's sound, its noise taken out (main/media/denoise.ts). */
+  ipcMain.handle(IPC.denoiseAudio, async (_event, path: string, strength: DenoiseStrength) => {
+    assertAllowed(path);
+    if (strength !== 'light' && strength !== 'medium' && strength !== 'strong') throw new Error('Unknown strength');
+    const file = await denoised.make(path, strength);
+    allowedPaths.add(file);
+    return mediaUrlFor(file);
+  });
+
+  /** A voice-over recorded in the editor: WebM/Opus in, an AAC .m4a kept in the app's folder out. */
+  ipcMain.handle(IPC.saveRecording, async (_event, name: string, webm: ArrayBuffer): Promise<string> => {
+    if (!(webm instanceof ArrayBuffer) || webm.byteLength === 0 || webm.byteLength > 2 * 1024 * 1024 * 1024) throw new Error('Not a recording');
+    const folder = join(app.getPath('userData'), 'scf', 'voiceover');
+    await mkdir(folder, { recursive: true });
+    const base = sanitizeFileName(String(name)) || 'voiceover';
+    let target = join(folder, `${base}.m4a`);
+    for (let n = 2; await stat(target).then(() => true, () => false); n += 1) target = join(folder, `${base} (${n}).m4a`);
+    const raw = join(tmpdir(), `scf-recording-${randomUUID()}.webm`);
+    await writeFile(raw, Buffer.from(webm));
+    try {
+      await execFileAsync(resolveFfmpegPath(), ['-hide_banner', '-v', 'error', '-y', '-i', raw, '-vn', '-c:a', 'aac', '-b:a', '192k', target], { maxBuffer: 16 * 1024 * 1024, windowsHide: true });
+    } finally {
+      await rm(raw, { force: true });
+    }
+    allowedPaths.add(target);
+    return target;
   });
 
   ipcMain.handle(IPC.exportTempVideo, async () => {

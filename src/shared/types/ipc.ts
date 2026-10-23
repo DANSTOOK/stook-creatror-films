@@ -79,6 +79,8 @@ export const IPC = {
   exportAudioAppend: 'export:audio-append',
   exportAudioClose: 'export:audio-close',
   exportTempVideo: 'export:temp-video',
+  denoiseAudio: 'media:denoise-audio',
+  saveRecording: 'media:save-recording',
   exportDeliver: 'export:deliver',
   exportStart: 'export:start',
   exportFrame: 'export:frame',
@@ -756,6 +758,17 @@ export interface FilmoraApi {
   exportAudioAppend(path: string, samples: ArrayBuffer): Promise<void>;
   /** Close a mix; `discard` deletes it (nothing audible, or the render failed). */
   exportAudioClose(path: string, discard?: boolean): Promise<void>;
+  /**
+   * A file's sound with its noise taken out (main/media/denoise.ts), made once
+   * and kept; a URL to play, like extractAudio's.
+   */
+  denoiseAudio(path: string, strength: 'light' | 'medium' | 'strong'): Promise<string>;
+  /**
+   * A voice-over just recorded (WebM/Opus from MediaRecorder), kept in the
+   * app's folder as an M4A that plays and streams like any imported sound.
+   * `name` is the file's name without its extension; its path.
+   */
+  saveRecording(name: string, webm: ArrayBuffer): Promise<string>;
   /** A place in the temp folder for a video a GIF is then made from. */
   exportTempVideo(): Promise<string>;
   /**

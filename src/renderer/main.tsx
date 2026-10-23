@@ -11,6 +11,7 @@ import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import './index.css';
 import { installMotionEnvironment } from './motion/environment';
 import { installTheme } from './theme/theme';
+import { installKeyRemap } from './keys/remap';
 import { ghostCount, prepareGhosts } from './motion/ghost';
 import { zoomStats } from './components/Timeline/zoomMotion';
 import { useCaptionJob } from './captions/captionJob';
@@ -24,6 +25,8 @@ import { TITLE_TEMPLATES } from './text/templates';
 
 // Reduced motion, playing and exporting, as attributes on <html> for the CSS
 // to read - set before the first render so nothing animates it should not.
+// First of all the key handlers: a key of one's own is turned into the editor's before any of them sees it.
+installKeyRemap();
 installMotionEnvironment();
 installTheme();
 prepareGhosts();

@@ -173,8 +173,10 @@ export function useAudioPlayback(): void {
 
     const decodeAll = async (): Promise<void> => {
       for (const asset of assets.filter(audible)) {
-        if (cancelled || registered.current.has(asset.uri)) continue;
-        registered.current.add(asset.uri);
+        // Keyed by the sound too: a file whose sound changed (noise reduced, or back) is registered again.
+        const soundKey = `${asset.uri}|${asset.audioUri ?? ''}`;
+        if (cancelled || registered.current.has(soundKey)) continue;
+        registered.current.add(soundKey);
 
         const media = useMediaStore.getState();
         media.beginAnalysis(asset.uri);

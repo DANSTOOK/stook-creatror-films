@@ -412,7 +412,10 @@ export async function rehydrateAssets(assets: MediaAsset[]): Promise<MediaAsset[
             : window.filmora.mediaUrl(asset.sourcePath),
           asset.kind === 'image'
             ? Promise.resolve(null)
-            : window.filmora.extractAudio(asset.sourcePath).catch(() => null),
+            : asset.denoise
+              ? // Its noise was taken out: the cleaned sound, found again (or made again).
+                window.filmora.denoiseAudio(asset.sourcePath, asset.denoise).catch(() => window.filmora.extractAudio(asset.sourcePath as string).catch(() => null))
+              : window.filmora.extractAudio(asset.sourcePath).catch(() => null),
         ]);
         // Both of these are URLs this session cannot have made: they are
         // rebuilt here (audio) or looked up again on disk (the proxy), and a

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Keyboard, Search } from 'lucide-react';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { useT, type MessageKey } from '@renderer/i18n';
+import { CustomizeKeys } from '@renderer/keys/CustomizeKeys';
 
 /**
  * Every key the editor answers to, in one place.
@@ -104,6 +105,8 @@ export interface ShortcutsDialogProps {
 export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element {
   const t = useT();
   const [query, setQuery] = useState('');
+  // The list of keys, or choosing one's own (keys/remap.ts).
+  const [mode, setMode] = useState<'list' | 'customize'>('list');
 
   const groups = useMemo(() => {
     const translated = SHORTCUT_GROUPS.map((group) => ({
@@ -136,7 +139,23 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element 
         </button>
       }
     >
-      <div className="sticky top-0 z-10 border-b border-panel-700 bg-panel-900 px-4 py-2">
+      <div className="sticky top-0 z-10 space-y-2 border-b border-panel-700 bg-panel-900 px-4 py-2">
+        <div role="tablist" aria-label={t('keys.title')} className="flex rounded-control bg-panel-950 p-0.5">
+          {(['list', 'customize'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={mode === value}
+              data-testid={`keys-mode-${value}`}
+              className={`flex-1 rounded-[4px] py-1 text-xs ${mode === value ? 'bg-panel-700 font-medium text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
+              onClick={() => setMode(value)}
+            >
+              {t(value === 'list' ? 'remap.tabList' : 'remap.tabCustomize')}
+            </button>
+          ))}
+        </div>
+        {mode === 'list' && (
         <label className="relative block">
           <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -149,8 +168,10 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element 
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        )}
       </div>
 
+      {mode === 'customize' ? <CustomizeKeys /> : (
       <div className="space-y-4 p-4">
         {groups.length === 0 && <p className="text-xs text-slate-400">{t('keys.nothing')}</p>}
         {groups.map((group) => (
@@ -169,6 +190,7 @@ export function ShortcutsDialog({ onClose }: ShortcutsDialogProps): JSX.Element 
           </section>
         ))}
       </div>
+      )}
     </Dialog>
   );
 }

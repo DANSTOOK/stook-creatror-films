@@ -25,6 +25,7 @@ import { useSilenceDialogStore } from './edit/silenceDialog';
 import { ActivityBar } from './components/Layout/ActivityBar';
 import { ReframeDialog, useReframeDialog } from './components/Reframe/ReframeDialog';
 import { SceneCutsDialog, useSceneDialog } from './components/SceneCuts/SceneCutsDialog';
+import { VoiceoverDialog, useVoiceoverDialog } from './voiceover/VoiceoverDialog';
 import { TextToSpeechWindow } from './components/TextToSpeech/TextToSpeechWindow';
 import { focusDetachedWindow } from './components/Layout/useDetachedWindow';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
@@ -252,6 +253,8 @@ export default function App(): JSX.Element {
   const reframePresence = usePresence(reframeOpen);
   const scenesOpen = useSceneDialog((state) => state.open);
   const scenesPresence = usePresence(scenesOpen);
+  const voiceoverOpen = useVoiceoverDialog((state) => state.open);
+  const voiceoverPresence = usePresence(voiceoverOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -853,6 +856,7 @@ export default function App(): JSX.Element {
           {silencePresence.mounted && <RemoveSilencesDialog closing={silencePresence.closing} onClose={() => useSilenceDialogStore.getState().close()} />}
           {reframePresence.mounted && <ReframeDialog closing={reframePresence.closing} onClose={() => useReframeDialog.getState().close()} />}
           {scenesPresence.mounted && <SceneCutsDialog closing={scenesPresence.closing} onClose={() => useSceneDialog.getState().close()} />}
+          {voiceoverPresence.mounted && <VoiceoverDialog closing={voiceoverPresence.closing} onClose={() => useVoiceoverDialog.getState().close()} />}
           {/* Text to speech lives in a window of its own now, not a modal, so
               the editor stays live while a voice is set up (TextToSpeechWindow). */}
           {view === 'editor' && ttsOpen && <TextToSpeechWindow onClose={() => setTtsOpen(false)} />}

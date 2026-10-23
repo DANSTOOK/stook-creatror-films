@@ -584,6 +584,8 @@ interface ProjectStore {
    * on demand, the moment the user asks to detach it.
    */
   setAssetAudio(assetId: string, audioUri: string): void;
+  /** Reduce noise on a file's sound (Inspector/DenoiseRow): the cleaned sound as its audio, or the original back with null. */
+  setAssetDenoise(assetId: string, strength: MediaAsset['denoise'] | null, audioUri: string): void;
 
   /* Media bins ----------------------------------------------------------- */
   setCurrentBin(binId: string | null): void;
@@ -2642,6 +2644,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setAssetAudio(assetId, audioUri) {
     set({ assets: get().assets.map((asset) => (asset.id === assetId ? { ...asset, audioUri } : asset)) });
+  },
+
+  setAssetDenoise(assetId, strength, audioUri) {
+    set({
+      assets: get().assets.map((asset) => {
+        if (asset.id !== assetId) return asset;
+        const { denoise: _old, ...rest } = asset;
+        void _old;
+        return { ...rest, audioUri, ...(strength ? { denoise: strength } : {}) };
+      }),
+    });
   },
 
   setAssetProxy(assetId, proxyUri) {

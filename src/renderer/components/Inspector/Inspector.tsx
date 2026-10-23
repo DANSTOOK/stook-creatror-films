@@ -35,6 +35,8 @@ import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { freezeFrame } from '@renderer/edit/freezeRun';
+import { DenoiseRow } from './DenoiseRow';
+import { assetHasSound } from '@renderer/components/Timeline/detachAudio';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
@@ -733,6 +735,8 @@ export function Inspector(): JSX.Element {
           </p>
         </div>
       )}
+      {/* The file's sound with its noise taken out (main/media/denoise). */}
+      {asset && asset.sourcePath && (asset.kind === 'audio' || (asset.kind === 'video' && assetHasSound(asset))) && <DenoiseRow asset={asset} />}
       {/* Jump cuts: the quiet stretches taken out (edit/silences). */}
       {canRemoveSilences(clip) && (
         <div className="px-3 pb-2">

@@ -25,6 +25,7 @@ import {
   LockOpen,
   Magnet,
   Maximize2,
+  Mic,
   MousePointer2,
   Pencil,
   Plus,
@@ -98,6 +99,7 @@ import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { canFreezeAtPlayhead, freezeFrame } from '@renderer/edit/freezeRun';
+import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
 import { withActivity } from '@renderer/activity/activity';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
@@ -1761,6 +1763,16 @@ export function Timeline(): JSX.Element {
             >
               <Plus size={13} />
               {tr('timeline.audio')}
+            </button>
+            {/* A narration recorded onto its own track, at the playhead (voiceover/VoiceoverDialog). */}
+            <button
+              type="button"
+              data-testid="timeline-voiceover"
+              className="tool-button tool-button-dense w-6 px-0"
+              onClick={() => useVoiceoverDialog.getState().show()}
+              {...tip(tr('voiceover.button'), { hint: tr('voiceover.buttonHint') })}
+            >
+              <Mic size={13} />
             </button>
           </div>
 
