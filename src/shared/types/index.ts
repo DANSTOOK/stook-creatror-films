@@ -652,6 +652,8 @@ export interface ClipMotionFx {
   base?: ClipTransform;
 }
 
+export type SpeedRampPreset = 'montage' | 'hero' | 'bullet' | 'jump' | 'flashIn' | 'flashOut';
+
 export interface ClipTracking {
   fromFrame: number;
   before: Keyframe<Vector2D>[];
@@ -711,6 +713,19 @@ export interface Clip {
    * retiming existed, which means the same thing.
    */
   speed?: number;
+  /**
+   * A speed ramp (timing/clipSpeed.ts): the clip speeds up and slows down
+   * along this curve, its footage and length as `speed` makes them - only
+   * which frame shows when changes. Silent while ramped, as its sound cannot
+   * follow. Absent: one speed all through.
+   */
+  speedRamp?: SpeedRampPreset;
+  /**
+   * An adjustment layer: no picture of its own - its colour grade and its
+   * effects are put on everything drawn under it while it lasts, its
+   * opacity how much (engine/Compositor). Its sourceUri is ADJUSTMENT_URI.
+   */
+  adjustment?: boolean;
   /** Play the footage backwards. The picture only; see audioFollowsSpeed. */
   reversed?: boolean;
   /**

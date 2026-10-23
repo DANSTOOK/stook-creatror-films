@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  SpeedRampPreset,
   CaptionAnimation,
   CaptionLanguage,
   CaptionLook,
@@ -149,6 +150,7 @@ import { createLibraryCommand } from './useHistoryStore';
 import { removeRanges, type FrameRange } from '@renderer/edit/silences';
 import { splitAtFrames } from '@renderer/edit/scenes';
 import { withFreeze } from '@renderer/edit/freeze';
+import { withBeatMarkers, withCutsAtBeats, withoutBeatMarkers } from '@renderer/edit/beats';
 import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
@@ -457,6 +459,10 @@ interface ProjectStore {
   removeClipRanges(clipId: string, ranges: readonly FrameRange[]): number;
   /** Cut a clip and the clips linked to it at each of `frames`: "Split at scene changes" (edit/scenes.ts). One undo step. Returns the pieces. */
   splitClipAtFrames(clipId: string, frames: readonly number[]): number;
+  /** Beat markers at `frames` (edit/beats.ts), one undo step; `replace` takes the old beat markers away first. */
+  addBeatMarkers(frames: readonly number[], replace: boolean): number;
+  /** Every picture clip off `exceptTrackId` cut at `frames` (edit/beats.ts), one undo step. Returns the cuts made. */
+  cutAtBeats(frames: readonly number[], exceptTrackId: string): number;
   /** Freeze frame (edit/freeze.ts): `still` held at `frame` on `clipId`'s track, the clip cut there and what follows moved along. One undo step. Returns the still's clip id. */
   insertFreeze(clipId: string, frame: number, still: CreateClipInput): string | null;
   /** One caption's own look over its track's (CaptionContent.style); undefined takes it back to the track's. */
@@ -526,7 +532,8 @@ interface ProjectStore {
    * its neighbour rather than growing over it, by the rule every trim here
    * already follows.
    */
-  setClipSpeed(clipId: string, change: { speed: number; reversed: boolean; ripple: boolean }): void;
+  /** Speed, reverse and a speed ramp (`ramp`: a curve, null for one speed; left out, kept as it was). One undo step. */
+  setClipSpeed(clipId: string, change: { speed: number; reversed: boolean; ripple: boolean; ramp?: SpeedRampPreset | null }): void;
 
   /* The trim tool -------------------------------------------------------- */
   /** Drag one edge and take the rest of the track with it. */
@@ -1923,6 +1930,27 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().updateClip(clipId, { caption: kept ? { ...rest, style: kept } : rest }, mergeKey);
   },
 
+  addBeatMarkers(frames, replace) {
+    let added = 0;
+    get().transact('Beat markers', (current) => {
+      const base = replace ? withoutBeatMarkers(current) : current;
+      const next = withBeatMarkers(base, frames);
+      added = next.markers.length - base.markers.length;
+      return next;
+    });
+    return added;
+  },
+
+  cutAtBeats(frames, exceptTrackId) {
+    let cuts = 0;
+    get().transact('Cut to the beat', (current) => {
+      const result = withCutsAtBeats(current, frames, exceptTrackId);
+      cuts = result.cuts;
+      return result.project;
+    });
+    return cuts;
+  },
+
   insertFreeze(clipId, frame, still) {
     const clip = get().project.clips[clipId];
     if (!clip) return null;
@@ -2407,7 +2435,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
-  setClipSpeed(clipId, { speed, reversed, ripple }) {
+  setClipSpeed(clipId, { speed, reversed, ripple, ramp }) {
     const source = sourceFramesFor(get(), get().project.clips[clipId]);
     get().transact(
       'Change speed',
@@ -2415,7 +2443,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const clip = project.clips[clipId];
         if (!clip) return project;
 
-        const next = retimed(clip, { speed, reversed }, source);
+        const timed = retimed(clip, { speed, reversed }, source);
+        const next = ramp === undefined ? timed : { ...timed, speedRamp: ramp ?? undefined };
         const delta = next.durationFrames - clip.durationFrames;
         const clips = { ...project.clips, [clipId]: next };
 

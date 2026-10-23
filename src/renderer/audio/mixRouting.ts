@@ -44,7 +44,7 @@ export const clipGain = (clip: Clip): number => clamp(clip.volume, 0, 2);
  * is moved, an echo. Playback, scrubbing and the export all ask this one
  * question, so the three cannot disagree about how many times a sound plays.
  */
-export const clipSounds = (clip: Pick<Clip, 'speed' | 'reversed' | 'audioDetached'>): boolean =>
+export const clipSounds = (clip: Pick<Clip, 'speed' | 'reversed' | 'audioDetached' | 'speedRamp'>): boolean =>
   clip.audioDetached !== true && audioFollowsSpeed(clip);
 
 export const panPosition = (pan: number): number =>

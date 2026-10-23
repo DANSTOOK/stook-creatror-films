@@ -5,6 +5,7 @@
  */
 
 const SPANISH: Record<string, string> = {
+  'Add adjustment layer': 'Añadir capa de ajuste',
   'Add caption': 'Añadir subtítulo',
   'Add captions': 'Añadir subtítulos',
   'Add captions track': 'Añadir pista de subtítulos',
@@ -16,6 +17,8 @@ const SPANISH: Record<string, string> = {
   'Add track': 'Añadir pista',
   'Add transition': 'Añadir transición',
   'Auto ducking': 'Atenuación automática',
+  'Beat markers': 'Marcadores de ritmo',
+  'Cut to the beat': 'Cortar al ritmo',
   'Caption animation': 'Animación de subtítulos',
   'Caption language': 'Idioma de subtítulos',
   'Caption line breaks': 'Saltos de línea de subtítulos',

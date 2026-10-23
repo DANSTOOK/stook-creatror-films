@@ -26,6 +26,7 @@ import {
   Magnet,
   Maximize2,
   Mic,
+  Music2,
   MousePointer2,
   Pencil,
   Plus,
@@ -100,6 +101,8 @@ import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { canFreezeAtPlayhead, freezeFrame } from '@renderer/edit/freezeRun';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
+import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
+import { addAdjustmentLayer } from '@renderer/edit/adjustment';
 import { withActivity } from '@renderer/activity/activity';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
@@ -551,6 +554,14 @@ export function Timeline(): JSX.Element {
       }
       // Jump cuts: the quiet stretches out of a clip with sound, or of a picture whose sound was detached.
       const hasSound = clip.audioOnly || Boolean(sound) || assetHasSound(assets.find((asset) => asset.uri === clip.sourceUri));
+      // Cutting to the music: its beats as markers, or the pictures cut there.
+      if (hasSound && !clip.title && !clip.caption) {
+        items.push({
+          label: t('beats.menu'),
+          icon: Music2,
+          onSelect: () => useBeatDialog.getState().show(clip.id),
+        });
+      }
       if (hasSound && canRemoveSilences(clip)) {
         items.push({
           label: t('silence.menu'),
@@ -1763,6 +1774,17 @@ export function Timeline(): JSX.Element {
             >
               <Plus size={13} />
               {tr('timeline.audio')}
+            </button>
+            {/* A grade and effects over everything under it (edit/adjustment). */}
+            <button
+              type="button"
+              data-testid="timeline-adjustment"
+              className="tool-button tool-button-dense px-1.5"
+              onClick={() => addAdjustmentLayer()}
+              {...tip(tr('adjustment.button'), { hint: tr('adjustment.buttonHint') })}
+            >
+              <Plus size={13} />
+              {tr('adjustment.short')}
             </button>
             {/* A narration recorded onto its own track, at the playhead (voiceover/VoiceoverDialog). */}
             <button

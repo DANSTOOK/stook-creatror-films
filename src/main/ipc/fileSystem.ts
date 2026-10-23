@@ -21,6 +21,7 @@ import { ProxyStore, proxySize } from '../media/proxies';
 import { PlayableStore } from '../media/playable';
 import { audioArgs, gifArgs, type DeliverableKind } from '../exporter/deliverables';
 import { DenoiseStore, type DenoiseStrength } from '../media/denoise';
+import { detectBeats } from '../media/beats';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
@@ -500,6 +501,15 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   });
 
   /** Where a file's picture changes shot (main/media/scenes.ts). */
+  /** The beats of a stretch of music (main/media/beats.ts). */
+  ipcMain.handle(IPC.detectBeats, async (_event, path: string, fromSeconds: unknown, toSeconds: unknown) => {
+    assertAllowed(path);
+    const from = Number(fromSeconds) || 0;
+    const to = Number(toSeconds) || 0;
+    if (!(to > from)) return { bpm: 0, beats: [], downbeats: [] };
+    return detectBeats(resolveFfmpegPath(), path, from, to);
+  });
+
   ipcMain.handle(IPC.detectScenes, async (_event, path: string, request: SceneRequest): Promise<number[]> => {
     assertAllowed(path);
     const finite = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);

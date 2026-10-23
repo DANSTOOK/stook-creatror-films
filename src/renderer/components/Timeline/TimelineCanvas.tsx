@@ -929,7 +929,7 @@ function drawClip(
 
   // A title wears the title colour on whichever picture track it sits, as
   // Final Cut's titles are purple wherever they are connected.
-  context.fillStyle = clip.title ? TRACK_TYPE_COLORS.text : TRACK_TYPE_COLORS[track.type];
+  context.fillStyle = clip.adjustment ? TRACK_TYPE_COLORS.adjustment : clip.title ? TRACK_TYPE_COLORS.text : TRACK_TYPE_COLORS[track.type];
   context.globalAlpha = track.visible ? 1 : 0.4;
   context.fill();
 

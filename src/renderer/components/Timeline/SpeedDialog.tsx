@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { SpeedRampPreset } from '@shared/types';
+import { SPEED_RAMPS } from '@renderer/timing/clipSpeed';
 import { Link2, Link2Off } from 'lucide-react';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { useT } from '@renderer/i18n';
@@ -38,7 +40,30 @@ export interface SpeedDialogProps {
   clip: Clip;
   fps: number;
   onClose(): void;
-  onApply(change: { speed: number; reversed: boolean; ripple: boolean }): void;
+  onApply(change: { speed: number; reversed: boolean; ripple: boolean; ramp: SpeedRampPreset | null }): void;
+}
+
+const RAMPS = Object.keys(SPEED_RAMPS) as SpeedRampPreset[];
+const RAMP_LABEL: Record<SpeedRampPreset, 'ramp.montage' | 'ramp.hero' | 'ramp.bullet' | 'ramp.jump' | 'ramp.flashIn' | 'ramp.flashOut'> = {
+  montage: 'ramp.montage',
+  hero: 'ramp.hero',
+  bullet: 'ramp.bullet',
+  jump: 'ramp.jump',
+  flashIn: 'ramp.flashIn',
+  flashOut: 'ramp.flashOut',
+};
+
+/** A ramp drawn: its speed along the clip, the line at 1x dotted. */
+function RampShape({ preset }: { preset: SpeedRampPreset | null }): JSX.Element {
+  const points = preset ? SPEED_RAMPS[preset] : [1, 1];
+  const top = Math.max(...points, 1);
+  const path = points.map((value, index) => `${(index / (points.length - 1)) * 56 + 2},${22 - (value / top) * 18}`).join(' ');
+  return (
+    <svg viewBox="0 0 60 24" className="h-6 w-full" aria-hidden>
+      <line x1="2" x2="58" y1={22 - (1 / top) * 18} y2={22 - (1 / top) * 18} className="stroke-slate-600" strokeDasharray="2 2" strokeWidth="1" />
+      <polyline points={path} fill="none" className="stroke-accent-hover" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): JSX.Element {
@@ -47,6 +72,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
   const [percent, setPercent] = useState(Math.round(speedOf(clip) * 1000) / 10);
   const [reversed, setReversed] = useState(clip.reversed === true);
   const [ripple, setRipple] = useState(true);
+  const [ramp, setRamp] = useState<SpeedRampPreset | null>(clip.speedRamp ?? null);
   const [linked, setLinked] = useState(true);
   /** What is being typed into the duration, while it is being typed. */
   const [durationDraft, setDurationDraft] = useState<string | null>(null);
@@ -80,7 +106,7 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
             className="button-primary"
             data-testid="speed-apply"
             disabled={draftInvalid}
-            onClick={() => onApply({ speed, reversed, ripple })}
+            onClick={() => onApply({ speed, reversed, ripple, ramp })}
           >
             {t('speed.apply')}
           </button>
@@ -150,6 +176,33 @@ export function SpeedDialog({ clip, fps, onClose, onApply }: SpeedDialogProps): 
           ? t('speed.invalidDuration')
           : t('speed.hint', { used: framesToTimecode(used, fps), duration: framesToTimecode(duration, fps), frames: duration })}
       </p>
+
+      {/* A speed ramp: the clip faster here, slower there, along a curve (timing/clipSpeed). */}
+      <div className="space-y-1.5">
+        <span className="field-label">{t('ramp.title')}</span>
+        <div role="radiogroup" aria-label={t('ramp.title')} className="grid grid-cols-4 gap-1">
+          {[null, ...RAMPS].map((option) => {
+            const on = ramp === option;
+            return (
+              <button
+                key={option ?? 'none'}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                data-testid={`speed-ramp-${option ?? 'none'}`}
+                className={`press flex flex-col items-center gap-0.5 rounded-md border px-1 pb-1 pt-1.5 text-2xs transition-colors ${
+                  on ? 'border-accent/70 bg-accent/15 text-slate-100' : 'border-panel-700 bg-panel-900 text-slate-400 hover:border-panel-600 hover:text-slate-200'
+                }`}
+                onClick={() => setRamp(option)}
+              >
+                <RampShape preset={option} />
+                {option ? t(RAMP_LABEL[option]) : t('ramp.none')}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-2xs leading-relaxed text-slate-400">{ramp ? t('ramp.hint') : t('ramp.noneHint')}</p>
+      </div>
 
       <label className="flex items-center gap-2 text-xs text-slate-300">
         <input

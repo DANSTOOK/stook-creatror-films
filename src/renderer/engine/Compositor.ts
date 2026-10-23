@@ -333,7 +333,8 @@ export type DrawEntry =
 /** A draw entry with its sources resolved: what drawLayers draws. */
 type Resolved =
   | { kind: 'clip'; clip: Clip; source: ClipSource }
-  | { kind: 'transition'; entry: Extract<DrawEntry, { kind: 'transition' }>; from: ClipSource | null; to: ClipSource | null };
+  | { kind: 'transition'; entry: Extract<DrawEntry, { kind: 'transition' }>; from: ClipSource | null; to: ClipSource | null }
+  | { kind: 'adjust'; clip: Clip };
 
 export interface CompositorStats {
   clipsDrawn: number;
@@ -970,6 +971,10 @@ export class Compositor {
   private drawLayers(layers: readonly Resolved[], frame: number, into: RenderTarget, skipGrade: boolean): void {
     const lifts = this.captionLifts(layers);
     for (const layer of layers) {
+      if (layer.kind === 'adjust') {
+        this.drawAdjustment(layer.clip, frame, into, skipGrade);
+        continue;
+      }
       if (layer.kind === 'clip') {
         const opacity = this.renderLayer(layer.clip, frame, layer.source, lifts.get(layer.clip.id) ?? 0);
         if (opacity <= 0) continue;
@@ -980,6 +985,30 @@ export class Compositor {
       }
       this.drawTransition(layer, frame, into, skipGrade);
     }
+  }
+
+  /**
+   * An adjustment layer: everything drawn so far, through the layer's grade
+   * and effects, laid back over itself at the layer's opacity - so at 100 %
+   * it is replaced by its graded self, and at 50 % half way there. The
+   * viewer's "before" leaves it out, as it does every grade.
+   */
+  private drawAdjustment(clip: Clip, frame: number, into: RenderTarget, skipGrade: boolean): void {
+    if (skipGrade) return;
+    const opacity = evaluateTransform(clip.transform, frame).opacity;
+    if (opacity <= 0) return;
+    const { gl } = this;
+    this.ping.bind();
+    this.ping.clearTransparent();
+    gl.disable(gl.BLEND);
+    this.copyProgram.use();
+    this.copyProgram.set('u_transform', FULLSCREEN_MATRIX);
+    this.copyProgram.set('u_flipY', false);
+    this.copyProgram.setTexture('u_inputTexture', into.texture, 0);
+    this.drawQuad(this.copyProgram);
+    this.applyEffectChain(clip, false, frame);
+    this.compositeLayer(opacity, into, 'normal');
+    this.stats.clipsDrawn += 1;
   }
 
   /** Captions of several tracks on screen together, stacked (captions/captionStack). */
@@ -1167,6 +1196,11 @@ export class Compositor {
     // Each source is asked for once, and drawn twice when comparing.
     const layers: Resolved[] = [];
     for (const entry of Compositor.drawList(project, frame, this.sourceLengthOf)) {
+      if (entry.kind === 'clip' && entry.clip.adjustment) {
+        // No picture to fetch: it works on what is under it (drawAdjustment).
+        layers.push({ kind: 'adjust', clip: entry.clip });
+        continue;
+      }
       if (entry.kind === 'clip') {
         const source = resolveSource(entry.clip, entry.sourceFrame);
         if (source) layers.push({ kind: 'clip', clip: entry.clip, source });

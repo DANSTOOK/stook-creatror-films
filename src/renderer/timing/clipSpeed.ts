@@ -1,4 +1,4 @@
-import type { Clip } from '@shared/types';
+import type { Clip, SpeedRampPreset } from '@shared/types';
 
 /**
  * Clip speed: how a frame on the timeline picks a frame of footage.
@@ -54,27 +54,81 @@ export function speedForDuration(sourceFrames: number, durationFrames: number): 
 }
 
 /**
+ * Speed ramps - CapCut's "Curve" speeds, Premiere's time remapping made
+ * simple: a shape of relative speeds along the clip (nine points, joined by
+ * straight lines). The clip's average speed is still `speed`, so it shows
+ * the same footage in the same length; the ramp only moves which frame is
+ * shown when, faster here and slower there.
+ */
+export const SPEED_RAMPS: Record<SpeedRampPreset, readonly number[]> = {
+  // Fast and slow, twice over.
+  montage: [2.5, 2.5, 0.6, 0.6, 2.5, 2.5, 0.6, 0.6, 1],
+  // In at speed, slow motion through the middle, out at speed.
+  hero: [1.6, 1.6, 1.6, 0.3, 0.3, 0.3, 1.6, 1.6, 1.6],
+  // A burst, then a long slow moment, then a burst.
+  bullet: [2.2, 2.2, 0.2, 0.2, 0.2, 0.2, 0.2, 2.2, 2.2],
+  // Steady, a sudden leap, steady.
+  jump: [1, 1, 1, 4, 4, 1, 1, 1, 1],
+  // Rushing in, settling.
+  flashIn: [4, 3, 2, 1.4, 1, 1, 1, 1, 1],
+  // Settled, rushing out.
+  flashOut: [1, 1, 1, 1, 1, 1.4, 2, 3, 4],
+};
+
+export const isSpeedRamp = (value: unknown): value is SpeedRampPreset => typeof value === 'string' && value in SPEED_RAMPS;
+
+/** Relative speed of a ramp at `u` (0..1 along the clip). */
+export function rampSpeedAt(preset: SpeedRampPreset, u: number): number {
+  const points = SPEED_RAMPS[preset];
+  const at = Math.min(1, Math.max(0, u)) * (points.length - 1);
+  const i = Math.min(points.length - 2, Math.floor(at));
+  return points[i] + (points[i + 1] - points[i]) * (at - i);
+}
+
+/** How much of the footage a ramp has shown by `u` along the clip, 0..1: the integral of its speed, made whole. */
+export function rampedFraction(preset: SpeedRampPreset, u: number): number {
+  const points = SPEED_RAMPS[preset];
+  const segments = points.length - 1;
+  const area = (to: number): number => {
+    const at = Math.min(1, Math.max(0, to)) * segments;
+    let sum = 0;
+    for (let i = 0; i < segments && i < at; i += 1) {
+      const part = Math.min(1, at - i);
+      const end = points[i] + (points[i + 1] - points[i]) * part;
+      sum += ((points[i] + end) / 2) * part;
+    }
+    return sum;
+  };
+  const total = area(1);
+  return total > 0 ? area(u) / total : u;
+}
+
+/**
  * The frame of footage shown at a timeline frame.
  *
  * `frame` is absolute on the timeline. Rounding is what "frame sampling"
  * means: the nearest frame of footage, held or skipped as the speed requires.
  */
 export function sourceFrameFor(
-  clip: Pick<Clip, 'startFrame' | 'durationFrames' | 'sourceOffsetFrames' | 'speed' | 'reversed'>,
+  clip: Pick<Clip, 'startFrame' | 'durationFrames' | 'sourceOffsetFrames' | 'speed' | 'reversed' | 'speedRamp'>,
   frame: number,
 ): number {
   const elapsed = frame - clip.startFrame;
   const speed = speedOf(clip);
   const used = sourceFramesUsed(clip);
+  // Along a ramp, the footage shown so far is the curve's integral; one speed, a straight line.
+  const shown = clip.speedRamp && isSpeedRamp(clip.speedRamp)
+    ? Math.min(used - 1, Math.round(used * rampedFraction(clip.speedRamp, elapsed / Math.max(1, clip.durationFrames))))
+    : Math.round(elapsed * speed);
 
   if (!isReversed(clip)) {
-    return clip.sourceOffsetFrames + Math.round(elapsed * speed);
+    return clip.sourceOffsetFrames + shown;
   }
 
   // Backwards from the last frame the clip covers, so the first frame on the
   // timeline is the last frame of the footage - what "play it backwards" has
   // to mean for it to be reversible.
-  return clip.sourceOffsetFrames + Math.max(0, used - 1 - Math.round(elapsed * speed));
+  return clip.sourceOffsetFrames + Math.max(0, used - 1 - shown);
 }
 
 /**
@@ -140,6 +194,7 @@ export function speedLabel(clip: Pick<Clip, 'speed' | 'reversed'>): string | nul
  * not yet: that needs the samples themselves reversed, and a buffer read
  * back-to-front is not something a playback rate can express.
  */
-export function audioFollowsSpeed(clip: Pick<Clip, 'speed' | 'reversed'>): boolean {
-  return !isReversed(clip);
+export function audioFollowsSpeed(clip: Pick<Clip, 'speed' | 'reversed' | 'speedRamp'>): boolean {
+  // Nor along a ramp: one playback rate cannot follow a speed that changes.
+  return !isReversed(clip) && !clip.speedRamp;
 }

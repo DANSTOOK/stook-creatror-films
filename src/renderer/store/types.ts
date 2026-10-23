@@ -1,3 +1,4 @@
+import { isSpeedRamp } from '@renderer/timing/clipSpeed';
 import type {
   AudioBus,
   BackgroundRemovalConfig,
@@ -575,6 +576,8 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             effects: normalizedEffectsOrNone(clip.effects),
             // The move and animations as chosen: kept only in a shape this build can read.
             fx: normalizeClipFx(clip.fx),
+            // A ramp this build knows, or none.
+            speedRamp: isSpeedRamp(clip.speedRamp) ? clip.speedRamp : undefined,
             tracking: normalizeTracking(clip.tracking),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),

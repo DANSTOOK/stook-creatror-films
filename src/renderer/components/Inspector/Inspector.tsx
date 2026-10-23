@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, SlidersHorizontal, Snowflake, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, SlidersHorizontal, Snowflake, Music2, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -36,6 +36,7 @@ import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { freezeFrame } from '@renderer/edit/freezeRun';
 import { DenoiseRow } from './DenoiseRow';
+import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { assetHasSound } from '@renderer/components/Timeline/detachAudio';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
@@ -737,6 +738,15 @@ export function Inspector(): JSX.Element {
       )}
       {/* The file's sound with its noise taken out (main/media/denoise). */}
       {asset && asset.sourcePath && (asset.kind === 'audio' || (asset.kind === 'video' && assetHasSound(asset))) && <DenoiseRow asset={asset} />}
+      {/* Cutting to the music (edit/beats). */}
+      {asset && asset.sourcePath && (asset.kind === 'audio' || (asset.kind === 'video' && assetHasSound(asset))) && (
+        <div className="px-3 pb-2">
+          <button type="button" data-testid="inspector-beats" className="tool-button h-control w-full justify-center border border-panel-600" onClick={() => useBeatDialog.getState().show(clip.id)}>
+            <Music2 size={13} />
+            {t('beats.menu')}
+          </button>
+        </div>
+      )}
       {/* Jump cuts: the quiet stretches taken out (edit/silences). */}
       {canRemoveSilences(clip) && (
         <div className="px-3 pb-2">

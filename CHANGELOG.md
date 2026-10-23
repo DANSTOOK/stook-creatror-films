@@ -7,12 +7,60 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1616 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1624 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.69.0-beta.1 — Cortar al ritmo, curvas de velocidad y capa de ajuste
+2026-10-22 · pre-release para probar · bloque C de la lista de mejoras
+
+### Añadido
+- **Cortar al ritmo de la música:** en el menú de un clip con sonido o en la
+  pestaña Audio, «Cortar al ritmo…». Escucha la música, muestra su tempo
+  (BPM) y cuántos cortes caben, cada golpe, cada 2 o cada compás. Puedes
+  «Poner marcadores» (naranjas, para cortar a mano con el imán) o «Cortar las
+  imágenes»: el vídeo de encima se corta en cada golpe, un plano por golpe.
+  Un solo Ctrl+Z.
+  - Detecta el ritmo por los ataques de la energía (el bombo pesa más que los
+    platillos), estima el tempo con una autocorrelación suavizada y ajusta
+    cada golpe a su ataque real, siguiendo una canción que se desvía un poco.
+  - *Comprobado:* 4 pruebas unitarias (90, 120, 128 y 150 BPM con bombo y
+    platillos: tempo a menos de 2 BPM y cada golpe a menos de 30 ms del bombo)
+    y `tests/ui/beats.mjs` **5/5**: con un bombo a 120 BPM oye «120 BPM» y 15
+    golpes (4 compases); pone un marcador cada 15 fotogramas; corta el vídeo
+    en planos de 15 fotogramas; Ctrl+Z lo deshace.
+- **Curvas de velocidad:** en el diálogo de Velocidad (Ctrl+R), «Curva de
+  velocidad» con Constante, Montaje, Héroe, Bala, Salto, Destello entrada y
+  Destello salida, cada una dibujada. El clip va más rápido o más lento a lo
+  largo de la curva, mostrando el mismo metraje en la misma duración. Su
+  sonido se silencia mientras tiene curva, porque una velocidad que cambia no
+  puede seguirse con el audio.
+  - *Comprobado:* 4 pruebas unitarias (cada curva muestra todo el metraje sin
+    retroceder; Héroe va lento en el centro; al revés también; en silencio) y
+    `tests/ui/speed-ramp.mjs` **6/6** con un vídeo que marca cada fotograma
+    con un gris: en la imagen exportada empieza en el primer fotograma,
+    termina en el último y en el centro avanza 2 fotogramas por cada 10
+    (9 al principio); la duración y el metraje no cambian; Ctrl+Z la quita.
+- **Capa de ajuste:** «+ Ajuste» en la barra de la línea de tiempo crea un clip
+  vacío en una pista propia por encima de todo, 5 s desde el cabezal. Su
+  corrección de color y sus efectos se aplican a todo lo que hay debajo
+  mientras dura, y su opacidad es la intensidad.
+  - *Comprobado:* `tests/ui/adjustment.mjs` **6/6**: queda en una pista propia
+    arriba, seleccionada y con su pestaña Color; con saturación 0 el rojo de
+    debajo sale gris en la imagen exportada solo mientras dura (antes y después
+    sigue rojo); al 50 % de opacidad el rojo queda a la mitad (50 %); un
+    desenfoque sobre ella suaviza lo de debajo; Ctrl+Z la quita entera.
+
+### Comprobado en conjunto
+- 1624 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  animaciones de la interfaz 18/18, edición de audio 47/47, efectos 11/11,
+  edición de efectos 9/9, color 32/32, transiciones 24/24, escenas 5/5,
+  congelar 6/6.
 
 ---
 

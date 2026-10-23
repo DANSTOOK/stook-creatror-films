@@ -582,6 +582,8 @@ export class FrameRenderer {
           await this.titles.prepare(clip);
           return;
         }
+        // An adjustment layer has no footage: it works on what is under it.
+        if (clip.adjustment) return;
         // Remove background: the export waits for this frame's own matte,
         // and refuses a clip that has none rather than export it whole - a
         // frame the analysis running now has not reached included.

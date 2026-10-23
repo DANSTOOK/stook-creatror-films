@@ -50,6 +50,7 @@ const api: FilmoraApi = {
   extractAudio: (path) => ipcRenderer.invoke(IPC.extractAudio, path) as Promise<string | null>,
   detectSilences: (path, request) => ipcRenderer.invoke(IPC.detectSilences, path, request) as Promise<Array<{ start: number; end: number }>>,
   detectScenes: (path, request) => ipcRenderer.invoke(IPC.detectScenes, path, request) as Promise<number[]>,
+  detectBeats: (path, fromSeconds, toSeconds) => ipcRenderer.invoke(IPC.detectBeats, path, fromSeconds, toSeconds) as Promise<{ bpm: number; beats: number[]; downbeats: number[] }>,
   saveSticker: (id, png) => ipcRenderer.invoke(IPC.saveSticker, id, png) as Promise<string>,
   saveStill: (id, png) => ipcRenderer.invoke(IPC.saveStill, id, png) as Promise<string>,
   trackObject: (path, request) => ipcRenderer.invoke(IPC.trackObject, path, request) as Promise<Array<{ t: number; x: number; y: number; score: number; scale: number; angle: number }>>,

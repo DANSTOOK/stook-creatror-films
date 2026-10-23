@@ -17,6 +17,7 @@ export const IPC = {
   extractAudio: 'media:extract-audio',
   detectSilences: 'media:detect-silences',
   detectScenes: 'media:detect-scenes',
+  detectBeats: 'media:detect-beats',
   saveStill: 'media:save-still',
   saveSticker: 'media:save-sticker',
   trackObject: 'media:track-object',
@@ -581,6 +582,8 @@ export interface FilmoraApi {
   ): Promise<Array<{ start: number; end: number }>>;
   /** Where the picture of `path` changes shot between two times of the file (main/media/scenes.ts), in seconds of the file. */
   detectScenes(path: string, request: { threshold: number; fromSeconds: number; toSeconds: number }): Promise<number[]>;
+  /** The beats of a stretch of a file's music (main/media/beats.ts): its tempo, and seconds from the stretch's start. */
+  detectBeats(path: string, fromSeconds: number, toSeconds: number): Promise<{ bpm: number; beats: number[]; downbeats: number[] }>;
   /**
    * Keep a sticker's picture (a PNG the page drew, renderer/stickers) where
    * it lasts - the app's own folder, not the temporary one - and return its
