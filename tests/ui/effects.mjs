@@ -85,6 +85,12 @@ async function main() {
       }
     });
     const differ = (a, b) => a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) / a.length;
+    /** The share of sampled pixels that changed by more than 10 levels in some channel. */
+    const changedShare = (a, b) => {
+      let changed = 0;
+      for (let i = 0; i < a.length; i += 3) if (Math.abs(a[i] - b[i]) > 10 || Math.abs(a[i + 1] - b[i + 1]) > 10 || Math.abs(a[i + 2] - b[i + 2]) > 10) changed += 1;
+      return changed / (a.length / 3);
+    };
     const clipState = () => window.evaluate((id) => {
       const clip = window.__scfStore.getState().project.clips[id];
       const t = clip.transform;
@@ -110,7 +116,10 @@ async function main() {
       await window.getByTestId(id).click();
       await sleep(200);
       const after = await clipState();
-      if (differ(before, await picture()) < 1) flat.push(id);
+      // Visible: the picture changes on average, or a part of it changes clearly - an area effect such as
+      // the censor, whose default oval lands on the pattern's flatter middle (1.3 % of it changes by more than 10).
+      const afterPicture = await picture();
+      if (differ(before, afterPicture) < 1 && changedShare(before, afterPicture) < 0.01) flat.push(id);
       await window.evaluate(() => window.__scfStore.getState().undo());
       await sleep(120);
       const back = await clipState();

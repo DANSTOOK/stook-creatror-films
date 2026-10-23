@@ -189,6 +189,7 @@ export const fxEs: Record<keyof typeof fxEn, string> = {
   'fxe.fisheye': 'Ojo de pez',
   'fxe.glow': 'Brillo (resplandor)',
   'fxe.flash': 'Destello',
+  'fxe.censor': 'Difuminar o pixelar zona',
   'fxe.lightLeak': 'Fuga de luz',
 
   /* Ajustes ------------------------------------------------------------------------- */
@@ -203,6 +204,10 @@ export const fxEs: Record<keyof typeof fxEn, string> = {
   'fxp.otherSide': 'Desde el otro lado',
   'fxp.vertical': 'Arriba y abajo',
   'fxp.threshold': 'Umbral',
+  'fxp.boxWidth': 'Ancho',
+  'fxp.boxHeight': 'Alto',
+  'fxp.pixelate': 'Pixelar en vez de difuminar',
+  'fxp.oval': 'Óvalo',
   'fxp.grayPhase': 'Fase gris',
   'fxp.strength': 'Fuerza',
   'fxp.color': 'Color',

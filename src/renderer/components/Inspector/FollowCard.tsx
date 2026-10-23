@@ -21,7 +21,8 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
   const t = useT();
   const project = useProjectStore((state) => state.project);
   const assets = useProjectStore((state) => state.assets);
-  const markingFor = useTrackEditStore((state) => state.clipId);
+  // Marking for this card, not for an effect's area (CensorFollow).
+  const markingFor = useTrackEditStore((state) => (state.purpose === null ? state.clipId : null));
   const startMarking = useTrackEditStore((state) => state.start);
   const stopMarking = useTrackEditStore((state) => state.stop);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });

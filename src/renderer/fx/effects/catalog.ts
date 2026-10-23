@@ -133,6 +133,24 @@ export const EFFECTS: readonly EffectDef[] = [
   },
   { type: 'denoise', category: 'blur', origin: 'glfx', cost: 'heavy', params: [p('smoothing', 'fxp.smoothing', 20, 0, 50, 0.5, 'plain')] },
 
+  /* Hiding a part of the picture: this app's own ----------------------------------- */
+  {
+    type: 'censor',
+    category: 'blur',
+    origin: 'scf',
+    cost: 'light',
+    params: [
+      ...centre(),
+      p('width', 'fxp.boxWidth', 0.3, 0.02, 1, 0.005, 'percent'),
+      p('height', 'fxp.boxHeight', 0.4, 0.02, 1, 0.005, 'percent'),
+      p('pixelate', 'fxp.pixelate', 0, 0, 1, 1, 'toggle'),
+      p('round', 'fxp.oval', 1, 0, 1, 1, 'toggle'),
+      // Strong enough by default that a face cannot be read: a censor, not a soft focus.
+      p('amount', 'fxp.strength', 36, 2, 120, 0.5, 'px'),
+      p('feather', 'fxp.softness', 8, 0, 40, 0.5, 'px'),
+    ],
+  },
+
   /* Distort ------------------------------------------------------------------- */
   {
     type: 'swirl',

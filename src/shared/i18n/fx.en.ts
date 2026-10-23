@@ -195,6 +195,7 @@ export const fxEn = {
   'fxe.fisheye': 'Fisheye lens',
   'fxe.glow': 'Glow',
   'fxe.flash': 'Flash',
+  'fxe.censor': 'Blur or pixelate an area',
   'fxe.lightLeak': 'Light leak',
 
   /* Settings ----------------------------------------------------------------- */
@@ -209,6 +210,10 @@ export const fxEn = {
   'fxp.otherSide': 'From the other side',
   'fxp.vertical': 'Top and bottom',
   'fxp.threshold': 'Threshold',
+  'fxp.boxWidth': 'Width',
+  'fxp.boxHeight': 'Height',
+  'fxp.pixelate': 'Pixelate instead of blur',
+  'fxp.oval': 'Oval',
   'fxp.grayPhase': 'Gray phase',
   'fxp.strength': 'Strength',
   'fxp.color': 'Color',

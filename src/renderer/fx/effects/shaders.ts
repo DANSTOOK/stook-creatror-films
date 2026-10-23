@@ -791,6 +791,54 @@ void main() {
     fragColor = texture(u_inputTexture, uv);
 }`);
 
+/* This app's own: hiding a part of the picture ------------------------------------------- */
+
+/**
+ * A face, a number plate, a screen: blurred or pixelated inside a box (or the
+ * oval in it), with a soft edge, the rest of the picture untouched - and the
+ * box can follow the thing as it moves (components/Inspector/CensorFollow).
+ * The blur is a disc of 48 reads on a golden-angle spiral, enough to make a
+ * face unreadable in one pass; the pixels are the colour of their cell's
+ * middle. Outside the box nothing is read twice.
+ */
+const CENSOR = shader(`
+uniform vec2 center;
+uniform vec2 halfSize;
+uniform float oval;
+uniform float feather;
+uniform float pixelate;
+uniform float amount;
+void main() {
+    vec2 pixel = v_texCoord * u_resolution;
+    vec2 d = (pixel - center) / max(halfSize, vec2(1.0));
+    // Inside the box (or the oval in it): 1, falling to 0 across the feather.
+    float edge = oval > 0.5 ? length(d) : max(abs(d.x), abs(d.y));
+    float reach = feather / max(1.0, min(halfSize.x, halfSize.y));
+    float inside = 1.0 - smoothstep(1.0 - reach, 1.0, edge);
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    if (inside <= 0.0) {
+        fragColor = base;
+        return;
+    }
+    vec4 hidden;
+    if (pixelate > 0.5) {
+        vec2 cell = (floor(pixel / amount) + 0.5) * amount;
+        hidden = texture(u_inputTexture, cell / u_resolution);
+    } else {
+        vec4 sum = vec4(0.0);
+        for (float i = 0.0; i < 48.0; i += 1.0) {
+            float r = sqrt((i + 0.5) / 48.0) * amount;
+            float a = i * 2.39996323;
+            vec4 sampled = texture(u_inputTexture, (pixel + vec2(cos(a), sin(a)) * r) / u_resolution);
+            sampled.rgb *= sampled.a;
+            sum += sampled;
+        }
+        hidden = sum / 48.0;
+        hidden.rgb /= hidden.a + 0.00001;
+    }
+    fragColor = mix(base, hidden, inside);
+}`);
+
 /* The CPU side of the moving ones ------------------------------------------------------ */
 
 const fract = (value: number): number => value - Math.floor(value);
@@ -1068,4 +1116,17 @@ export const EFFECT_PASSES: Record<string, readonly EffectPass[]> = {
   duotone: [{ source: DUOTONE, uniforms: (v) => ({ shadows: hueColour(v.shadowHue).map((x) => x * 0.25), highlights: hueColour(v.highlightHue).map((x) => 0.55 + x * 0.45), amount: v.amount }) }],
   mirror: [{ source: MIRROR, uniforms: (v) => ({ flip: v.flip, vertical: v.vertical }) }],
   fisheye: [{ source: FISHEYE, uniforms: (v) => ({ strength: v.strength }) }],
+  censor: [
+    {
+      source: CENSOR,
+      uniforms: (v, c) => ({
+        center: pointPx(v.centerX, v.centerY, c),
+        halfSize: [(v.width * c.width) / 2, (v.height * c.height) / 2],
+        oval: v.round,
+        feather: px(v.feather, c),
+        pixelate: v.pixelate,
+        amount: Math.max(1, px(v.amount, c)),
+      }),
+    },
+  ],
 };

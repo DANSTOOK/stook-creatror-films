@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { CensorFollow } from './CensorFollow';
 import { ArrowDown, ArrowUp, Diamond } from 'lucide-react';
 import type { Clip, ClipEffect } from '@shared/types';
 import { useT } from '@renderer/i18n';
@@ -189,6 +190,8 @@ export function EffectStack({
               <ParamRow key={param.name} param={param} effect={effect} frame={frame} onChange={(next, merge) => change(index, next, merge)} />
             ))}
             {def.cost === 'heavy' && <p className="text-2xs leading-relaxed text-amber-300/90">{t('fx.heavy')}</p>}
+            {/* The hidden area can follow what it hides. */}
+            {effect.type === 'censor' && <CensorFollow clip={clip} effect={effect} onChange={(next) => change(index, next, false)} />}
           </Section>
         );
       })}
