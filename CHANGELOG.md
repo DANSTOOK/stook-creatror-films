@@ -7,11 +7,59 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1650 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1659 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.72.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.74.0-beta.1 — Capítulos de YouTube, pantalla dividida y espacios de trabajo
+2026-10-23 · pre-release para probar · puntos 9, 10 y 16 de la lista de mejoras
+
+### Añadido
+- **Capítulos de YouTube a partir de los marcadores:** clic derecho en la
+  regla → «Copiar capítulos de YouTube», listos para pegar en la descripción
+  (`00:00 Intro`, `00:30 El montaje`…). En Exportar → YouTube, «Añadir
+  capítulos» los pone al final de la descripción. Se respetan las reglas de
+  YouTube: el primero en 00:00 (si no hay marcador ahí se añade «Intro»), al
+  menos 10 segundos por capítulo (los marcadores más juntos se omiten y se
+  avisa) y al menos 3. Los marcadores de ritmo no cuentan.
+  - *Comprobado:* 6 pruebas unitarias y `tests/ui/chapters.mjs` **5/5**: sin
+    marcadores la opción está desactivada; con marcadores a 0:30, 0:35, 1:15 y
+    uno de ritmo, el portapapeles queda con `00:00 Intro / 00:30 The build /
+    01:15 Results` y se avisa de 3 copiados y 1 omitido. (La prueba devuelve
+    al portapapeles lo que tenías.)
+- **Pantalla dividida e imagen en imagen:** selecciona de 2 a 4 clips, clic
+  derecho → «Pantalla dividida» y elige: lado a lado, uno encima del otro,
+  imagen en imagen, uno grande y dos pequeños, tres columnas o cuadrícula de
+  cuatro. Cada clip empieza con el primero, en su propia pista (el pequeño del
+  PiP encima), y llena su celda sin deformarse, con una línea fina entre
+  celdas. Se hace con fotogramas clave y una máscara normales, así que cada
+  celda se puede retocar en el inspector. Un solo Ctrl+Z.
+  - *Comprobado:* 3 pruebas unitarias y `tests/ui/split-screen.mjs` **8/8**:
+    cuatro colores (uno en 4:3) en cuadrícula quedan rojo arriba a la
+    izquierda, verde arriba a la derecha, azul abajo a la izquierda y amarillo
+    abajo a la derecha, cada celda llena hasta el borde y la línea negra entre
+    ellas; el 4:3 conserva su forma; Ctrl+Z lo deja todo como estaba; en PiP el
+    segundo queda abajo a la derecha, por encima del primero.
+- **Espacios de trabajo:** un selector en la barra de título.
+  **Edición** (todos los paneles), **Color** (sin biblioteca, con scopes y el
+  inspector en Color) y **Audio** (mezclador abierto, inspector en Audio y la
+  biblioteca en Sonidos). Todo se puede seguir cambiando a mano y se recuerda
+  al volver a abrir.
+  - *Comprobado:* `tests/ui/workspaces.mjs` **5/5**: cada espacio deja los
+    paneles, los scopes, el mezclador y las pestañas como dice; el último
+    elegido sigue elegido tras reiniciar.
+
+### Arreglado
+- La biblioteca no abría la pestaña que se le pedía mientras estaba oculta;
+  ahora la abre al volver a mostrarse.
+
+### Comprobado en conjunto
+- 1659 pruebas unitarias, 127/127 de interfaz, subtítulos 74/74, sonidos 5/5,
+  ventanas desprendidas 6/6, scopes 16/16, búsqueda/tema/marcadores 12/12.
 
 ---
 
