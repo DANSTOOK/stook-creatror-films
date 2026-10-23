@@ -407,6 +407,7 @@ export type MenuCommand =
   | 'resetLayout'
   | 'mixer'
   | 'shortcuts'
+  | 'tour'
   | 'commandPalette'
   | 'preferences'
   | 'addTitle'
@@ -697,6 +698,8 @@ export interface FilmoraApi {
   videoFrameTimes?(path: string): Promise<{ times: number[]; startSeconds: number } | null>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
+  /** An automated run (SCF_BACKGROUND): no welcome tour over the tests, unless one asks for it (SCF_TOUR). */
+  automated: boolean;
   /** Text onto the system clipboard (YouTube chapters, for one). */
   clipboardWrite(text: string): Promise<void>;
   /**

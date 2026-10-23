@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { WelcomeTour, useFirstTour, useTour } from '@renderer/tour/WelcomeTour';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
 import { ExportDialog } from './components/ExportDialog';
 import { Home } from './components/Home/Home';
@@ -326,6 +327,9 @@ export default function App(): JSX.Element {
     });
   }, [actions]);
 
+  // The welcome tour, the first time the editor opens.
+  useFirstTour(view === 'editor');
+
   // Project shortcuts. Registered in the capture phase so Ctrl+S saves instead
   // of also reaching the editor's plain S (snapping).
   useEffect(() => {
@@ -562,6 +566,9 @@ export default function App(): JSX.Element {
         return;
       case 'shortcuts':
         setShortcutsOpen(true);
+        return;
+      case 'tour':
+        useTour.getState().start();
         return;
       case 'commandPalette':
         // A second press closes it, as the key that opened it would.
@@ -871,6 +878,7 @@ export default function App(): JSX.Element {
           )}
           {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+          {view === 'editor' && <WelcomeTour />}
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
           {silencePresence.mounted && <RemoveSilencesDialog closing={silencePresence.closing} onClose={() => useSilenceDialogStore.getState().close()} />}

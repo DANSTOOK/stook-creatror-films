@@ -7,11 +7,67 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1659 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1662 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.72.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.75.0-beta.1 — Estabilizar, censurar lo que se mueve y tour de bienvenida
+2026-10-23 · pre-release para probar · puntos 1, 3 y 17 de la lista de mejoras (con esto, la lista completa)
+
+### Añadido
+- **Estabilizar vídeo:** en la pestaña Vídeo del inspector, «Estabilizar»
+  (No, Suave, Media, Fuerte). Quita el temblor de una toma a mano y conserva
+  los paneos: vid.stab en dos pasadas, primero sigue el temblor y luego lo
+  quita, con el zoom justo para ocultar los bordes y un leve enfoque. Muestra
+  el progreso. Se hace una vez y se guarda; todos los clips del archivo se ven
+  y exportan estabilizados, el original no se toca, y al reabrir el proyecto
+  vuelve a verse estabilizado.
+  - *Comprobado:* 3 pruebas unitarias y `tests/ui/stabilize.mjs` **7/7**: con
+    un vídeo que tiembla, «Media» muestra su progreso; en la imagen de
+    exportación el salto entre fotogramas baja de **16,5 a 2,7**; el archivo
+    estabilizado conserva el sonido; el original queda idéntico (misma huella
+    MD5); «No» devuelve el temblor.
+- **Difuminar o pixelar zona, siguiendo lo que oculta:** efecto nuevo (en
+  Desenfoque) para caras, matrículas o pantallas. Un recuadro u óvalo
+  difuminado o pixelado, con borde suave, y el resto de la imagen intacto.
+  «Seguir lo que oculta…» marca la cosa en el visor (el recuadro empieza
+  siendo la zona) y la zona la sigue desde el cabezal hasta el final del clip,
+  con fotogramas clave de posición y tamaño.
+  - *Comprobado:* `tests/ui/censor.mjs` **6/6**: sobre un cuadrado con
+    detalle que se mueve, el desenfoque borra casi todo el detalle fino y deja
+    el gris de alrededor igual; pixelado queda en bloques planos; tras
+    seguirlo, a los 3 s la zona está a **3 px** de donde fue el cuadrado y la
+    imagen de exportación ahí sigue oculta.
+- **Tour de bienvenida:** la primera vez que se abre el editor, seis paradas
+  (biblioteca, visor, línea de tiempo, inspector, espacios de trabajo y
+  Exportar), cada una iluminada con el resto atenuado y una explicación
+  corta. Siguiente, Atrás, Saltar y las flechas o Escape. No vuelve a salir
+  solo; **Ayuda › Tour de bienvenida** lo muestra de nuevo.
+  - *Comprobado:* `tests/ui/tour.mjs` **7/7**: aparece la primera vez; las
+    seis paradas iluminan lo que explican, con la tarjeta dentro de la
+    ventana; Atrás vuelve; la última lo cierra; tras reiniciar no reaparece;
+    el menú Ayuda lo vuelve a abrir y Escape lo cierra.
+
+### Arreglado
+- **Un medio reenlazado bajo la misma URL** (y ahora también uno
+  estabilizado) seguía leyéndose en la exportación con la tabla de muestras
+  del archivo anterior. Se descarta al cambiar el archivo.
+  - *Comprobado:* `tests/ui/stabilize.mjs` (sin el arreglo, la imagen de
+    exportación seguía mostrando el original: salto 16,5 → 16,1).
+
+### Sin verificar
+- Reabrir un proyecto guardado con un vídeo estabilizado: el código vuelve a
+  buscar (o rehacer) el archivo estabilizado, pero no hay prueba de guardar y
+  reabrir para este caso.
+
+### Comprobado en conjunto
+- 1662 pruebas unitarias, 127/127 de interfaz, efectos 11/11, seguimiento
+  8/8, 6/6 y 6/6, espacios de trabajo 5/5, búsqueda/tema/marcadores 12/12,
+  tema 7/7.
 
 ---
 

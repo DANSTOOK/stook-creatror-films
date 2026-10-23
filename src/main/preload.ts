@@ -79,6 +79,7 @@ const api: FilmoraApi = {
   projectsSave: (path, contents) => ipcRenderer.invoke(IPC.projectsSave, path, contents) as Promise<string>,
   projectsRecord: (project, thumbnail) => ipcRenderer.invoke(IPC.projectsRecord, project, thumbnail) as Promise<void>,
   documentState: (state) => ipcRenderer.send(IPC.documentState, state),
+  automated: process.env.SCF_BACKGROUND === '1' && process.env.SCF_TOUR !== '1',
   clipboardWrite: (text) => ipcRenderer.invoke(IPC.clipboardWrite, text) as Promise<void>,
   setAppearance: (theme, resolved) => ipcRenderer.invoke(IPC.setAppearance, theme, resolved) as Promise<'dark' | 'light'>,
   onSaveBeforeClose(listener) {

@@ -308,6 +308,7 @@ export function TitleBar({
 
           <button
             type="button"
+            data-testid="titlebar-export"
             className="button-primary app-no-drag ml-1 h-control"
             disabled={!nativeAvailable}
             onClick={onExport}
