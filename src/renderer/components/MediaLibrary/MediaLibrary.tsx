@@ -60,7 +60,7 @@ import { SoundsBrowser } from './SoundsBrowser';
 import { useScreenRecordDialog } from '@renderer/capture/ScreenRecordDialog';
 import { TitlesBrowser } from './TitlesBrowser';
 import { TranscriptPanel } from '@renderer/components/Captions/TranscriptPanel';
-import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
+import { LIBRARY_TAB_EVENT, takeRequestedLibraryTab, type LibraryTab } from './libraryTabs';
 import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { keyLabel, t, useT } from '@renderer/i18n';
@@ -225,9 +225,13 @@ export function MediaLibrary(): JSX.Element {
   // begins - so the tab is not remembered across opens. It is free to change
   // for the rest of the session; the effect below only resets it on a fresh
   // open (see projectEpoch).
-  const [tab, setTab] = useState<LibraryTab>('media');
+  const [tab, setTab] = useState<LibraryTab>(() => takeRequestedLibraryTab() ?? 'media');
   const projectEpoch = useSessionStore((state) => state.projectEpoch);
+  // Another project opens on its media; the panel coming back does not.
+  const openedEpoch = useRef(projectEpoch);
   useEffect(() => {
+    if (openedEpoch.current === projectEpoch) return;
+    openedEpoch.current = projectEpoch;
     setTab('media');
   }, [projectEpoch]);
   const tabIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(tab);
@@ -235,6 +239,7 @@ export function MediaLibrary(): JSX.Element {
   useEffect(() => {
     const show = (event: Event): void => {
       const wanted = (event as CustomEvent<string>).detail;
+      takeRequestedLibraryTab();
       if (LIBRARY_TABS.includes(wanted as LibraryTab)) setTab(wanted as LibraryTab);
     };
     window.addEventListener(LIBRARY_TAB_EVENT, show);

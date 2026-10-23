@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { onWorkspace } from '@renderer/workspaces/workspaces';
 import { ExportDialog } from './components/ExportDialog';
 import { Home } from './components/Home/Home';
 import { Inspector } from './components/Inspector';
@@ -229,6 +230,19 @@ export default function App(): JSX.Element {
     }
     setHidden((current) => ({ ...current, [panel]: !current[panel] }));
   };
+
+  // A workspace picked in the title bar: which panels are out, and the mixer (workspaces/workspaces.ts).
+  useEffect(
+    () =>
+      onWorkspace((workspace) => {
+        setHidden({ ...workspace.hidden });
+        setRevealed({ media: false, inspector: false });
+        setMixerOpen(workspace.mixer);
+      }),
+    // setMixerOpen keeps nothing between renders worth listening again for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   // A transition double-clicked on the timeline opens in the inspector, shown if it was put away.
   useEffect(() => {

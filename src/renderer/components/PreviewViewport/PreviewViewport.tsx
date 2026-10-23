@@ -36,6 +36,7 @@ import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { TrackBoxOverlay } from './TrackBoxOverlay';
 import { MulticamBar } from './MulticamBar';
 import { usePreviewQuality } from './previewQuality';
+import { onWorkspace } from '@renderer/workspaces/workspaces';
 import { PREVIEW_QUALITIES, type PreviewQuality } from '@renderer/engine/previewSize';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { useWorkspaceStore } from '@renderer/store/useWorkspaceStore';
@@ -102,6 +103,9 @@ export function PreviewViewport(): JSX.Element {
       // Kept for this session only.
     }
   };
+  // The Color workspace opens the scopes beside the picture; the others put them away.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => onWorkspace((workspace) => setScopesOpen(workspace.scopes)), []);
 
   const length = useMemo(() => projectContentLength(project), [project]);
   // The viewer and the timeline in different windows: this one needs a way along the edit of its own.

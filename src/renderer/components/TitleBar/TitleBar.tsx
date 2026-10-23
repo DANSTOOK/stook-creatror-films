@@ -8,6 +8,7 @@ import { useT, type MessageKey } from '@renderer/i18n';
 import { acceleratorLabel } from '@renderer/components/CommandPalette/commands';
 import { NotificationsButton } from '@renderer/notifications/Toaster';
 import { HistoryButton } from '@renderer/history/HistoryButton';
+import { WorkspacePicker } from '@renderer/workspaces/WorkspacePicker';
 import { DetachedPanelsTray } from '@renderer/components/Layout/DetachedPanelsTray';
 
 /**
@@ -274,6 +275,10 @@ export function TitleBar({
           {/* Panels that are out in windows of their own, beside the buttons
               for the ones that are here. */}
           <DetachedPanelsTray />
+
+          <div className="app-no-drag mr-1">
+            <WorkspacePicker />
+          </div>
 
           <div role="group" aria-label={t('titlebar.panels')} className="flex items-center gap-0.5">
             {panelToggle('media', PanelLeft, 'Ctrl+1')}

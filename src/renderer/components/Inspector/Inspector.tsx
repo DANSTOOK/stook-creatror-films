@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { onWorkspace } from '@renderer/workspaces/workspaces';
 import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, SlidersHorizontal, Snowflake, Music2, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
@@ -196,6 +197,8 @@ export function Inspector(): JSX.Element {
     window.addEventListener(SHOW_CLIP_FX_EVENT, show);
     return () => window.removeEventListener(SHOW_CLIP_FX_EVENT, show);
   }, []);
+  // A workspace brings its tab forward: Color, Audio, or the picture's.
+  useEffect(() => onWorkspace((workspace) => setTab(workspace.inspectorTab)), []);
   // A title opens on its own tab, where what it says and how it looks are.
   const isTitle = Boolean(clip?.title);
   // So does a caption: its text is what there is to change about it.
