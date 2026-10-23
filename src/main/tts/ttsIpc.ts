@@ -1,5 +1,5 @@
 import { app, ipcMain, net, type BrowserWindow } from 'electron';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
@@ -18,6 +18,8 @@ import { ALL_VOICES, BUNDLED_VOICES, VOICE_SOURCE, voiceById, type TtsVoice } fr
 import { findEngine, type PiperEngine } from './engine';
 import { Synthesizer, SynthError } from './synth';
 import { deleteVoice, downloadVoice, isVoiceReady, voiceModelPath, type VoiceDirs } from './voices';
+import { finishVoice } from './finish';
+import { resolveFfmpegPath } from '../exporter/HardwareAccel';
 
 /**
  * Text to speech, from the page: the engine's state, the voices, previews and
@@ -70,7 +72,7 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
     const available = currentEngine() !== null;
     return {
       available,
-      supportsPitch: false,
+      supportsPitch: true,
       disclosureRequired: false,
       voiceSource: VOICE_SOURCE,
       voices: await Promise.all(
@@ -152,7 +154,11 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
       const text = (typeof request.text === 'string' ? request.text : '').trim().slice(0, 200) || mt('tts.previewFallback');
       const outcome = await synth.synth(jobId, { text, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.2 }, out);
       if (!outcome.path) throw new Error(mt('tts.errorEngine', { detail: 'cancelled' }));
-      const bytes = await readFile(outcome.path);
+      // Heard as it will be: the same pitch and the same clear voice as the clip.
+      const finished = `${out}.ready.wav`;
+      await finishVoice(resolveFfmpegPath(), outcome.path, finished, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate });
+      const bytes = await readFile(finished);
+      await rm(finished, { force: true }).catch(() => undefined);
       return `data:audio/wav;base64,${bytes.toString('base64')}`;
     } catch (error) {
       if (error instanceof SynthError) throw new Error(mt('tts.errorEngine', { detail: error.detail }));
@@ -165,21 +171,30 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
   ipcMain.handle(IPC.ttsGenerate, async (_event, jobId: string, request: TtsRequest): Promise<TtsResult> => {
     const { voice, model } = await prepare(request);
     const text = typeof request.text === 'string' ? request.text : '';
-    // The clip persists for the project, so it is written where media is read
-    // from, allow-listed like any other source the page may stream.
-    const out = join(app.getPath('temp'), `scf-tts-${randomUUID()}.wav`);
+    // Piper's raw output goes to temp; the finished clip is kept with the
+    // app's data - a project reads it for as long as it lives, and Windows
+    // empties temp when it likes - allow-listed like any other source.
+    const raw = join(app.getPath('temp'), `scf-tts-${randomUUID()}.wav`);
+    const folder = join(app.getPath('userData'), 'scf', 'voices');
     try {
       const outcome = await synth.synth(
         jobId,
         { text, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.35 },
-        out,
-        (fraction) => send(IPC.ttsProgress, { jobId, fraction } satisfies TtsProgressEvent),
+        raw,
+        (fraction) => send(IPC.ttsProgress, { jobId, fraction: fraction * 0.9 } satisfies TtsProgressEvent),
       );
-      if (outcome.path) allowPath(outcome.path);
-      return { cancelled: outcome.cancelled, path: outcome.path, durationSeconds: outcome.durationSeconds };
+      if (!outcome.path) return { cancelled: outcome.cancelled, path: null, durationSeconds: 0 };
+      await mkdir(folder, { recursive: true });
+      const kept = join(folder, `voice-${randomUUID()}.wav`);
+      await finishVoice(resolveFfmpegPath(), outcome.path, kept, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate });
+      send(IPC.ttsProgress, { jobId, fraction: 1 } satisfies TtsProgressEvent);
+      allowPath(kept);
+      return { cancelled: false, path: kept, durationSeconds: outcome.durationSeconds };
     } catch (error) {
       if (error instanceof SynthError) throw new Error(mt('tts.errorEngine', { detail: error.detail }));
       throw error;
+    } finally {
+      await rm(raw, { force: true }).catch(() => undefined);
     }
   });
 

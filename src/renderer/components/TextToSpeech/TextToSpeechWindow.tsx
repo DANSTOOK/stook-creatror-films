@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AudioLines, Download, Loader2, PanelsTopLeft, Play, Trash2 } from 'lucide-react';
-import type { TtsEngineStatus, TtsResult, TtsVoiceStatus } from '@shared/types/ipc';
+import type { TtsEngineStatus, TtsVoiceStatus } from '@shared/types/ipc';
 import { TooltipLayer, tip } from '@renderer/components/Tooltip/Tooltip';
 import { useDetachedWindow } from '@renderer/components/Layout/useDetachedWindow';
 import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
 import { currentLocale, useLanguageStore, useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
-import { buildAsset, hasNativeBridge } from '@renderer/media/importMedia';
-import { notify } from '@renderer/notifications/notifications';
+import { hasNativeBridge } from '@renderer/media/importMedia';
+import { MAX_SPEED, MIN_SPEED, rememberTtsOptions, speakText, ttsOptions } from '@renderer/tts/speak';
 import { createId } from '@shared/utils/id';
+import { notify } from '@renderer/notifications/notifications';
 
 /**
  * Timeline > Text to speech, in a window of its own.
@@ -34,28 +35,8 @@ import { createId } from '@shared/utils/id';
  * says so - and its bundled voices carry no use restrictions.
  */
 
-const STORAGE_KEY = 'scf.tts.options';
-const MIN_SPEED = 0.5;
-const MAX_SPEED = 2;
-
-interface Remembered {
-  language?: 'es' | 'en';
-  voice?: string;
-  speed?: number;
-}
-
-function remembered(): Remembered {
-  try {
-    const raw = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}') as Remembered;
-    return {
-      language: raw.language === 'es' || raw.language === 'en' ? raw.language : undefined,
-      voice: typeof raw.voice === 'string' ? raw.voice : undefined,
-      speed: typeof raw.speed === 'number' && raw.speed >= MIN_SPEED && raw.speed <= MAX_SPEED ? raw.speed : undefined,
-    };
-  } catch {
-    return {};
-  }
-}
+// The choices are the editor's, not only this window's: "Read aloud" on a
+// title and "Narrate captions" speak with them too (tts/speak.ts).
 
 const formatBytes = (bytes: number, locale: string): string =>
   `${new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(bytes / 1_000_000))} MB`;
@@ -69,16 +50,15 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
   const t = useT();
   const locale = currentLocale();
   const uiLanguage = useLanguageStore((state) => state.language);
-  const addAssets = useProjectStore((state) => state.addAssets);
-  const addAssetOnNewTrack = useProjectStore((state) => state.addAssetOnNewTrack);
-  const fps = useProjectStore((state) => state.project.fps);
-
-  const saved = useMemo(remembered, []);
+  const saved = useMemo(() => ttsOptions(uiLanguage), [uiLanguage]);
   const [status, setStatus] = useState<TtsEngineStatus | null>(null);
-  const [language, setLanguage] = useState<'es' | 'en'>(saved.language ?? (uiLanguage === 'es' ? 'es' : 'en'));
-  const [voiceId, setVoiceId] = useState<string>(saved.voice ?? '');
+  const [language, setLanguage] = useState<'es' | 'en'>(saved.language);
+  const [voiceId, setVoiceId] = useState<string>(saved.voice);
   const [text, setText] = useState('');
-  const [speed, setSpeed] = useState(saved.speed ?? 1);
+  const [speed, setSpeed] = useState(saved.speed);
+  const [pitch, setPitch] = useState(saved.pitch);
+  const [enhance, setEnhance] = useState(saved.enhance);
+  const [captions, setCaptions] = useState(saved.captions);
   const [previewing, setPreviewing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -123,12 +103,8 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
   const voice: TtsVoiceStatus | undefined = voices.find((v) => v.id === voiceId);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ language, voice: voiceId, speed }));
-    } catch {
-      // A private window may refuse storage; the choices just are not remembered.
-    }
-  }, [language, voiceId, speed]);
+    rememberTtsOptions({ language, voice: voiceId, speed, pitch, enhance, captions });
+  }, [language, voiceId, speed, pitch, enhance, captions]);
 
   const describeVoice = (v: TtsVoiceStatus): string =>
     v.present
@@ -161,7 +137,7 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
     if (!(await ensureVoice())) return;
     setPreviewing(true);
     try {
-      const url = await window.filmora.ttsPreview?.({ text, voice: voice.id, speed });
+      const url = await window.filmora.ttsPreview?.({ text, voice: voice.id, speed, pitch, enhance });
       if (url) {
         audioRef.current?.pause();
         const audio = new Audio(url);
@@ -183,15 +159,11 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
     const jobId = createId('tts');
     jobRef.current = jobId;
     try {
-      const result: TtsResult | undefined = await window.filmora.ttsGenerate?.(jobId, { text, voice: voice.id, speed });
-      if (!result || result.cancelled || !result.path) return;
-      const uri = await window.filmora.mediaUrl?.(result.path);
-      if (!uri) throw new Error(t('tts.errorEngine', { detail: 'no media' }));
-      const name = `${t('tts.title')} · ${voice.region}.wav`;
-      const asset = await buildAsset({ name, uri, sourcePath: result.path }, fps);
-      addAssets([asset]);
-      addAssetOnNewTrack(asset);
-      notify(t('tts.added', { name }), 'success');
+      // At the playhead, on a Voice track, with captions when asked (tts/speak.ts).
+      const start = useProjectStore.getState().project.currentFrame;
+      const clipId = await speakText(text, start, { language, voice: voice.id, speed, pitch, enhance, captions }, voice.id, setProgress, jobId);
+      if (!clipId) return;
+      notify(t('tts.added', { name: t('tts.title') }), 'success');
       // The window stays open so another line can be generated at once; the
       // text is cleared, the voice and pace kept.
       setText('');
@@ -299,22 +271,50 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
               </div>
             )}
 
-            <label className="block shrink-0 space-y-1">
-              <span className="flex items-center justify-between text-xs text-panel-200">
-                <span className="field-label">{t('tts.speed')}</span>
-                <span className="tabular-nums text-panel-300">{speed.toFixed(2)}×</span>
-              </span>
-              <input
-                type="range"
-                min={MIN_SPEED}
-                max={MAX_SPEED}
-                step={0.05}
-                value={speed}
-                data-testid="tts-speed"
-                className="w-full"
-                onChange={(event) => setSpeed(Number(event.target.value))}
-              />
-            </label>
+            <div className="grid shrink-0 grid-cols-2 gap-3">
+              <label className="block space-y-1">
+                <span className="flex items-center justify-between text-xs text-panel-200">
+                  <span className="field-label">{t('tts.speed')}</span>
+                  <span className="tabular-nums text-panel-300">{speed.toFixed(2)}×</span>
+                </span>
+                <input
+                  type="range"
+                  min={MIN_SPEED}
+                  max={MAX_SPEED}
+                  step={0.05}
+                  value={speed}
+                  data-testid="tts-speed"
+                  className="w-full"
+                  onChange={(event) => setSpeed(Number(event.target.value))}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="flex items-center justify-between text-xs text-panel-200">
+                  <span className="field-label">{t('tts.pitch')}</span>
+                  <span className="tabular-nums text-panel-300">{pitch > 0 ? '+' : ''}{pitch}</span>
+                </span>
+                <input
+                  type="range"
+                  min={-6}
+                  max={6}
+                  step={0.5}
+                  value={pitch}
+                  data-testid="tts-pitch"
+                  className="w-full"
+                  onChange={(event) => setPitch(Number(event.target.value))}
+                />
+              </label>
+            </div>
+            <div className="flex shrink-0 flex-col gap-1.5 text-xs text-slate-200">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" data-testid="tts-enhance" checked={enhance} onChange={(event) => setEnhance(event.target.checked)} />
+                {t('tts.enhance')}
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" data-testid="tts-captions" checked={captions} onChange={(event) => setCaptions(event.target.checked)} />
+                {t('tts.captions')}
+              </label>
+            </div>
 
             {downloadingId && (
               <p className="text-xs text-panel-300" data-testid="tts-download-progress">
@@ -322,7 +322,6 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
               </p>
             )}
 
-            <p className="shrink-0 text-xs text-panel-400">{t('tts.pitchNote')}</p>
             {status?.disclosureRequired && <p className="text-xs text-amber-300" data-testid="tts-disclosure">{t('tts.disclosure')}</p>}
           </>
         )}
@@ -347,7 +346,7 @@ function TextToSpeechBody({ onClose }: TextToSpeechWindowProps): JSX.Element {
         ) : (
           <button
             type="button"
-            className="tool-button tool-button--primary h-control px-3"
+            className="button-primary h-control px-4"
             data-testid="tts-generate"
             disabled={!canGenerate || unavailable}
             onClick={() => void generate()}

@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { OPEN_TTS_EVENT } from '@renderer/tts/events';
 import { WelcomeTour, useFirstTour, useTour } from '@renderer/tour/WelcomeTour';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
 import { ExportDialog } from './components/ExportDialog';
@@ -231,6 +232,15 @@ export default function App(): JSX.Element {
     }
     setHidden((current) => ({ ...current, [panel]: !current[panel] }));
   };
+
+  // The timeline's Text to speech button opens the window, as the menu does.
+  useEffect(() => {
+    const open = (): void => {
+      if (!(ttsOpen && focusDetachedWindow('textToSpeech'))) setTtsOpen(true);
+    };
+    window.addEventListener(OPEN_TTS_EVENT, open);
+    return () => window.removeEventListener(OPEN_TTS_EVENT, open);
+  }, [ttsOpen]);
 
   // A workspace picked in the title bar: which panels are out, and the mixer (workspaces/workspaces.ts).
   useEffect(

@@ -7,11 +7,61 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1662 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1668 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.75.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.76.0-beta.1 — Texto a voz a fondo, y títulos animados más ligeros
+2026-10-23 · pre-release para probar · lo pedido
+
+### Añadido
+- **Texto a voz, visible y en todas partes.** Estaba escondido en Línea de
+  tiempo › Texto a voz. Ahora:
+  - **Botón «Voz»** en la barra de la línea de tiempo, junto al micrófono.
+  - **«Leer en voz alta»** en el menú de cualquier título: lo lee desde donde
+    empieza.
+  - **«Narrar estos subtítulos»** en el menú de un subtítulo: cada subtítulo de
+    la pista se narra a su tiempo (doblaje a partir de un guion). Si una frase
+    dura más que su subtítulo, va a otra pista y se avisa.
+  - En la ventana: **Tono** (−6 a +6 semitonos, sin cambiar la velocidad),
+    **Voz clara** (limpia, compresión suave y volumen a −16 LUFS, como piden
+    YouTube y las redes) y **«Añadir subtítulos de lo que dice»**, que crea la
+    pista de subtítulos repartida frase a frase.
+  - Las voces van a una pista **«Voz»** en el bus de diálogo, así que la
+    música de debajo se atenúa sola.
+  - *Comprobado:* `tests/ui/tts-plus.mjs` **9/9**: el botón abre la ventana; la
+    voz cae en el cabezal, en una pista Voz del bus de diálogo; sin saturar
+    (pico −1,5 dB) y a −16,7 LUFS; con 3 subtítulos que cubren desde su inicio
+    hasta su final; +4 de tono sube la voz de 129 a 155 Hz con la misma
+    duración; un título se lee desde donde empieza; tres subtítulos se narran
+    cada uno en su sitio. 6 pruebas unitarias nuevas; texto a voz 19/19.
+
+### Arreglado
+- **La voz generada se guardaba en la carpeta temporal de Windows**, que el
+  sistema puede vaciar y dejar el proyecto sin esa voz. Ahora se guarda en la
+  carpeta de la app.
+- **La voz salía saturada** (el pico llegaba al máximo). Ahora se nivela sin
+  pasar de −1,5 dB.
+- **Títulos animados más ligeros al reproducir.** Un título cuyas letras o
+  palabras se mueven se redibujaba en cada fotograma a la resolución completa
+  del proyecto; al reproducir ahora se dibuja a la resolución que muestra el
+  visor (en pausa y en la exportación, completa). En la Intel UHD a 4K, el
+  peor fotograma de los créditos bajó de 24,7 a 7,4 ms y el del título neón
+  de 16 a 7,5 ms.
+  - *Comprobado:* títulos 33/33, títulos con movimiento 30/30, biblioteca de
+    títulos 12/12, subtítulos 74/74, 72/72 y 39/39.
+  - *Sin reproducir:* no conseguí reproducir el fallo de «algunos textos
+    ralentizan el vídeo» con ninguna plantilla (1080p y 4K, RTX e Intel, texto
+    con tildes y emojis, varios títulos); esta mejora quita el coste que sí
+    medí. Si vuelve a pasar, dime con qué texto o plantilla.
+
+### Comprobado en conjunto
+- 1668 pruebas unitarias, 127/127 de interfaz, voz en off 6/6, espacios de
+  trabajo 5/5.
 
 ---
 

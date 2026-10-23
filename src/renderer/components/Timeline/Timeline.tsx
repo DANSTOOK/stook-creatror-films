@@ -25,6 +25,7 @@ import {
   LayoutGrid,
   Lock,
   Video,
+  Speech,
   Youtube,
   LockOpen,
   Magnet,
@@ -109,6 +110,8 @@ import { makeCompound } from '@renderer/edit/compoundRun';
 import { canMulticam } from '@renderer/edit/multicam';
 import { makeMulticam } from '@renderer/edit/multicamRun';
 import { copyChapters } from '@renderer/edit/chaptersRun';
+import { OPEN_TTS_EVENT } from '@renderer/tts/events';
+import { narrateCaptions, readTitleAloud } from '@renderer/tts/speak';
 import { layoutsFor, type SplitLayout } from '@renderer/edit/splitScreen';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
@@ -596,6 +599,13 @@ export function Timeline(): JSX.Element {
           onSelect: () => useSceneDialog.getState().show(clip.id),
         });
       }
+      // Words on screen, spoken: a title read aloud, or a whole captions track narrated.
+      if (clip.title && clip.title.text.trim()) {
+        items.push({ label: t('tts.readAloud'), icon: Speech, onSelect: () => void readTitleAloud(clip) });
+      }
+      if (clip.caption) {
+        items.push({ label: t('tts.narrate'), icon: Speech, onSelect: () => void narrateCaptions(clip.trackId) });
+      }
       // Two to four pictures in the frame at once: a split screen, or one in a corner of the other.
       const pictures = selected.filter((id) => {
         const candidate = project.clips[id];
@@ -686,6 +696,8 @@ export function Timeline(): JSX.Element {
             },
           },
           { label: t('transcript.fixTiming'), onSelect: () => void state.fixCaptionTiming(clip.trackId, selected) },
+          // The whole track spoken, each caption at its own time (tts/speak.ts).
+          { label: t('tts.narrate'), icon: Speech, onSelect: () => void narrateCaptions(clip.trackId) },
           { separator: true },
           {
             label: selected.length > 1 ? t('timeline.deleteClips', { count: selected.length }) : t('transcript.delete'),
@@ -1865,6 +1877,18 @@ export function Timeline(): JSX.Element {
               {...tip(tr('voiceover.button'), { hint: tr('voiceover.buttonHint') })}
             >
               <Mic size={13} />
+            </button>
+            {/* Text to speech: a voice from what you type, at the playhead (tts/speak.ts). */}
+            <button
+              type="button"
+              data-testid="timeline-tts"
+              className="tool-button tool-button-dense gap-1 px-1.5 text-2xs"
+              onClick={() => window.dispatchEvent(new Event(OPEN_TTS_EVENT))}
+              {...tip(tr('tts.title'), { hint: tr('tts.buttonHint') })}
+            >
+              <Speech size={13} />
+              {/* Named, not only an icon: it is what people look for. */}
+              <span>{tr('tts.buttonLabel')}</span>
             </button>
           </div>
 

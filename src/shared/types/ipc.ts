@@ -339,6 +339,10 @@ export interface TtsRequest {
   voice: TtsVoiceId;
   /** 0.5-2, where 1 is the voice's natural pace. */
   speed: number;
+  /** Semitones up or down (-6..6), the pace kept (main/tts/finish.ts). 0 or absent: the voice's own. */
+  pitch?: number;
+  /** "Clear voice": cleaned, compressed and levelled to -16 LUFS. On unless false. */
+  enhance?: boolean;
 }
 
 export interface TtsResult {
