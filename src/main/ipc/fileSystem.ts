@@ -21,6 +21,7 @@ import { ProxyStore, proxySize } from '../media/proxies';
 import { PlayableStore } from '../media/playable';
 import { audioArgs, gifArgs, type DeliverableKind } from '../exporter/deliverables';
 import { DenoiseStore, type DenoiseStrength } from '../media/denoise';
+import { StabilizeStore, type StabilizeStrength } from '../media/stabilize';
 import { detectBeats } from '../media/beats';
 import { alignBySound } from '../media/audioSync';
 import { ClipContentStore } from '../media/clipContent';
@@ -1154,6 +1155,21 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const file = await denoised.make(path, strength);
     allowedPaths.add(file);
     return mediaUrlFor(file);
+  });
+
+  const stabilized = new StabilizeStore(join(app.getPath('userData'), 'scf', 'stable'), resolveFfmpegPath());
+  /** A shaky video stabilized (main/media/stabilize.ts), and the URL it is shown by pointed at it. */
+  ipcMain.handle(IPC.stabilizeVideo, async (event, path: string, strength: unknown, durationSeconds: unknown, retarget: unknown) => {
+    assertAllowed(path);
+    const level = strength === 'light' || strength === 'medium' || strength === 'strong' ? (strength as StabilizeStrength) : null;
+    const file = level
+      ? await stabilized.make(path, level, Number(durationSeconds) || 0, (fraction) => {
+          if (!event.sender.isDestroyed()) event.sender.send(IPC.stabilizeProgress, { path, fraction });
+        })
+      : path;
+    allowedPaths.add(file);
+    if (typeof retarget === 'string') retargetMediaUrl(retarget, file);
+    return file;
   });
 
   /** A voice-over recorded in the editor: WebM/Opus in, an AAC .m4a kept in the app's folder out. */

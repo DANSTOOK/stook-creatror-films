@@ -4,7 +4,7 @@ import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
 import { ScrubDecoder } from './ScrubDecoder';
 import { keepScrubbers } from './scrubHandover';
-import { SequentialVideoReader, presentationTimes } from './SequentialVideoReader';
+import { SequentialVideoReader, forgetTrack, presentationTimes } from './SequentialVideoReader';
 import { FrameCheck } from './frameCheck';
 import { TextureManager } from './TextureManager';
 import { TitleLayers } from './TitleLayers';
@@ -180,7 +180,25 @@ export class FrameRenderer {
       this.media.register(asset);
       // A relinked file keeps its URL: the frame times listed for the old
       // file are not this one's.
-      if (this.assets.get(asset.uri)?.sourcePath !== asset.sourcePath) this.frameChecks.delete(asset.uri);
+      if (this.assets.get(asset.uri)?.sourcePath !== asset.sourcePath) {
+        this.frameChecks.delete(asset.uri);
+        // Nor is the sample table parsed from it.
+        if (this.assets.has(asset.uri)) forgetTrack(asset.uri);
+      }
+      // Stabilized, or back: the same URL shows another file, and nothing drawn from the old one is kept.
+      const before = this.assets.get(asset.uri);
+      if (before && before.stabilize !== asset.stabilize) {
+        this.frameChecks.delete(asset.uri);
+        forgetTrack(asset.uri);
+        this.textures.release(asset.uri);
+        this.closeScrubbers();
+        // The readers an exact render left open read the old file: they start again.
+        if (this.sequential) {
+          const onDemand = this.readersOnDemand;
+          this.stopSequentialDecode();
+          if (!onDemand) this.startSequentialDecode();
+        }
+      }
       this.assets.set(asset.uri, asset);
     }
   }

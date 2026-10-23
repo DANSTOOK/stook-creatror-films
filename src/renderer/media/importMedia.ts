@@ -420,9 +420,14 @@ export async function rehydrateAssets(assets: MediaAsset[]): Promise<MediaAsset[
         // Both of these are URLs this session cannot have made: they are
         // rebuilt here (audio) or looked up again on disk (the proxy), and a
         // dead one left in place would be requested and 404.
+        // Shown stabilized again - or, if that cannot be had, as it is (and said so by its setting) rather than lost.
+        const steady = asset.stabilize && asset.kind === 'video'
+          ? await window.filmora.stabilizeVideo(asset.sourcePath, asset.stabilize, asset.durationSeconds ?? 0, uri).then(() => true, () => false)
+          : true;
         const { audioUri: _stale, proxyUri: _staleProxy, ...rest } = asset;
         void _stale;
         void _staleProxy;
+        if (!steady) delete rest.stabilize;
         return { ...rest, uri, ...(audioUri ? { audioUri } : {}), missing: false };
       } catch {
         // The file was moved or deleted since the project was saved.

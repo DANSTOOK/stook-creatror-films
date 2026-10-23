@@ -173,6 +173,12 @@ const api: FilmoraApi = {
   exportAudioClose: (path, discard) => ipcRenderer.invoke(IPC.exportAudioClose, path, discard) as Promise<void>,
   exportTempVideo: () => ipcRenderer.invoke(IPC.exportTempVideo) as Promise<string>,
   denoiseAudio: (path, strength) => ipcRenderer.invoke(IPC.denoiseAudio, path, strength) as Promise<string>,
+  stabilizeVideo: (path, strength, durationSeconds, retarget) => ipcRenderer.invoke(IPC.stabilizeVideo, path, strength, durationSeconds, retarget) as Promise<string>,
+  onStabilizeProgress: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: { path: string; fraction: number }) => listener(progress);
+    ipcRenderer.on(IPC.stabilizeProgress, handler);
+    return () => ipcRenderer.removeListener(IPC.stabilizeProgress, handler);
+  },
   saveRecording: (name, webm) => ipcRenderer.invoke(IPC.saveRecording, name, webm) as Promise<string>,
   captureSources: () => ipcRenderer.invoke(IPC.captureSources) as Promise<Array<{ id: string; name: string; kind: 'screen' | 'window'; thumbnail: string }>>,
   saveScreenRecording: (name, webm) => ipcRenderer.invoke(IPC.saveScreenRecording, name, webm) as Promise<string>,

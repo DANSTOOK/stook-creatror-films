@@ -85,6 +85,8 @@ export const IPC = {
   exportAudioClose: 'export:audio-close',
   exportTempVideo: 'export:temp-video',
   denoiseAudio: 'media:denoise-audio',
+  stabilizeVideo: 'media:stabilize-video',
+  stabilizeProgress: 'media:stabilize-progress',
   saveRecording: 'media:save-recording',
   captureSources: 'capture:sources',
   saveScreenRecording: 'capture:save',
@@ -789,6 +791,14 @@ export interface FilmoraApi {
    * and kept; a URL to play, like extractAudio's.
    */
   denoiseAudio(path: string, strength: 'light' | 'medium' | 'strong'): Promise<string>;
+  /**
+   * The file at `path`, stabilized (main/media/stabilize.ts): the stabilized
+   * file's path, found from before or made now. `retarget` is the media URL
+   * the editor shows the file by; it is pointed at the stabilized file (or,
+   * with no strength, back at the original) and kept.
+   */
+  stabilizeVideo(path: string, strength: 'light' | 'medium' | 'strong' | null, durationSeconds: number, retarget?: string): Promise<string>;
+  onStabilizeProgress(listener: (progress: { path: string; fraction: number }) => void): () => void;
   /**
    * A voice-over just recorded (WebM/Opus from MediaRecorder), kept in the
    * app's folder as an M4A that plays and streams like any imported sound.

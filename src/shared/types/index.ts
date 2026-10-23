@@ -965,6 +965,8 @@ export interface MediaAsset {
   playable?: 'remux' | 'transcode';
   /** Its sound played and exported with the noise taken out (main/media/denoise.ts): `audioUri` is the cleaned sound. */
   denoise?: 'light' | 'medium' | 'strong';
+  /** Its picture shown and exported stabilized (main/media/stabilize.ts): its URL points at the stabilized file. */
+  stabilize?: 'light' | 'medium' | 'strong';
   kind: MediaKind;
   /**
    * Length in frames at the rate the project had when this was imported.

@@ -110,6 +110,11 @@ export async function presentationTimes(url: string): Promise<number[] | null> {
   return loaded ? loaded.track.samples.map((sample) => sample.time).sort((a, b) => a - b) : null;
 }
 
+/** Forget one URL's parsed track: it now shows another file (stabilized, or relinked under the same URL). */
+export function forgetTrack(url: string): void {
+  trackCache.delete(url);
+}
+
 /** Forget parsed tracks, e.g. when an asset is removed. */
 export function clearTrackCache(): void {
   trackCache.clear();

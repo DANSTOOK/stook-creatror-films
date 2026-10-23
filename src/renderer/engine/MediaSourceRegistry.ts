@@ -42,8 +42,23 @@ export class MediaSourceRegistry {
   private readonly kinds = new Map<string, MediaAsset['kind']>();
   private readonly ready = new Set<string>();
   private readonly lastCorrection = new Map<string, number>();
+  /** What each URL showed when its element was made: the file, or the file stabilized. */
+  private readonly looks = new Map<string, string>();
 
   register(asset: MediaAsset): MediaElement | undefined {
+    // The same URL pointed at another file (stabilized, or back): its element starts again.
+    const look = asset.stabilize ?? '';
+    if (this.looks.has(asset.uri) && this.looks.get(asset.uri) !== look) {
+      const stale = this.elements.get(asset.uri);
+      if (stale instanceof HTMLVideoElement) {
+        stale.pause();
+        stale.removeAttribute('src');
+        stale.load();
+      }
+      this.elements.delete(asset.uri);
+      this.ready.delete(asset.uri);
+    }
+    this.looks.set(asset.uri, look);
     /*
       A missing file has nothing to load, and an element made for it would
       stay broken after the file is relinked under the same URL. So none is
@@ -63,7 +78,7 @@ export class MediaSourceRegistry {
 
     // The proxy is an element of its own, under its own URI, so the
     // original stays loaded for the export and for a toggle back.
-    if (asset.proxyUri && asset.kind !== 'image') {
+    if (asset.proxyUri && asset.kind !== 'image' && !asset.stabilize) {
       this.proxies.set(asset.uri, asset.proxyUri);
       if (!this.elements.has(asset.proxyUri)) {
         this.registerVideo(asset.proxyUri);

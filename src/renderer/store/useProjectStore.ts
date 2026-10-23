@@ -592,6 +592,8 @@ interface ProjectStore {
    * project is, and undoing a build would not delete the file anyway.
    */
   setAssetProxy(assetId: string, proxyUri: string): void;
+  /** The file shown stabilized at `strength`, or as it is with null - its URL already pointed there (StabilizeRow). */
+  setAssetStabilize(assetId: string, strength: MediaAsset['stabilize'] | null): void;
   /**
    * Missing files found again: each asset gets its new path (and URL, when
    * it had to change) and is no longer missing; clips follow the URL.
@@ -2748,6 +2750,19 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         const { denoise: _old, ...rest } = asset;
         void _old;
         return { ...rest, audioUri, ...(strength ? { denoise: strength } : {}) };
+      }),
+    });
+  },
+
+  setAssetStabilize(assetId, strength) {
+    set({
+      assets: get().assets.map((asset) => {
+        if (asset.id !== assetId) return asset;
+        // A proxy is of the shaky original: the preview shows the stabilized file instead.
+        const { stabilize: _old, proxyUri: _proxy, ...rest } = asset;
+        void _old;
+        void _proxy;
+        return { ...rest, ...(strength ? { stabilize: strength } : {}) };
       }),
     });
   },

@@ -62,6 +62,7 @@
     "test:chapters:ui": "node ./tests/ui/chapters.mjs",
     "test:split-screen:ui": "node ./tests/ui/split-screen.mjs",
     "test:workspaces:ui": "node ./tests/ui/workspaces.mjs",
+    "test:stabilize:ui": "node ./tests/ui/stabilize.mjs",
     "test:import-rescue:ui": "node ./tests/ui/import-rescue.mjs",
     "test:detached-fill:ui": "node ./tests/ui/detached-fill.mjs",
     "test:effects-edit:ui": "node ./tests/ui/effects-edit.mjs",
