@@ -7,12 +7,74 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1644 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1650 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.71.0-beta.1 — Reproducción fluida con efectos, marcadores, tema y búsqueda
+2026-10-22 · pre-release para probar · arreglos pedidos
+
+### Arreglado
+- **Tirones al reproducir con zoom, brillo y paneo.** El visor dibujaba cada
+  fotograma a la resolución completa del proyecto mientras reproducía: un
+  proyecto 4K en un visor de 1000 px dibujaba cuatro veces lo que se ve, en
+  cada pasada de cada efecto, y una GPU integrada no llegaba. Ahora, al
+  reproducir, dibuja lo que muestra el visor; en pausa y en **toda exportación**
+  sigue siendo el fotograma completo. Nuevo selector **Calidad de reproducción**
+  en el visor (Auto, Completa, 1/2, 1/4), como en Resolve y Premiere.
+  - *Comprobado:* con tu vídeo 4K (KRATOS) y la GPU Intel UHD, con zoom,
+    desenfoque de zoom, brillo y paneo: el peor fotograma pasó de **46 ms a
+    7 ms**, el vídeo de 25 a **29,6 fps**, 0 fotogramas largos.
+    `tests/ui/playback-quality.mjs` **7/7**: en pausa dibuja 3840×2160; al
+    reproducir 948×532 (lo que muestra el visor) con el cuadrado en el mismo
+    sitio y del mismo tamaño; 1/2, 1/4 y Completa dibujan eso; un fotograma
+    de exportación sigue siendo 4K completo; 6 pruebas unitarias.
+- **Exportar con varios efectos tardaba mucho.** Los efectos pesados se
+  reescribieron sin cambiar su aspecto (medido en la Intel, a 1080p, por
+  fotograma): desenfoque de zoom **29,5 → 5,8 ms**, reducir ruido **21,5 →
+  8,1 ms**, tilt-shift **17,6 → 9,4 ms**, bordes **16,5 → 10,4 ms**, y los
+  desenfoques muy anchos leen la mitad.
+  - *Comprobado:* `tests/ui/fx-bench.mjs` en la Intel UHD antes y después;
+    efectos 11/11 y edición de efectos 9/9 siguen pasando.
+- **La GPU dedicada por defecto.** En un portátil con dos GPU, Windows podía
+  dejar el editor en la integrada. Las instalaciones nuevas usan la dedicada
+  (se puede cambiar en Exportar → GPU).
+  - *Comprobado:* `tests/ui/playback-quality.mjs` (un perfil nuevo arranca con
+    la GPU de alto rendimiento).
+- **No había forma visible de borrar un marcador.** Al hacer clic en un
+  marcador de la regla aparecen a su lado **Renombrar** y **Eliminar**, y la
+  tecla **Supr** lo borra (a él, no al clip que estuviera seleccionado).
+  - *Comprobado:* `tests/ui/tidy.mjs`: la barrita aparece; Supr borra el
+    marcador y el clip sigue; el botón Eliminar también; Ctrl+Z lo devuelve.
+- **El tema claro/oscuro/sistema no se aplicaba a todo.** Los botones de la
+  ventana (minimizar, maximizar, cerrar) y su franja, las barras de
+  desplazamiento y los menús nativos se quedaban oscuros, y «Sistema» nunca
+  veía un Windows claro, porque la aplicación forzaba el modo oscuro nativo.
+  Ahora todo sigue al tema elegido, también en las ventanas desprendidas, y
+  se recuerda al abrir.
+  - *Comprobado:* `tests/ui/tidy.mjs`: Claro, Sistema y Oscuro llegan a la
+    página y a los controles nativos y se guardan; tema 7/7 y ventanas
+    desprendidas 6/6 siguen pasando.
+
+### Cambiado
+- **Búsqueda de Títulos, Transiciones y Efectos ordenada:** una sola fila con
+  el buscador y un desplegable de categorías que muestra cuántos hay en cada
+  una (y se actualiza al buscar), fija arriba al desplazarse, en lugar de 3–4
+  líneas de botones. La ayuda de cada pestaña queda en el icono (i).
+  - *Comprobado:* `tests/ui/tidy.mjs`: en las tres pestañas, una fila de
+    44 px con sus categorías y conteos; al buscar «zoom» los conteos cambian y
+    las categorías vacías no se pueden elegir; títulos 12/12 y efectos 11/11.
+
+### Comprobado en conjunto
+- 1650 pruebas unitarias, 127/127 de interfaz, efectos 11/11, edición de
+  efectos 9/9, capa de ajuste 6/6, compuesto 9/9, multicámara 11/11, scopes
+  16/16, títulos 33/33 y 30/30, transiciones 24/24 y 35/35, seguimiento 8/8,
+  subtítulos 74/74.
 
 ---
 
