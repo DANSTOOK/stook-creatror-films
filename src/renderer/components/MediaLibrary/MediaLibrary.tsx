@@ -648,7 +648,7 @@ export function MediaLibrary(): JSX.Element {
             // accessible name; the tip only adds the one-line description.
             {...tip(tr(LIBRARY_TAB_LABEL[id]), { hint: tr(LIBRARY_TAB_TIP[id]), named: false })}
             className={`library-tab relative flex h-control-dense min-w-0 max-w-36 shrink-0 items-center justify-center gap-1 rounded-control px-2 text-xs transition-colors ${
-              tab === id ? 'font-semibold text-white' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
+              tab === id ? 'font-semibold text-slate-50' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
             onKeyDown={(event) => {

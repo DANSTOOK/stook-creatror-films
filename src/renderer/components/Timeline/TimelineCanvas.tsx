@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+﻿import { resolvedTheme, useThemeStore } from '@renderer/theme/theme';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { Clip, Marker, ProjectState, Track } from '@shared/types';
 import { framesToShortLabel } from '@shared/utils/timecode';
 import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
@@ -310,6 +311,46 @@ function drawSyncMark(context: CanvasRenderingContext2D, clip: Clip, top: number
   context.restore();
 }
 
+/** What the timeline paints its rows and ruler with: the theme's (theme/palette.css), read once a theme. */
+interface Surface {
+  bg: string;
+  trackA: string;
+  trackB: string;
+  ruler: string;
+  lane: string;
+  rulerLine: string;
+  tick: string;
+  tickText: string;
+}
+
+const surfaces = new WeakMap<Document, { key: string; colours: Surface }>();
+
+/** The surface of the window the canvas is in - a detached timeline mirrors the editor's theme. */
+function surfaceOf(context: CanvasRenderingContext2D): Surface {
+  const doc = context.canvas.ownerDocument;
+  const root = doc.documentElement;
+  const key = `${root.getAttribute('data-theme') ?? 'dark'}`;
+  const known = surfaces.get(doc);
+  if (known && known.key === key) return known.colours;
+  const style = doc.defaultView?.getComputedStyle(root);
+  const read = (name: string, fallback: string): string => {
+    const value = style?.getPropertyValue(name).trim();
+    return value ? `rgb(${value})` : fallback;
+  };
+  const colours: Surface = {
+    bg: read('--tl-bg', '#0e0f11'),
+    trackA: read('--tl-track-a', '#16181c'),
+    trackB: read('--tl-track-b', '#191b20'),
+    ruler: read('--tl-ruler', '#1d2025'),
+    lane: read('--tl-lane', '#191b20'),
+    rulerLine: read('--tl-ruler-line', '#343840'),
+    tick: read('--tl-tick', '#41454e'),
+    tickText: read('--tl-tick-text', '#94a3b8'),
+  };
+  surfaces.set(doc, { key, colours });
+  return colours;
+}
+
 function drawRuler(
   context: CanvasRenderingContext2D,
   project: ProjectState,
@@ -317,13 +358,14 @@ function drawRuler(
   width: number,
   loopRange: { start: number; end: number } | null = null,
 ): void {
-  context.fillStyle = '#1d2025';
+  const surface = surfaceOf(context);
+  context.fillStyle = surface.ruler;
   context.fillRect(0, 0, width, RULER_HEIGHT);
   // The marker lane, a shade darker so it reads as its own strip.
-  context.fillStyle = '#191b20';
+  context.fillStyle = surface.lane;
   context.fillRect(0, 0, width, MARKER_LANE_HEIGHT);
 
-  context.strokeStyle = '#343840';
+  context.strokeStyle = surface.rulerLine;
   context.beginPath();
   context.moveTo(0, RULER_HEIGHT - 0.5);
   context.lineTo(width, RULER_HEIGHT - 0.5);
@@ -368,13 +410,13 @@ function drawRuler(
     const x = Math.round(frameToPixel(frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
     if (x < -40 || x > width + 40) continue;
 
-    context.strokeStyle = '#41454e';
+    context.strokeStyle = surface.tick;
     context.beginPath();
     context.moveTo(x, RULER_HEIGHT - 7);
     context.lineTo(x, RULER_HEIGHT);
     context.stroke();
 
-    context.fillStyle = '#94a3b8';
+    context.fillStyle = surface.tickText;
     context.fillText(framesToShortLabel(frame, project.fps), x + 4, MARKER_LANE_HEIGHT + (RULER_HEIGHT - MARKER_LANE_HEIGHT) / 2);
   }
 
@@ -1191,6 +1233,8 @@ function drawPlayhead(
 }
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
+  // Painted again when the look changes: its colours are the theme's (surfaceOf).
+  const look = useThemeStore((state) => `${resolvedTheme(state.theme)}|${state.accent}`);
   const { project, ui: storeUi, tracks, activeSnap, waveforms, width, height } = props;
   const libraryDrop = props.libraryDrop ?? null;
   const filmstrips = props.filmstrips;
@@ -1308,7 +1352,8 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    context.fillStyle = '#0e0f11';
+    const surface = surfaceOf(context);
+    context.fillStyle = surface.bg;
     context.fillRect(0, 0, width, height);
 
     const selected = new Set(ui.selectedClipIds);
@@ -1317,7 +1362,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       const top = trackRowTop(index);
       if (top > height) return;
 
-      context.fillStyle = index % 2 === 0 ? '#16181c' : '#191b20';
+      context.fillStyle = index % 2 === 0 ? surface.trackA : surface.trackB;
       context.fillRect(0, top, width, TRACK_HEIGHT);
 
       if (track.locked) {
@@ -1455,7 +1500,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     // contentVersion is not read in the paint: it changes when a filmstrip
     // frame has been decoded, and that is exactly when to paint again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, syncMarks, loopRange, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey]);
+  }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, syncMarks, loopRange, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey, look]);
 
   useEffect(() => {
     if (animationFrame.current !== null) cancelFrame(animationFrame.current);

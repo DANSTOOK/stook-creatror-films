@@ -5,13 +5,17 @@ module.exports = {
     extend: {
       colors: {
         // Filmora-style dark editing surface.
+        // The surfaces and the text greys are the theme's (theme/palette.css):
+        // dark by default, light when chosen. Written as channels so an
+        // opacity still works: bg-panel-900/60.
         panel: {
-          950: '#0e0f11',
-          900: '#16181c',
-          800: '#1d2025',
-          700: '#272a31',
-          600: '#343840',
+          950: 'rgb(var(--panel-950) / <alpha-value>)',
+          900: 'rgb(var(--panel-900) / <alpha-value>)',
+          800: 'rgb(var(--panel-800) / <alpha-value>)',
+          700: 'rgb(var(--panel-700) / <alpha-value>)',
+          600: 'rgb(var(--panel-600) / <alpha-value>)',
         },
+        slate: Object.fromEntries([50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map((step) => [step, `rgb(var(--slate-${step}) / <alpha-value>)`])),
         /*
           The accent. DEFAULT fills the things that act - the primary button,
           a progress bar, a checked box - and white on it reads at 5.17:1;
@@ -22,9 +26,9 @@ module.exports = {
           name is historical.
         */
         accent: {
-          DEFAULT: '#2563eb',
-          strong: '#1d4ed8',
-          hover: '#60a5fa',
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          strong: 'rgb(var(--accent-strong) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
         },
         // A finished job, and only that: the blue accent stays "act here",
         // mint says "done". 12.2:1 on panel-950 and 11.3:1 on panel-900;

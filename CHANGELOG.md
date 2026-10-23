@@ -7,12 +7,59 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1607 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1609 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.67.0-beta.1 — Congelar fotograma, GIF y solo audio, tema claro e historial
+2026-10-22 · pre-release para probar · bloque A de la lista de mejoras
+
+### Añadido
+- **Congelar fotograma:** desde el menú del clip en la línea de tiempo (con el
+  cabezal sobre él) o la pestaña Video del inspector. La imagen del clip en el
+  cabezal, tal como se exporta (color, efectos, tamaño, posición), se queda
+  quieta 2 s: el clip se corta ahí y todo lo que sigue se desplaza. El sonido
+  enlazado se corta y se mueve con él, para que siga en sincronía. Un solo
+  Ctrl+Z lo deshace (la imagen queda en la biblioteca, como un archivo
+  importado).
+  - *Comprobado:* `tests/ui/freeze.mjs` **6/6** con un clip rojo-verde-azul:
+    corte en el fotograma 45, imagen fija de 60 fotogramas, el resto empieza
+    en el 105 desde donde se quedó; el sonido igual; en la imagen exportada
+    verde durante toda la pausa, después sigue y luego azul.
+- **Exportar GIF:** en Exportar, «GIF animado» con ancho (320–960 px) y
+  fluidez (10, 15 o 24 fps). Calcula sus propios 256 colores para que no se
+  vea con bandas.
+- **Exportar solo el audio, en MP3 (192 kbps) o WAV (16 bits):** sin renderizar
+  ni un fotograma de imagen.
+  - *Comprobado:* `tests/ui/export-extras.mjs` **5/5**: un GIF de 480×270 con
+    30 fotogramas, sin dejar archivos temporales; un MP3 de 2 s cuyo sonido es
+    el tono de 440 Hz del clip (medido: 431 Hz), con **0 fotogramas**
+    renderizados; un WAV de 16 bits.
+- **Tema claro y color de acento:** en Preferencias > Apariencia, Oscuro, Claro
+  o Sistema, y el acento en azul, violeta, verde, naranja o rosa. Se aplica
+  al momento en toda la app, también en la línea de tiempo y en los paneles
+  desprendidos, y se recuerda.
+  - *Comprobado:* `tests/ui/theme.mjs` **7/7**: oscuro y azul por defecto;
+    en claro, paneles blancos y texto oscuro con contraste de **14,6:1**; la
+    línea de tiempo también se aclara; el violeta llega al botón Exportar; se
+    recuerda al reiniciar; un panel desprendido lo lleva igual.
+- **Historial:** un botón nuevo en la barra de título muestra todos los pasos
+  que se pueden deshacer, del más antiguo al más reciente, con el actual
+  marcado y los deshechos atenuados. Un clic lleva a cualquier paso.
+  En español cuando la app está en español.
+  - *Comprobado:* `tests/ui/history.mjs` **6/6**: tres marcadores; un clic en
+    el primero deja uno y atenúa los otros dos; un clic en el último vuelve a
+    los tres; «Inicio» lo deshace todo; los pasos salen en español.
+
+### Comprobado en conjunto
+- 1609 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  animaciones de la interfaz 18/18, redes 5/5, transiciones 35/35, paneles
+  desprendidos 6/6, importar 7/7, stickers 6/6, seguimiento 8/8.
 
 ---
 

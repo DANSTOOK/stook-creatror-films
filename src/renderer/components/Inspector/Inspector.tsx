@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, SlidersHorizontal, Snowflake, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -34,6 +34,7 @@ import { ClipFxPanel } from './ClipFxPanel';
 import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
+import { freezeFrame } from '@renderer/edit/freezeRun';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
@@ -516,7 +517,17 @@ export function Inspector(): JSX.Element {
       </Section>
       {/* One clip a take (edit/scenes): for a video, the picture cut wherever it changes shot. */}
       {asset?.kind === 'video' && !clip.audioOnly && (
-        <div className="p-2">
+        <div className="space-y-1.5 p-2">
+          {/* The picture at the playhead held for two seconds (edit/freezeRun). */}
+          <button
+            type="button"
+            data-testid="inspector-freeze"
+            className="tool-button h-control w-full justify-center border border-panel-600"
+            onClick={() => void freezeFrame(clip.id)}
+          >
+            <Snowflake size={13} />
+            {t('freeze.menu')}
+          </button>
           <button
             type="button"
             data-testid="inspector-split-scenes"

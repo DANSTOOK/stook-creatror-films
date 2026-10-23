@@ -148,6 +148,7 @@ import {
 import { createLibraryCommand } from './useHistoryStore';
 import { removeRanges, type FrameRange } from '@renderer/edit/silences';
 import { splitAtFrames } from '@renderer/edit/scenes';
+import { withFreeze } from '@renderer/edit/freeze';
 import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
@@ -456,6 +457,8 @@ interface ProjectStore {
   removeClipRanges(clipId: string, ranges: readonly FrameRange[]): number;
   /** Cut a clip and the clips linked to it at each of `frames`: "Split at scene changes" (edit/scenes.ts). One undo step. Returns the pieces. */
   splitClipAtFrames(clipId: string, frames: readonly number[]): number;
+  /** Freeze frame (edit/freeze.ts): `still` held at `frame` on `clipId`'s track, the clip cut there and what follows moved along. One undo step. Returns the still's clip id. */
+  insertFreeze(clipId: string, frame: number, still: CreateClipInput): string | null;
   /** One caption's own look over its track's (CaptionContent.style); undefined takes it back to the track's. */
   setCaptionStyle(clipId: string, style: CaptionStyleOverride | undefined, mergeKey?: string): void;
   /** Copy a clip and drop the copy immediately after the original. */
@@ -1916,6 +1919,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     void _old;
     const kept = style && Object.keys(style).length > 0 ? style : undefined;
     get().updateClip(clipId, { caption: kept ? { ...rest, style: kept } : rest }, mergeKey);
+  },
+
+  insertFreeze(clipId, frame, still) {
+    const clip = get().project.clips[clipId];
+    if (!clip) return null;
+    const made = createClip({ ...still, trackId: clip.trackId, startFrame: frame });
+    get().transact('Freeze frame', (current) => withFreeze(current, clipId, frame, made));
+    get().setUi({ selectedClipIds: [made.id], selectedTrackId: clip.trackId });
+    return made.id;
   },
 
   splitClipAtFrames(clipId, frames) {

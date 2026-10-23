@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { AppearancePicker } from './AppearancePicker';
 import { Languages, Settings, Timer } from 'lucide-react';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import {
@@ -159,6 +160,9 @@ export function PreferencesDialog({ onClose, closing = false }: PreferencesDialo
         <LanguageSelect />
       </label>
       <p className="text-2xs leading-relaxed text-slate-400">{t('prefs.languageHint')}</p>
+      <div className="pt-2">
+        <AppearancePicker />
+      </div>
       <div className="pt-2">
         <TransitionLengthSelect />
       </div>

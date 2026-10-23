@@ -17,6 +17,7 @@ export const IPC = {
   extractAudio: 'media:extract-audio',
   detectSilences: 'media:detect-silences',
   detectScenes: 'media:detect-scenes',
+  saveStill: 'media:save-still',
   saveSticker: 'media:save-sticker',
   trackObject: 'media:track-object',
   openProject: 'dialog:open-project',
@@ -77,6 +78,8 @@ export const IPC = {
   exportAudioOpen: 'export:audio-open',
   exportAudioAppend: 'export:audio-append',
   exportAudioClose: 'export:audio-close',
+  exportTempVideo: 'export:temp-video',
+  exportDeliver: 'export:deliver',
   exportStart: 'export:start',
   exportFrame: 'export:frame',
   exportFinish: 'export:finish',
@@ -582,6 +585,8 @@ export interface FilmoraApi {
    * path, ready to import. The same sticker in the same language is one file.
    */
   saveSticker(id: string, png: ArrayBuffer): Promise<string>;
+  /** A still the editor made (a freeze frame), kept in the app's folder; its path. */
+  saveStill(id: string, png: ArrayBuffer): Promise<string>;
   /**
    * Follow a thing through a stretch of `path` from the box drawn round it
    * on the first frame (main/media/trackJob.ts): its centre, 0..1 of the
@@ -751,6 +756,20 @@ export interface FilmoraApi {
   exportAudioAppend(path: string, samples: ArrayBuffer): Promise<void>;
   /** Close a mix; `discard` deletes it (nothing audible, or the render failed). */
   exportAudioClose(path: string, discard?: boolean): Promise<void>;
+  /** A place in the temp folder for a video a GIF is then made from. */
+  exportTempVideo(): Promise<string>;
+  /**
+   * A file made from a finished render (main/exporter/deliverables.ts): a GIF
+   * from `source` (a temporary video, removed after), or MP3/WAV from `source`
+   * (the raw mix, removed after). Written as `name` in `folder`; its path.
+   */
+  exportDeliver(
+    folder: string,
+    name: string,
+    kind: 'gif' | 'mp3' | 'wav',
+    source: string,
+    options: { fps?: number; width?: number; sampleRate?: number; channels?: number },
+  ): Promise<string>;
 
   /** Open an encoder and start accepting frames. */
   exportStart(settings: ExportSettings): Promise<ExportStartResult>;

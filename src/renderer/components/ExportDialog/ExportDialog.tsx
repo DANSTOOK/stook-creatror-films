@@ -10,6 +10,8 @@ import {
   Play,
   Sparkles,
   Youtube,
+  ImagePlay,
+  Music2,
 } from 'lucide-react';
 import type {
   ExportFormat,
@@ -656,6 +658,78 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       else next.add(id);
       return next;
     });
+  /**
+   * A GIF of the edit: rendered as an MP4 at twice the GIF's width (no wider
+   * than the project), then made a GIF from - its own 256 colours - beside the
+   * other exports, the MP4 thrown away (main/exporter/deliverables.ts).
+   */
+  const [gifWidth, setGifWidth] = useState(480);
+  const [gifFps, setGifFps] = useState(15);
+  const [audioKind, setAudioKind] = useState<'mp3' | 'wav'>('mp3');
+  const exportGif = async (): Promise<void> => {
+    if (!folder) {
+      setMessage(t('export.chooseFolderFirst'));
+      return;
+    }
+    const temp = await window.filmora.exportTempVideo();
+    const width = Math.min(project.width, Math.round((gifWidth * 2) / 2) * 2);
+    const height = Math.max(2, Math.round((width * project.height) / project.width / 2) * 2);
+    const ok = await startExport({ format: 'mp4-h264', exportAlpha: false, width, height, outputPath: temp });
+    if (!ok) return;
+    try {
+      setRunning(true);
+      setMessage(t('export.makingGif'));
+      const path = await window.filmora.exportDeliver(folder, fileName, 'gif', temp, { fps: gifFps, width: gifWidth });
+      setResult((done) => (done ? { ...done, path, ...splitPath(path), playable: true, encoder: `GIF ${gifWidth} px · ${gifFps} fps` } : done));
+      setMessage(null);
+    } catch (error) {
+      setFailed(true);
+      setMessage(t('export.failed', { detail: errorText(error) }));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  /** The sound alone: the mix the video export renders, written as MP3 or WAV - no picture rendered at all. */
+  const exportAudioOnly = async (): Promise<void> => {
+    if (!folder) {
+      setMessage(t('export.chooseFolderFirst'));
+      return;
+    }
+    const startedAt = performance.now();
+    setRunning(true);
+    setFailed(false);
+    setResult(null);
+    setMessage(t('export.renderingAudio'));
+    const mixPath = await window.filmora.exportAudioOpen();
+    let mix: Awaited<ReturnType<typeof streamTimelineAudio>> = null;
+    try {
+      mix = await streamTimelineAudio(project, assets, dialogSettings.startFrame, dialogSettings.endFrame, (samples) => window.filmora.exportAudioAppend(mixPath, samples.buffer as ArrayBuffer), {
+        onProgress: (done, total) => setMessage(t('export.renderingAudioProgress', { done: formatClock(done), total: formatClock(total) })),
+      });
+      await window.filmora.exportAudioClose(mixPath, mix === null);
+      if (!mix) throw new Error(t('export.noSound'));
+      const path = await window.filmora.exportDeliver(folder, fileName, audioKind, mixPath, { sampleRate: mix.sampleRate, channels: mix.channels });
+      const fps = dialogSettings.fps || project.fps;
+      setResult({
+        path,
+        ...splitPath(path),
+        playable: true,
+        videoSeconds: (dialogSettings.endFrame - dialogSettings.startFrame) / fps,
+        renderSeconds: (performance.now() - startedAt) / 1000,
+        encoder: audioKind === 'mp3' ? 'MP3 192 kbps' : 'WAV 16-bit',
+        fps,
+      });
+      setMessage(null);
+    } catch (error) {
+      await window.filmora.exportAudioClose(mixPath, true).catch(() => undefined);
+      setFailed(true);
+      setMessage(t('export.failed', { detail: errorText(error) }));
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const exportForNetworks = async (): Promise<void> => {
     if (!folder) {
       setMessage(t('export.chooseFolderFirst'));
@@ -1011,6 +1085,68 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               >
                 {networks.size === 0 ? t('export.networksNone') : t('export.networksStart', { count: networks.size })}
               </button>
+            </section>
+
+            {/* A GIF of it, or its sound alone: files made from a render, beside the others. */}
+            <section className="mb-4 grid gap-2 sm:grid-cols-2" data-testid="export-extras">
+              <div className="space-y-2 rounded-lg border border-panel-700 bg-panel-950/60 p-3">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                  <ImagePlay size={13} className="text-accent-hover" aria-hidden />
+                  {t('export.gifTitle')}
+                </h3>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-2xs text-slate-400">{t('export.gifWidth')}</span>
+                    <select data-testid="export-gif-width" className="numeric-input h-control-dense" value={gifWidth} disabled={running} onChange={(event) => setGifWidth(Number(event.target.value))}>
+                      {[320, 480, 640, 960].map((width) => (
+                        <option key={width} value={width}>
+                          {width} px
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-2xs text-slate-400">{t('export.gifFps')}</span>
+                    <select data-testid="export-gif-fps" className="numeric-input h-control-dense" value={gifFps} disabled={running} onChange={(event) => setGifFps(Number(event.target.value))}>
+                      {[10, 15, 24].map((fps) => (
+                        <option key={fps} value={fps}>
+                          {fps} fps
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className="text-2xs leading-relaxed text-slate-400">{t('export.gifHint')}</p>
+                <button type="button" data-testid="export-gif" className="tool-button h-control w-full justify-center border border-panel-600" disabled={running || !folder} onClick={() => void exportGif()}>
+                  {t('export.gifStart')}
+                </button>
+              </div>
+              <div className="space-y-2 rounded-lg border border-panel-700 bg-panel-950/60 p-3">
+                <h3 className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+                  <Music2 size={13} className="text-accent-hover" aria-hidden />
+                  {t('export.audioTitle')}
+                </h3>
+                <div role="radiogroup" aria-label={t('export.audioTitle')} className="flex rounded-control bg-panel-900 p-0.5">
+                  {(['mp3', 'wav'] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      role="radio"
+                      aria-checked={audioKind === kind}
+                      data-testid={`export-audio-${kind}`}
+                      disabled={running}
+                      className={`flex-1 rounded-[4px] py-1 text-2xs font-medium ${audioKind === kind ? 'bg-panel-600 text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
+                      onClick={() => setAudioKind(kind)}
+                    >
+                      {kind.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-2xs leading-relaxed text-slate-400">{t(audioKind === 'mp3' ? 'export.audioHintMp3' : 'export.audioHintWav')}</p>
+                <button type="button" data-testid="export-audio" className="tool-button h-control w-full justify-center border border-panel-600" disabled={running || !folder} onClick={() => void exportAudioOnly()}>
+                  {t('export.audioStart', { kind: audioKind.toUpperCase() })}
+                </button>
+              </div>
             </section>
 
             {/* Step 2 (the primary path): name the file and choose where it goes.

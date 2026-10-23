@@ -29,6 +29,7 @@ import {
   Pencil,
   Plus,
   Scissors,
+  Snowflake,
   Trash2,
   Volume2,
   Upload,
@@ -96,6 +97,7 @@ import { smoothZoom, zooming } from './smoothZoom';
 import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
+import { canFreezeAtPlayhead, freezeFrame } from '@renderer/edit/freezeRun';
 import { withActivity } from '@renderer/activity/activity';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
@@ -552,6 +554,14 @@ export function Timeline(): JSX.Element {
           label: t('silence.menu'),
           icon: Scissors,
           onSelect: () => useSilenceDialogStore.getState().show(clip.id),
+        });
+      }
+      // The picture at the playhead held: shown when the playhead is over this clip.
+      if (!clip.audioOnly && kindOf(clip.sourceUri) === 'video' && canFreezeAtPlayhead(clip.id)) {
+        items.push({
+          label: t('freeze.menu'),
+          icon: Snowflake,
+          onSelect: () => void freezeFrame(clip.id),
         });
       }
       // One clip a take: the picture cut wherever it changes shot.

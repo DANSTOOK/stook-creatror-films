@@ -51,6 +51,7 @@ const api: FilmoraApi = {
   detectSilences: (path, request) => ipcRenderer.invoke(IPC.detectSilences, path, request) as Promise<Array<{ start: number; end: number }>>,
   detectScenes: (path, request) => ipcRenderer.invoke(IPC.detectScenes, path, request) as Promise<number[]>,
   saveSticker: (id, png) => ipcRenderer.invoke(IPC.saveSticker, id, png) as Promise<string>,
+  saveStill: (id, png) => ipcRenderer.invoke(IPC.saveStill, id, png) as Promise<string>,
   trackObject: (path, request) => ipcRenderer.invoke(IPC.trackObject, path, request) as Promise<Array<{ t: number; x: number; y: number; score: number; scale: number; angle: number }>>,
   registerDroppedFiles: (files) =>
     ipcRenderer.invoke(
@@ -165,6 +166,8 @@ const api: FilmoraApi = {
   exportAudioOpen: () => ipcRenderer.invoke(IPC.exportAudioOpen) as Promise<string>,
   exportAudioAppend: (path, samples) => ipcRenderer.invoke(IPC.exportAudioAppend, path, samples) as Promise<void>,
   exportAudioClose: (path, discard) => ipcRenderer.invoke(IPC.exportAudioClose, path, discard) as Promise<void>,
+  exportTempVideo: () => ipcRenderer.invoke(IPC.exportTempVideo) as Promise<string>,
+  exportDeliver: (folder, name, kind, source, options) => ipcRenderer.invoke(IPC.exportDeliver, folder, name, kind, source, options) as Promise<string>,
   exportStart: (settings: ExportSettings) => ipcRenderer.invoke(IPC.exportStart, settings),
   exportFrame: (jobId, rgba) => ipcRenderer.invoke(IPC.exportFrame, jobId, rgba),
   exportFinish: (jobId) => ipcRenderer.invoke(IPC.exportFinish, jobId),

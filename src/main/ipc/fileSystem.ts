@@ -19,6 +19,7 @@ import {
 import { BackupStore, RecoveryStore } from '../projects/backups';
 import { ProxyStore, proxySize } from '../media/proxies';
 import { PlayableStore } from '../media/playable';
+import { audioArgs, gifArgs, type DeliverableKind } from '../exporter/deliverables';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
@@ -471,6 +472,18 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     };
     if (!(asked.toSeconds > asked.fromSeconds)) return [];
     return runTrack(resolveFfmpegPath(), path, asked);
+  });
+
+  /** A still the editor made - a freeze frame - kept in the app's folder (renderer/edit/freezeRun). */
+  ipcMain.handle(IPC.saveStill, async (_event, id: string, png: ArrayBuffer): Promise<string> => {
+    const name = String(id).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 80) || 'still';
+    if (!(png instanceof ArrayBuffer) || png.byteLength === 0 || png.byteLength > 64 * 1024 * 1024) throw new Error('Not a still');
+    const folder = join(app.getPath('userData'), 'scf', 'stills');
+    await mkdir(folder, { recursive: true });
+    const path = join(folder, `${name}.png`);
+    await writeFile(path, Buffer.from(png));
+    allowedPaths.add(path);
+    return path;
   });
 
   /** A sticker's picture, kept in the app's folder (renderer/stickers). */
@@ -1101,6 +1114,37 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       await rm(path, { force: true });
     }
   });
+
+  ipcMain.handle(IPC.exportTempVideo, async () => {
+    const path = join(tmpdir(), `scf-gif-source-${randomUUID()}.mp4`);
+    allowedPaths.add(path);
+    return path;
+  });
+
+  /** A GIF, or the sound alone, made from a render (main/exporter/deliverables.ts). */
+  ipcMain.handle(
+    IPC.exportDeliver,
+    async (_event, folder: string, name: string, kind: DeliverableKind, source: string, options: { fps?: number; width?: number; sampleRate?: number; channels?: number }) => {
+      if (!allowedFolders.has(folder)) throw new Error(mt('main.chooseExportFolder'));
+      if (kind !== 'gif' && kind !== 'mp3' && kind !== 'wav') throw new Error('Unknown kind');
+      assertAllowed(source);
+      const target = join(folder, `${sanitizeFileName(name) || 'export'}.${kind}`);
+      if (isOpenMediaPath(target)) throw new Error(mt('main.sourceFootage'));
+      const args =
+        kind === 'gif'
+          ? gifArgs(source, target, { fps: Number(options?.fps) || 15, width: Number(options?.width) || 480 })
+          : audioArgs(source, { sampleRate: Number(options?.sampleRate) || 48000, channels: Number(options?.channels) || 2 }, target, kind);
+      try {
+        await execFileAsync(resolveFfmpegPath(), args, { maxBuffer: 16 * 1024 * 1024, windowsHide: true });
+      } finally {
+        // The source was made for this file alone.
+        allowedPaths.delete(source);
+        await rm(source, { force: true });
+      }
+      allowedPaths.add(target);
+      return target;
+    },
+  );
 
   ipcMain.handle(IPC.exportStart, async (_event, settings: ExportSettings) => {
     assertAllowed(settings.outputPath);

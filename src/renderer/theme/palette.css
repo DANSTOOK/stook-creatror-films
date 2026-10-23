@@ -1,0 +1,110 @@
+/*
+  The palette, as variables: the surfaces (panel-*), the text greys (slate-*),
+  the accent, and what the timeline paints on its canvas. Tailwind's colours
+  read these (tailwind.config.js), so `bg-panel-900/60` and `text-slate-400`
+  follow the theme without a class changing anywhere. Channels are written
+  bare ("37 99 235") so an opacity can be put on them.
+
+  :root            the dark theme, as the editor has always been
+  [data-theme]     light: white panels on a cool grey, dark text
+  [data-accent]    the accent colour; blue unless another is chosen
+
+  Set on <html> by theme/theme.ts, and mirrored into detached windows with
+  the rest of the root's attributes (Layout/useDetachedWindow).
+*/
+
+:root {
+  --panel-950: 14 15 17;
+  --panel-900: 22 24 28;
+  --panel-800: 29 32 37;
+  --panel-700: 39 42 49;
+  --panel-600: 52 56 64;
+
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+  --slate-950: 2 6 23;
+
+  --accent: 37 99 235;
+  --accent-strong: 29 78 216;
+  /* The accent used AS text and icons on the panels: light on dark. */
+  --accent-hover: 96 165 250;
+
+  /* The timeline's canvas (Timeline/TimelineCanvas). */
+  --tl-bg: 14 15 17;
+  --tl-track-a: 22 24 28;
+  --tl-track-b: 25 27 32;
+  --tl-ruler: 29 32 37;
+  --tl-lane: 25 27 32;
+  --tl-ruler-line: 52 56 64;
+  --tl-tick: 65 69 78;
+  --tl-tick-text: 148 163 184;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --panel-950: 233 236 241;
+  --panel-900: 255 255 255;
+  --panel-800: 243 245 248;
+  --panel-700: 218 223 231;
+  --panel-600: 196 203 214;
+
+  /* The greys turned over: what was the lightest text is now the darkest. */
+  --slate-50: 2 6 23;
+  --slate-100: 15 23 42;
+  --slate-200: 30 41 59;
+  --slate-300: 51 65 85;
+  --slate-400: 71 85 105;
+  --slate-500: 100 116 139;
+  --slate-600: 148 163 184;
+  --slate-700: 203 213 225;
+  --slate-800: 226 232 240;
+  --slate-900: 241 245 249;
+  --slate-950: 248 250 252;
+
+  --tl-bg: 226 230 236;
+  --tl-track-a: 245 247 250;
+  --tl-track-b: 238 241 245;
+  --tl-ruler: 250 251 253;
+  --tl-lane: 240 243 247;
+  --tl-ruler-line: 196 203 214;
+  --tl-tick: 176 184 196;
+  --tl-tick-text: 71 85 105;
+
+  color-scheme: light;
+}
+
+/* Accents: the fill, the fill pressed, and the shade that reads as text on the panels. */
+:root[data-accent='violet'] {
+  --accent: 124 58 237;
+  --accent-strong: 109 40 217;
+  --accent-hover: 167 139 250;
+}
+:root[data-accent='green'] {
+  --accent: 4 120 87;
+  --accent-strong: 6 95 70;
+  --accent-hover: 52 211 153;
+}
+:root[data-accent='orange'] {
+  --accent: 194 65 12;
+  --accent-strong: 154 52 18;
+  --accent-hover: 251 146 60;
+}
+:root[data-accent='pink'] {
+  --accent: 190 24 93;
+  --accent-strong: 157 23 77;
+  --accent-hover: 244 114 182;
+}
+
+/* On white panels the accent as text has to be the dark shade, not the light one. */
+:root[data-theme='light'] {
+  --accent-hover: var(--accent-strong);
+}

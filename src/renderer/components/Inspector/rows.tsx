@@ -262,7 +262,7 @@ export function Section({ id, title, open, onOpenChange, enabled, onEnabledChang
           type="button"
           aria-expanded={open}
           aria-controls={bodyId}
-          className="flex min-w-0 flex-1 items-center gap-1 rounded-control py-1 text-left hover:text-white"
+          className="flex min-w-0 flex-1 items-center gap-1 rounded-control py-1 text-left hover:text-slate-50"
           onClick={() => onOpenChange(!open)}
         >
           <ChevronRight size={13} className={`shrink-0 text-slate-400 transition-transform duration-150 ${open ? 'rotate-90' : ''}`} />

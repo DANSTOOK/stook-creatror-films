@@ -10,6 +10,7 @@ import { getAudioEngine } from './audio/AudioEngine';
 import { getActiveFrameRenderer } from './engine/FrameRenderer';
 import './index.css';
 import { installMotionEnvironment } from './motion/environment';
+import { installTheme } from './theme/theme';
 import { ghostCount, prepareGhosts } from './motion/ghost';
 import { zoomStats } from './components/Timeline/zoomMotion';
 import { useCaptionJob } from './captions/captionJob';
@@ -24,6 +25,7 @@ import { TITLE_TEMPLATES } from './text/templates';
 // Reduced motion, playing and exporting, as attributes on <html> for the CSS
 // to read - set before the first render so nothing animates it should not.
 installMotionEnvironment();
+installTheme();
 prepareGhosts();
 // The motion test counts exits still on screen.
 (window as { __scfMotion?: object }).__scfMotion = { ghostCount, zoomStats };

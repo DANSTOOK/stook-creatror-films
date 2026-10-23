@@ -7,6 +7,7 @@ import { useT, type MessageKey } from '@renderer/i18n';
 // Shared with the palette, so both show the same key beside the same command.
 import { acceleratorLabel } from '@renderer/components/CommandPalette/commands';
 import { NotificationsButton } from '@renderer/notifications/Toaster';
+import { HistoryButton } from '@renderer/history/HistoryButton';
 import { DetachedPanelsTray } from '@renderer/components/Layout/DetachedPanelsTray';
 
 /**
@@ -291,6 +292,10 @@ export function TitleBar({
           >
             <Headphones size={15} />
           </button>
+
+          <div className="app-no-drag">
+            <HistoryButton />
+          </div>
 
           <div className="app-no-drag">
             <NotificationsButton />
