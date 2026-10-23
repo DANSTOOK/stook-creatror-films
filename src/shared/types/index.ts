@@ -726,6 +726,11 @@ export interface Clip {
    * opacity how much (engine/Compositor). Its sourceUri is ADJUSTMENT_URI.
    */
   adjustment?: boolean;
+  /**
+   * A compound clip (edit/compound.ts): it plays a render of these clips and
+   * keeps them, to break apart again - back where they were, moved with it.
+   */
+  compound?: { clips: Clip[]; spanStart: number };
   /** Play the footage backwards. The picture only; see audioFollowsSpeed. */
   reversed?: boolean;
   /**

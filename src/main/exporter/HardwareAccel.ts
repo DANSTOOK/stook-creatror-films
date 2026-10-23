@@ -191,6 +191,14 @@ export const REC709_TAGS: readonly string[] = [
   '-color_range', 'tv',
 ];
 
+/** Transparent WebM's tags: the BT.601 matrix it is encoded with (scaleFilterArgs). */
+export const BT601_ALPHA_TAGS: readonly string[] = [
+  '-colorspace', 'smpte170m',
+  '-color_primaries', 'bt709',
+  '-color_trc', 'bt709',
+  '-color_range', 'tv',
+];
+
 /**
  * Bitstream filter that writes the colour tags into a WebCodecs stream.
  *
@@ -223,18 +231,24 @@ export function streamColourFilter(settings: ExportSettings): string[] {
  * app's own exports. The matrix is named here, the range with it, and the
  * file is tagged to match (REC709_TAGS), so every player decodes it the way
  * it was encoded. A PNG sequence stays RGB: no matrix is involved.
+ *
+ * Transparent WebM is the exception: Chromium decodes VP9 with alpha with
+ * the BT.601 matrix whatever the tags say (green 32,192,64 came back
+ * 43,215,67 in this app's own viewer), so it is encoded with that matrix and
+ * tagged so - right in Chromium and in every player that reads the tags.
  */
 export function scaleFilterArgs(settings: ExportSettings): string[] {
   const yuv = settings.format !== 'png-sequence';
+  const bt601 = settings.format === 'webm-vp9' && settings.exportAlpha;
   const scale: string[] = [];
   if (settings.pixelArtScaling) scale.push(`${settings.width}:${settings.height}:flags=neighbor`);
-  if (yuv) scale.push('out_color_matrix=bt709:out_range=tv');
+  if (yuv) scale.push(`out_color_matrix=${bt601 ? 'bt601' : 'bt709'}:out_range=tv`);
   if (scale.length === 0) return [];
   return [
     ...(settings.pixelArtScaling ? ['-sws_flags', 'neighbor'] : []),
     '-vf',
     `scale=${scale.join(':')}`,
-    ...(yuv ? REC709_TAGS : []),
+    ...(yuv ? (bt601 ? BT601_ALPHA_TAGS : REC709_TAGS) : []),
   ];
 }
 

@@ -174,6 +174,7 @@ const api: FilmoraApi = {
   saveRecording: (name, webm) => ipcRenderer.invoke(IPC.saveRecording, name, webm) as Promise<string>,
   captureSources: () => ipcRenderer.invoke(IPC.captureSources) as Promise<Array<{ id: string; name: string; kind: 'screen' | 'window'; thumbnail: string }>>,
   saveScreenRecording: (name, webm) => ipcRenderer.invoke(IPC.saveScreenRecording, name, webm) as Promise<string>,
+  compoundTarget: () => ipcRenderer.invoke(IPC.compoundTarget) as Promise<string>,
   captureStopShortcut: (on) => ipcRenderer.invoke(IPC.captureStopShortcut, on) as Promise<boolean>,
   onCaptureStop(listener) {
     const handler = (): void => listener();

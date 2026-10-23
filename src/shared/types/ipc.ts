@@ -86,6 +86,7 @@ export const IPC = {
   saveRecording: 'media:save-recording',
   captureSources: 'capture:sources',
   saveScreenRecording: 'capture:save',
+  compoundTarget: 'compound:target',
   captureStopShortcut: 'capture:stop-shortcut',
   captureStopPressed: 'capture:stop-pressed',
   exportDeliver: 'export:deliver',
@@ -790,6 +791,8 @@ export interface FilmoraApi {
    * AAC); its path. `name` is the file's name without its extension.
    */
   saveScreenRecording(name: string, webm: ArrayBuffer): Promise<string>;
+  /** Where a compound clip's render goes: a new .webm in the app's folder, allowed to be written. */
+  compoundTarget(): Promise<string>;
   /** While a screen is recorded, Ctrl+Shift+F9 stops it from anywhere; on is true while recording. */
   captureStopShortcut(on: boolean): Promise<boolean>;
   onCaptureStop(listener: () => void): () => void;

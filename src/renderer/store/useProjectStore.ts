@@ -151,6 +151,7 @@ import { removeRanges, type FrameRange } from '@renderer/edit/silences';
 import { splitAtFrames } from '@renderer/edit/scenes';
 import { withFreeze } from '@renderer/edit/freeze';
 import { withBeatMarkers, withCutsAtBeats, withoutBeatMarkers } from '@renderer/edit/beats';
+import { withCompound, withoutCompound } from '@renderer/edit/compound';
 import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
@@ -461,6 +462,10 @@ interface ProjectStore {
   splitClipAtFrames(clipId: string, frames: readonly number[]): number;
   /** Beat markers at `frames` (edit/beats.ts), one undo step; `replace` takes the old beat markers away first. */
   addBeatMarkers(frames: readonly number[], replace: boolean): number;
+  /** Clips replaced by a compound clip playing `sourceUri` that keeps them (edit/compound.ts). Its id. */
+  replaceWithCompound(clipIds: readonly string[], sourceUri: string, name: string): string | null;
+  /** A compound clip broken apart: its clips back, moved as far as it was (edit/compound.ts). One undo step. */
+  breakApartCompound(clipId: string): void;
   /** Every picture clip off `exceptTrackId` cut at `frames` (edit/beats.ts), one undo step. Returns the cuts made. */
   cutAtBeats(frames: readonly number[], exceptTrackId: string): number;
   /** Freeze frame (edit/freeze.ts): `still` held at `frame` on `clipId`'s track, the clip cut there and what follows moved along. One undo step. Returns the still's clip id. */
@@ -1928,6 +1933,23 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     void _old;
     const kept = style && Object.keys(style).length > 0 ? style : undefined;
     get().updateClip(clipId, { caption: kept ? { ...rest, style: kept } : rest }, mergeKey);
+  },
+
+  replaceWithCompound(clipIds, sourceUri, name) {
+    let made: string | null = null;
+    get().transact('Make compound clip', (current) => {
+      const result = withCompound(current, clipIds, sourceUri, name);
+      made = result.clipId;
+      return result.project;
+    });
+    if (made) get().setUi({ selectedClipIds: [made] });
+    return made;
+  },
+
+  breakApartCompound(clipId) {
+    const inner = get().project.clips[clipId]?.compound?.clips.map((clip) => clip.id) ?? [];
+    get().transact('Break apart compound clip', (current) => withoutCompound(current, clipId));
+    get().setUi({ selectedClipIds: inner });
   },
 
   addBeatMarkers(frames, replace) {

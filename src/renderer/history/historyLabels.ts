@@ -19,6 +19,8 @@ const SPANISH: Record<string, string> = {
   'Add transition': 'Añadir transición',
   'Auto ducking': 'Atenuación automática',
   'Beat markers': 'Marcadores de ritmo',
+  'Break apart compound clip': 'Descomponer clip compuesto',
+  'Make compound clip': 'Crear clip compuesto',
   'Cut to the beat': 'Cortar al ritmo',
   'Caption animation': 'Animación de subtítulos',
   'Caption language': 'Idioma de subtítulos',

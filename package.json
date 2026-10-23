@@ -54,6 +54,7 @@
     "test:adjustment:ui": "node ./tests/ui/adjustment.mjs",
     "test:sounds:ui": "node ./tests/ui/sounds.mjs",
     "test:screen-record:ui": "node ./tests/ui/screen-record.mjs",
+    "test:compound:ui": "node ./tests/ui/compound.mjs",
     "test:import-rescue:ui": "node ./tests/ui/import-rescue.mjs",
     "test:detached-fill:ui": "node ./tests/ui/detached-fill.mjs",
     "test:effects-edit:ui": "node ./tests/ui/effects-edit.mjs",

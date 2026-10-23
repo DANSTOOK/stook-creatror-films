@@ -138,7 +138,8 @@ export class EncoderPipeline {
             '0:v:0',
             ...(withAudio ? ['-map', '1:a:0'] : []),
             ...(subtitleCodec ? streams.flatMap((_, index) => ['-map', `${(withAudio ? 2 : 1) + index}:0`]) : []),
-            ...(withAudio ? ['-c:a', 'aac', '-b:a', `${settings.audioBitrateKbps ?? 256}k`, '-ar', '48000'] : []),
+            // WebM holds Opus or Vorbis, never AAC: ffmpeg refused the header and the export stalled.
+            ...(withAudio ? ['-c:a', settings.format === 'webm-vp9' ? 'libopus' : 'aac', '-b:a', `${settings.audioBitrateKbps ?? 256}k`, '-ar', '48000'] : []),
             ...subtitleOutput,
           ]
         : [];
@@ -366,11 +367,14 @@ export class EncoderPipeline {
           stdin.off('drain', settle);
           stdin.off('close', settle);
           stdin.off('error', settle);
+          job.process.off('exit', settle);
           resolve();
         };
         stdin.once('drain', settle);
         stdin.once('close', settle);
         stdin.once('error', settle);
+        // An encoder that gave up leaves its stdin open but never drains it.
+        job.process.once('exit', settle);
       });
     }
     if (job.cancelled) return;

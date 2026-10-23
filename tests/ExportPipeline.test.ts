@@ -234,3 +234,21 @@ describe('colour on the way out', () => {
     expect(classifyRedLuma(120)).toBeNull();
   });
 });
+
+describe('EncoderPipeline.buildArgs - WebM', () => {
+  const withSound = { audioPath: '/tmp/mix.f32', audioRawFormat: { sampleRate: 48000, channels: 2 } };
+
+  it('puts Opus in a WebM, which holds no AAC', () => {
+    expect(argOf(EncoderPipeline.buildArgs(settings({ format: 'webm-vp9', outputPath: '/tmp/out.webm', ...withSound })), '-c:a')).toBe('libopus');
+    expect(argOf(EncoderPipeline.buildArgs(settings({ format: 'mp4-h264', ...withSound })), '-c:a')).toBe('aac');
+  });
+
+  it('encodes transparent WebM with the BT.601 matrix Chromium decodes it with, and tags it so', () => {
+    const clear = EncoderPipeline.buildArgs(settings({ format: 'webm-vp9', exportAlpha: true }));
+    expect(argOf(clear, '-vf')).toContain('out_color_matrix=bt601');
+    expect(argOf(clear, '-colorspace')).toBe('smpte170m');
+    const opaque = EncoderPipeline.buildArgs(settings({ format: 'webm-vp9', exportAlpha: false }));
+    expect(argOf(opaque, '-vf')).toContain('out_color_matrix=bt709');
+    expect(argOf(opaque, '-colorspace')).toBe('bt709');
+  });
+});

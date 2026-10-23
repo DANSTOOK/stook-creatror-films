@@ -1205,6 +1205,15 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return target;
   });
 
+  /** A compound clip's render (renderer/edit/compoundRun): a new file in the app's folder. */
+  ipcMain.handle(IPC.compoundTarget, async () => {
+    const folder = join(app.getPath('userData'), 'scf', 'compound');
+    await mkdir(folder, { recursive: true });
+    const path = join(folder, `compound-${randomUUID()}.webm`);
+    allowedPaths.add(path);
+    return path;
+  });
+
   /** Ctrl+Shift+F9 stops a screen recording from whatever app is in front. */
   const STOP_KEYS = 'CommandOrControl+Shift+F9';
   ipcMain.handle(IPC.captureStopShortcut, async (_event, on: boolean) => {

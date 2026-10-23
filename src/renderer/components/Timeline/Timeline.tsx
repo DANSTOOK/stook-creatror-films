@@ -21,6 +21,7 @@ import {
   EyeOff,
   Flag,
   Hand,
+  Layers,
   Lock,
   LockOpen,
   Magnet,
@@ -100,6 +101,8 @@ import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { canFreezeAtPlayhead, freezeFrame } from '@renderer/edit/freezeRun';
+import { canCompound } from '@renderer/edit/compound';
+import { makeCompound } from '@renderer/edit/compoundRun';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { addAdjustmentLayer } from '@renderer/edit/adjustment';
@@ -583,6 +586,20 @@ export function Timeline(): JSX.Element {
           label: t('scenes.menu'),
           icon: Clapperboard,
           onSelect: () => useSceneDialog.getState().show(clip.id),
+        });
+      }
+      // Several clips made one, or one made several again.
+      if (clip.compound) {
+        items.push({
+          label: t('compound.breakApart'),
+          icon: Layers,
+          onSelect: () => state.breakApartCompound(clip.id),
+        });
+      } else if (selected.includes(clip.id) && canCompound(project, selected)) {
+        items.push({
+          label: t('compound.make'),
+          icon: Layers,
+          onSelect: () => void makeCompound([...selected]),
         });
       }
       return items;
