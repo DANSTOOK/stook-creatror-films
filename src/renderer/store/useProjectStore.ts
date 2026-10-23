@@ -152,6 +152,7 @@ import { splitAtFrames } from '@renderer/edit/scenes';
 import { withFreeze } from '@renderer/edit/freeze';
 import { withBeatMarkers, withCutsAtBeats, withoutBeatMarkers } from '@renderer/edit/beats';
 import { withCompound, withoutCompound } from '@renderer/edit/compound';
+import { withAngle, withMulticam } from '@renderer/edit/multicam';
 import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
@@ -466,6 +467,10 @@ interface ProjectStore {
   replaceWithCompound(clipIds: readonly string[], sourceUri: string, name: string): string | null;
   /** A compound clip broken apart: its clips back, moved as far as it was (edit/compound.ts). One undo step. */
   breakApartCompound(clipId: string): void;
+  /** Clips made one multicam clip, lined up by `sync` (edit/multicam.ts), its sound on a clip of its own. Its id. */
+  makeMulticam(clipIds: readonly string[], sync: ReadonlyMap<string, number>, names: ReadonlyMap<string, string>): string | null;
+  /** Multicam clip `clipId` showing `angle`: from `atFrame` on (cut there), or all through. One undo step. */
+  switchAngle(clipId: string, angle: number, atFrame?: number): string | null;
   /** Every picture clip off `exceptTrackId` cut at `frames` (edit/beats.ts), one undo step. Returns the cuts made. */
   cutAtBeats(frames: readonly number[], exceptTrackId: string): number;
   /** Freeze frame (edit/freeze.ts): `still` held at `frame` on `clipId`'s track, the clip cut there and what follows moved along. One undo step. Returns the still's clip id. */
@@ -1944,6 +1949,32 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     });
     if (made) get().setUi({ selectedClipIds: [made] });
     return made;
+  },
+
+  makeMulticam(clipIds, sync, names) {
+    let made: string | null = null;
+    const { assets } = get();
+    const kindOf = (uri: string) => assets.find((asset) => asset.uri === uri)?.kind;
+    const hasSound = (uri: string) => assetHasSound(assets.find((asset) => asset.uri === uri));
+    get().transact('Make multicam clip', (current) => {
+      const result = withMulticam(current, clipIds, sync, names);
+      made = result.clipId;
+      if (!made) return current;
+      // The first camera's sound on a clip of its own: cutting between cameras never cuts it.
+      return detachAudio(result.project, [made], kindOf, hasSound).project;
+    });
+    if (made) get().setUi({ selectedClipIds: [made] });
+    return made;
+  },
+
+  switchAngle(clipId, angle, atFrame) {
+    let shown: string | null = null;
+    get().transact('Switch angle', (current) => {
+      const result = withAngle(current, clipId, angle, atFrame);
+      shown = result.clipId;
+      return result.project;
+    });
+    return shown;
   },
 
   breakApartCompound(clipId) {

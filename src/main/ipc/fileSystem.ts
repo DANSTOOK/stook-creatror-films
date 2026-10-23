@@ -22,6 +22,7 @@ import { PlayableStore } from '../media/playable';
 import { audioArgs, gifArgs, type DeliverableKind } from '../exporter/deliverables';
 import { DenoiseStore, type DenoiseStrength } from '../media/denoise';
 import { detectBeats } from '../media/beats';
+import { alignBySound } from '../media/audioSync';
 import { ClipContentStore } from '../media/clipContent';
 import { audioExtractArgs } from '../media/audioExtract';
 import { parseSilences, silenceArgs, type SilenceRequest, type SilenceSpan } from '../media/silence';
@@ -1203,6 +1204,14 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     }
     allowedPaths.add(target);
     return target;
+  });
+
+  /** Multicam angles lined up by their sound (main/media/audioSync.ts). */
+  ipcMain.handle(IPC.alignBySound, async (_event, paths: unknown) => {
+    if (!Array.isArray(paths) || paths.length < 2 || paths.some((path) => typeof path !== 'string')) return [];
+    for (const path of paths as string[]) assertAllowed(path);
+    // Infinity does not survive the trip to the page.
+    return (await alignBySound(resolveFfmpegPath(), paths as string[])).map((found) => (found ? { seconds: found.seconds, confidence: Math.min(found.confidence, 1e6) } : null));
   });
 
   /** A compound clip's render (renderer/edit/compoundRun): a new file in the app's folder. */

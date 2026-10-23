@@ -34,6 +34,7 @@ import { ScopesPanel } from './ScopesPanel';
 import { CompareCurtain } from './CompareCurtain';
 import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { TrackBoxOverlay } from './TrackBoxOverlay';
+import { MulticamBar } from './MulticamBar';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { useWorkspaceStore } from '@renderer/store/useWorkspaceStore';
 import { MENU_IMPORT_EVENT } from '@renderer/components/MediaLibrary/MediaLibrary';
@@ -475,6 +476,7 @@ export function PreviewViewport(): JSX.Element {
         </footer>
       ) : (
         <>
+        <MulticamBar />
         {apart && (
           // A scrubber along the edit, as CapCut's and Filmora's players have: the timeline is in another window.
           <div className="shrink-0 border-t border-panel-700 bg-panel-800 px-3 pt-2">

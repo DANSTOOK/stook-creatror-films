@@ -663,6 +663,15 @@ export interface ClipTracking {
   beforeRotation?: Keyframe<number>[];
 }
 
+/** One camera of a multicam clip. */
+export interface MulticamAngle {
+  name: string;
+  sourceUri: string;
+  /** How many frames further into its file than the first angle's the same moment is. */
+  syncFrames: number;
+  hasAlphaChannel?: boolean;
+}
+
 export interface Clip {
   id: string;
   trackId: string;
@@ -731,6 +740,11 @@ export interface Clip {
    * keeps them, to break apart again - back where they were, moved with it.
    */
   compound?: { clips: Clip[]; spanStart: number };
+  /**
+   * A multicam clip (edit/multicam.ts): the cameras it can show, lined up,
+   * and the one this piece shows - its sourceUri is that camera's file.
+   */
+  multicam?: { angles: MulticamAngle[]; angle: number };
   /** Play the footage backwards. The picture only; see audioFollowsSpeed. */
   reversed?: boolean;
   /**

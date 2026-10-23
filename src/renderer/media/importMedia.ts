@@ -1,4 +1,4 @@
-import type { MediaAsset, MediaKind, ProjectState } from '@shared/types';
+import type { Clip, MediaAsset, MediaKind, ProjectState } from '@shared/types';
 import { createId } from '@shared/utils/id';
 import { MAX_FRAME_RATE, MIN_FRAME_RATE } from '@shared/utils/frameRate';
 import { probeMediaElement } from '@renderer/engine/probeMedia';
@@ -468,12 +468,17 @@ export function remapClipSources(
 ): ProjectState {
   if (remap.size === 0) return project;
 
-  const clips = Object.fromEntries(
-    Object.entries(project.clips).map(([id, clip]) => {
-      const replacement = remap.get(clip.sourceUri);
-      return [id, replacement ? { ...clip, sourceUri: replacement } : clip];
-    }),
-  );
+  // The files kept inside a clip too: a compound clip's clips, a multicam clip's cameras.
+  const remapped = (clip: Clip): Clip => {
+    const replacement = remap.get(clip.sourceUri);
+    let next = replacement ? { ...clip, sourceUri: replacement } : clip;
+    if (clip.compound) next = { ...next, compound: { ...clip.compound, clips: clip.compound.clips.map(remapped) } };
+    if (clip.multicam) {
+      next = { ...next, multicam: { ...clip.multicam, angles: clip.multicam.angles.map((angle) => ({ ...angle, sourceUri: remap.get(angle.sourceUri) ?? angle.sourceUri })) } };
+    }
+    return next;
+  };
+  const clips = Object.fromEntries(Object.entries(project.clips).map(([id, clip]) => [id, remapped(clip)]));
 
   return { ...project, clips };
 }

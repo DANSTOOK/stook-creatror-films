@@ -23,6 +23,7 @@ import {
   Hand,
   Layers,
   Lock,
+  Video,
   LockOpen,
   Magnet,
   Maximize2,
@@ -103,6 +104,8 @@ import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { canFreezeAtPlayhead, freezeFrame } from '@renderer/edit/freezeRun';
 import { canCompound } from '@renderer/edit/compound';
 import { makeCompound } from '@renderer/edit/compoundRun';
+import { canMulticam } from '@renderer/edit/multicam';
+import { makeMulticam } from '@renderer/edit/multicamRun';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { addAdjustmentLayer } from '@renderer/edit/adjustment';
@@ -586,6 +589,27 @@ export function Timeline(): JSX.Element {
           label: t('scenes.menu'),
           icon: Clapperboard,
           onSelect: () => useSceneDialog.getState().show(clip.id),
+        });
+      }
+      // The cameras of one take made one clip; or, on one, the camera it shows.
+      if (clip.multicam) {
+        const { angles, angle: shown } = clip.multicam;
+        items.push({
+          label: t('multicam.angle'),
+          icon: Video,
+          submenu: angles.map((angle, index) => ({
+            label: angle.name,
+            checked: index === shown,
+            radio: true,
+            shortcut: String(index + 1),
+            onSelect: () => state.switchAngle(clip.id, index),
+          })),
+        });
+      } else if (selected.includes(clip.id) && canMulticam(project, selected, kindOf)) {
+        items.push({
+          label: t('multicam.make'),
+          icon: Video,
+          onSelect: () => void makeMulticam([...selected]),
         });
       }
       // Several clips made one, or one made several again.

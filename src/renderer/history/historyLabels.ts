@@ -21,6 +21,8 @@ const SPANISH: Record<string, string> = {
   'Beat markers': 'Marcadores de ritmo',
   'Break apart compound clip': 'Descomponer clip compuesto',
   'Make compound clip': 'Crear clip compuesto',
+  'Make multicam clip': 'Crear clip multicámara',
+  'Switch angle': 'Cambiar de ángulo',
   'Cut to the beat': 'Cortar al ritmo',
   'Caption animation': 'Animación de subtítulos',
   'Caption language': 'Idioma de subtítulos',

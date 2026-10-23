@@ -87,6 +87,7 @@ export const IPC = {
   captureSources: 'capture:sources',
   saveScreenRecording: 'capture:save',
   compoundTarget: 'compound:target',
+  alignBySound: 'media:align-by-sound',
   captureStopShortcut: 'capture:stop-shortcut',
   captureStopPressed: 'capture:stop-pressed',
   exportDeliver: 'export:deliver',
@@ -793,6 +794,12 @@ export interface FilmoraApi {
   saveScreenRecording(name: string, webm: ArrayBuffer): Promise<string>;
   /** Where a compound clip's render goes: a new .webm in the app's folder, allowed to be written. */
   compoundTarget(): Promise<string>;
+  /**
+   * Files lined up with the first by their sound (main/media/audioSync.ts):
+   * the seconds into each at which the first one's start is heard, and how
+   * sure; null for one with no sound to go by.
+   */
+  alignBySound(paths: string[]): Promise<({ seconds: number; confidence: number } | null)[]>;
   /** While a screen is recorded, Ctrl+Shift+F9 stops it from anywhere; on is true while recording. */
   captureStopShortcut(on: boolean): Promise<boolean>;
   onCaptureStop(listener: () => void): () => void;

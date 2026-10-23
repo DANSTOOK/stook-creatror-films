@@ -7,12 +7,94 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1624 pruebas unitarias**, **21/21
+Cifras de referencia al día de hoy: **1644 pruebas unitarias**, **21/21
 comprobaciones de extremo a extremo**, **128/128 comprobaciones de interfaz** (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.36.0-beta.1 (ninguna petición a la red, los 60
 fotogramas exportados correctos).
+
+---
+
+## v1.70.0-beta.1 — Sonidos, grabar la pantalla, clips compuestos y multicámara
+2026-10-22 · pre-release para probar · bloque D de la lista de mejoras
+
+### Añadido
+- **Biblioteca de música y efectos:** pestaña «Sonidos» en la biblioteca, con
+  14 efectos (whoosh, golpe, clic, notificación, aplausos…) y 5 pistas de
+  música (animada 120 BPM, lo-fi 80, cinematográfica 60, corporativa 110,
+  relajada 90). Se escuchan con un clic y se ponen en el cabezal en una pista
+  propia (la música va al bus de música). Están sintetizados dentro del editor,
+  así que se pueden usar en cualquier sitio sin derechos de terceros; las
+  pistas duran compases enteros para que se repitan sin salto.
+  - *Comprobado:* `tests/ui/sounds.mjs` **5/5**: la pestaña lista los 19 y
+    «Reproducir» suena de verdad; el Whoosh queda en el cabezal en su pista,
+    con sonido real y la duración que dice; «Animada» va a una pista Música en
+    el bus de música y el propio detector de ritmo del editor le oye 120 BPM;
+    el mismo sonido dos veces reutiliza su archivo; Ctrl+Z quita uno.
+- **Grabar la pantalla:** «Grabar la pantalla…» en el menú + de la biblioteca.
+  Eliges una pantalla o una ventana (con su miniatura), el micrófono y la
+  webcam; cuenta atrás, la ventana se minimiza y **Ctrl+Shift+F9** la detiene
+  desde cualquier programa. La grabación queda en MP4 a 30 fps en el cabezal y
+  la webcam encima, en la esquina inferior derecha a un cuarto del tamaño.
+  - *Comprobado:* `tests/ui/screen-record.mjs` **7/7** con la cámara y el
+    micrófono de prueba de Chromium y el escritorio real: lista las pantallas
+    con su imagen; graba unos 3 s y se detiene como lo hace Ctrl+Shift+F9; la
+    pantalla queda en el cabezal como MP4 H.264 a 30 fps con el sonido AAC del
+    micrófono; la webcam en una pista encima, al 25 % y abajo a la derecha;
+    ninguna de las dos es negra; un Ctrl+Z quita las dos.
+- **Clips compuestos:** selecciona varios clips (imagen, títulos, stickers y su
+  sonido), clic derecho → «Crear clip compuesto». Se renderizan juntos, con su
+  transparencia y su sonido mezclado, en un solo clip que se mueve, recorta,
+  corta y lleva efectos como uno. «Descomponer clip compuesto» devuelve los
+  clips originales intactos, desplazados lo mismo que hayas movido el
+  compuesto. Un Ctrl+Z cada uno.
+  - *Comprobado:* 6 pruebas unitarias y `tests/ui/compound.mjs` **9/9**: rojo
+    con un tono de 440 Hz y un cuadrado verde encima de 1 s a 3 s se convierten
+    en un clip de 4 s en la pista de abajo, seleccionado, en un solo paso de
+    deshacer; el archivo es WebM VP9 con transparencia (alpha_mode 1) y sonido
+    Opus a -24 dB; su imagen en la exportación es **idéntica** a la de los dos
+    clips (rojo 205,32,32 frente a 205,32,31; verde 31,190,62 exacto);
+    movido 1 s y descompuesto, los dos vuelven tal cual, 1 s más tarde; Ctrl+Z
+    vuelve a ponerlo.
+- **Multicámara:** selecciona las tomas de 2 a 9 cámaras de la misma escena,
+  clic derecho → «Crear clip multicámara». Se **sincronizan solas por el
+  sonido** (correlación de los ataques, a la centésima de segundo, aunque una
+  cámara esté lejos y con otro micrófono); la que no comparta sonido se alinea
+  como estaba en la línea de tiempo y te lo dice. Queda un solo clip con el
+  sonido de la primera cámara aparte, y bajo el visor aparecen los ángulos:
+  pulsa **1–9** o haz clic en uno para cortar a esa cámara en el cabezal,
+  desde el mismo instante, sin cortar el sonido. En su menú, «Ángulo» cambia
+  la cámara de un trozo entero.
+  - *Comprobado:* 3 pruebas unitarias de la sincronización (cámara que empezó
+    7,37 s más tarde y otra 16,5 s antes, encontradas a la décima; dos salas
+    distintas dan poca confianza), 9 del modelo, y `tests/ui/multicam.mjs`
+    **11/11**: una cámara roja y otra azul que empezó 2,5 s más tarde (más
+    baja y con su propio ruido) quedan sincronizadas a **75 fotogramas
+    exactos**; un clip en lugar del rojo con su sonido aparte de 0 a 10 s;
+    los ángulos aparecen bajo el visor; «2» a los 5 s corta al azul desde el
+    mismo instante y el ángulo 1 a los 7 s vuelve; el sonido sigue sin cortes;
+    la imagen exportada es rojo, azul, rojo; su menú ofrece el ángulo; un
+    Ctrl+Z deshace un cambio.
+
+### Arreglado
+- **Exportar WebM con sonido se quedaba colgado.** Se pedía a FFmpeg audio
+  AAC, que WebM no admite; ahora va en Opus. Además, si el codificador se
+  cierra, el envío de fotogramas ya no espera para siempre.
+  - *Comprobado:* 2 pruebas unitarias nuevas del codificador y el WebM del
+    clip compuesto (con su sonido Opus) de `tests/ui/compound.mjs`.
+- **Colores de los WebM con transparencia en el visor:** Chromium decodifica
+  el VP9 con alfa con la matriz BT.601 diga lo que diga la etiqueta (un verde
+  32,192,64 salía 43,215,67). Ahora se codifica con esa matriz y se etiqueta
+  así: correcto en el visor y en cualquier reproductor.
+  - *Comprobado:* el mismo `tests/ui/compound.mjs` (colores idénticos).
+- **Reabrir un proyecto con clips compuestos o multicámara:** los clips de
+  dentro y las cámaras siguen a sus archivos al reabrir o al reenlazar.
+  - *Comprobado:* prueba unitaria (las cámaras siguen el nuevo enlace).
+
+### Comprobado en conjunto
+- 1644 pruebas unitarias, 127/127 de interfaz, exportación 5/5 + 5/5, congelar
+  6/6, capa de ajuste 6/6, sonidos 5/5, compuesto 9/9, multicámara 11/11.
 
 ---
 
