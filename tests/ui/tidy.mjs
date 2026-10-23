@@ -131,6 +131,19 @@ async function main() {
         out[name] = +ratio(getComputedStyle(probe).color, background).toFixed(1);
         probe.remove();
       }
+      // Inside a dialog: its dimmed backdrop is bg-black too, which must not count as a dark badge.
+      const backdrop = document.createElement('div');
+      backdrop.className = 'fixed inset-0 bg-black/50';
+      const card = document.createElement('div');
+      card.className = 'bg-panel-900';
+      const line = document.createElement('span');
+      line.className = 'text-emerald-300';
+      line.textContent = 'x';
+      card.appendChild(line);
+      backdrop.appendChild(card);
+      panel.appendChild(backdrop);
+      out.inDialog = +ratio(getComputedStyle(line).color, getComputedStyle(card).backgroundColor).toFixed(1);
+      backdrop.remove();
       const badge = document.createElement('span');
       badge.className = 'bg-red-900/90 text-red-200';
       panel.appendChild(badge);
@@ -139,7 +152,7 @@ async function main() {
       return out;
     });
     check('in Light, warning, error, done and info text reads on the panels (4.5:1 or more); on a dark badge it stays light',
-      ['text-amber-300', 'text-red-300', 'text-emerald-300', 'text-sky-300', 'text-amber-200'].every((name) => contrast[name] >= 4.5) && contrast.badge === 'rgb(254, 202, 202)',
+      ['text-amber-300', 'text-red-300', 'text-emerald-300', 'text-sky-300', 'text-amber-200', 'inDialog'].every((name) => contrast[name] >= 4.5) && contrast.badge === 'rgb(254, 202, 202)',
       JSON.stringify(contrast));
     const system = await choose('System');
     check('System follows Windows: the page and the native controls agree with it', system.source === 'system' && system.page === (system.dark ? 'dark' : 'light'), JSON.stringify(system));

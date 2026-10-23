@@ -321,6 +321,8 @@ interface Surface {
   rulerLine: string;
   tick: string;
   tickText: string;
+  /** A clip's edge: near black on the dark tracks, a soft slate on the light ones. */
+  clipOutline: string;
 }
 
 const surfaces = new WeakMap<Document, { key: string; colours: Surface }>();
@@ -344,6 +346,7 @@ function surfaceOf(context: CanvasRenderingContext2D): Surface {
     ruler: read('--tl-ruler', '#1d2025'),
     lane: read('--tl-lane', '#191b20'),
     rulerLine: read('--tl-ruler-line', '#343840'),
+    clipOutline: read('--tl-clip-outline', '#0e0f11'),
     tick: read('--tl-tick', '#41454e'),
     tickText: read('--tl-tick-text', '#94a3b8'),
   };
@@ -977,7 +980,7 @@ function drawClip(
   context.beginPath();
   context.roundRect(bodyLeft, bodyTop, bodyWidth, bodyHeight, radius);
   context.lineWidth = selected ? 2 : 1;
-  context.strokeStyle = selected ? SELECTED_OUTLINE : '#0e0f11';
+  context.strokeStyle = selected ? SELECTED_OUTLINE : surfaceOf(context).clipOutline;
   context.stroke();
 
   drawFades(context, clip, x, clipWidth, top, ui.pixelsPerFrame, hovered);

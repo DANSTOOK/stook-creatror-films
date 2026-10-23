@@ -47,6 +47,7 @@
   --tl-tick: 65 69 78;
   --tl-tick-text: 148 163 184;
   /* The Effects panel's families: sky-300 and violet-300, light on the dark panels. */
+  --tl-clip-outline: 14 15 17;
   --fx-camera: 125 211 252;
   --fx-look: 196 181 253;
 
@@ -82,6 +83,7 @@
   --tl-tick: 176 184 196;
   --tl-tick-text: 71 85 105;
   /* sky-700 and violet-700: 5.9:1 and 7.1:1 on white. */
+  --tl-clip-outline: 100 116 139;
   --fx-camera: 3 105 161;
   --fx-look: 109 40 217;
 
@@ -123,15 +125,16 @@
   badge of their own (a red-900 "missing" tag, a black overlay): there the
   light shade is the one that reads.
 */
-:root[data-theme='light'] :is(.text-amber-100, .text-amber-200, .text-amber-300, .text-yellow-200):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+
+:root[data-theme='light'] :is(.text-amber-100, .text-amber-200, .text-amber-300, .text-amber-300\/90,.text-amber-400, .text-yellow-200):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
   color: rgb(180 83 9); /* amber-700 */
 }
-:root[data-theme='light'] :is(.text-red-200, .text-red-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+:root[data-theme='light'] :is(.text-red-200, .text-red-300, .text-red-400):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
   color: rgb(185 28 28); /* red-700 */
 }
-:root[data-theme='light'] :is(.text-emerald-200, .text-emerald-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+:root[data-theme='light'] :is(.text-emerald-200, .text-emerald-300, .text-emerald-400):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
   color: rgb(4 120 87); /* emerald-700 */
 }
-:root[data-theme='light'] :is(.text-sky-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+:root[data-theme='light'] :is(.text-sky-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
   color: rgb(3 105 161); /* sky-700 */
 }
