@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Clock, Film, FolderOpen, FolderPlus, Languages, LifeBuoy, Plus, Search, Sparkles, X } from 'lucide-react';
-import type { ProjectRecovery, RecentProject } from '@shared/types/ipc';
+import type { ProjectRecovery, ProjectTemplate, RecentProject } from '@shared/types/ipc';
+import { MyTemplates } from '@renderer/project/templates';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { useFlip } from '@renderer/motion/useFlip';
 import { formatLength, nextUntitledName, relativeTime } from '@renderer/project/projectSession';
@@ -58,9 +59,11 @@ export interface HomeProps {
   onOpenRecent(path: string): void;
   /** Take back up work a previous session never saved. */
   onRecover(): void;
+  /** A new project from one of the user's own templates. */
+  onOpenTemplate(template: ProjectTemplate): void;
 }
 
-export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover }: HomeProps): JSX.Element {
+export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover, onOpenTemplate }: HomeProps): JSX.Element {
   const t = useT();
   const language = useLanguageStore((state) => state.language);
   const native = hasNativeBridge();
@@ -274,6 +277,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover 
               {t('home.open')}
             </button>
           </div>
+
+          {native && <MyTemplates onOpen={onOpenTemplate} />}
 
           <label className="scf-rise mt-auto flex items-center gap-2 text-2xs text-slate-400" style={stagger(3)}>
             <Languages size={13} aria-hidden />

@@ -71,6 +71,7 @@ export function buildMenuTemplate(
       { type: 'separator' },
       command('menu.save', 'save', { accelerator: 'CmdOrCtrl+S', enabled: inEditor }),
       command('menu.saveAs', 'saveAs', { accelerator: 'CmdOrCtrl+Shift+S', enabled: inEditor }),
+      command('menu.saveTemplate', 'saveTemplate', { enabled: inEditor }),
       { type: 'separator' },
       command('menu.import', 'import', { accelerator: 'CmdOrCtrl+I', enabled: inEditor }),
       command('menu.export', 'export', { accelerator: 'CmdOrCtrl+E', enabled: inEditor }),

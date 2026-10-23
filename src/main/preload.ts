@@ -81,6 +81,10 @@ const api: FilmoraApi = {
   documentState: (state) => ipcRenderer.send(IPC.documentState, state),
   automated: process.env.SCF_BACKGROUND === '1' && process.env.SCF_TOUR !== '1',
   clipboardWrite: (text) => ipcRenderer.invoke(IPC.clipboardWrite, text) as Promise<void>,
+  templatesList: () => ipcRenderer.invoke(IPC.templatesList) as Promise<import('@shared/types/ipc').ProjectTemplate[]>,
+  templateSave: (name, documentJson) => ipcRenderer.invoke(IPC.templateSave, name, documentJson) as Promise<string>,
+  templateRead: (id) => ipcRenderer.invoke(IPC.templateRead, id) as Promise<string>,
+  templateDelete: (id) => ipcRenderer.invoke(IPC.templateDelete, id) as Promise<void>,
   setAppearance: (theme, resolved) => ipcRenderer.invoke(IPC.setAppearance, theme, resolved) as Promise<'dark' | 'light'>,
   onSaveBeforeClose(listener) {
     const handler = (): void => listener();
@@ -173,7 +177,7 @@ const api: FilmoraApi = {
   exportAudioAppend: (path, samples) => ipcRenderer.invoke(IPC.exportAudioAppend, path, samples) as Promise<void>,
   exportAudioClose: (path, discard) => ipcRenderer.invoke(IPC.exportAudioClose, path, discard) as Promise<void>,
   exportTempVideo: () => ipcRenderer.invoke(IPC.exportTempVideo) as Promise<string>,
-  denoiseAudio: (path, strength) => ipcRenderer.invoke(IPC.denoiseAudio, path, strength) as Promise<string>,
+  denoiseAudio: (path, strength, enhance) => ipcRenderer.invoke(IPC.denoiseAudio, path, strength, enhance === true) as Promise<string>,
   stabilizeVideo: (path, strength, durationSeconds, retarget) => ipcRenderer.invoke(IPC.stabilizeVideo, path, strength, durationSeconds, retarget) as Promise<string>,
   onStabilizeProgress: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: { path: string; fraction: number }) => listener(progress);

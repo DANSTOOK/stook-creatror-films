@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { SaveTemplateDialog, openTemplate, useSaveTemplate } from '@renderer/project/templates';
 import { OPEN_TTS_EVENT } from '@renderer/tts/events';
 import { WelcomeTour, useFirstTour, useTour } from '@renderer/tour/WelcomeTour';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
@@ -580,6 +581,9 @@ export default function App(): JSX.Element {
       case 'tour':
         useTour.getState().start();
         return;
+      case 'saveTemplate':
+        useSaveTemplate.getState().show();
+        return;
       case 'commandPalette':
         // A second press closes it, as the key that opened it would.
         setPaletteOpen((open) => !open);
@@ -889,6 +893,7 @@ export default function App(): JSX.Element {
           {exportPresence.mounted && <ExportDialog closing={exportPresence.closing} onClose={() => setExportOpen(false)} />}
           {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
           {view === 'editor' && <WelcomeTour />}
+          {view === 'editor' && <SaveTemplateDialog />}
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
           {silencePresence.mounted && <RemoveSilencesDialog closing={silencePresence.closing} onClose={() => useSilenceDialogStore.getState().close()} />}
@@ -927,6 +932,7 @@ export default function App(): JSX.Element {
               onOpenDialog={() => void actions.openFromDialog()}
               onOpenRecent={(path) => void actions.openRecent(path)}
               onRecover={() => void actions.recoverUnsaved()}
+              onOpenTemplate={(template) => void openTemplate(template)}
             />
           </div>
         )}

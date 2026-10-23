@@ -372,6 +372,60 @@ app.whenReady().then(() => {
     return appearance.resolved;
   });
 
+  /*
+    The user's own project templates: a project kept, with its clips, titles,
+    music and settings, to start others from. Kept with the app's data, one
+    JSON file each, wrapping the project document with its name and date.
+  */
+  const templatesFolder = (): string => join(app.getPath('userData'), 'scf', 'templates');
+  const templateFile = (id: string): string => {
+    if (!/^[a-z0-9-]{1,64}$/.test(id)) throw new Error('Not a template');
+    return join(templatesFolder(), `${id}.json`);
+  };
+  ipcMain.handle(IPC.templatesList, async () => {
+    const { readdir, readFile } = await import('node:fs/promises');
+    const names = await readdir(templatesFolder()).catch(() => [] as string[]);
+    const found = await Promise.all(
+      names
+        .filter((name) => name.endsWith('.json'))
+        .map(async (name) => {
+          try {
+            const kept = JSON.parse(await readFile(join(templatesFolder(), name), 'utf8')) as { template?: { name?: string; savedAt?: string }; document?: { project?: { clips?: object; width?: number; height?: number } } };
+            const project = kept.document?.project;
+            return {
+              id: name.slice(0, -5),
+              name: String(kept.template?.name ?? name.slice(0, -5)),
+              savedAt: String(kept.template?.savedAt ?? ''),
+              clips: Object.keys(project?.clips ?? {}).length,
+              width: Number(project?.width ?? 0),
+              height: Number(project?.height ?? 0),
+            };
+          } catch {
+            return null;
+          }
+        }),
+    );
+    return found.filter(Boolean).sort((a, b) => String(b?.savedAt).localeCompare(String(a?.savedAt)));
+  });
+  ipcMain.handle(IPC.templateSave, async (_event, name: unknown, documentJson: unknown) => {
+    if (typeof name !== 'string' || !name.trim() || typeof documentJson !== 'string') throw new Error('Nothing to keep');
+    const { mkdir, writeFile } = await import('node:fs/promises');
+    const { randomUUID } = await import('node:crypto');
+    await mkdir(templatesFolder(), { recursive: true });
+    const id = randomUUID();
+    await writeFile(templateFile(id), JSON.stringify({ template: { name: name.trim().slice(0, 120), savedAt: new Date().toISOString() }, document: JSON.parse(documentJson) }));
+    return id;
+  });
+  ipcMain.handle(IPC.templateRead, async (_event, id: unknown) => {
+    const { readFile } = await import('node:fs/promises');
+    const kept = JSON.parse(await readFile(templateFile(String(id)), 'utf8')) as { document: unknown };
+    return JSON.stringify(kept.document);
+  });
+  ipcMain.handle(IPC.templateDelete, async (_event, id: unknown) => {
+    const { rm } = await import('node:fs/promises');
+    await rm(templateFile(String(id)), { force: true });
+  });
+
   ipcMain.handle(IPC.clipboardWrite, (_event, text: unknown) => {
     if (typeof text === 'string') clipboard.writeText(text);
   });

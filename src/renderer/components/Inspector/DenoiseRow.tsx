@@ -26,20 +26,29 @@ export function DenoiseRow({ asset }: { asset: MediaAsset }): JSX.Element {
   const [working, setWorking] = useState<Choice | null>(null);
   const current: Choice = asset.denoise ?? 'off';
 
-  const choose = async (choice: Choice): Promise<void> => {
-    if (choice === current || working || !asset.sourcePath) return;
+  const enhanced = asset.voiceEnhance === true;
+  // What was just asked for, shown at once while it is being made.
+  const [asking, setAsking] = useState<boolean | null>(null);
+  const apply = async (choice: Choice, enhance: boolean): Promise<void> => {
+    if (!asset.sourcePath) return;
     setWorking(choice);
+    setAsking(enhance);
     try {
-      const audioUri =
-        choice === 'off' ? await window.filmora.extractAudio(asset.sourcePath) : await window.filmora.denoiseAudio(asset.sourcePath, choice);
+      const plain = choice === 'off' && !enhance;
+      const audioUri = plain ? await window.filmora.extractAudio(asset.sourcePath) : await window.filmora.denoiseAudio(asset.sourcePath, choice === 'off' ? null : choice, enhance);
       if (!audioUri) throw new Error(t('denoise.noSound'));
-      useProjectStore.getState().setAssetDenoise(asset.id, choice === 'off' ? null : choice, audioUri);
-      if (choice !== 'off') notify(t('denoise.done', { name: asset.name }), 'success');
+      useProjectStore.getState().setAssetDenoise(asset.id, choice === 'off' ? null : choice, audioUri, enhance);
+      if (!plain) notify(t(enhance && choice === 'off' ? 'voice.done' : 'denoise.done', { name: asset.name }), 'success');
     } catch (error) {
       notify(t('denoise.failed', { detail: error instanceof Error ? error.message : String(error) }), 'error');
     } finally {
       setWorking(null);
+      setAsking(null);
     }
+  };
+  const choose = (choice: Choice): void => {
+    if (choice === current || working) return;
+    void apply(choice, enhanced);
   };
 
   return (
@@ -59,12 +68,22 @@ export function DenoiseRow({ asset }: { asset: MediaAsset }): JSX.Element {
             data-testid={`inspector-denoise-${choice}`}
             disabled={working !== null}
             className={`rounded-[4px] py-1 text-2xs ${current === choice ? 'bg-panel-700 font-medium text-slate-100' : 'text-slate-400 hover:text-slate-200'}`}
-            onClick={() => void choose(choice)}
+            onClick={() => choose(choice)}
           >
             {t(LABEL[choice])}
           </button>
         ))}
       </div>
+      <label className="flex items-center gap-2 pt-0.5 text-2xs text-slate-200">
+        <input
+          type="checkbox"
+          data-testid="inspector-voice-enhance"
+          checked={asking ?? enhanced}
+          disabled={working !== null}
+          onChange={(event) => void apply(current, event.target.checked)}
+        />
+        {t('voice.enhance')}
+      </label>
       <p className="text-2xs leading-relaxed text-slate-400">{working ? t('denoise.working') : t('denoise.hint')}</p>
     </div>
   );

@@ -1149,10 +1149,10 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
   const denoised = new DenoiseStore(join(app.getPath('userData'), 'scf', 'clean'), resolveFfmpegPath());
   /** A file's sound, its noise taken out (main/media/denoise.ts). */
-  ipcMain.handle(IPC.denoiseAudio, async (_event, path: string, strength: DenoiseStrength) => {
+  ipcMain.handle(IPC.denoiseAudio, async (_event, path: string, strength: DenoiseStrength | null, enhance: unknown) => {
     assertAllowed(path);
-    if (strength !== 'light' && strength !== 'medium' && strength !== 'strong') throw new Error('Unknown strength');
-    const file = await denoised.make(path, strength);
+    if (strength !== null && strength !== 'light' && strength !== 'medium' && strength !== 'strong') throw new Error('Unknown strength');
+    const file = await denoised.make(path, strength, enhance === true);
     allowedPaths.add(file);
     return mediaUrlFor(file);
   });

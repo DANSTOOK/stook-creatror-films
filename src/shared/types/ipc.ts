@@ -54,6 +54,10 @@ export const IPC = {
   documentState: 'app:document-state',
   setAppearance: 'app:set-appearance',
   clipboardWrite: 'app:clipboard-write',
+  templatesList: 'templates:list',
+  templateSave: 'templates:save',
+  templateRead: 'templates:read',
+  templateDelete: 'templates:delete',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
   menuCommand: 'app:menu-command',
@@ -390,6 +394,16 @@ export interface ExportStartResult {
  * main process, but every one of these is the page's own action, so the menu
  * only names it and the page runs it - the same code a toolbar button runs.
  */
+/** One of the user's own project templates. */
+export interface ProjectTemplate {
+  id: string;
+  name: string;
+  savedAt: string;
+  clips: number;
+  width: number;
+  height: number;
+}
+
 export type MenuCommand =
   | 'new'
   | 'open'
@@ -412,6 +426,7 @@ export type MenuCommand =
   | 'mixer'
   | 'shortcuts'
   | 'tour'
+  | 'saveTemplate'
   | 'commandPalette'
   | 'preferences'
   | 'addTitle'
@@ -706,6 +721,13 @@ export interface FilmoraApi {
   automated: boolean;
   /** Text onto the system clipboard (YouTube chapters, for one). */
   clipboardWrite(text: string): Promise<void>;
+  /** The user's own project templates (renderer/project/templates.ts), newest first. */
+  templatesList(): Promise<ProjectTemplate[]>;
+  /** A project kept as a template under `name`: its id. */
+  templateSave(name: string, documentJson: string): Promise<string>;
+  /** A template's project document, as saved. */
+  templateRead(id: string): Promise<string>;
+  templateDelete(id: string): Promise<void>;
   /**
    * The look chosen in Preferences, for what the page cannot paint itself:
    * Windows' caption buttons and their strip, native scrollbars and menus,
@@ -797,7 +819,8 @@ export interface FilmoraApi {
    * A file's sound with its noise taken out (main/media/denoise.ts), made once
    * and kept; a URL to play, like extractAudio's.
    */
-  denoiseAudio(path: string, strength: 'light' | 'medium' | 'strong'): Promise<string>;
+  /** The file's sound with its noise taken out at `strength` (null: none), and enhanced as a voice when `enhance` (main/media/denoise.ts). */
+  denoiseAudio(path: string, strength: 'light' | 'medium' | 'strong' | null, enhance?: boolean): Promise<string>;
   /**
    * The file at `path`, stabilized (main/media/stabilize.ts): the stabilized
    * file's path, found from before or made now. `retarget` is the media URL

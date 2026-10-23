@@ -27,13 +27,24 @@ export const DENOISE_DB: Record<DenoiseStrength, number> = { light: 10, medium: 
 /** The floor afftdn is told sits this far above the quietest tenth's level: the bands of the hiss reach a little above its average. */
 const FLOOR_MARGIN_DB = 3;
 
-export function denoiseArgs(source: string, target: string, strength: DenoiseStrength, floorDb: number): string[] {
+/**
+ * "Enhance voice", after the noise (or alone): a studio voice from a room
+ * recording, as Premiere's Enhance Speech and CapCut's do it - rumble off,
+ * the boxiness at 300 Hz eased, presence at 3.5 kHz, the hiss of the S's
+ * tamed, a gentle compressor so the quiet words carry, and the level brought
+ * to -16 LUFS (the loudness YouTube and the networks play at), peaks held at
+ * -1.5 dB.
+ */
+export const ENHANCE_CHAIN = 'highpass=f=80,equalizer=f=300:t=q:w=1:g=-2.5,equalizer=f=3500:t=q:w=1.2:g=3,deesser=i=0.4,acompressor=threshold=-22dB:ratio=3:attack=5:release=90:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=9';
+
+export function denoiseArgs(source: string, target: string, strength: DenoiseStrength | null, floorDb: number, enhance = false): string[] {
   const nf = Math.round(Math.min(-20, Math.max(-80, floorDb + FLOOR_MARGIN_DB)));
+  const filters = [strength ? `highpass=f=80,afftdn=nr=${DENOISE_DB[strength]}:nf=${nf}` : null, enhance ? ENHANCE_CHAIN : null].filter(Boolean).join(',');
   return [
     '-hide_banner', '-v', 'error', '-y',
     '-i', source,
     '-vn',
-    '-af', `highpass=f=80,afftdn=nr=${DENOISE_DB[strength]}:nf=${nf}`,
+    '-af', filters || 'anull',
     '-c:a', 'aac', '-b:a', '192k',
     target,
   ];
@@ -107,10 +118,10 @@ export class DenoiseStore {
     private readonly ffmpeg: string,
   ) {}
 
-  /** The cleaned sound of `path` at `strength`: made now, or found from before. */
-  async make(path: string, strength: DenoiseStrength): Promise<string> {
+  /** The cleaned (and, with `enhance`, enhanced) sound of `path`: made now, or found from before. */
+  async make(path: string, strength: DenoiseStrength | null, enhance = false): Promise<string> {
     const info = await stat(path);
-    const key = `${proxyKey({ path, bytes: info.size, modifiedMs: info.mtimeMs })}-${strength}`;
+    const key = `${proxyKey({ path, bytes: info.size, modifiedMs: info.mtimeMs })}-${strength ?? 'none'}${enhance ? '-voice' : ''}`;
     const target = join(this.folder, `${key}.m4a`);
     const existing = await stat(target).catch(() => null);
     if (existing?.isFile() && existing.size > 0) return target;
@@ -120,8 +131,9 @@ export class DenoiseStore {
       await mkdir(this.folder, { recursive: true });
       const temporary = target.replace(/\.m4a$/, `.building-${process.pid}.m4a`);
       try {
-        const floor = await measureFloor(this.ffmpeg, path);
-        await execFileAsync(this.ffmpeg, denoiseArgs(path, temporary, strength, floor), { maxBuffer: 16 * 1024 * 1024, windowsHide: true });
+        // The floor only matters to the noise reduction.
+        const floor = strength ? await measureFloor(this.ffmpeg, path) : -60;
+        await execFileAsync(this.ffmpeg, denoiseArgs(path, temporary, strength, floor, enhance), { maxBuffer: 16 * 1024 * 1024, windowsHide: true });
         await rename(temporary, target);
         return target;
       } catch (error) {

@@ -453,13 +453,19 @@ interface ProjectStore {
   unlinkCaptionsFromClips(clipIds: readonly string[]): void;
 
 
-  removeClips(clipIds: string[]): void;
+  /** Delete clips; with the magnet on - or `ripple`, Shift+Delete, whatever the magnet - what follows closes up. */
+  removeClips(clipIds: string[], ripple?: boolean): void;
+  /**
+   * Premiere's Q and W: the clip under the playhead trimmed to it - its start (`start`) or
+   * its end - and what follows on its track closed up. One undo step. True if it trimmed.
+   */
+  rippleTrimToPlayhead(edge: 'start' | 'end'): boolean;
   /**
    * Take `ranges` (frames of the timeline) out of a clip and the clips linked
    * to it, closing up what follows on their tracks: "Remove silences"
    * (edit/silences.ts). One undo step. Returns how many frames came out.
    */
-  removeClipRanges(clipId: string, ranges: readonly FrameRange[]): number;
+  removeClipRanges(clipId: string, ranges: readonly FrameRange[], label?: string): number;
   /** Cut a clip and the clips linked to it at each of `frames`: "Split at scene changes" (edit/scenes.ts). One undo step. Returns the pieces. */
   splitClipAtFrames(clipId: string, frames: readonly number[]): number;
   /** Beat markers at `frames` (edit/beats.ts), one undo step; `replace` takes the old beat markers away first. */
@@ -607,7 +613,7 @@ interface ProjectStore {
    */
   setAssetAudio(assetId: string, audioUri: string): void;
   /** Reduce noise on a file's sound (Inspector/DenoiseRow): the cleaned sound as its audio, or the original back with null. */
-  setAssetDenoise(assetId: string, strength: MediaAsset['denoise'] | null, audioUri: string): void;
+  setAssetDenoise(assetId: string, strength: MediaAsset['denoise'] | null, audioUri: string, voiceEnhance?: boolean): void;
 
   /* Media bins ----------------------------------------------------------- */
   setCurrentBin(binId: string | null): void;
@@ -1900,11 +1906,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     get().transact('Unlink captions', (project) => unlinkCaptions(project, clipIds));
   },
 
-  removeClips(clipIds) {
+  removeClips(clipIds, forceRipple = false) {
     if (clipIds.length === 0) return;
     const doomed = new Set(clipIds);
 
-    const ripple = get().ui.rippleEnabled;
+    const ripple = forceRipple || get().ui.rippleEnabled;
     get().transact('Delete clip', (project) => {
       const clips = Object.fromEntries(Object.entries(project.clips).filter(([id]) => !doomed.has(id)));
       // The magnet: what came after a deleted clip closes up behind it.
@@ -1920,7 +1926,27 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ ui: { ...get().ui, selectedClipIds: [] } });
   },
 
-  removeClipRanges(clipId, ranges) {
+  rippleTrimToPlayhead(edge) {
+    const { project, ui } = get();
+    const frame = project.currentFrame;
+    const order = new Map(project.tracks.map((track) => [track.id, track.order]));
+    const under = (clip: Clip): boolean => frame > clip.startFrame && frame < clip.startFrame + clip.durationFrames;
+    // The selected clip if the playhead is on it; else the top one under the playhead.
+    const picked = ui.selectedClipIds.map((id) => project.clips[id]).find((clip) => clip && under(clip) && !clip.caption);
+    const clip =
+      picked ??
+      Object.values(project.clips)
+        .filter((candidate) => under(candidate) && !candidate.caption && !project.tracks.find((track) => track.id === candidate.trackId)?.locked)
+        .sort((a, b) => (order.get(b.trackId) ?? 0) - (order.get(a.trackId) ?? 0))[0];
+    if (!clip) return false;
+    const range = edge === 'start' ? { from: clip.startFrame, to: frame } : { from: frame, to: clip.startFrame + clip.durationFrames };
+    const removed = get().removeClipRanges(clip.id, [range], 'Ripple trim');
+    // Trimmed at its start, the clip now begins where it was: the playhead goes there, as Premiere's does.
+    if (removed > 0 && edge === 'start') get().setCurrentFrame(clip.startFrame);
+    return removed > 0;
+  },
+
+  removeClipRanges(clipId, ranges, label = 'Remove silences') {
     const { project } = get();
     const clip = project.clips[clipId];
     if (!clip || ranges.length === 0) return 0;
@@ -1928,7 +1954,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       ? Object.values(project.clips).filter((other) => other.linkGroup === clip.linkGroup).map((other) => other.id)
       : [clip.id];
     let removed = 0;
-    get().transact('Remove silences', (current) => {
+    get().transact(label, (current) => {
       const result = removeRanges(current.clips, group, ranges);
       removed = result.removed;
       return { ...current, clips: result.clips };
@@ -2743,13 +2769,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ assets: get().assets.map((asset) => (asset.id === assetId ? { ...asset, audioUri } : asset)) });
   },
 
-  setAssetDenoise(assetId, strength, audioUri) {
+  setAssetDenoise(assetId, strength, audioUri, voiceEnhance = false) {
     set({
       assets: get().assets.map((asset) => {
         if (asset.id !== assetId) return asset;
-        const { denoise: _old, ...rest } = asset;
+        const { denoise: _old, voiceEnhance: _enhanced, ...rest } = asset;
         void _old;
-        return { ...rest, audioUri, ...(strength ? { denoise: strength } : {}) };
+        void _enhanced;
+        return { ...rest, audioUri, ...(strength ? { denoise: strength } : {}), ...(voiceEnhance ? { voiceEnhance: true } : {}) };
       }),
     });
   },

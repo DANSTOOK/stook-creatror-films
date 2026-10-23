@@ -510,7 +510,8 @@ export function useEditorShortcuts(): void {
           }
           if (store.ui.selectedClipIds.length > 0) {
             event.preventDefault();
-            store.removeClips(store.ui.selectedClipIds);
+            // Shift+Delete: a ripple delete whatever the magnet says, as Premiere's.
+            store.removeClips(store.ui.selectedClipIds, event.shiftKey);
           }
           return;
         default:
@@ -544,6 +545,12 @@ export function useEditorShortcuts(): void {
         case 'w':
           // Shift+W puts the before/after curtain up, or takes it down.
           if (event.shiftKey) store.setUi({ compareSplit: store.ui.compareSplit === null ? 0.5 : null });
+          // W: the clip under the playhead ends here, and what follows closes up (Premiere's ripple trim).
+          else if (!event.ctrlKey && !event.metaKey && !event.altKey) store.rippleTrimToPlayhead('end');
+          return;
+        case 'q':
+          // Q: the clip under the playhead starts here, and what follows closes up.
+          if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) store.rippleTrimToPlayhead('start');
           return;
         case 'b':
           // Razor at the playhead, the keyboard equivalent of a razor click.
