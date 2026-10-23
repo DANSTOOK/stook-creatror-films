@@ -25,6 +25,7 @@ const SPANISH: Record<string, string> = {
   'Text to speech': 'Texto a voz',
   'Narrate captions': 'Narrar subtítulos',
   'Ripple trim': 'Recorte con desplazamiento',
+  'Remove filler words': 'Quitar muletillas',
   'Split screen': 'Pantalla dividida',
   'Switch angle': 'Cambiar de ángulo',
   'Cut to the beat': 'Cortar al ritmo',

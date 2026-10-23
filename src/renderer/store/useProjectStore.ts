@@ -148,6 +148,7 @@ import {
 } from '@renderer/media/bins';
 import { createLibraryCommand } from './useHistoryStore';
 import { removeRanges, type FrameRange } from '@renderer/edit/silences';
+import { fillerPlan } from '@renderer/edit/fillers';
 import { splitAtFrames } from '@renderer/edit/scenes';
 import { withFreeze } from '@renderer/edit/freeze';
 import { withBeatMarkers, withCutsAtBeats, withoutBeatMarkers } from '@renderer/edit/beats';
@@ -460,6 +461,8 @@ interface ProjectStore {
    * its end - and what follows on its track closed up. One undo step. True if it trimmed.
    */
   rippleTrimToPlayhead(edge: 'start' | 'end'): boolean;
+  /** The filler words said in a clip cut out of it, and out of its captions (edit/fillers.ts). One undo step; how many. */
+  removeFillers(clipId: string): number;
   /**
    * Take `ranges` (frames of the timeline) out of a clip and the clips linked
    * to it, closing up what follows on their tracks: "Remove silences"
@@ -1924,6 +1927,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return { ...project, clips: tidyLinkGroups(clips) };
     });
     set({ ui: { ...get().ui, selectedClipIds: [] } });
+  },
+
+  removeFillers(clipId) {
+    const plan = fillerPlan(get().project, clipId);
+    if (plan.count === 0) return 0;
+    const clip = get().project.clips[clipId];
+    const group = clip.linkGroup
+      ? Object.values(get().project.clips).filter((other) => other.linkGroup === clip.linkGroup).map((other) => other.id)
+      : [clip.id];
+    get().transact('Remove filler words', (current) => {
+      // The words out of the captions first, then their moments out of the clip: the captions follow the cut.
+      const clips = { ...current.clips };
+      for (const [id, content] of plan.captions) if (clips[id]) clips[id] = { ...clips[id], caption: content };
+      return { ...current, clips: removeRanges(clips, group, plan.ranges).clips };
+    });
+    return plan.count;
   },
 
   rippleTrimToPlayhead(edge) {

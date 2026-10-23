@@ -38,6 +38,7 @@ import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { freezeFrame } from '@renderer/edit/freezeRun';
 import { DenoiseRow } from './DenoiseRow';
 import { StabilizeRow } from './StabilizeRow';
+import { EasingCard } from './EasingCard';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { assetHasSound } from '@renderer/components/Timeline/detachAudio';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
@@ -522,6 +523,8 @@ export function Inspector(): JSX.Element {
           )}
         </div>
       </Section>
+      {/* How a move gets from one keyframe to the next. */}
+      <EasingCard clip={clip} />
       {/* A shaky file steadied: every clip of it (main/media/stabilize.ts). */}
       {asset?.kind === 'video' && asset.sourcePath && !clip.audioOnly && <StabilizeRow asset={asset} />}
       {/* One clip a take (edit/scenes): for a video, the picture cut wherever it changes shot. */}

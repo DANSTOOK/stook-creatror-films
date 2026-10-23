@@ -110,6 +110,7 @@ import { makeCompound } from '@renderer/edit/compoundRun';
 import { canMulticam } from '@renderer/edit/multicam';
 import { makeMulticam } from '@renderer/edit/multicamRun';
 import { copyChapters } from '@renderer/edit/chaptersRun';
+import { fillerPlan } from '@renderer/edit/fillers';
 import { OPEN_TTS_EVENT } from '@renderer/tts/events';
 import { narrateCaptions, readTitleAloud } from '@renderer/tts/speak';
 import { layoutsFor, type SplitLayout } from '@renderer/edit/splitScreen';
@@ -574,6 +575,18 @@ export function Timeline(): JSX.Element {
           label: t('beats.menu'),
           icon: Music2,
           onSelect: () => useBeatDialog.getState().show(clip.id),
+        });
+      }
+      // The "eh"s and "um"s its captions heard, cut out (edit/fillers.ts).
+      const fillers = hasSound ? fillerPlan(project, clip.id).count : 0;
+      if (fillers > 0) {
+        items.push({
+          label: t('fillers.menu', { count: fillers }),
+          icon: Scissors,
+          onSelect: () => {
+            const removed = state.removeFillers(clip.id);
+            if (removed > 0) notify(t('fillers.done', { count: removed }), 'success');
+          },
         });
       }
       if (hasSound && canRemoveSilences(clip)) {
