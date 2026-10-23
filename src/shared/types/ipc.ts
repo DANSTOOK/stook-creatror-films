@@ -52,6 +52,7 @@ export const IPC = {
   contentThumbs: 'content:thumbs',
   videoFrameTimes: 'media:video-frame-times',
   documentState: 'app:document-state',
+  setAppearance: 'app:set-appearance',
   saveBeforeClose: 'app:save-before-close',
   closeAfterSave: 'app:close-after-save',
   menuCommand: 'app:menu-command',
@@ -693,6 +694,13 @@ export interface FilmoraApi {
   videoFrameTimes?(path: string): Promise<{ times: number[]; startSeconds: number } | null>;
   /** Tell the window whether there are unsaved changes, so closing can ask. */
   documentState(state: { dirty: boolean; name: string }): void;
+  /**
+   * The look chosen in Preferences, for what the page cannot paint itself:
+   * Windows' caption buttons and their strip, native scrollbars and menus,
+   * and whether "system" can see Windows' own setting at all. Answers with
+   * the look it comes to: for "system", Windows' own.
+   */
+  setAppearance(theme: 'dark' | 'light' | 'system', resolved: 'dark' | 'light'): Promise<'dark' | 'light'>;
   /** The window asked to save before closing; save, then call closeAfterSave. */
   onSaveBeforeClose(listener: () => void): () => void;
   closeAfterSave(): Promise<void>;

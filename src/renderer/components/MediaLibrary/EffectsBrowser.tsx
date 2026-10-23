@@ -30,6 +30,7 @@ import { animationLabel, animationPreview, animationsOf, type AnimationPose, typ
 import { drawEffectSample, drawEffectThumb } from './effectThumbs';
 import { EFFECT_DRAG_TYPE, useLibraryDragStore } from './libraryDrag';
 import { THUMB_HEIGHT, THUMB_WIDTH } from './LibraryBrowsers';
+import { LibraryFinder } from './LibraryFinder';
 
 /**
  * The Effects tab of the library panel: the shader effects and the screen-zoom
@@ -318,14 +319,6 @@ function EffectTile({ type, category, hintId, onApply }: { type: string; categor
 
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-x-2 gap-y-2.5';
 
-function Hint({ id, text }: { id: string; text: string }): JSX.Element {
-  return (
-    <p id={id} className="px-1 pb-2 text-2xs leading-relaxed text-slate-400">
-      {text}
-    </p>
-  );
-}
-
 const MOTION_GROUP_LABEL: MessageKey = 'fx.effectCategory.motion';
 
 export function EffectsBrowser(): JSX.Element {
@@ -362,35 +355,36 @@ export function EffectsBrowser(): JSX.Element {
     .map((category) => ({ category, types: EFFECTS.filter((effect) => effect.category === category && effectMatches(effect.type)).map((effect) => effect.type) }))
     .filter((group) => group.types.length > 0);
 
-  const filters: EffectFilter[] = ['all', 'motion', 'animation', ...EFFECT_CATEGORIES];
+  const filterLabel = (id: EffectFilter): string =>
+    t(id === 'all' ? 'fx.category.all' : id === 'motion' ? MOTION_GROUP_LABEL : id === 'animation' ? 'fxa.filter' : effectCategoryLabel(id));
+  // How many each category holds of what the search leaves, whichever is shown.
+  const counts: Record<string, number> = {
+    motion: MOTION_PRESETS.filter(motionMatches).length,
+    animation: (['in', 'out', 'loop'] as const).reduce((sum, phase) => sum + animationsOf(phase).filter(animationMatches).length, 0),
+    ...Object.fromEntries(EFFECT_CATEGORIES.map((category) => [category, EFFECTS.filter((effect) => effect.category === category && effectMatches(effect.type)).length])),
+  };
+  const options = (['all', 'motion', 'animation', ...EFFECT_CATEGORIES] as EffectFilter[]).map((id) => ({
+    id,
+    label: filterLabel(id),
+    count: id === 'all' ? Object.values(counts).reduce((sum, count) => sum + count, 0) : counts[id] ?? 0,
+  }));
   const nothing = !showMotion && animationGroups.length === 0 && effectGroups.length === 0;
 
   return (
     <div data-testid="library-effects" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-      <Hint id={hintId} text={t('library.effectsHint')} />
-      <input
-        type="search"
-        data-testid="library-effects-search"
-        aria-label={t('fx.searchEffects')}
+      <LibraryFinder
+        query={query}
+        onQuery={setQuery}
         placeholder={t('fx.searchEffects')}
-        className="numeric-input mb-2 h-control-dense w-full px-2 text-left"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        searchTestId="library-effects-search"
+        options={options}
+        value={filter}
+        onChange={(id) => setFilter(id as EffectFilter)}
+        filterTestId="library-effects-filter"
+        hint={t('library.effectsHint')}
+        hintId={hintId}
+        categoriesLabel={t('library.categories')}
       />
-      <div role="group" aria-label={t('library.effects')} className="mb-2 flex flex-wrap gap-1">
-        {filters.map((id) => (
-          <button
-            key={id}
-            type="button"
-            data-testid={`library-effects-filter-${id}`}
-            aria-pressed={filter === id}
-            className={`tool-button tool-button-dense px-2 text-2xs ${filter === id ? 'tool-button-active' : ''}`}
-            onClick={() => setFilter(id)}
-          >
-            {t(id === 'all' ? 'fx.category.all' : id === 'motion' ? MOTION_GROUP_LABEL : id === 'animation' ? 'fxa.filter' : effectCategoryLabel(id))}
-          </button>
-        ))}
-      </div>
 
       {nothing && <p className="px-1 text-2xs text-slate-400">{t('fx.noMatch', { query })}</p>}
 

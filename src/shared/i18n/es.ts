@@ -466,6 +466,7 @@ export const es: Messages = {
   'timeline.deleteClips': 'Eliminar {count} clips',
   'timeline.renameMarker': 'Cambiar nombre del marcador',
   'timeline.markerToPlayhead': 'Llevar al cursor',
+  'timeline.marker': 'Marcador',
   'timeline.deleteMarker': 'Eliminar marcador',
   'timeline.addMarkerHere': 'Añadir marcador aquí',
   'timeline.addMarkerAtPlayhead': 'Añadir marcador en el cursor',
@@ -1395,6 +1396,7 @@ export const es: Messages = {
   /* Biblioteca de títulos -------------------------------------------------- */
   'titleLibrary.search': 'Buscar títulos',
   'titleLibrary.all': 'Todos',
+  'library.categories': 'Categorías',
   'titleLibrary.categories': 'Categorías de títulos',
   'titleLibrary.none': 'Ningún título coincide con «{query}».',
   'titleLibrary.vertical': '9:16',

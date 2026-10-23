@@ -182,7 +182,9 @@ async function main() {
     // 3. The browser: categories, search, screenshots.
     await window.getByTestId('library-tab-titles').click();
     await window.getByTestId('library-titles').waitFor({ state: 'visible', timeout: 5_000 });
+    await window.getByTestId('title-category-menu').click();
     const categoryButtons = await window.locator('[data-testid^="title-category-"]').count();
+    await window.keyboard.press('Escape');
     check('the Titles panel shows category filters', categoryButtons >= 7, `${categoryButtons} buttons`);
     await window.getByTestId('title-library-search').fill('news');
     await sleep(300);
@@ -190,10 +192,14 @@ async function main() {
     check('a search narrows the templates shown', afterSearch >= 1 && afterSearch < templates.length, `${afterSearch} shown for "news"`);
     await window.getByTestId('title-library-search').fill('');
     await sleep(200);
+    await window.getByTestId('title-category-menu').click();
+
     await window.getByTestId('title-category-cinematic').click();
     await sleep(300);
     if (shotsDir) {
       await window.getByTestId('library-titles').screenshot({ path: join(shotsDir, 'title-browser-cinematic.png') });
+      await window.getByTestId('title-category-menu').click();
+
       await window.getByTestId('title-category-all').click();
       await sleep(400);
       await window.getByTestId('library-titles').screenshot({ path: join(shotsDir, 'title-browser-all.png') });

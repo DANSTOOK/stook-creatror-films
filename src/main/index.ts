@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell, systemPreferences } from 'electron';
 import { IPC } from '@shared/types/ipc';
 import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { installAppMenu, menuLanguage } from './appMenu';
 import { BACKGROUND, OFF_SCREEN, applyBackgroundSwitches, keepOffScreen } from './background';
 import { placePanelWindow } from './panelPlacement';
@@ -36,8 +37,31 @@ const panelWindows = new Map<string, BrowserWindow>();
 
 /** The page's title bar: its height and colours, for the caption buttons drawn over it. */
 const TITLE_BAR_HEIGHT = 40;
-const TITLE_BAR_COLOR = '#0e0f11';
-const TITLE_BAR_SYMBOLS = '#cbd5e1';
+/** The bar's colours in each look: panel-950 behind, slate-300 symbols (renderer/theme/palette.css). */
+const BAR_COLOURS = {
+  dark: { color: '#0e0f11', symbolColor: '#cbd5e1' },
+  light: { color: '#e9ecf1', symbolColor: '#334155' },
+} as const;
+
+/**
+ * The look chosen in Preferences (renderer/theme/theme.ts), kept here too so a
+ * window opens in it - not dark, then light a moment later. 'system' follows
+ * Windows; it can only, with nativeTheme left to follow it.
+ */
+type Appearance = { theme: 'dark' | 'light' | 'system'; resolved: 'dark' | 'light' };
+const appearanceFile = (): string => join(app.getPath('userData'), 'scf', 'appearance.json');
+function savedAppearance(): Appearance {
+  try {
+    const parsed = JSON.parse(readFileSync(appearanceFile(), 'utf8')) as Partial<Appearance>;
+    const theme = parsed.theme === 'light' || parsed.theme === 'system' ? parsed.theme : 'dark';
+    const resolved = theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : theme;
+    return { theme, resolved };
+  } catch {
+    return { theme: 'dark', resolved: 'dark' };
+  }
+}
+let appearance: Appearance = { theme: 'dark', resolved: 'dark' };
+const barColours = (): { color: string; symbolColor: string } => BAR_COLOURS[appearance.resolved];
 /** A panel's own window has a slimmer bar: it holds a name and one button. */
 const PANEL_BAR_HEIGHT = 36;
 
@@ -135,10 +159,12 @@ function isWebUrl(url: string): boolean {
 }
 
 function createWindow(): void {
-  // The editor is dark whatever Windows is set to: native menus, dialogs and
-  // scrollbars follow this. A white bar over a dark editor was the brightest
-  // thing on screen.
-  nativeTheme.themeSource = 'dark';
+  // Native menus, dialogs and scrollbars follow the editor's look, not
+  // Windows': a white bar over a dark editor was the brightest thing on
+  // screen. 'system' leaves them - and the page's own view of it - to Windows.
+  nativeTheme.themeSource = 'system';
+  appearance = savedAppearance();
+  nativeTheme.themeSource = appearance.theme;
   mainWindow = new BrowserWindow({
     width: 1680,
     height: 960,
@@ -148,7 +174,7 @@ function createWindow(): void {
     show: false,
     // Automated runs happen off-screen and out of the taskbar (background.ts).
     ...(BACKGROUND ? { x: OFF_SCREEN, y: OFF_SCREEN, skipTaskbar: true } : {}),
-    backgroundColor: '#0d0f14',
+    backgroundColor: barColours().color,
     title: 'STOOK CREATOR FILMS',
     // The project's own logo in the title bar and taskbar, instead of
     // Electron's. Vite copies public/icon.ico next to index.html.
@@ -161,7 +187,7 @@ function createWindow(): void {
       in the bar's own colours: panel-950 behind, slate-300 symbols.
     */
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: TITLE_BAR_COLOR, symbolColor: TITLE_BAR_SYMBOLS, height: TITLE_BAR_HEIGHT },
+    titleBarOverlay: { ...barColours(), height: TITLE_BAR_HEIGHT },
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -220,7 +246,7 @@ function createWindow(): void {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          backgroundColor: TITLE_BAR_COLOR,
+          backgroundColor: barColours().color,
           autoHideMenuBar: true,
           minWidth,
           minHeight,
@@ -228,7 +254,7 @@ function createWindow(): void {
           // The same frame as the editor: the page draws the bar (the panel's
           // name and the way back) and Windows draws its buttons over it.
           titleBarStyle: 'hidden',
-          titleBarOverlay: { color: TITLE_BAR_COLOR, symbolColor: TITLE_BAR_SYMBOLS, height: PANEL_BAR_HEIGHT },
+          titleBarOverlay: { ...barColours(), height: PANEL_BAR_HEIGHT },
         },
       };
     }
@@ -322,6 +348,29 @@ app.whenReady().then(() => {
   // swept away at the next start (matting/matteStore.ts).
   const matting = registerMattingHandlers(() => mainWindow);
   app.on('will-quit', () => matting.cancelAll());
+
+  ipcMain.handle(IPC.setAppearance, (_event, theme: unknown, resolved: unknown) => {
+    if (theme !== 'dark' && theme !== 'light' && theme !== 'system') return appearance.resolved;
+    nativeTheme.themeSource = theme;
+    // For 'system' the page asked before Windows' own setting could reach it: this is the answer.
+    appearance = { theme, resolved: theme === 'system' ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light') : resolved === 'light' ? 'light' : 'dark' };
+    // The caption buttons and their strip, on the editor and every panel's window.
+    for (const window of BrowserWindow.getAllWindows()) {
+      try {
+        window.setTitleBarOverlay({ ...barColours(), height: window === mainWindow ? TITLE_BAR_HEIGHT : PANEL_BAR_HEIGHT });
+        window.setBackgroundColor(barColours().color);
+      } catch {
+        // A window without the overlay.
+      }
+    }
+    try {
+      mkdirSync(join(app.getPath('userData'), 'scf'), { recursive: true });
+      writeFileSync(appearanceFile(), JSON.stringify(appearance));
+    } catch {
+      // Not kept: it applies for this session.
+    }
+    return appearance.resolved;
+  });
 
   ipcMain.on(IPC.documentState, (_event, state: unknown) => {
     if (!state || typeof state !== 'object') return;

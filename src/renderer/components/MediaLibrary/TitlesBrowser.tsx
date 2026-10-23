@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { LibraryFinder } from './LibraryFinder';
 import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import {
@@ -29,61 +29,40 @@ type Filter = TemplateCategory | 'all';
 export function TitlesBrowser(): JSX.Element {
   const t = useT();
   const hintId = useId();
-  const searchId = useId();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
-  const groups = useMemo(() => {
-    const shown = TITLE_TEMPLATES.filter(
-      (template) =>
-        (filter === 'all' || template.category === filter) &&
-        templateMatches([t(template.name), t(template.text), t(CATEGORY_NAME[template.category]), template.id], query),
-    );
-    return TEMPLATE_CATEGORIES.map((category) => ({ category, templates: shown.filter((template) => template.category === category) })).filter(
-      (group) => group.templates.length > 0,
-    );
-  }, [filter, query, t]);
+  const found = useMemo(
+    () => TITLE_TEMPLATES.filter((template) => templateMatches([t(template.name), t(template.text), t(CATEGORY_NAME[template.category]), template.id], query)),
+    [query, t],
+  );
+  const groups = useMemo(
+    () =>
+      TEMPLATE_CATEGORIES.filter((category) => filter === 'all' || category === filter)
+        .map((category) => ({ category, templates: found.filter((template) => template.category === category) }))
+        .filter((group) => group.templates.length > 0),
+    [filter, found],
+  );
+  const options = [
+    { id: 'all', label: t('titleLibrary.all'), count: found.length },
+    ...TEMPLATE_CATEGORIES.map((category) => ({ id: category, label: t(CATEGORY_NAME[category]), count: found.filter((template) => template.category === category).length })),
+  ];
 
   return (
     <div data-testid="library-titles" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-      <p id={hintId} className="px-1 pb-2 text-2xs leading-relaxed text-slate-400">
-        {t('library.titlesHint')}
-      </p>
-      <div className="mb-2 flex items-center gap-1.5 px-0.5">
-        <label htmlFor={searchId} className="sr-only">
-          {t('titleLibrary.search')}
-        </label>
-        <Search size={13} aria-hidden className="shrink-0 text-slate-400" />
-        <input
-          id={searchId}
-          type="search"
-          data-testid="title-library-search"
-          placeholder={t('titleLibrary.search')}
-          className="numeric-input h-6 min-w-0 flex-1"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && query !== '') {
-              event.stopPropagation();
-              setQuery('');
-            }
-          }}
-        />
-      </div>
-      <div role="group" aria-label={t('titleLibrary.categories')} className="mb-2 flex flex-wrap gap-1 px-0.5">
-        {(['all', ...TEMPLATE_CATEGORIES] as Filter[]).map((category) => (
-          <button
-            key={category}
-            type="button"
-            data-testid={`title-category-${category}`}
-            aria-pressed={filter === category}
-            className={`tool-button tool-button-dense h-6 px-2 text-2xs ${filter === category ? 'tool-button-active' : ''}`}
-            onClick={() => setFilter(category)}
-          >
-            {category === 'all' ? t('titleLibrary.all') : t(CATEGORY_NAME[category])}
-          </button>
-        ))}
-      </div>
+      <LibraryFinder
+        query={query}
+        onQuery={setQuery}
+        placeholder={t('titleLibrary.search')}
+        searchTestId="title-library-search"
+        options={options}
+        value={filter}
+        onChange={(id) => setFilter(id as Filter)}
+        filterTestId="title-category"
+        hint={t('library.titlesHint')}
+        hintId={hintId}
+        categoriesLabel={t('titleLibrary.categories')}
+      />
       {groups.length === 0 && (
         <p role="status" data-testid="title-library-empty" className="px-1 py-4 text-center text-xs text-slate-400">
           {t('titleLibrary.none', { query })}

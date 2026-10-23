@@ -123,6 +123,8 @@ async function main() {
     console.log('2. dragged onto the clip');
     await window.evaluate(() => window.__scfStore.getState().setUi({ pixelsPerFrame: 2, scrollLeftPx: 0, selectedClipIds: [] }));
     await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(45));
+    await window.getByTestId('library-effects-filter-menu').click();
+
     await window.getByTestId('library-effects-filter-all').click();
     await sleep(300);
     const drop = (testId, frame, row) => window.evaluate(([id, f, r]) => {
@@ -163,6 +165,8 @@ async function main() {
     await sleep(150);
     const keys1 = (await clipState()).keys;
     await window.evaluate(() => window.__scfStore.getState().undo());
+    await window.getByTestId('library-effects-filter-menu').click();
+
     await window.getByTestId('library-effects-filter-animation').click();
     await sleep(200);
     await drop('library-anim-spinIn', 60, clipRow);
@@ -172,6 +176,8 @@ async function main() {
     check('a screen move and a clip animation dropped on the clip go on it too', keys1 > keys0 && keys2 > keys0, `keyframes ${keys0} -> ${keys1}, ${keys2}`);
 
     console.log('3. the tiles');
+    await window.getByTestId('library-effects-filter-menu').click();
+
     await window.getByTestId('library-effects-filter-all').click();
     await sleep(600);
     const tilesSeen = await window.evaluate(() => {
@@ -197,6 +203,8 @@ async function main() {
       const id = window.__scfStore.getState().addAssetToTimeline(s.assets.find((a) => a.name === 'white.mp4'), track.id, 400);
       window.__scfStore.getState().selectClips([id]);
     });
+    await window.getByTestId('library-effects-filter-menu').click();
+
     await window.getByTestId('library-effects-filter-animation').click();
     await window.getByTestId('library-anim-fadeIn').click();
     await sleep(300);

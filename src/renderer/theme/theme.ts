@@ -55,13 +55,24 @@ const systemQuery = (): MediaQueryList | null =>
 /** The theme a choice comes to now: 'system' is whichever Windows uses. */
 export const resolvedTheme = (choice: ThemeChoice): 'dark' | 'light' => (choice === 'system' ? (systemQuery()?.matches ? 'light' : 'dark') : choice);
 
+function paint(resolved: 'dark' | 'light'): void {
+  const root = document.documentElement;
+  if (resolved === 'light') root.setAttribute('data-theme', 'light');
+  else root.removeAttribute('data-theme');
+}
+
 function apply(state: { theme: ThemeChoice; accent: AccentChoice }): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  if (resolvedTheme(state.theme) === 'light') root.setAttribute('data-theme', 'light');
-  else root.removeAttribute('data-theme');
+  paint(resolvedTheme(state.theme));
   if (state.accent === 'blue') root.removeAttribute('data-accent');
   else root.setAttribute('data-accent', state.accent);
+  // Windows' caption buttons, native scrollbars and menus: the main process paints those.
+  // Following the system, the main process answers with Windows' own look:
+  // until it stopped forcing one, the page could not see it.
+  void window.filmora?.setAppearance?.(state.theme, resolvedTheme(state.theme))?.then((resolved) => {
+    if (useThemeStore.getState().theme === state.theme && state.theme === 'system') paint(resolved);
+  });
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({

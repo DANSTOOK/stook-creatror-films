@@ -314,6 +314,7 @@ export function Timeline(): JSX.Element {
   // Picture tracks on top, the topmost layer first; audio underneath.
   const tracks = timelineRows(project.tracks);
   const renamingMarker = project.markers.find((marker) => marker.id === renamingMarkerId);
+  const selectedMarker = project.markers.find((marker) => marker.id === ui.selectedMarkerId);
   const contentWidth = Math.max(
     viewportWidth,
     (project.durationFrames + project.fps * 5) * ui.pixelsPerFrame,
@@ -1042,7 +1043,8 @@ export function Timeline(): JSX.Element {
 
         const marker = markerAtPixel(state.project, state.ui, x);
         if (marker) {
-          state.setUi({ selectedMarkerId: marker.id });
+          // The marker is what is picked now: Delete removes it, not the clips.
+          state.setUi({ selectedMarkerId: marker.id, selectedClipIds: [], selectedTransitionId: null });
           state.setCurrentFrame(marker.frame);
           // Still a scrub if the pointer moves on. Zoomed out, a flag's few
           // pixels cover hundreds of frames, and a press anywhere near one used
@@ -2088,6 +2090,35 @@ export function Timeline(): JSX.Element {
               </span>
             )}
 
+            {/* The picked marker's own buttons, beside its flag: rename and delete in plain sight. */}
+            {selectedMarker && !renamingMarker && (
+              <div
+                data-testid="marker-tools"
+                className="absolute z-10 flex h-5 items-center gap-0.5 rounded-control bg-panel-800/95 pl-1.5 pr-0.5 shadow-md ring-1 ring-panel-600"
+                style={{ left: Math.max(0, selectedMarker.frame * ui.pixelsPerFrame + 6), top: 1 }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <span className="max-w-[120px] truncate text-2xs text-slate-200">{selectedMarker.label || t('timeline.marker')}</span>
+                <button
+                  type="button"
+                  data-testid="marker-rename"
+                  className="flex h-4 w-4 items-center justify-center rounded text-slate-300 hover:bg-panel-600 hover:text-white"
+                  onClick={() => setRenamingMarkerId(selectedMarker.id)}
+                  {...tip(t('timeline.renameMarker'))}
+                >
+                  <Pencil size={11} />
+                </button>
+                <button
+                  type="button"
+                  data-testid="marker-delete"
+                  className="flex h-4 w-4 items-center justify-center rounded text-slate-300 hover:bg-red-500/80 hover:text-white"
+                  onClick={() => store.getState().removeMarker(selectedMarker.id)}
+                  {...tip(t('timeline.deleteMarker'), { shortcut: keyLabel('Del') })}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
             {renamingMarker && (
               <input
                 autoFocus

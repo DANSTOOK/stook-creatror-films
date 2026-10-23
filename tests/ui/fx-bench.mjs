@@ -185,11 +185,15 @@ async function main() {
       await window.getByTestId('library-transition-cube').hover();
       await sleep(700);
       await window.screenshot({ path: join(shotsDir, 'transitions-browser.png') });
+      await window.getByTestId('library-transitions-filter-menu').click();
+
       await window.getByTestId('library-transitions-filter-motion').click();
       await window.getByTestId('library-transitions-search').fill('flip');
       await sleep(600);
       await window.screenshot({ path: join(shotsDir, 'transitions-browser-search.png') });
       await window.getByTestId('library-transitions-search').fill('');
+      await window.getByTestId('library-transitions-filter-menu').click();
+
       await window.getByTestId('library-transitions-filter-all').click();
       const transitionId2 = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.transitions)[0]);
       await window.evaluate((tid) => window.__scfStore.getState().selectTransition(tid), transitionId2);

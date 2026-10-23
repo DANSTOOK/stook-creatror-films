@@ -56,6 +56,7 @@
     "test:screen-record:ui": "node ./tests/ui/screen-record.mjs",
     "test:compound:ui": "node ./tests/ui/compound.mjs",
     "test:multicam:ui": "node ./tests/ui/multicam.mjs",
+    "test:tidy:ui": "node ./tests/ui/tidy.mjs",
     "test:import-rescue:ui": "node ./tests/ui/import-rescue.mjs",
     "test:detached-fill:ui": "node ./tests/ui/detached-fill.mjs",
     "test:effects-edit:ui": "node ./tests/ui/effects-edit.mjs",

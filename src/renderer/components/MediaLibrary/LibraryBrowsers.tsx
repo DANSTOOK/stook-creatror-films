@@ -11,6 +11,7 @@ import { useT } from '@renderer/i18n';
 import { drawTransitionThumb, transitionLoopProgress } from './libraryThumbs';
 import { TITLE_DRAG_TYPE, TRANSITION_DRAG_TYPE, useLibraryDragStore, type LibraryDragKind } from './libraryDrag';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
+import { LibraryFinder } from './LibraryFinder';
 
 /**
  * The Titles and Transitions tabs of the library panel: templates to drag
@@ -137,14 +138,6 @@ export function LibraryItem({ label, testId, dragKind, dragValue, hintId, draw, 
   );
 }
 
-function Hint({ id, text }: { id: string; text: string }): JSX.Element {
-  return (
-    <p id={id} className="px-1 pb-2 text-2xs leading-relaxed text-slate-400">
-      {text}
-    </p>
-  );
-}
-
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-x-2 gap-y-2.5';
 
 /** Stable per preset, so a re-render does not restart a playing thumbnail. */
@@ -216,40 +209,30 @@ export function TransitionsBrowser(): JSX.Element {
   const needle = query.trim().toLocaleLowerCase();
   const matches = (preset: TransitionPreset): boolean =>
     !needle || t(presetLabel(preset)).toLocaleLowerCase().includes(needle) || preset.toLowerCase().includes(needle);
-  const groups: Array<{ id: 'basic' | ShaderTransitionCategory; presets: TransitionPreset[] }> = [
+  const found: Array<{ id: 'basic' | ShaderTransitionCategory; presets: TransitionPreset[] }> = [
     { id: 'basic' as const, presets: [...TRANSITION_PRESETS] as TransitionPreset[] },
     ...SHADER_TRANSITION_CATEGORIES.map((category) => ({ id: category, presets: SHADER_TRANSITIONS.filter((entry) => entry.category === category).map((entry) => entry.id) })),
-  ]
-    .filter((group) => filter === 'all' || group.id === filter)
-    .map((group) => ({ ...group, presets: group.presets.filter(matches) }))
-    .filter((group) => group.presets.length > 0);
-  const filters: Filter[] = ['all', 'basic', ...SHADER_TRANSITION_CATEGORIES];
+  ].map((group) => ({ ...group, presets: group.presets.filter(matches) }));
+  const groups = found.filter((group) => (filter === 'all' || group.id === filter) && group.presets.length > 0);
+  const options = [
+    { id: 'all', label: t('fx.category.all'), count: found.reduce((sum, group) => sum + group.presets.length, 0) },
+    ...found.map((group) => ({ id: group.id, label: t(transitionCategoryLabel(group.id)), count: group.presets.length })),
+  ];
   return (
     <div data-testid="library-transitions" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-      <Hint id={hintId} text={t('library.transitionsHint')} />
-      <input
-        type="search"
-        data-testid="library-transitions-search"
-        aria-label={t('fx.search')}
+      <LibraryFinder
+        query={query}
+        onQuery={setQuery}
         placeholder={t('fx.search')}
-        className="numeric-input mb-2 h-control-dense w-full px-2 text-left"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        searchTestId="library-transitions-search"
+        options={options}
+        value={filter}
+        onChange={(id) => setFilter(id as Filter)}
+        filterTestId="library-transitions-filter"
+        hint={t('library.transitionsHint')}
+        hintId={hintId}
+        categoriesLabel={t('library.categories')}
       />
-      <div role="group" aria-label={t('library.transitions')} className="mb-2 flex flex-wrap gap-1">
-        {filters.map((id) => (
-          <button
-            key={id}
-            type="button"
-            data-testid={`library-transitions-filter-${id}`}
-            aria-pressed={filter === id}
-            className={`tool-button tool-button-dense px-2 text-2xs ${filter === id ? 'tool-button-active' : ''}`}
-            onClick={() => setFilter(id)}
-          >
-            {t(id === 'all' ? 'fx.category.all' : transitionCategoryLabel(id))}
-          </button>
-        ))}
-      </div>
       {groups.length === 0 && <p className="px-1 text-2xs text-slate-400">{t('fx.noMatch', { query })}</p>}
       {groups.map((group) => (
         <section key={group.id} className="mb-3">

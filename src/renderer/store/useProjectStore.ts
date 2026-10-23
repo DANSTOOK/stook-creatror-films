@@ -1073,7 +1073,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const current = get().ui.selectedClipIds;
     const asked = exact ? clipIds : expandSelection(get().project.clips, clipIds);
     const next = additive ? [...new Set([...current, ...asked])] : asked;
-    set({ ui: { ...get().ui, selectedClipIds: next, selectedTransitionId: next.length > 0 ? null : get().ui.selectedTransitionId } });
+    // Picking clips puts down a picked marker, so Delete takes what was picked last.
+    set({ ui: { ...get().ui, selectedClipIds: next, selectedTransitionId: next.length > 0 ? null : get().ui.selectedTransitionId, selectedMarkerId: next.length > 0 ? null : get().ui.selectedMarkerId } });
   },
 
   linkSelection() {
@@ -1597,7 +1598,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   selectTransition(transitionId) {
-    set({ ui: { ...get().ui, selectedTransitionId: transitionId, selectedClipIds: transitionId ? [] : get().ui.selectedClipIds } });
+    set({ ui: { ...get().ui, selectedTransitionId: transitionId, selectedClipIds: transitionId ? [] : get().ui.selectedClipIds, selectedMarkerId: transitionId ? null : get().ui.selectedMarkerId } });
   },
 
   commitTitleText(clipId, fromText) {

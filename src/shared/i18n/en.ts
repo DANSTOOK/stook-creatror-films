@@ -467,6 +467,7 @@ export const en = {
   'timeline.deleteClips': 'Delete {count} clips',
   'timeline.renameMarker': 'Rename marker',
   'timeline.markerToPlayhead': 'Move to playhead',
+  'timeline.marker': 'Marker',
   'timeline.deleteMarker': 'Delete marker',
   'timeline.addMarkerHere': 'Add marker here',
   'timeline.addMarkerAtPlayhead': 'Add marker at playhead',
@@ -1396,6 +1397,7 @@ export const en = {
   /* Title library ------------------------------------------------------------ */
   'titleLibrary.search': 'Search titles',
   'titleLibrary.all': 'All',
+  'library.categories': 'Categories',
   'titleLibrary.categories': 'Title categories',
   'titleLibrary.none': 'No title matches “{query}”.',
   'titleLibrary.vertical': '9:16',

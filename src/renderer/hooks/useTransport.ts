@@ -496,6 +496,12 @@ export function useEditorShortcuts(): void {
           return;
         case 'Delete':
         case 'Backspace':
+          // A picked marker goes on its own, as a picked transition does.
+          if (store.ui.selectedMarkerId && store.project.markers.some((marker) => marker.id === store.ui.selectedMarkerId)) {
+            event.preventDefault();
+            store.removeMarker(store.ui.selectedMarkerId);
+            return;
+          }
           // A picked transition goes on its own; the clips it joins stay.
           if (store.ui.selectedTransitionId) {
             event.preventDefault();
