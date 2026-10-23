@@ -64,7 +64,7 @@ export function LibraryFinder({ query, onQuery, placeholder, searchTestId, optio
   }, [open]);
 
   return (
-    <div ref={holder} className="sticky top-0 z-20 -mx-2 -mt-2 mb-2 flex items-center gap-1.5 bg-panel-900 px-2 pb-2 pt-2">
+    <div ref={holder} className="sticky -top-2 z-20 -mx-2 -mt-2 mb-2 flex items-center gap-1.5 bg-panel-900 px-2 pb-2 pt-2">
       <p id={hintId} className="sr-only">
         {hint}
       </p>
