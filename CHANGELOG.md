@@ -16,6 +16,60 @@ fotogramas exportados correctos).
 
 ---
 
+## v1.72.0-beta.1 — Efectos por familias, 15 efectos nuevos y vistas previas nuevas
+2026-10-23 · pre-release para probar · lo pedido en efectos y transiciones
+
+### Añadido
+- **Efectos separados en dos familias, cada una con su color:**
+  **Cámara y movimiento** (azul: zooms, paneos, Ken Burns, efectos de cámara y
+  animaciones de entrada, salida y bucle) y **Efectos visuales** (violeta:
+  color, desenfoque, distorsión, glitch, estilizar, película y luz). Cada
+  familia tiene su encabezado con lo que hace, y cada miniatura lleva una
+  insignia del color de su familia. El desplegable permite elegir una familia
+  entera o un grupo.
+  - *Comprobado:* `tests/ui/effects-families.mjs` **8/8**: primero Cámara y
+    movimiento, luego Efectos visuales; cada miniatura en su familia y las
+    insignias en dos colores; «Cámara y movimiento» muestra sus 29 y
+    «Glitch» sus 7.
+- **15 efectos nuevos** (61 en total, antes 46):
+  - *Glitch* (categoría nueva): **Cinta VHS**, **Glitch digital**, **Cortes
+    glitch**, **Separación RGB** animada, **Estática de TV**, **Pantalla CRT**
+    (más el Glitch que ya había).
+  - *Cámara:* **Temblor de cámara**, **Cámara en mano** y **Zoom de impacto**
+    (un golpe de zoom en cada tiempo). Agrandan el encuadre lo justo para que
+    nunca se vea un borde.
+  - *Luz:* **Brillo (resplandor)** y **Destello**.
+  - *Estilo y lente:* **Posterizar**, **Duotono**, **Espejo** y **Ojo de pez**.
+  - *Comprobado:* `tests/ui/effects-families.mjs`: cada uno, aplicado desde
+    su miniatura, cambia la imagen de exportación; los que se mueven solos
+    cambian de un fotograma a otro; el temblor a 60 px y 4° nunca deja ver un
+    borde (todas las esquinas y bordes opacos en 8 fotogramas). Medidos en la
+    Intel UHD a 1080p: todos por debajo de 1,1 ms por fotograma, salvo el
+    resplandor, que cuesta 7,8 ms.
+
+### Cambiado
+- **Vistas previas de transiciones:** en lugar de una «A» y una «B», dos
+  lugares: un lago al atardecer con montañas, pinos y una persona en la
+  orilla, y una ciudad de noche con estrellas, luna, ventanas encendidas y un
+  letrero de neón. Están dibujadas por el propio editor (sin imágenes que
+  licenciar ni descargar) y siguen distinguiéndose por la luz además de por el
+  color.
+- **Vistas previas de efectos:** sobre la escena del atardecer. Al pasar el
+  ratón, los efectos que se mueven (glitches, temblores, destellos) se
+  **reproducen en vivo**, y los estáticos muestran un **antes y después** con
+  una cortinilla que barre la imagen, para que hasta un cambio sutil se vea.
+  - *Comprobado:* `tests/ui/effects-families.mjs`: al pasar el ratón, VHS se
+    anima y Sepia barre entre antes y después; la miniatura de una transición
+    tiene 954 colores distintos (dos degradados con letra no pasaban de unos
+    cientos).
+
+### Comprobado en conjunto
+- 1650 pruebas unitarias, 127/127 de interfaz, efectos 11/11, edición de
+  efectos 9/9, familias de efectos 8/8, búsqueda/tema/marcadores 11/11,
+  calidad de reproducción 7/7, transiciones 24/24 y 35/35, capa de ajuste 6/6.
+
+---
+
 ## v1.71.0-beta.1 — Reproducción fluida con efectos, marcadores, tema y búsqueda
 2026-10-22 · pre-release para probar · arreglos pedidos
 
