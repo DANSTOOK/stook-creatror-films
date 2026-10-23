@@ -52,6 +52,8 @@ const api: FilmoraApi = {
   detectScenes: (path, request) => ipcRenderer.invoke(IPC.detectScenes, path, request) as Promise<number[]>,
   detectBeats: (path, fromSeconds, toSeconds) => ipcRenderer.invoke(IPC.detectBeats, path, fromSeconds, toSeconds) as Promise<{ bpm: number; beats: number[]; downbeats: number[] }>,
   saveSticker: (id, png) => ipcRenderer.invoke(IPC.saveSticker, id, png) as Promise<string>,
+  saveSound: (id, wav) => ipcRenderer.invoke(IPC.saveSound, id, wav) as Promise<string>,
+  findSound: (id) => ipcRenderer.invoke(IPC.findSound, id) as Promise<string | null>,
   saveStill: (id, png) => ipcRenderer.invoke(IPC.saveStill, id, png) as Promise<string>,
   trackObject: (path, request) => ipcRenderer.invoke(IPC.trackObject, path, request) as Promise<Array<{ t: number; x: number; y: number; score: number; scale: number; angle: number }>>,
   registerDroppedFiles: (files) =>
@@ -170,6 +172,16 @@ const api: FilmoraApi = {
   exportTempVideo: () => ipcRenderer.invoke(IPC.exportTempVideo) as Promise<string>,
   denoiseAudio: (path, strength) => ipcRenderer.invoke(IPC.denoiseAudio, path, strength) as Promise<string>,
   saveRecording: (name, webm) => ipcRenderer.invoke(IPC.saveRecording, name, webm) as Promise<string>,
+  captureSources: () => ipcRenderer.invoke(IPC.captureSources) as Promise<Array<{ id: string; name: string; kind: 'screen' | 'window'; thumbnail: string }>>,
+  saveScreenRecording: (name, webm) => ipcRenderer.invoke(IPC.saveScreenRecording, name, webm) as Promise<string>,
+  captureStopShortcut: (on) => ipcRenderer.invoke(IPC.captureStopShortcut, on) as Promise<boolean>,
+  onCaptureStop(listener) {
+    const handler = (): void => listener();
+    ipcRenderer.on(IPC.captureStopPressed, handler);
+    return () => {
+      ipcRenderer.off(IPC.captureStopPressed, handler);
+    };
+  },
   exportDeliver: (folder, name, kind, source, options) => ipcRenderer.invoke(IPC.exportDeliver, folder, name, kind, source, options) as Promise<string>,
   exportStart: (settings: ExportSettings) => ipcRenderer.invoke(IPC.exportStart, settings),
   exportFrame: (jobId, rgba) => ipcRenderer.invoke(IPC.exportFrame, jobId, rgba),

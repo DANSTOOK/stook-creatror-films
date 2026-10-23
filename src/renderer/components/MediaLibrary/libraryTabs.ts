@@ -8,7 +8,7 @@
  */
 export const LIBRARY_TAB_EVENT = 'scf:library-tab';
 
-export type LibraryTab = 'media' | 'titles' | 'transitions' | 'effects' | 'stickers' | 'captions';
+export type LibraryTab = 'media' | 'titles' | 'transitions' | 'effects' | 'stickers' | 'sounds' | 'captions';
 
 export function showLibraryTab(tab: LibraryTab): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(LIBRARY_TAB_EVENT, { detail: tab }));

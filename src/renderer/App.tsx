@@ -27,6 +27,7 @@ import { ReframeDialog, useReframeDialog } from './components/Reframe/ReframeDia
 import { SceneCutsDialog, useSceneDialog } from './components/SceneCuts/SceneCutsDialog';
 import { VoiceoverDialog, useVoiceoverDialog } from './voiceover/VoiceoverDialog';
 import { BeatDialog, useBeatDialog } from './components/Beats/BeatDialog';
+import { ScreenRecordDialog, useScreenRecordDialog } from './capture/ScreenRecordDialog';
 import { TextToSpeechWindow } from './components/TextToSpeech/TextToSpeechWindow';
 import { focusDetachedWindow } from './components/Layout/useDetachedWindow';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
@@ -258,6 +259,8 @@ export default function App(): JSX.Element {
   const voiceoverPresence = usePresence(voiceoverOpen);
   const beatsOpen = useBeatDialog((state) => state.open);
   const beatsPresence = usePresence(beatsOpen);
+  const captureOpen = useScreenRecordDialog((state) => state.open);
+  const capturePresence = usePresence(captureOpen);
 
   /* Session ----------------------------------------------------------------- */
 
@@ -861,6 +864,7 @@ export default function App(): JSX.Element {
           {scenesPresence.mounted && <SceneCutsDialog closing={scenesPresence.closing} onClose={() => useSceneDialog.getState().close()} />}
           {voiceoverPresence.mounted && <VoiceoverDialog closing={voiceoverPresence.closing} onClose={() => useVoiceoverDialog.getState().close()} />}
           {beatsPresence.mounted && <BeatDialog closing={beatsPresence.closing} onClose={() => useBeatDialog.getState().close()} />}
+          {capturePresence.mounted && <ScreenRecordDialog closing={capturePresence.closing} onClose={() => useScreenRecordDialog.getState().close()} />}
           {/* Text to speech lives in a window of its own now, not a modal, so
               the editor stays live while a voice is set up (TextToSpeechWindow). */}
           {view === 'editor' && ttsOpen && <TextToSpeechWindow onClose={() => setTtsOpen(false)} />}

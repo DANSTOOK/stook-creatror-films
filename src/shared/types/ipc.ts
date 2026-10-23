@@ -20,6 +20,8 @@ export const IPC = {
   detectBeats: 'media:detect-beats',
   saveStill: 'media:save-still',
   saveSticker: 'media:save-sticker',
+  saveSound: 'media:save-sound',
+  findSound: 'media:find-sound',
   trackObject: 'media:track-object',
   openProject: 'dialog:open-project',
   projectsList: 'projects:list',
@@ -82,6 +84,10 @@ export const IPC = {
   exportTempVideo: 'export:temp-video',
   denoiseAudio: 'media:denoise-audio',
   saveRecording: 'media:save-recording',
+  captureSources: 'capture:sources',
+  saveScreenRecording: 'capture:save',
+  captureStopShortcut: 'capture:stop-shortcut',
+  captureStopPressed: 'capture:stop-pressed',
   exportDeliver: 'export:deliver',
   exportStart: 'export:start',
   exportFrame: 'export:frame',
@@ -590,6 +596,10 @@ export interface FilmoraApi {
    * path, ready to import. The same sticker in the same language is one file.
    */
   saveSticker(id: string, png: ArrayBuffer): Promise<string>;
+  /** A sound of the library (renderer/sounds), rendered as a WAV and kept in the app's folder; its path. */
+  saveSound(id: string, wav: ArrayBuffer): Promise<string>;
+  /** That sound's file when it was made before, or null. */
+  findSound(id: string): Promise<string | null>;
   /** A still the editor made (a freeze frame), kept in the app's folder; its path. */
   saveStill(id: string, png: ArrayBuffer): Promise<string>;
   /**
@@ -772,6 +782,17 @@ export interface FilmoraApi {
    * `name` is the file's name without its extension; its path.
    */
   saveRecording(name: string, webm: ArrayBuffer): Promise<string>;
+  /** The screens and windows that can be recorded, each with a small picture of itself (a PNG data URL). */
+  captureSources(): Promise<Array<{ id: string; name: string; kind: 'screen' | 'window'; thumbnail: string }>>;
+  /**
+   * A screen or webcam recording (WebM from MediaRecorder), kept in the app's
+   * folder as an MP4 that edits like any footage (H.264 at a steady 30 fps,
+   * AAC); its path. `name` is the file's name without its extension.
+   */
+  saveScreenRecording(name: string, webm: ArrayBuffer): Promise<string>;
+  /** While a screen is recorded, Ctrl+Shift+F9 stops it from anywhere; on is true while recording. */
+  captureStopShortcut(on: boolean): Promise<boolean>;
+  onCaptureStop(listener: () => void): () => void;
   /** A place in the temp folder for a video a GIF is then made from. */
   exportTempVideo(): Promise<string>;
   /**

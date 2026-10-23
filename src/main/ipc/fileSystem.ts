@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+﻿import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import { execFile } from 'node:child_process';
 import { mkdir, open, readdir, readFile, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join } from 'node:path';
@@ -484,6 +484,25 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     await mkdir(folder, { recursive: true });
     const path = join(folder, `${name}.png`);
     await writeFile(path, Buffer.from(png));
+    allowedPaths.add(path);
+    return path;
+  });
+
+  /** A sound of the library (renderer/sounds), kept in the app's folder as a WAV, version 2 of its synthesis (peaks matched). */
+  const soundPath = (id: string): string =>
+    join(app.getPath('userData'), 'scf', 'sounds', `${String(id).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'sound'}-v2.wav`);
+  ipcMain.handle(IPC.saveSound, async (_event, id: string, wav: ArrayBuffer): Promise<string> => {
+    if (!(wav instanceof ArrayBuffer) || wav.byteLength < 44 || wav.byteLength > 64 * 1024 * 1024) throw new Error('Not a sound');
+    const path = soundPath(id);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, Buffer.from(wav));
+    allowedPaths.add(path);
+    return path;
+  });
+  ipcMain.handle(IPC.findSound, async (_event, id: string): Promise<string | null> => {
+    const path = soundPath(id);
+    const info = await stat(path).catch(() => null);
+    if (!info?.isFile() || info.size < 44) return null;
     allowedPaths.add(path);
     return path;
   });
@@ -1154,6 +1173,54 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     allowedPaths.add(target);
     return target;
   });
+
+  /** What can be recorded: every screen, and the windows that are open (renderer/capture). */
+  ipcMain.handle(IPC.captureSources, async () => {
+    const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: false });
+    return sources
+      .filter((source) => !source.name.startsWith('STOOK CREATOR FILMS'))
+      .map((source) => ({ id: source.id, name: source.name, kind: source.id.startsWith('screen') ? 'screen' : 'window', thumbnail: source.thumbnail.toDataURL() }));
+  });
+
+  /** A screen or webcam recording: WebM in, an MP4 at a steady 30 fps out, kept in the app's folder. */
+  ipcMain.handle(IPC.saveScreenRecording, async (_event, name: string, webm: ArrayBuffer): Promise<string> => {
+    if (!(webm instanceof ArrayBuffer) || webm.byteLength === 0 || webm.byteLength > 8 * 1024 * 1024 * 1024) throw new Error('Not a recording');
+    const folder = join(app.getPath('userData'), 'scf', 'recordings');
+    await mkdir(folder, { recursive: true });
+    const base = sanitizeFileName(String(name)) || 'recording';
+    let target = join(folder, `${base}.mp4`);
+    for (let n = 2; await stat(target).then(() => true, () => false); n += 1) target = join(folder, `${base} (${n}).mp4`);
+    const raw = join(tmpdir(), `scf-capture-${randomUUID()}.webm`);
+    await writeFile(raw, Buffer.from(webm));
+    try {
+      await execFileAsync(
+        resolveFfmpegPath(),
+        ['-hide_banner', '-v', 'error', '-y', '-i', raw, '-map', '0:v:0', '-map', '0:a?', '-vf', 'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', target],
+        { maxBuffer: 16 * 1024 * 1024, windowsHide: true },
+      );
+    } finally {
+      await rm(raw, { force: true });
+    }
+    allowedPaths.add(target);
+    return target;
+  });
+
+  /** Ctrl+Shift+F9 stops a screen recording from whatever app is in front. */
+  const STOP_KEYS = 'CommandOrControl+Shift+F9';
+  ipcMain.handle(IPC.captureStopShortcut, async (_event, on: boolean) => {
+    if (!on) {
+      globalShortcut.unregister(STOP_KEYS);
+      return false;
+    }
+    if (globalShortcut.isRegistered(STOP_KEYS)) return true;
+    return globalShortcut.register(STOP_KEYS, () => {
+      getWindow()?.webContents.send(IPC.captureStopPressed);
+      const window = getWindow();
+      if (window?.isMinimized()) window.restore();
+      window?.focus();
+    });
+  });
+  app.on('will-quit', () => globalShortcut.unregister(STOP_KEYS));
 
   ipcMain.handle(IPC.exportTempVideo, async () => {
     const path = join(tmpdir(), `scf-gif-source-${randomUUID()}.mp4`);

@@ -22,6 +22,8 @@ import {
   Type,
   ArrowLeftRight,
   Smile,
+  Music2,
+  MonitorUp,
   Sparkles,
   Captions,
   type LucideProps,
@@ -54,6 +56,8 @@ import { useIndicator } from '@renderer/motion/useIndicator';
 import { TransitionsBrowser } from './LibraryBrowsers';
 import { EffectsBrowser } from './EffectsBrowser';
 import { StickersBrowser } from './StickersBrowser';
+import { SoundsBrowser } from './SoundsBrowser';
+import { useScreenRecordDialog } from '@renderer/capture/ScreenRecordDialog';
 import { TitlesBrowser } from './TitlesBrowser';
 import { TranscriptPanel } from '@renderer/components/Captions/TranscriptPanel';
 import { LIBRARY_TAB_EVENT, type LibraryTab } from './libraryTabs';
@@ -94,13 +98,14 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'captions'];
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'sounds', 'captions'];
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
   transitions: 'library.transitions',
   effects: 'library.effects',
   stickers: 'library.stickers',
+  sounds: 'library.sounds',
   // The transcript: the captions as a list (components/Captions/TranscriptPanel).
   captions: 'library.captions',
 };
@@ -117,6 +122,7 @@ const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
   transitions: ArrowLeftRight,
   effects: Sparkles,
   stickers: Smile,
+  sounds: Music2,
   captions: Captions,
 };
 
@@ -131,6 +137,7 @@ const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
   transitions: 'library.transitionsTip',
   effects: 'library.effectsTip',
   stickers: 'library.stickersTip',
+  sounds: 'library.soundsTip',
   captions: 'library.captionsTip',
 };
 
@@ -594,6 +601,7 @@ export function MediaLibrary(): JSX.Element {
                 { preventDefault: () => undefined, clientX: box?.left ?? 0, clientY: (box?.bottom ?? 0) + 4 },
                 [
                   { label: tr('media.importFiles'), icon: Import, shortcut: keyLabel('Ctrl+I'), onSelect: handleImportClick },
+                  { label: tr('capture.menu'), icon: MonitorUp, onSelect: () => useScreenRecordDialog.getState().show() },
                   ...(hasNativeBridge()
                     ? [{ label: tr('media.importFolder'), icon: FolderInput, onSelect: handleFolderClick }]
                     : []),
@@ -692,6 +700,7 @@ export function MediaLibrary(): JSX.Element {
       {tab === 'transitions' && <TransitionsBrowser />}
       {tab === 'effects' && <EffectsBrowser />}
       {tab === 'stickers' && <StickersBrowser />}
+      {tab === 'sounds' && <SoundsBrowser />}
       {tab === 'captions' && <TranscriptPanel />}
       {/* Bins above the clips in a narrow panel; beside them, as Resolve's
           Media Pool keeps its bin list, once the panel is wide (index.css). */}

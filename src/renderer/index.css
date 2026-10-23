@@ -644,6 +644,12 @@
      was cut off at 1280 px): icons alone, the open one marked by the
      highlight, every name in its tooltip. */
   @container (max-width: 239px) {
+    /* Seven tabs in a docked panel: a little less room round each icon. */
+    .library-tabs .library-tab {
+      padding-left: 5px;
+      padding-right: 5px;
+    }
+
     .library-tab:hover .library-tab-label,
     .library-tab:focus-visible .library-tab-label,
     .library-tab[aria-selected='true'] .library-tab-label {
