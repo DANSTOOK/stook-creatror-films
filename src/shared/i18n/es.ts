@@ -1183,6 +1183,12 @@ export const es: Messages = {
 
   /* Viewer --------------------------------------------------------------- */
   'viewer.fit': 'Ajustar',
+  'viewer.quality': 'Calidad de reproducción',
+  'viewer.qualityHint': 'Con qué detalle dibuja el visor mientras reproduce. Auto dibuja lo que muestra el visor, para que los efectos vayan fluidos en cualquier GPU; un fotograma en pausa y cualquier exportación van siempre a calidad completa.',
+  'viewer.quality.auto': 'Auto',
+  'viewer.quality.full': 'Completa',
+  'viewer.quality.half': '1/2',
+  'viewer.quality.quarter': '1/4',
   'viewer.zoom': 'Zoom del visor',
   'viewer.transform': 'Transformar',
   'viewer.transformHint': 'Transformar: tiradores en el clip seleccionado para moverlo, escalarlo y girarlo',

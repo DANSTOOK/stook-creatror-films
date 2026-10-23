@@ -8,6 +8,7 @@ import { tickScopes } from '@renderer/scopes/scopeFeed';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { useZoneEditStore } from '@renderer/fx/motion/zoneEdit';
 import { withClipAtRest } from '@renderer/fx/motion/apply';
+import { usePreviewQuality } from './previewQuality';
 
 /**
  * Wires the WebGL compositor to the store.
@@ -68,10 +69,31 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
     const canvas = canvasRef.current;
     const renderer = rendererRef.current;
     if (!canvas || !renderer) return;
-
-    canvas.width = width;
-    canvas.height = height;
     renderer.resize(width, height);
+  }, [canvasRef, width, height]);
+
+  // How big the picture is on screen, in device pixels: playing, the viewer
+  // draws no more than that (engine/previewSize.ts).
+  const quality = usePreviewQuality((state) => state.quality);
+  useEffect(() => {
+    if (rendererRef.current) rendererRef.current.previewQuality = quality;
+  }, [quality]);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === 'undefined') return undefined;
+    const measure = (): void => {
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+      const box = canvas.getBoundingClientRect();
+      const ratio = canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1;
+      // object-contain: the picture fills the box along one side.
+      const fit = Math.min(box.width / width, box.height / height);
+      renderer.displaySize = { width: width * fit * ratio, height: height * fit * ratio };
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    measure();
+    return () => observer.disconnect();
   }, [canvasRef, width, height]);
 
   useEffect(() => {

@@ -35,6 +35,8 @@ import { CompareCurtain } from './CompareCurtain';
 import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { TrackBoxOverlay } from './TrackBoxOverlay';
 import { MulticamBar } from './MulticamBar';
+import { usePreviewQuality } from './previewQuality';
+import { PREVIEW_QUALITIES, type PreviewQuality } from '@renderer/engine/previewSize';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { useWorkspaceStore } from '@renderer/store/useWorkspaceStore';
 import { MENU_IMPORT_EVENT } from '@renderer/components/MediaLibrary/MediaLibrary';
@@ -74,6 +76,8 @@ export function PreviewViewport(): JSX.Element {
   const project = useProjectStore((state) => state.project);
   const ui = useProjectStore((state) => state.ui);
   const setUi = useProjectStore((state) => state.setUi);
+  const previewQuality = usePreviewQuality((state) => state.quality);
+  const setPreviewQuality = usePreviewQuality((state) => state.setQuality);
   const projectName = useSessionStore((state) => state.projectName);
   const [zoom, setZoom] = useState<Zoom>('fit');
 
@@ -315,6 +319,24 @@ export function PreviewViewport(): JSX.Element {
               {ZOOMS.map((value) => (
                 <option key={String(value)} value={String(value)}>
                   {zoomLabel(value)}
+                </option>
+              ))}
+            </select>
+            {/* Playback resolution, as Resolve and Premiere have it: lighter while playing, never in an export. */}
+            <label className="sr-only" htmlFor="viewer-quality">
+              {t('viewer.quality')}
+            </label>
+            <select
+              id="viewer-quality"
+              data-testid="viewer-quality"
+              className="numeric-input h-control-dense w-[66px] text-2xs"
+              value={previewQuality}
+              onChange={(event) => setPreviewQuality(event.target.value as PreviewQuality)}
+              {...tip(t('viewer.quality'), { hint: t('viewer.qualityHint'), named: false })}
+            >
+              {PREVIEW_QUALITIES.map((value) => (
+                <option key={value} value={value}>
+                  {t(`viewer.quality.${value}` as 'viewer.quality.auto')}
                 </option>
               ))}
             </select>

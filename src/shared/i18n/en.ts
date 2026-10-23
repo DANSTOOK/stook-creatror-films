@@ -1184,6 +1184,12 @@ export const en = {
 
   /* Viewer --------------------------------------------------------------- */
   'viewer.fit': 'Fit',
+  'viewer.quality': 'Playback quality',
+  'viewer.qualityHint': 'How finely the viewer draws while playing. Auto draws what the viewer shows, so effects stay smooth on any GPU; a paused frame and every export are always full quality.',
+  'viewer.quality.auto': 'Auto',
+  'viewer.quality.full': 'Full',
+  'viewer.quality.half': '1/2',
+  'viewer.quality.quarter': '1/4',
   'viewer.zoom': 'Viewer zoom',
   'viewer.transform': 'Transform',
   'viewer.transformHint': 'Transform - handles on the selected clip, to move, scale and turn it',

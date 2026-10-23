@@ -14,6 +14,7 @@ import { withCaptionTitles } from '@renderer/captions/captionRender';
 import { matteUrlFor, partialMatteUrlFor, useMattes } from '@renderer/matting/mattes';
 import { t } from '@renderer/i18n';
 import { MatteTextures, isPartialMatteUrl } from './MatteTextures';
+import { previewSize, type PreviewQuality } from './previewSize';
 
 /**
  * Bundles the compositor with the caches it needs, and offers the two ways a
@@ -73,6 +74,7 @@ export class FrameRenderer {
     options: CompositorOptions = {},
   ) {
     this.compositor = Compositor.fromCanvas(canvas, width, height, undefined, options);
+    this.frame = { width: Math.max(1, Math.floor(width)), height: Math.max(1, Math.floor(height)) };
     // A transition past the end of a file holds its last frame: the
     // compositor needs to know where each file ends.
     this.compositor.sourceLengthOf = (clip, fps) => {
@@ -136,8 +138,38 @@ export class FrameRenderer {
     this.compositor.options = options;
   }
 
+  /** The project's frame: what exports and a paused viewer draw, pixel for pixel. */
+  private frame = { width: 1, height: 1 };
+
+  /**
+   * How the viewer draws while playing: 'auto' at the size it is shown at (a
+   * 4K edit in a 1000-pixel viewer is a quarter of the pixels, for every pass
+   * of every effect), or a set fraction - Resolve's and Premiere's playback
+   * resolution. Paused, and in every export, it is the whole frame.
+   */
+  previewQuality: PreviewQuality = 'auto';
+  /** The viewer's size on screen in device pixels, measured by useCompositor. */
+  displaySize: { width: number; height: number } | null = null;
+
   resize(width: number, height: number): void {
-    this.compositor.resize(width, height);
+    this.frame = { width: Math.max(1, Math.floor(width)), height: Math.max(1, Math.floor(height)) };
+    this.drawAt(this.frame.width, this.frame.height);
+  }
+
+  /** Draw `width` x `height` pixels of the frame, the canvas with them. */
+  private drawAt(width: number, height: number): void {
+    const canvas = this.compositor.context.canvas;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    this.compositor.resize(width, height, this.frame.width, this.frame.height);
+  }
+
+  /** The pixels the viewer is drawing now (the frame's, unless playing lighter). */
+  get drawnSize(): { width: number; height: number } {
+    const canvas = this.compositor.context.canvas;
+    return { width: canvas.width, height: canvas.height };
   }
 
   /** The media by URI, for the lengths of files. */
@@ -365,6 +397,8 @@ export class FrameRenderer {
     // An export owns the video elements and the canvas right now.
     if (this.isExclusive) return;
     this.compositor.restingTitleId = restingTitleId;
+    const size = previewSize(this.frame, { playing, quality: this.previewQuality, display: this.displaySize, exact: pixelArtViewport });
+    this.drawAt(size.width, size.height);
 
     // Playback runs on the elements; the forward decoders are only for a
     // paused playhead, and hold a hardware decoder each, so they go.
@@ -827,6 +861,8 @@ export class FrameRenderer {
    */
   async renderExact(project: ProjectState, frame: number, premultiply = false): Promise<Uint8Array> {
     project = withCaptionTitles(project);
+    // Every pixel of the frame, whatever the viewer was drawing.
+    this.drawAt(this.frame.width, this.frame.height);
     try {
       await this.seekSources(project, frame);
       // An exact render is the export's: every title animates, none is at rest.
@@ -853,6 +889,7 @@ export class FrameRenderer {
    */
   async renderExactToCanvas(project: ProjectState, frame: number): Promise<void> {
     project = withCaptionTitles(project);
+    this.drawAt(this.frame.width, this.frame.height);
     const previousOptions = this.compositor.options;
     try {
       await this.seekSources(project, frame);

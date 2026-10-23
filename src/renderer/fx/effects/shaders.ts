@@ -143,20 +143,25 @@ void main() {
     fragColor = vec4(clamp(sharpened.rgb, 0.0, 1.0), original.a);
 }`);
 
+/*
+ * glfx.js's denoise weighs a 9x9 square by likeness to the centre: 81 reads a
+ * pixel, twice. Here the square is walked one axis a pass (9 reads, four
+ * passes: 36 instead of 162) - the usual separable approximation of such a
+ * filter, the same smoothing to the eye, four times quicker to export.
+ */
 const DENOISE = shader(`
 uniform float exponent;
+uniform vec2 axis;
 void main() {
     vec4 center = texture(u_inputTexture, v_texCoord);
     vec4 color = vec4(0.0);
     float total = 0.0;
-    for (float x = -4.0; x <= 4.0; x += 1.0) {
-        for (float y = -4.0; y <= 4.0; y += 1.0) {
-            vec4 sampled = texture(u_inputTexture, v_texCoord + vec2(x, y) / u_resolution);
-            float weight = 1.0 - abs(dot(sampled.rgb - center.rgb, vec3(0.25)));
-            weight = pow(max(weight, 0.0), exponent);
-            color += sampled * weight;
-            total += weight;
-        }
+    for (float t = -4.0; t <= 4.0; t += 1.0) {
+        vec4 sampled = texture(u_inputTexture, v_texCoord + axis * t / u_resolution);
+        float weight = 1.0 - abs(dot(sampled.rgb - center.rgb, vec3(0.25)));
+        weight = pow(max(weight, 0.0), exponent);
+        color += sampled * weight;
+        total += weight;
     }
     fragColor = color / total;
 }`);
@@ -167,14 +172,15 @@ const ZOOM_BLUR = shader(
   `
 uniform vec2 center;
 uniform float strength;
+uniform float taps;
 void main() {
     vec4 color = vec4(0.0);
     float total = 0.0;
     vec2 toCenter = center - v_texCoord * u_resolution;
     /* randomize the lookup values to hide the fixed number of samples */
     float offset = scf_random(vec3(12.9898, 78.233, 151.7182), 0.0);
-    for (float t = 0.0; t <= 40.0; t++) {
-        float percent = (t + offset) / 40.0;
+    for (float t = 0.0; t <= taps; t++) {
+        float percent = (t + offset) / taps;
         float weight = 4.0 * (percent - percent * percent);
         vec4 sampled = texture(u_inputTexture, v_texCoord + toCenter * percent * strength / u_resolution);
         /* switch to pre-multiplied alpha to correctly blur transparent images */
@@ -203,8 +209,8 @@ void main() {
     float offset = scf_random(vec3(12.9898, 78.233, 151.7182), 0.0);
     vec2 normal = normalize(vec2(start.y - end.y, end.x - start.x));
     float radius = smoothstep(0.0, 1.0, abs(dot(v_texCoord * u_resolution - start, normal)) / gradientRadius) * blurRadius;
-    for (float t = -30.0; t <= 30.0; t++) {
-        float percent = (t + offset - 0.5) / 30.0;
+    for (float t = -15.0; t <= 15.0; t++) {
+        float percent = (t + offset - 0.5) / 15.0;
         float weight = 1.0 - abs(percent);
         vec4 sampled = texture(u_inputTexture, v_texCoord + delta / u_resolution * percent * radius);
         /* switch to pre-multiplied alpha to correctly blur transparent images */
@@ -307,14 +313,14 @@ void main() {
     vec2 total = vec2(0.0);
     /* randomize the lookup values to hide the fixed number of samples */
     float offset = scf_random(vec3(12.9898, 78.233, 151.7182), 0.0);
-    for (float t = -30.0; t <= 30.0; t++) {
-        float percent = (t + offset - 0.5) / 30.0;
+    for (float t = -15.0; t <= 15.0; t++) {
+        float percent = (t + offset - 0.5) / 15.0;
         float weight = 1.0 - abs(percent);
         vec3 sampled = texture(u_inputTexture, v_texCoord + delta * percent).rgb;
         float average = (sampled.r + sampled.g + sampled.b) / 3.0;
         color.x += average * weight;
         total.x += weight;
-        if (abs(t) < 15.0) {
+        if (abs(t) < 7.5) {
             weight = weight * 2.0 - 1.0;
             color.y += average * weight;
             total.y += weight;
@@ -335,13 +341,13 @@ void main() {
     vec2 total = vec2(0.0);
     /* randomize the lookup values to hide the fixed number of samples */
     float offset = scf_random(vec3(12.9898, 78.233, 151.7182), 0.0);
-    for (float t = -30.0; t <= 30.0; t++) {
-        float percent = (t + offset - 0.5) / 30.0;
+    for (float t = -15.0; t <= 15.0; t++) {
+        float percent = (t + offset - 0.5) / 15.0;
         float weight = 1.0 - abs(percent);
         vec2 sampled = texture(u_inputTexture, v_texCoord + delta * percent).xy;
         color.x += sampled.x * weight;
         total.x += weight;
-        if (abs(t) < 15.0) {
+        if (abs(t) < 7.5) {
             weight = weight * 2.0 - 1.0;
             color.y += sampled.y * weight;
             total.y += weight;
@@ -572,7 +578,10 @@ const px = (value: number, context: PassContext): number => (value * context.hei
 const pointPx = (x: number, y: number, context: PassContext): [number, number] => [x * context.width, (1 - y) * context.height];
 
 const blurPasses = (radius: (values: Record<string, number>) => number, keepFirst = false): EffectPass[] => {
-  const taps = (r: number): number => Math.min(30, Math.max(1, Math.ceil(r)));
+  // At most 16 a side (30 used to be): past that the reads are further apart
+  // than a pixel and the bilinear filter blends between them - the same blur,
+  // half the reads of a wide one.
+  const taps = (r: number): number => Math.min(16, Math.max(1, Math.ceil(r)));
   return [
     {
       source: TRIANGLE_BLUR,
@@ -619,10 +628,16 @@ export const EFFECT_PASSES: Record<string, readonly EffectPass[]> = {
   vibrance: [{ source: VIBRANCE, uniforms: (v) => ({ amount: v.amount }) }],
   sepia: [{ source: SEPIA, uniforms: (v) => ({ amount: v.amount }) }],
   gaussianBlur: blurPasses((v) => v.radius),
+  // Two passes instead of one of 41 reads: 12 along the whole streak, then 8
+  // along a twelfth of it, which fill the first's gaps - 22 reads, smoother.
   zoomBlur: [
     {
       source: ZOOM_BLUR,
-      uniforms: (v, c) => ({ center: pointPx(v.centerX, v.centerY, c), strength: v.strength }),
+      uniforms: (v, c) => ({ center: pointPx(v.centerX, v.centerY, c), strength: (v.strength * 12) / 13, taps: 12 }),
+    },
+    {
+      source: ZOOM_BLUR,
+      uniforms: (v, c) => ({ center: pointPx(v.centerX, v.centerY, c), strength: v.strength / 13, taps: 8 }),
     },
   ],
   tiltShift: [tiltPass(false), tiltPass(true)],
@@ -632,8 +647,10 @@ export const EFFECT_PASSES: Record<string, readonly EffectPass[]> = {
   ],
   // glfx.js runs it twice, for a stronger result.
   denoise: [
-    { source: DENOISE, uniforms: (v) => ({ exponent: v.smoothing }) },
-    { source: DENOISE, uniforms: (v) => ({ exponent: v.smoothing }) },
+    { source: DENOISE, uniforms: (v) => ({ exponent: v.smoothing, axis: [1, 0] }) },
+    { source: DENOISE, uniforms: (v) => ({ exponent: v.smoothing, axis: [0, 1] }) },
+    { source: DENOISE, uniforms: (v) => ({ exponent: v.smoothing, axis: [1, 0] }) },
+    { source: DENOISE, uniforms: (v) => ({ exponent: v.smoothing, axis: [0, 1] }) },
   ],
   swirl: [
     {

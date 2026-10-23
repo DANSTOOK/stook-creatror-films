@@ -419,8 +419,16 @@ export class Compositor {
    */
   private readonly defaultLutTexture: WebGLTexture;
 
+  /** The pixels drawn: the frame's own, or fewer for a lighter preview (FrameRenderer). */
   private width: number;
   private height: number;
+  /**
+   * The project's frame, in whose pixels positions, title pivots and caption
+   * gaps are given. The same as the pixels drawn except in a preview drawn
+   * smaller, where the picture is laid out the same and only drawn coarser.
+   */
+  private frameWidth: number;
+  private frameHeight: number;
   private disposed = false;
 
   readonly stats: CompositorStats = { clipsDrawn: 0, passes: 0, lastFrameMs: 0 };
@@ -444,6 +452,8 @@ export class Compositor {
     this.lutLoader = lutLoader;
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
+    this.frameWidth = this.width;
+    this.frameHeight = this.height;
     this.options = options;
 
     const buffer = gl.createBuffer();
@@ -587,9 +597,12 @@ export class Compositor {
     this.stats.passes += 1;
   }
 
-  resize(width: number, height: number): void {
+  /** Draw `width` x `height` pixels of a `frameWidth` x `frameHeight` frame (the same unless a preview is drawn smaller). */
+  resize(width: number, height: number, frameWidth = width, frameHeight = height): void {
     const w = Math.max(1, Math.floor(width));
     const h = Math.max(1, Math.floor(height));
+    this.frameWidth = Math.max(1, Math.floor(frameWidth));
+    this.frameHeight = Math.max(1, Math.floor(frameHeight));
     if (w === this.width && h === this.height) return;
 
     this.width = w;
@@ -673,7 +686,7 @@ export class Compositor {
     const title = clip.title && source.title ? source.title : null;
     if (title) {
       const resting = clip.id === this.restingTitleId;
-      const effective = titleTransformAt(clip, frame, this.fps, { width: this.width, height: this.height }, title, resting);
+      const effective = titleTransformAt(clip, frame, this.fps, { width: this.frameWidth, height: this.frameHeight }, title, resting);
       transform = effective.transform;
       reveal = effective.reveal;
     }
@@ -689,10 +702,10 @@ export class Compositor {
     // pivot instead of the frame's centre: the same sum with the anchor moved
     // there, which for a pivot at the centre is exactly the sum above.
     const anchor = title
-      ? { x: title.pivot.x / this.width, y: 1 - title.pivot.y / this.height }
+      ? { x: title.pivot.x / this.frameWidth, y: 1 - title.pivot.y / this.frameHeight }
       : transform.anchorPoint;
-    const centerX = (title ? anchor.x * 2 - 1 : 0) + (transform.position.x / this.width) * 2;
-    const centerY = (title ? anchor.y * 2 - 1 : 0) - (transform.position.y / this.height) * 2;
+    const centerX = (title ? anchor.x * 2 - 1 : 0) + (transform.position.x / this.frameWidth) * 2;
+    const centerY = (title ? anchor.y * 2 - 1 : 0) - (transform.position.y / this.frameHeight) * 2;
 
     const frameMatrix = makeQuadMatrix(
       centerX,
@@ -703,7 +716,7 @@ export class Compositor {
       anchor.x,
       anchor.y,
     );
-    const matrix = source.rect ? subRectMatrix(frameMatrix, source.rect, this.width, this.height) : frameMatrix;
+    const matrix = source.rect ? subRectMatrix(frameMatrix, source.rect, this.frameWidth, this.frameHeight) : frameMatrix;
 
     this.transferProgram.use();
     this.transferProgram.set('u_transform', matrix);
@@ -1021,7 +1034,7 @@ export class Compositor {
         id: layer.clip.id,
         anchor: style.anchor,
         height: layer.source.title.block.height,
-        gap: style.fontSize * (this.height / 1080) * 0.3,
+        gap: style.fontSize * (this.frameHeight / 1080) * 0.3,
       });
     }
     return captions.length < 2 ? new Map<string, number>() : captionOffsets(captions);

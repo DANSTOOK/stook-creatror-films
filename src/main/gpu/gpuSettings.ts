@@ -28,13 +28,22 @@ export function effectiveGpuPreference(): GpuPreference {
   return isGpuPreference(override) ? override : readGpuPreference();
 }
 
+/**
+ * Until the user picks one: the dedicated GPU. Left to Windows, an editor
+ * installed on a laptop with two often ran on the integrated one, where a
+ * 4K edit with a zoom, a blur and a brightness stuttered - Premiere and
+ * Resolve ask for the dedicated GPU too. On a machine with one GPU the
+ * switch changes nothing. "Let Windows decide" stays a choice.
+ */
+export const DEFAULT_GPU_PREFERENCE: GpuPreference = 'high-performance';
+
 export function readGpuPreference(): GpuPreference {
   try {
     const parsed = JSON.parse(readFileSync(settingsPath(), 'utf8')) as { preference?: unknown };
-    return isGpuPreference(parsed.preference) ? parsed.preference : 'auto';
+    return isGpuPreference(parsed.preference) ? parsed.preference : DEFAULT_GPU_PREFERENCE;
   } catch {
-    // No file yet, or a corrupted one: let the OS decide.
-    return 'auto';
+    // No file yet, or a corrupted one.
+    return DEFAULT_GPU_PREFERENCE;
   }
 }
 
