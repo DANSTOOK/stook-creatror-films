@@ -551,6 +551,281 @@ void main() {
 export type UniformValues = Record<string, number | readonly number[]>;
 
 /** What a pass knows about the frame: its size, and its time. */
+
+/** A hash in 0..1, for the effects that scatter things at random but the same each frame. */
+const HASH = `
+float scf_hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+`;
+
+/* This app's own: camera ------------------------------------------------------------ */
+
+/**
+ * The frame moved as a camera would move it: pushed by `offset` pixels,
+ * turned by `angle` and enlarged by `zoom` about `center` - enough that a
+ * full-frame clip never shows an edge. The shake, the handheld drift and the
+ * zoom punch work their motion out on the CPU (cameraMotion below), so the
+ * shader stays one read a pixel.
+ */
+const CAMERA = shader(`
+uniform vec2 offset;
+uniform float angle;
+uniform float zoom;
+uniform vec2 center;
+void main() {
+    vec2 p = v_texCoord * u_resolution - center - offset;
+    float c = cos(angle);
+    float s = sin(angle);
+    p = vec2(c * p.x - s * p.y, s * p.x + c * p.y) / zoom;
+    vec2 uv = (p + center) / u_resolution;
+    vec2 inside = step(vec2(0.0), uv) * step(uv, vec2(1.0));
+    fragColor = texture(u_inputTexture, clamp(uv, 0.0, 1.0)) * inside.x * inside.y;
+}`);
+
+/* This app's own: glitch ------------------------------------------------------------ */
+
+/** A worn tape: lines that wobble, a tracking band rolling down, colour bleeding sideways, scanlines and noise. */
+const VHS = shader(
+  `
+uniform float amount;
+uniform float noise;
+uniform float tracking;
+uniform float time;
+uniform float lineSpacing;
+void main() {
+    vec2 uv = v_texCoord;
+    float line = floor(uv.y * u_resolution.y / lineSpacing);
+    float frame = floor(time * 30.0);
+    uv.x += (scf_hash(vec2(line * 0.37, frame)) - 0.5) * 0.004 * amount;
+    float bandY = 1.0 - fract(time * (0.08 + 0.2 * tracking));
+    float band = smoothstep(0.07, 0.0, abs(uv.y - bandY)) * tracking;
+    uv.x += band * 0.03 * (scf_hash(vec2(line, frame + 3.0)) - 0.5);
+    float bleed = (2.0 + 7.0 * amount) * lineSpacing / 3.0 / u_resolution.x;
+    vec4 base = texture(u_inputTexture, uv);
+    vec3 color = vec3(texture(u_inputTexture, uv + vec2(bleed, 0.0)).r, base.g, texture(u_inputTexture, uv - vec2(bleed, 0.0)).b);
+    color = mix(color, vec3(dot(color, vec3(0.299, 0.587, 0.114))), 0.2 * amount);
+    color *= 1.0 - 0.14 * amount * step(0.5, fract(v_texCoord.y * u_resolution.y / lineSpacing));
+    float grain = scf_hash(floor(v_texCoord * u_resolution / max(1.0, lineSpacing / 2.0)) + frame * 1.37);
+    color += (grain - 0.5) * 0.22 * noise + band * 0.3 * grain;
+    color *= vec3(1.04, 1.0, 0.94);
+    fragColor = vec4(clamp(color, 0.0, 1.0), base.a);
+}`,
+  HASH,
+);
+
+/** Blocks torn out of place, their channels swapped and their colours crushed, with a stray line now and then. */
+const BLOCK_GLITCH = shader(
+  `
+uniform float amount;
+uniform float blockSize;
+uniform float seed;
+void main() {
+    vec2 pixel = v_texCoord * u_resolution;
+    vec2 block = floor(pixel / vec2(blockSize * 3.0, blockSize));
+    float on = step(1.0 - amount * 0.35, scf_hash(block + seed));
+    vec2 shift = (vec2(scf_hash(block * 1.3 + seed), scf_hash(block * 2.1 - seed)) - 0.5) * vec2(blockSize * 6.0, blockSize) * on;
+    vec4 base = texture(u_inputTexture, (pixel + shift) / u_resolution);
+    vec3 color = base.rgb;
+    if (on > 0.5) {
+        float swap = scf_hash(block + seed * 7.0);
+        color = swap < 0.33 ? color.brg : swap < 0.66 ? color.gbr : color;
+        color = floor(color * 4.0 + 0.5) / 4.0;
+    }
+    float stray = step(0.992 - amount * 0.02, scf_hash(vec2(floor(pixel.y / max(1.0, blockSize * 0.1)), seed)));
+    color = mix(color, vec3(scf_hash(vec2(seed, pixel.y))), stray * 0.7);
+    fragColor = vec4(color, base.a);
+}`,
+  HASH,
+);
+
+/** An old tube: the picture curved, its lines and its red-green-blue columns showing, darker at the corners. */
+const CRT = shader(`
+uniform float spacing;
+uniform float strength;
+uniform float curvature;
+void main() {
+    vec2 uv = v_texCoord * 2.0 - 1.0;
+    uv *= 1.0 + curvature * 0.12 * dot(uv.yx, uv.yx);
+    vec2 at = uv * 0.5 + 0.5;
+    float alpha = texture(u_inputTexture, v_texCoord).a;
+    if (any(lessThan(at, vec2(0.0))) || any(greaterThan(at, vec2(1.0)))) {
+        fragColor = vec4(0.0, 0.0, 0.0, alpha);
+        return;
+    }
+    vec4 base = texture(u_inputTexture, at);
+    float scan = 0.5 + 0.5 * cos(6.2831853 * v_texCoord.y * u_resolution.y / spacing);
+    vec3 color = base.rgb * (1.0 - strength * 0.6 * scan);
+    float column = mod(floor(v_texCoord.x * u_resolution.x / max(1.0, spacing * 0.6)), 3.0);
+    vec3 mask = vec3(column == 0.0 ? 1.0 : 0.8, column == 1.0 ? 1.0 : 0.8, column == 2.0 ? 1.0 : 0.8);
+    color *= mix(vec3(1.0), mask, strength * 0.7) * (1.0 + strength * 0.3);
+    color *= clamp(1.0 - curvature * 0.35 * dot(uv, uv), 0.0, 1.0);
+    fragColor = vec4(clamp(color, 0.0, 1.0), base.a);
+}`);
+
+/** Red one way, blue the other, by `split` pixels - which the CPU makes pulse. */
+const RGB_SPLIT = shader(`
+uniform vec2 split;
+void main() {
+    vec2 d = split / u_resolution;
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    vec4 right = texture(u_inputTexture, v_texCoord + d);
+    vec4 left = texture(u_inputTexture, v_texCoord - d);
+    fragColor = vec4(right.r, base.g, left.b, max(base.a, max(right.a, left.a)));
+}`);
+
+/** A television between stations: snow over the picture and a brighter bar rolling down it. */
+const STATIC_NOISE = shader(
+  `
+uniform float amount;
+uniform float grain;
+uniform float seed;
+void main() {
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    float snow = scf_hash(floor(v_texCoord * u_resolution / grain) + seed);
+    float roll = 1.0 - fract(seed * 0.0173);
+    float bar = smoothstep(0.1, 0.0, abs(v_texCoord.y - roll));
+    vec3 color = mix(base.rgb, vec3(snow), clamp(amount * 0.8 + bar * amount * 0.4, 0.0, 1.0));
+    color *= 1.0 - 0.18 * amount * step(0.5, fract(v_texCoord.y * u_resolution.y / (grain * 2.0)));
+    fragColor = vec4(color, base.a);
+}`,
+  HASH,
+);
+
+/** The picture cut into horizontal slices, some slid sideways and tinted. */
+const SLICE_GLITCH = shader(
+  `
+uniform float amount;
+uniform float slices;
+uniform float seed;
+uniform float maxShift;
+void main() {
+    float slice = floor(v_texCoord.y * slices);
+    // Some slices torn at random - and always one, so no moment of it is a clean frame.
+    float on = max(step(1.0 - amount * 0.6, scf_hash(vec2(slice + seed * 13.37, seed * 0.71 + 1.3))), step(abs(slice - floor(scf_hash(vec2(seed, 4.1)) * slices)), 0.5) * step(0.01, amount));
+    // Each torn slice slides at least a third of the way, one way or the other.
+    float pull = scf_hash(vec2(slice * 1.7, seed + 3.0)) * 2.0 - 1.0;
+    float shift = sign(pull) * (0.35 + 0.65 * abs(pull)) * maxShift * on / u_resolution.x;
+    vec4 base = texture(u_inputTexture, v_texCoord + vec2(shift, 0.0));
+    vec3 color = mix(base.rgb, base.rgb * vec3(1.25, 0.8, 1.3), 0.45 * on * scf_hash(vec2(slice, seed + 9.0)));
+    fragColor = vec4(clamp(color, 0.0, 1.0), base.a);
+}`,
+  HASH,
+);
+
+/* This app's own: light ------------------------------------------------------------- */
+
+/** What glows: the picture where it is brighter than `threshold`, the rest let go. */
+const BRIGHT_PASS = shader(`
+uniform float threshold;
+void main() {
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    float light = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
+    fragColor = vec4(base.rgb * smoothstep(threshold, threshold + 0.2, light), base.a);
+}`);
+
+/** The blurred highlights laid over the picture they came from (screen), `intensity` strong. */
+const GLOW_COMBINE = shader(`
+uniform sampler2D u_original;
+uniform float intensity;
+void main() {
+    vec4 original = texture(u_original, v_texCoord);
+    vec3 glow = clamp(texture(u_inputTexture, v_texCoord).rgb * intensity, 0.0, 1.0);
+    fragColor = vec4(1.0 - (1.0 - original.rgb) * (1.0 - glow), original.a);
+}`);
+
+/** The picture taken toward white by `flash`, which the CPU makes strike in time. */
+const FLASH = shader(`
+uniform float flash;
+uniform vec3 tint;
+void main() {
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    fragColor = vec4(mix(base.rgb, tint, flash), base.a);
+}`);
+
+/* This app's own: stylize ------------------------------------------------------------ */
+
+const POSTERIZE = shader(`
+uniform float levels;
+void main() {
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    fragColor = vec4(floor(base.rgb * (levels - 1.0) + 0.5) / (levels - 1.0), base.a);
+}`);
+
+/** Two colours for the whole picture: the shadows one, the highlights the other. */
+const DUOTONE = shader(`
+uniform vec3 shadows;
+uniform vec3 highlights;
+uniform float amount;
+void main() {
+    vec4 base = texture(u_inputTexture, v_texCoord);
+    float light = dot(base.rgb, vec3(0.2126, 0.7152, 0.0722));
+    fragColor = vec4(mix(base.rgb, mix(shadows, highlights, smoothstep(0.0, 1.0, light)), amount), base.a);
+}`);
+
+/** One half of the picture, and its reflection in place of the other. */
+const MIRROR = shader(`
+uniform float flip;
+uniform float vertical;
+void main() {
+    vec2 uv = v_texCoord;
+    float along = vertical > 0.5 ? 1.0 - uv.y : uv.x;
+    if ((flip < 0.5 && along > 0.5) || (flip > 0.5 && along < 0.5)) along = 1.0 - along;
+    if (vertical > 0.5) uv.y = 1.0 - along; else uv.x = along;
+    fragColor = texture(u_inputTexture, uv);
+}`);
+
+/** A wide lens: the middle swells and the corners stay put (or, below zero, pinches in). */
+const FISHEYE = shader(`
+uniform float strength;
+void main() {
+    float aspect = u_resolution.x / u_resolution.y;
+    vec2 p = (v_texCoord * 2.0 - 1.0) * vec2(aspect, 1.0);
+    float corner = aspect * aspect + 1.0;
+    vec2 q = p * (1.0 + strength * dot(p, p) * 0.25) / (1.0 + strength * corner * 0.25);
+    vec2 uv = q / vec2(aspect, 1.0) * 0.5 + 0.5;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) {
+        fragColor = vec4(0.0);
+        return;
+    }
+    fragColor = texture(u_inputTexture, uv);
+}`);
+
+/* The CPU side of the moving ones ------------------------------------------------------ */
+
+const fract = (value: number): number => value - Math.floor(value);
+const hash1 = (value: number): number => fract(Math.sin(value * 127.1 + 311.7) * 43758.5453);
+/** Smooth noise in -1..1: the same for the same time, so a frame looks the same in the viewer and the export. */
+const smoothNoise = (x: number, seed: number): number => {
+  const i = Math.floor(x);
+  const t = x - i;
+  const u = t * t * (3 - 2 * t);
+  return (hash1(i + seed * 57.3) * (1 - u) + hash1(i + 1 + seed * 57.3) * u) * 2 - 1;
+};
+
+/** A camera's wander at `seconds`: `speed` changes a second, two octaves, `intensity` px and `turn` degrees at most. */
+function cameraMotion(seconds: number, intensity: number, speed: number, turn: number, context: PassContext) {
+  const t = seconds * speed;
+  const wander = (seed: number): number => 0.7 * smoothNoise(t, seed) + 0.3 * smoothNoise(t * 2.3, seed + 11);
+  const reach = px(intensity, context);
+  const radians = (turn * Math.PI) / 180;
+  // Enough enlargement that the frame never shows an edge as it moves and turns.
+  const zoom = 1 + (2 * reach) / context.height + Math.abs(Math.sin(radians)) * (context.width / context.height);
+  return {
+    offset: [reach * wander(1), reach * wander(2)],
+    angle: radians * wander(3),
+    zoom,
+    center: [context.width / 2, context.height / 2],
+  };
+}
+
+/** A hue (degrees) as a bright, saturated colour. */
+const hueColour = (degrees: number): [number, number, number] => {
+  const h = fract(degrees / 360) * 6;
+  const channel = (offset: number): number => Math.min(1, Math.max(0, Math.abs(fract((h + offset) / 6) * 6 - 3) - 1));
+  return [channel(0), channel(4), channel(2)];
+};
+
 export interface PassContext {
   width: number;
   height: number;
@@ -577,11 +852,11 @@ const px = (value: number, context: PassContext): number => (value * context.hei
 /** A position across the frame, top-left origin (as the inspector shows it), in texture pixels (bottom-left). */
 const pointPx = (x: number, y: number, context: PassContext): [number, number] => [x * context.width, (1 - y) * context.height];
 
-const blurPasses = (radius: (values: Record<string, number>) => number, keepFirst = false): EffectPass[] => {
+const blurPasses = (radius: (values: Record<string, number>) => number, keepFirst = false, maxTaps = 16): EffectPass[] => {
   // At most 16 a side (30 used to be): past that the reads are further apart
   // than a pixel and the bilinear filter blends between them - the same blur,
   // half the reads of a wide one.
-  const taps = (r: number): number => Math.min(16, Math.max(1, Math.ceil(r)));
+  const taps = (r: number): number => Math.min(maxTaps, Math.max(1, Math.ceil(r)));
   return [
     {
       source: TRIANGLE_BLUR,
@@ -721,4 +996,76 @@ export const EFFECT_PASSES: Record<string, readonly EffectPass[]> = {
       uniforms: (v, c) => ({ intensity: v.intensity, hue: v.hue / 360, position: v.position, spread: v.spread, time: c.seconds * v.speed * 4 }),
     },
   ],
+  /* Camera: the frame moves */
+  cameraShake: [
+    { source: CAMERA, uniforms: (v, c) => cameraMotion(c.seconds, v.intensity, v.speed, v.rotation, c) },
+  ],
+  handheld: [
+    { source: CAMERA, uniforms: (v, c) => cameraMotion(c.seconds, v.intensity, v.speed, v.rotation, c) },
+  ],
+  zoomPulse: [
+    {
+      source: CAMERA,
+      uniforms: (v, c) => {
+        // A punch on each beat, eased back out before the next.
+        const phase = fract(c.seconds * v.rate);
+        return { offset: [0, 0], angle: 0, zoom: 1 + v.amount * Math.exp(-phase * 7), center: pointPx(v.centerX, v.centerY, c) };
+      },
+    },
+  ],
+  /* Glitch */
+  vhs: [
+    {
+      source: VHS,
+      uniforms: (v, c) => ({ amount: v.amount, noise: v.noise, tracking: v.tracking, time: c.seconds, lineSpacing: Math.max(1, px(3, c)) }),
+    },
+  ],
+  blockGlitch: [
+    {
+      source: BLOCK_GLITCH,
+      uniforms: (v, c) => ({ amount: v.amount, blockSize: Math.max(2, px(v.blockSize, c)), seed: v.speed > 0 ? Math.floor(c.seconds * v.speed) % 997 : 0 }),
+    },
+  ],
+  crt: [{ source: CRT, uniforms: (v, c) => ({ spacing: Math.max(1.5, px(v.spacing, c)), strength: v.strength, curvature: v.curvature }) }],
+  rgbSplit: [
+    {
+      source: RGB_SPLIT,
+      uniforms: (v, c) => {
+        const radians = (v.angle * Math.PI) / 180;
+        const pulse = v.speed > 0 ? 0.35 + 0.65 * Math.abs(smoothNoise(c.seconds * v.speed, 5)) : 1;
+        const reach = px(v.amount, c) * pulse;
+        return { split: [Math.cos(radians) * reach, Math.sin(radians) * reach] };
+      },
+    },
+  ],
+  staticNoise: [
+    { source: STATIC_NOISE, uniforms: (v, c) => ({ amount: v.amount, grain: Math.max(1, px(v.size, c)), seed: Math.round(c.seconds * 30) % 9973 }) },
+  ],
+  sliceGlitch: [
+    {
+      source: SLICE_GLITCH,
+      uniforms: (v, c) => ({ amount: v.amount, slices: v.slices, seed: v.speed > 0 ? Math.floor(c.seconds * v.speed) % 997 : 0, maxShift: px(120, c) * v.amount }),
+    },
+  ],
+  /* Light */
+  glow: [
+    { source: BRIGHT_PASS, keep: true, uniforms: (v) => ({ threshold: v.threshold }) },
+    // A glow is soft by nature: six reads a side, the bilinear filter between them.
+    ...blurPasses((v) => v.radius, false, 6),
+    { source: GLOW_COMBINE, original: true, uniforms: (v) => ({ intensity: v.intensity }) },
+  ],
+  flash: [
+    {
+      source: FLASH,
+      uniforms: (v, c) => {
+        const phase = fract(c.seconds * v.rate);
+        return { flash: v.intensity * Math.max(0, 1 - phase * 5), tint: [1, 1, 1] };
+      },
+    },
+  ],
+  /* Stylize */
+  posterize: [{ source: POSTERIZE, uniforms: (v) => ({ levels: Math.max(2, Math.round(v.levels)) }) }],
+  duotone: [{ source: DUOTONE, uniforms: (v) => ({ shadows: hueColour(v.shadowHue).map((x) => x * 0.25), highlights: hueColour(v.highlightHue).map((x) => 0.55 + x * 0.45), amount: v.amount }) }],
+  mirror: [{ source: MIRROR, uniforms: (v) => ({ flip: v.flip, vertical: v.vertical }) }],
+  fisheye: [{ source: FISHEYE, uniforms: (v) => ({ strength: v.strength }) }],
 };

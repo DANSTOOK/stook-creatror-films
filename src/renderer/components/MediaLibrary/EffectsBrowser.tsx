@@ -2,9 +2,12 @@ import { useEffect, useId, useRef, useState, type ComponentType, type DragEvent 
 import {
   Aperture,
   Clapperboard,
+  Sun,
+  Tv,
+  Video,
+  Vibrate,
   Contrast,
   Droplet,
-  Film,
   LogIn,
   LogOut,
   Move,
@@ -23,11 +26,11 @@ import { notify } from '@renderer/notifications/notifications';
 import { useT } from '@renderer/i18n';
 import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
-import { EFFECT_CATEGORIES, EFFECTS, effectCategoryLabel, effectLabel, type EffectCategory } from '@renderer/fx/effects/catalog';
+import { EFFECT_CATEGORIES, EFFECTS, effectCategoryLabel, effectFamily, effectLabel, type EffectCategory, type EffectFamily } from '@renderer/fx/effects/catalog';
 import { MOTION_PRESETS, motionPresetHint, motionPresetLabel, motionPreview, type MotionPresetId } from '@renderer/fx/motion/presets';
 import { applyLibraryItem, type LibraryEffectItem } from '@renderer/fx/applyLibraryItem';
 import { animationLabel, animationPreview, animationsOf, type AnimationPose, type ClipAnimationId, type ClipAnimationPhase } from '@renderer/fx/motion/animations';
-import { drawEffectSample, drawEffectThumb } from './effectThumbs';
+import { drawEffectCompare, drawEffectFrame, drawEffectSample, drawEffectThumb, effectMoves } from './effectThumbs';
 import { EFFECT_DRAG_TYPE, useLibraryDragStore } from './libraryDrag';
 import { THUMB_HEIGHT, THUMB_WIDTH } from './LibraryBrowsers';
 import { LibraryFinder } from './LibraryFinder';
@@ -45,18 +48,39 @@ import { LibraryFinder } from './LibraryFinder';
  * short-form video leans on most.
  */
 
-/** The whole set the tab shows: the "Movement" group, then the effect categories. */
-type EffectFilter = 'all' | 'motion' | 'animation' | EffectCategory;
+/**
+ * What the drop-down can show: everything, one of the two families, or one
+ * group - the Movement presets, the animations or an effect category.
+ */
+type EffectGroup = 'motion' | 'animation' | EffectCategory;
+type EffectFilter = 'all' | `family:${EffectFamily}` | EffectGroup;
 
-const CATEGORY_ICON: Record<EffectFilter, ComponentType<LucideProps>> = {
-  all: Sparkles,
+const CATEGORY_ICON: Record<EffectGroup, ComponentType<LucideProps>> = {
   motion: Move,
   animation: Play,
+  camera: Vibrate,
   color: Contrast,
   blur: Droplet,
   distort: Waves,
+  glitch: Tv,
   stylize: Aperture,
-  film: Film,
+  film: Sun,
+};
+
+/** The groups of each family, in the order the panel shows them. */
+const FAMILY_GROUPS: Record<EffectFamily, readonly EffectGroup[]> = {
+  camera: ['motion', 'camera', 'animation'],
+  look: EFFECT_CATEGORIES.filter((category) => effectFamily(category) === 'look'),
+};
+
+/**
+ * Each family's colour, on its heading, its band and the badge of every tile -
+ * blue for what moves the camera, violet for what changes the picture - so the
+ * two read apart at a glance, as well as by where they sit.
+ */
+const FAMILY_LOOK: Record<EffectFamily, { Icon: ComponentType<LucideProps>; badge: string; band: string; heading: string }> = {
+  camera: { Icon: Video, badge: 'bg-sky-600/90 text-white', band: 'border-sky-500/70 bg-sky-500/[0.06]', heading: 'text-sky-300' },
+  look: { Icon: Sparkles, badge: 'bg-violet-600/90 text-white', band: 'border-violet-500/70 bg-violet-500/[0.06]', heading: 'text-violet-300' },
 };
 
 const MOTION_ICON: Record<MotionPresetId, ComponentType<LucideProps>> = {
@@ -200,6 +224,7 @@ interface TileProps {
   /** A per-tile description, shown on hover - the specific move or effect. */
   title?: string;
   Icon: ComponentType<LucideProps>;
+  family: EffectFamily;
   thumb: JSX.Element;
   /** What a drag onto a clip in the timeline carries (fx/applyLibraryItem). */
   item: LibraryEffectItem;
@@ -207,7 +232,7 @@ interface TileProps {
   onApply(): void;
 }
 
-function Tile({ label, testId, hintId, title, Icon, thumb, item, onPointed, onApply }: TileProps): JSX.Element {
+function Tile({ label, testId, hintId, title, Icon, family, thumb, item, onPointed, onApply }: TileProps): JSX.Element {
   const setDragging = useLibraryDragStore((state) => state.setDragging);
   return (
     <li className="min-w-0">
@@ -215,6 +240,7 @@ function Tile({ label, testId, hintId, title, Icon, thumb, item, onPointed, onAp
         type="button"
         data-testid={testId}
         data-value={item}
+        data-family={family}
         draggable
         aria-describedby={hintId}
         title={title}
@@ -239,7 +265,7 @@ function Tile({ label, testId, hintId, title, Icon, thumb, item, onPointed, onAp
       >
         <span className="relative block overflow-hidden rounded-control ring-1 ring-transparent group-hover:ring-panel-600">
           {thumb}
-          <span aria-hidden className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-sm bg-black/70 text-slate-100">
+          <span aria-hidden className={`absolute left-1 top-1 flex h-5 w-5 items-center justify-center rounded-sm shadow-sm ${FAMILY_LOOK[family].badge}`}>
             <Icon size={12} />
           </span>
         </span>
@@ -260,6 +286,7 @@ function MotionTile({ preset, hintId, onApply }: { preset: MotionPresetId; hintI
       hintId={hintId}
       title={t(motionPresetHint(preset))}
       Icon={MOTION_ICON[preset]}
+      family="camera"
       thumb={<MotionThumb preset={preset} playing={pointed} />}
       item={`motion:${preset}`}
       onPointed={setPointed}
@@ -279,6 +306,7 @@ function AnimationTile({ id, phase, hintId, onApply }: { id: ClipAnimationId; ph
       hintId={hintId}
       title={t(`fxa.hint.${phase}` as MessageKey)}
       Icon={PHASE_ICON[phase]}
+      family="camera"
       thumb={<AnimationThumb id={id} phase={phase} playing={pointed} />}
       item={`anim:${id}`}
       onPointed={setPointed}
@@ -287,29 +315,60 @@ function AnimationTile({ id, phase, hintId, onApply }: { id: ClipAnimationId; ph
   );
 }
 
-function EffectThumb({ type }: { type: string }): JSX.Element {
+/**
+ * An effect's tile: still, the effect at its defaults. Pointed at, one that
+ * moves by itself (a glitch, a shake, a flash) plays live; a still one wipes
+ * between the scene as it is and the scene with the effect, so the change
+ * shows however subtle it is.
+ */
+function EffectThumb({ type, playing }: { type: string; playing: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const context = canvasRef.current?.getContext('2d');
     if (!context) return undefined;
-    // Drawn a frame later, so opening the panel is not held up by twenty pictures.
-    const frame = requestFrame(() => drawEffectThumb(context, THUMB_WIDTH, THUMB_HEIGHT, type));
-    return () => cancelFrame(frame);
-  }, [type]);
+    const still = (): void => drawEffectThumb(context, THUMB_WIDTH, THUMB_HEIGHT, type);
+    // Drawn a frame later, so opening the panel is not held up by sixty pictures.
+    let frame = requestFrame(still);
+    if (!playing || motionReduced() || motionQuiet()) return () => cancelFrame(frame);
+    const started = performance.now();
+    const moves = effectMoves(type);
+    const tick = (now: number): void => {
+      if (motionQuiet()) {
+        still();
+        return;
+      }
+      const seconds = (now - started) / 1000;
+      if (moves) drawEffectFrame(context, THUMB_WIDTH, THUMB_HEIGHT, type, seconds);
+      else {
+        // A 2.4 s sweep there and back, easing at each end.
+        const cycle = (seconds / 2.4) % 1;
+        const there = cycle < 0.5 ? cycle * 2 : 2 - cycle * 2;
+        drawEffectCompare(context, THUMB_WIDTH, THUMB_HEIGHT, type, 0.5 - 0.5 * Math.cos(Math.PI * there));
+      }
+      frame = requestFrame(tick);
+    };
+    frame = requestFrame(tick);
+    return () => {
+      cancelFrame(frame);
+      still();
+    };
+  }, [type, playing]);
   return <canvas ref={canvasRef} width={THUMB_WIDTH} height={THUMB_HEIGHT} aria-hidden className="block aspect-video w-full rounded-control bg-panel-950" />;
 }
 
 function EffectTile({ type, category, hintId, onApply }: { type: string; category: EffectCategory; hintId: string; onApply(): void }): JSX.Element {
   const t = useT();
+  const [pointed, setPointed] = useState(false);
   return (
     <Tile
       label={t(effectLabel(type))}
       testId={`library-effect-${type}`}
       hintId={hintId}
       Icon={CATEGORY_ICON[category]}
-      thumb={<EffectThumb type={type} />}
+      family={effectFamily(category)}
+      thumb={<EffectThumb type={type} playing={pointed} />}
       item={`effect:${type}`}
-      onPointed={() => undefined}
+      onPointed={setPointed}
       onApply={onApply}
     />
   );
@@ -342,33 +401,71 @@ export function EffectsBrowser(): JSX.Element {
     applyLibraryItem(clip, item);
   };
 
-  const motionMatches = (preset: MotionPresetId): boolean =>
-    !needle || t(motionPresetLabel(preset)).toLocaleLowerCase().includes(needle) || preset.toLowerCase().includes(needle);
-  const effectMatches = (type: string): boolean => !needle || t(effectLabel(type)).toLocaleLowerCase().includes(needle) || type.toLowerCase().includes(needle);
-
-  const showMotion = (filter === 'all' || filter === 'motion') && MOTION_PRESETS.some(motionMatches);
-  const animationMatches = (id: ClipAnimationId): boolean => !needle || t(animationLabel(id)).toLocaleLowerCase().includes(needle) || id.toLowerCase().includes(needle);
-  const animationGroups = (filter === 'all' || filter === 'animation' ? (['in', 'out', 'loop'] as const) : [])
-    .map((phase) => ({ phase, ids: animationsOf(phase).filter(animationMatches) }))
+  const matches = (label: MessageKey, id: string): boolean => !needle || t(label).toLocaleLowerCase().includes(needle) || id.toLowerCase().includes(needle);
+  const motionShown = MOTION_PRESETS.filter((preset) => matches(motionPresetLabel(preset), preset));
+  const animationShown = (['in', 'out', 'loop'] as const)
+    .map((phase) => ({ phase, ids: animationsOf(phase).filter((id) => matches(animationLabel(id), id)) }))
     .filter((group) => group.ids.length > 0);
-  const effectGroups = EFFECT_CATEGORIES.filter((category) => filter === 'all' || filter === category)
-    .map((category) => ({ category, types: EFFECTS.filter((effect) => effect.category === category && effectMatches(effect.type)).map((effect) => effect.type) }))
-    .filter((group) => group.types.length > 0);
+  const effectsShown = (category: EffectCategory): string[] =>
+    EFFECTS.filter((effect) => effect.category === category && matches(effectLabel(effect.type), effect.type)).map((effect) => effect.type);
 
-  const filterLabel = (id: EffectFilter): string =>
-    t(id === 'all' ? 'fx.category.all' : id === 'motion' ? MOTION_GROUP_LABEL : id === 'animation' ? 'fxa.filter' : effectCategoryLabel(id));
-  // How many each category holds of what the search leaves, whichever is shown.
-  const counts: Record<string, number> = {
-    motion: MOTION_PRESETS.filter(motionMatches).length,
-    animation: (['in', 'out', 'loop'] as const).reduce((sum, phase) => sum + animationsOf(phase).filter(animationMatches).length, 0),
-    ...Object.fromEntries(EFFECT_CATEGORIES.map((category) => [category, EFFECTS.filter((effect) => effect.category === category && effectMatches(effect.type)).length])),
+  // How many each group holds of what the search leaves, whichever is shown.
+  const count = (group: EffectGroup): number =>
+    group === 'motion' ? motionShown.length : group === 'animation' ? animationShown.reduce((sum, entry) => sum + entry.ids.length, 0) : effectsShown(group).length;
+  const groupLabel = (group: EffectGroup): string =>
+    t(group === 'motion' ? MOTION_GROUP_LABEL : group === 'animation' ? 'fxa.filter' : effectCategoryLabel(group));
+  const familyCount = (family: EffectFamily): number => FAMILY_GROUPS[family].reduce((sum, group) => sum + count(group), 0);
+  const options = [
+    { id: 'all', label: t('fx.category.all'), count: familyCount('camera') + familyCount('look') },
+    ...(['camera', 'look'] as const).flatMap((family) => [
+      { id: `family:${family}`, label: t(`fx.family.${family}` as MessageKey), count: familyCount(family), heading: true },
+      ...FAMILY_GROUPS[family].map((group) => ({ id: group, label: groupLabel(group), count: count(group), indent: true })),
+    ]),
+  ];
+  const shows = (family: EffectFamily, group: EffectGroup): boolean => filter === 'all' || filter === `family:${family}` || filter === group;
+  const nothing = (['camera', 'look'] as const).every((family) => FAMILY_GROUPS[family].every((group) => !shows(family, group) || count(group) === 0));
+
+  const section = (group: EffectGroup): JSX.Element | null => {
+    if (group === 'motion') {
+      return motionShown.length === 0 ? null : (
+        <section key="motion" className="mb-3">
+          <h3 className="section-title mb-1.5 px-0.5">{t(MOTION_GROUP_LABEL)}</h3>
+          <ul className={GRID} aria-label={t(MOTION_GROUP_LABEL)}>
+            {motionShown.map((preset) => (
+              <MotionTile key={preset} preset={preset} hintId={hintId} onApply={() => onClip(`motion:${preset}`)} />
+            ))}
+          </ul>
+        </section>
+      );
+    }
+    if (group === 'animation') {
+      return (
+        <div key="animation">
+          {animationShown.map((entry) => (
+            <section key={entry.phase} className="mb-3" data-testid={`library-anim-group-${entry.phase}`}>
+              <h3 className="section-title mb-1.5 px-0.5">{t(`fxa.group.${entry.phase}` as MessageKey)}</h3>
+              <ul className={GRID} aria-label={t(`fxa.group.${entry.phase}` as MessageKey)}>
+                {entry.ids.map((id) => (
+                  <AnimationTile key={id} id={id} phase={entry.phase} hintId={hintId} onApply={() => onClip(`anim:${id}`)} />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      );
+    }
+    const types = effectsShown(group);
+    return types.length === 0 ? null : (
+      <section key={group} className="mb-3">
+        <h3 className="section-title mb-1.5 px-0.5">{t(effectCategoryLabel(group))}</h3>
+        <ul className={GRID} aria-label={t(effectCategoryLabel(group))}>
+          {types.map((type) => (
+            <EffectTile key={type} type={type} category={group} hintId={hintId} onApply={() => onClip(`effect:${type}`)} />
+          ))}
+        </ul>
+      </section>
+    );
   };
-  const options = (['all', 'motion', 'animation', ...EFFECT_CATEGORIES] as EffectFilter[]).map((id) => ({
-    id,
-    label: filterLabel(id),
-    count: id === 'all' ? Object.values(counts).reduce((sum, count) => sum + count, 0) : counts[id] ?? 0,
-  }));
-  const nothing = !showMotion && animationGroups.length === 0 && effectGroups.length === 0;
 
   return (
     <div data-testid="library-effects" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
@@ -388,38 +485,24 @@ export function EffectsBrowser(): JSX.Element {
 
       {nothing && <p className="px-1 text-2xs text-slate-400">{t('fx.noMatch', { query })}</p>}
 
-      {showMotion && (
-        <section className="mb-3">
-          <h3 className="section-title mb-1.5 px-0.5">{t(MOTION_GROUP_LABEL)}</h3>
-          <ul className={GRID} aria-label={t(MOTION_GROUP_LABEL)}>
-            {MOTION_PRESETS.filter(motionMatches).map((preset) => (
-              <MotionTile key={preset} preset={preset} hintId={hintId} onApply={() => onClip(`motion:${preset}`)} />
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {animationGroups.map((group) => (
-        <section key={group.phase} className="mb-3" data-testid={`library-anim-group-${group.phase}`}>
-          <h3 className="section-title mb-1.5 px-0.5">{t(`fxa.group.${group.phase}` as MessageKey)}</h3>
-          <ul className={GRID} aria-label={t(`fxa.group.${group.phase}` as MessageKey)}>
-            {group.ids.map((id) => (
-              <AnimationTile key={id} id={id} phase={group.phase} hintId={hintId} onApply={() => onClip(`anim:${id}`)} />
-            ))}
-          </ul>
-        </section>
-      ))}
-
-      {effectGroups.map((group) => (
-        <section key={group.category} className="mb-3">
-          <h3 className="section-title mb-1.5 px-0.5">{t(effectCategoryLabel(group.category))}</h3>
-          <ul className={GRID} aria-label={t(effectCategoryLabel(group.category))}>
-            {group.types.map((type) => (
-              <EffectTile key={type} type={type} category={group.category} hintId={hintId} onApply={() => onClip(`effect:${type}`)} />
-            ))}
-          </ul>
-        </section>
-      ))}
+      {(['camera', 'look'] as const).map((family) => {
+        const groups = FAMILY_GROUPS[family].filter((group) => shows(family, group) && count(group) > 0);
+        if (groups.length === 0) return null;
+        const { Icon, band, heading } = FAMILY_LOOK[family];
+        return (
+          <div key={family} data-testid={`library-effects-family-${family}`} className="mb-2">
+            {/* The family's heading: its colour, its name and what it does. */}
+            <div className={`mb-2 flex items-start gap-2 rounded-md border-l-[3px] px-2 py-1.5 ${band}`}>
+              <Icon size={15} aria-hidden className={`mt-0.5 shrink-0 ${heading}`} />
+              <div className="min-w-0">
+                <h2 className={`text-xs font-semibold ${heading}`}>{t(`fx.family.${family}` as MessageKey)}</h2>
+                <p className="text-2xs leading-snug text-slate-400">{t(`fx.family.${family}Hint` as MessageKey)}</p>
+              </div>
+            </div>
+            {groups.map(section)}
+          </div>
+        );
+      })}
     </div>
   );
 }

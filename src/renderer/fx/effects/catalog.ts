@@ -21,9 +21,17 @@ import { evaluateNumber } from '@renderer/engine/KeyframeEvaluator';
  * and the smaller viewer.
  */
 
-export type EffectCategory = 'color' | 'blur' | 'distort' | 'stylize' | 'film';
+export type EffectCategory = 'camera' | 'color' | 'blur' | 'distort' | 'glitch' | 'stylize' | 'film';
 
-export const EFFECT_CATEGORIES: readonly EffectCategory[] = ['color', 'blur', 'distort', 'stylize', 'film'];
+export const EFFECT_CATEGORIES: readonly EffectCategory[] = ['camera', 'color', 'blur', 'distort', 'glitch', 'stylize', 'film'];
+
+/**
+ * The two kinds the Effects panel keeps apart, each in its own colour: what
+ * moves the camera - shakes, punches, and the Movement presets and the
+ * animations beside them - and what changes the look of the picture.
+ */
+export type EffectFamily = 'camera' | 'look';
+export const effectFamily = (category: EffectCategory): EffectFamily => (category === 'camera' ? 'camera' : 'look');
 
 /** How a setting is shown: the stored number, converted for reading only. */
 export type EffectParamFormat = 'percent' | 'signedPercent' | 'degrees' | 'px' | 'plain' | 'toggle' | 'position';
@@ -153,7 +161,7 @@ export const EFFECTS: readonly EffectDef[] = [
   },
   {
     type: 'glitch',
-    category: 'distort',
+    category: 'glitch',
     origin: 'scf',
     cost: 'light',
     animated: true,
@@ -165,14 +173,115 @@ export const EFFECTS: readonly EffectDef[] = [
     ],
   },
 
+  /* Glitch: this app's own -------------------------------------------------------- */
+  {
+    type: 'vhs',
+    category: 'glitch',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('amount', 'fxp.amount', 0.6, 0, 1, 0.01, 'percent'), p('noise', 'fxp.noise', 0.35, 0, 1, 0.01, 'percent'), p('tracking', 'fxp.tracking', 0.4, 0, 1, 0.01, 'percent')],
+  },
+  {
+    type: 'blockGlitch',
+    category: 'glitch',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('amount', 'fxp.amount', 0.5, 0, 1, 0.01, 'percent'), p('blockSize', 'fxp.blockSize', 24, 4, 120, 1, 'px'), p('speed', 'fxp.changesPerSecond', 12, 0, 30, 0.5, 'plain')],
+  },
+  {
+    type: 'sliceGlitch',
+    category: 'glitch',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('amount', 'fxp.amount', 0.5, 0, 1, 0.01, 'percent'), p('slices', 'fxp.slices', 18, 3, 80, 1, 'plain'), p('speed', 'fxp.changesPerSecond', 8, 0, 30, 0.5, 'plain')],
+  },
+  {
+    type: 'rgbSplit',
+    category: 'glitch',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('amount', 'fxp.offset', 14, 0, 80, 0.5, 'px'), p('speed', 'fxp.speed', 3, 0, 15, 0.1, 'plain'), p('angle', 'fxp.angle', 0, 0, 360, 1, 'degrees')],
+  },
+  {
+    type: 'staticNoise',
+    category: 'glitch',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('amount', 'fxp.amount', 0.35, 0, 1, 0.01, 'percent'), p('size', 'fxp.grainSize', 2, 1, 8, 0.5, 'px')],
+  },
+  {
+    type: 'crt',
+    category: 'glitch',
+    origin: 'scf',
+    cost: 'light',
+    params: [p('strength', 'fxp.strength', 0.5, 0, 1, 0.01, 'percent'), p('spacing', 'fxp.lineSpacing', 4, 2, 16, 0.5, 'px'), p('curvature', 'fxp.curve', 0.5, 0, 1, 0.01, 'percent')],
+  },
+
+  /* Camera: this app's own -------------------------------------------------------- */
+  {
+    type: 'cameraShake',
+    category: 'camera',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('intensity', 'fxp.reach', 20, 0, 100, 0.5, 'px'), p('speed', 'fxp.changesPerSecond', 12, 0.5, 30, 0.5, 'plain'), p('rotation', 'fxp.rotation', 1, 0, 10, 0.1, 'degrees')],
+  },
+  {
+    type: 'handheld',
+    category: 'camera',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('intensity', 'fxp.reach', 14, 0, 60, 0.5, 'px'), p('speed', 'fxp.speed', 0.6, 0.1, 3, 0.05, 'plain'), p('rotation', 'fxp.rotation', 0.8, 0, 5, 0.1, 'degrees')],
+  },
+  {
+    type: 'zoomPulse',
+    category: 'camera',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('amount', 'fxp.zoom', 0.12, 0.01, 0.6, 0.01, 'percent'), p('rate', 'fxp.perSecond', 2, 0.25, 8, 0.05, 'plain'), ...centre()],
+  },
+
   /* Stylize --------------------------------------------------------------------- */
+  { type: 'posterize', category: 'stylize', origin: 'scf', cost: 'light', params: [p('levels', 'fxp.levels', 5, 2, 16, 1, 'plain')] },
+  {
+    type: 'duotone',
+    category: 'stylize',
+    origin: 'scf',
+    cost: 'light',
+    params: [p('shadowHue', 'fxp.shadowHue', 260, 0, 360, 1, 'degrees'), p('highlightHue', 'fxp.highlightHue', 40, 0, 360, 1, 'degrees'), p('amount', 'fxp.amount', 1, 0, 1, 0.01, 'percent')],
+  },
+  { type: 'mirror', category: 'stylize', origin: 'scf', cost: 'light', params: [p('flip', 'fxp.otherSide', 0, 0, 1, 1, 'toggle'), p('vertical', 'fxp.vertical', 0, 0, 1, 1, 'toggle')] },
   { type: 'ink', category: 'stylize', origin: 'glfx', cost: 'light', params: [p('strength', 'fxp.strength', 0.25, 0, 1, 0.01, 'percent')] },
   { type: 'edgeWork', category: 'stylize', origin: 'glfx', cost: 'medium', params: [p('radius', 'fxp.radius', 10, 1, 60, 0.5, 'px')] },
   { type: 'hexagonalPixelate', category: 'stylize', origin: 'glfx', cost: 'light', params: [p('size', 'fxp.cellSize', 20, 2, 200, 1, 'px')] },
   { type: 'dotScreen', category: 'stylize', origin: 'glfx', cost: 'light', params: [p('angle', 'fxp.angle', 25, 0, 180, 1, 'degrees'), p('size', 'fxp.dotSize', 3, 1, 50, 0.5, 'px')] },
   { type: 'colorHalftone', category: 'stylize', origin: 'glfx', cost: 'light', params: [p('angle', 'fxp.angle', 25, 0, 180, 1, 'degrees'), p('size', 'fxp.dotSize', 4, 1, 50, 0.5, 'px')] },
 
+  { type: 'fisheye', category: 'distort', origin: 'scf', cost: 'light', params: [p('strength', 'fxp.strength', 0.5, -0.6, 1, 0.01, 'signedPercent')] },
+
   /* Film and light ----------------------------------------------------------------- */
+  {
+    type: 'glow',
+    category: 'film',
+    origin: 'scf',
+    cost: 'medium',
+    params: [p('threshold', 'fxp.threshold', 0.6, 0, 1, 0.01, 'percent'), p('intensity', 'fxp.intensity', 0.9, 0, 2, 0.01, 'percent'), p('radius', 'fxp.radius', 18, 2, 60, 0.5, 'px')],
+  },
+  {
+    type: 'flash',
+    category: 'film',
+    origin: 'scf',
+    cost: 'light',
+    animated: true,
+    params: [p('rate', 'fxp.perSecond', 2, 0.25, 10, 0.05, 'plain'), p('intensity', 'fxp.intensity', 0.7, 0, 1, 0.01, 'percent')],
+  },
   {
     type: 'filmGrain',
     category: 'film',

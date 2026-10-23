@@ -1,5 +1,6 @@
 import { FULLSCREEN_MATRIX, GLProgram, RenderTarget } from '@renderer/engine/GLProgram';
-import { createEffect } from '@renderer/fx/effects/catalog';
+import { createEffect, effectDef } from '@renderer/fx/effects/catalog';
+import { samplePicture } from './samplePictures';
 import { EFFECT_PASSES } from '@renderer/fx/effects/shaders';
 import baseVertexSource from '@renderer/engine/shaders/BaseVertex.glsl?raw';
 
@@ -22,49 +23,9 @@ const WIDTH = 320;
 const HEIGHT = 180;
 const VIRTUAL = { width: 960, height: 540 };
 
-/** A small scene with every kind of thing an effect acts on: sky, sun, hills, edges, skin-like warmth, fine detail. */
+/** The scene effects are shown on: the lake at sunset, with its figure on the shore (samplePictures). */
 export function drawEffectSample(context: CanvasRenderingContext2D, width: number, height: number): void {
-  const sky = context.createLinearGradient(0, 0, 0, height * 0.7);
-  sky.addColorStop(0, '#1e3a8a');
-  sky.addColorStop(0.55, '#7c3aed');
-  sky.addColorStop(1, '#fb923c');
-  context.fillStyle = sky;
-  context.fillRect(0, 0, width, height);
-  // The sun, with a glow.
-  const sun = context.createRadialGradient(width * 0.68, height * 0.5, 0, width * 0.68, height * 0.5, height * 0.34);
-  sun.addColorStop(0, '#fff7cc');
-  sun.addColorStop(0.35, '#fde047');
-  sun.addColorStop(1, 'rgba(253, 224, 71, 0)');
-  context.fillStyle = sun;
-  context.fillRect(0, 0, width, height);
-  // Hills, far and near.
-  context.fillStyle = '#0f766e';
-  context.beginPath();
-  context.moveTo(0, height * 0.72);
-  context.quadraticCurveTo(width * 0.3, height * 0.5, width * 0.62, height * 0.7);
-  context.quadraticCurveTo(width * 0.85, height * 0.82, width, height * 0.66);
-  context.lineTo(width, height);
-  context.lineTo(0, height);
-  context.fill();
-  context.fillStyle = '#14532d';
-  context.beginPath();
-  context.moveTo(0, height * 0.86);
-  context.quadraticCurveTo(width * 0.45, height * 0.7, width, height * 0.9);
-  context.lineTo(width, height);
-  context.lineTo(0, height);
-  context.fill();
-  // A figure, warm and hard-edged, for edges and skin tones.
-  context.fillStyle = '#f2b48c';
-  context.beginPath();
-  context.arc(width * 0.26, height * 0.46, height * 0.075, 0, Math.PI * 2);
-  context.fill();
-  context.fillStyle = '#dc2626';
-  context.beginPath();
-  context.roundRect(width * 0.205, height * 0.54, width * 0.11, height * 0.3, height * 0.04);
-  context.fill();
-  // Fine stripes: what sharpening, halftones and blurs show best on.
-  context.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  for (let i = 0; i < 6; i += 1) context.fillRect(width * 0.84 + i * width * 0.018, height * 0.12, width * 0.008, height * 0.22);
+  context.drawImage(samplePicture('sunset', width, height), 0, 0, width, height);
 }
 
 interface State {
@@ -200,16 +161,20 @@ function pass(s: State, program: GLProgram, input: WebGLTexture, target: RenderT
 
 const pictures = new Map<string, ImageBitmap | HTMLCanvasElement>();
 
-/** The picture of effect `type` at its defaults: drawn the first time it is asked for, then kept. */
-function pictureOf(type: string): ImageBitmap | HTMLCanvasElement | null {
-  const known = pictures.get(type);
-  if (known) return known;
+/**
+ * Where a still tile catches an effect that moves by itself: at a strike of
+ * the flash or the punch - not between two, where it shows nothing.
+ */
+const STILL_SECONDS: Record<string, number> = { flash: 0.04, zoomPulse: 0.02 };
+
+/** Effect `type` at its defaults, `seconds` in, drawn onto the GL canvas (which the next draw replaces). */
+function renderEffect(type: string, seconds: number): HTMLCanvasElement | null {
   const s = setUp();
   if (!s) return null;
   try {
     const effect = createEffect(type);
     const passes = EFFECT_PASSES[type] ?? [];
-    const context = { ...VIRTUAL, seconds: 1.3 };
+    const context = { ...VIRTUAL, seconds };
     let input = s.source;
     let write = s.ping;
     let read = s.pong;
@@ -228,17 +193,55 @@ function pictureOf(type: string): ImageBitmap | HTMLCanvasElement | null {
       }
     });
     if (passes.length === 0) pass(s, s.copy, s.source, null, () => undefined);
-    // Kept as a copy: the GL canvas is drawn over by the next effect.
-    const copy = document.createElement('canvas');
-    copy.width = WIDTH;
-    copy.height = HEIGHT;
-    copy.getContext('2d')?.drawImage(s.canvas, 0, 0);
-    pictures.set(type, copy);
-    return copy;
+    return s.canvas;
   } catch (error) {
     console.warn(error);
     return null;
   }
+}
+
+/** The picture of effect `type` at its defaults: drawn the first time it is asked for, then kept. */
+function pictureOf(type: string): ImageBitmap | HTMLCanvasElement | null {
+  const known = pictures.get(type);
+  if (known) return known;
+  const drawn = renderEffect(type, STILL_SECONDS[type] ?? 1.3);
+  if (!drawn) return null;
+  // Kept as a copy: the GL canvas is drawn over by the next effect.
+  const copy = document.createElement('canvas');
+  copy.width = WIDTH;
+  copy.height = HEIGHT;
+  copy.getContext('2d')?.drawImage(drawn, 0, 0);
+  pictures.set(type, copy);
+  return copy;
+}
+
+/** Whether effect `type` moves by itself, and so plays on hover rather than wiping between before and after. */
+export const effectMoves = (type: string): boolean => effectDef(type)?.animated === true;
+
+/** Effect `type` live, `seconds` in: a moving effect's hover preview. */
+export function drawEffectFrame(context: CanvasRenderingContext2D, width: number, height: number, type: string, seconds: number): void {
+  const drawn = renderEffect(type, seconds);
+  context.clearRect(0, 0, width, height);
+  if (drawn) context.drawImage(drawn, 0, 0, width, height);
+  else drawEffectSample(context, width, height);
+}
+
+/**
+ * Before and after, split at `split` (0 to 1 across): the scene as it is on
+ * the left, with the effect on the right, and a bright line between - a still
+ * effect's hover preview, the line sweeping across.
+ */
+export function drawEffectCompare(context: CanvasRenderingContext2D, width: number, height: number, type: string, split: number): void {
+  drawEffectThumb(context, width, height, type);
+  const x = Math.round(width * Math.min(1, Math.max(0, split)));
+  context.save();
+  context.beginPath();
+  context.rect(0, 0, x, height);
+  context.clip();
+  drawEffectSample(context, width, height);
+  context.restore();
+  context.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  context.fillRect(x - 1, 0, 2, height);
 }
 
 /** Draw effect `type`'s picture onto a tile's canvas; the plain sample if it cannot be drawn. */

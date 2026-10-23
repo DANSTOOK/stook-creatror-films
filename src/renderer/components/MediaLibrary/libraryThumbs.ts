@@ -1,4 +1,5 @@
 import type { TransitionDirection } from '@shared/types';
+import { samplePicture } from './samplePictures';
 import { presetKind, type TransitionPreset } from '@renderer/timing/transitions';
 
 /**
@@ -30,41 +31,14 @@ const STILL_PROGRESS: Record<TransitionPreset, number> = {
   push: 0.5,
 };
 
-/** A side's picture, drawn once per size: a warm A and a cool B, each with its letter. */
-const sides = new Map<string, HTMLCanvasElement>();
-
+/**
+ * A side's picture: the lake at sunset going out, the city at night coming
+ * in (samplePictures) - two places, not two letters.
+ */
 function sidePicture(letter: 'A' | 'B', width: number, height: number): HTMLCanvasElement {
-  const key = `${letter}:${width}x${height}`;
-  const cached = sides.get(key);
-  if (cached) return cached;
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (context) {
-    const gradient = context.createLinearGradient(0, 0, width, height);
-    // Amber and blue: told apart by lightness as well as hue, so they read
-    // as two pictures to someone who does not see the colours.
-    if (letter === 'A') {
-      gradient.addColorStop(0, '#fbbf24');
-      gradient.addColorStop(1, '#b45309');
-    } else {
-      gradient.addColorStop(0, '#38bdf8');
-      gradient.addColorStop(1, '#1e3a8a');
-    }
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, width, height);
-    context.fillStyle = letter === 'A' ? 'rgba(69, 26, 3, 0.85)' : 'rgba(255, 255, 255, 0.92)';
-    context.font = `700 ${Math.round(height * 0.5)}px system-ui, "Segoe UI", sans-serif`;
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(letter, width / 2, height / 2 + height * 0.03);
-  }
-  sides.set(key, canvas);
-  return canvas;
+  return samplePicture(letter === 'A' ? 'sunset' : 'city', width, height);
 }
 
-/** Screen offset of a direction, canvas pixels (y down); the shader's texture space is y up. */
 function screenVector(direction: TransitionDirection, width: number, height: number): { x: number; y: number } {
   switch (direction) {
     case 'left':

@@ -16,6 +16,9 @@ export interface FinderOption {
   label: string;
   /** How many the category holds (what the search leaves of it). */
   count: number;
+  /** A whole family: shown in bold, with its groups indented under it. */
+  heading?: boolean;
+  indent?: boolean;
 }
 
 interface Props {
@@ -116,7 +119,7 @@ export function LibraryFinder({ query, onQuery, placeholder, searchTestId, optio
                     disabled={option.count === 0 && !selected}
                     className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition-colors disabled:opacity-40 ${
                       selected ? 'bg-accent/15 text-accent-hover' : 'text-slate-200 hover:bg-panel-700'
-                    }`}
+                    } ${option.heading ? 'mt-1 font-semibold' : ''} ${option.indent ? 'pl-5' : ''}`}
                     onClick={() => {
                       onChange(option.id);
                       setOpen(false);
