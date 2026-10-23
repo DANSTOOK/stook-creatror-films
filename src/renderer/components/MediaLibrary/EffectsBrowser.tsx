@@ -79,8 +79,8 @@ const FAMILY_GROUPS: Record<EffectFamily, readonly EffectGroup[]> = {
  * two read apart at a glance, as well as by where they sit.
  */
 const FAMILY_LOOK: Record<EffectFamily, { Icon: ComponentType<LucideProps>; badge: string; band: string; heading: string }> = {
-  camera: { Icon: Video, badge: 'bg-sky-600/90 text-white', band: 'border-sky-500/70 bg-sky-500/[0.06]', heading: 'text-sky-300' },
-  look: { Icon: Sparkles, badge: 'bg-violet-600/90 text-white', band: 'border-violet-500/70 bg-violet-500/[0.06]', heading: 'text-violet-300' },
+  camera: { Icon: Video, badge: 'bg-sky-600/90 text-white', band: 'border-family-camera/70 bg-family-camera/[0.07]', heading: 'text-family-camera' },
+  look: { Icon: Sparkles, badge: 'bg-violet-600/90 text-white', band: 'border-family-look/70 bg-family-look/[0.07]', heading: 'text-family-look' },
 };
 
 const MOTION_ICON: Record<MotionPresetId, ComponentType<LucideProps>> = {

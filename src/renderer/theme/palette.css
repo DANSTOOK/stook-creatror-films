@@ -46,6 +46,9 @@
   --tl-ruler-line: 52 56 64;
   --tl-tick: 65 69 78;
   --tl-tick-text: 148 163 184;
+  /* The Effects panel's families: sky-300 and violet-300, light on the dark panels. */
+  --fx-camera: 125 211 252;
+  --fx-look: 196 181 253;
 
   color-scheme: dark;
 }
@@ -78,6 +81,9 @@
   --tl-ruler-line: 196 203 214;
   --tl-tick: 176 184 196;
   --tl-tick-text: 71 85 105;
+  /* sky-700 and violet-700: 5.9:1 and 7.1:1 on white. */
+  --fx-camera: 3 105 161;
+  --fx-look: 109 40 217;
 
   color-scheme: light;
 }
@@ -107,4 +113,25 @@
 /* On white panels the accent as text has to be the dark shade, not the light one. */
 :root[data-theme='light'] {
   --accent-hover: var(--accent-strong);
+}
+
+/*
+  Warnings, errors and "done" lines are written in the light shades that read
+  on the dark panels (amber-300, red-300, emerald-300, sky-300). On white
+  they all but vanished - amber-300 is 1.5:1 - so the light theme takes the
+  dark shade of each instead (4.8:1 to 6:1). Not where they sit on a dark
+  badge of their own (a red-900 "missing" tag, a black overlay): there the
+  light shade is the one that reads.
+*/
+:root[data-theme='light'] :is(.text-amber-100, .text-amber-200, .text-amber-300, .text-yellow-200):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+  color: rgb(180 83 9); /* amber-700 */
+}
+:root[data-theme='light'] :is(.text-red-200, .text-red-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+  color: rgb(185 28 28); /* red-700 */
+}
+:root[data-theme='light'] :is(.text-emerald-200, .text-emerald-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+  color: rgb(4 120 87); /* emerald-700 */
+}
+:root[data-theme='light'] :is(.text-sky-300):not([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']):not(:is([class*='bg-black'], [class*='bg-red-9'], [class*='bg-emerald-9'], [class*='bg-sky-9'], [class*='bg-amber-9']) *) {
+  color: rgb(3 105 161); /* sky-700 */
 }

@@ -30,6 +30,12 @@ module.exports = {
           strong: 'rgb(var(--accent-strong) / <alpha-value>)',
           hover: 'rgb(var(--accent-hover) / <alpha-value>)',
         },
+        // The Effects panel's two families (MediaLibrary/EffectsBrowser): a
+        // shade of each that reads as text on the panels in either theme.
+        family: {
+          camera: 'rgb(var(--fx-camera) / <alpha-value>)',
+          look: 'rgb(var(--fx-look) / <alpha-value>)',
+        },
         // A finished job, and only that: the blue accent stays "act here",
         // mint says "done". 12.2:1 on panel-950 and 11.3:1 on panel-900;
         // panel-950 text on it reads at 12.2:1 (15.4:1 on the hover).

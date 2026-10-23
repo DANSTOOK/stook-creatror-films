@@ -106,6 +106,41 @@ async function main() {
     const light = await choose('Light');
     const kept = JSON.parse(readFileSync(join(profile, 'scf', 'appearance.json'), 'utf8'));
     check('Light reaches Windows’ caption buttons and native controls, and is remembered', light.page === 'light' && light.source === 'light' && !light.dark && kept.theme === 'light', JSON.stringify({ light, kept }));
+    // Warning, error, "done" and info lines on a white panel: the dark shade of each, readable;
+    // on a dark badge of their own, still the light one.
+    const contrast = await window.evaluate(() => {
+      const panel = document.querySelector('[data-testid="media-panel"]');
+      const luminance = (rgb) => {
+        const [r, g, b] = rgb.match(/\d+/g).slice(0, 3).map(Number).map((v) => {
+          const c = v / 255;
+          return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const ratio = (a, b) => {
+        const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m);
+        return (x + 0.05) / (y + 0.05);
+      };
+      const background = getComputedStyle(panel).backgroundColor;
+      const out = {};
+      for (const name of ['text-amber-300', 'text-red-300', 'text-emerald-300', 'text-sky-300', 'text-amber-200']) {
+        const probe = document.createElement('span');
+        probe.className = name;
+        probe.textContent = 'x';
+        panel.appendChild(probe);
+        out[name] = +ratio(getComputedStyle(probe).color, background).toFixed(1);
+        probe.remove();
+      }
+      const badge = document.createElement('span');
+      badge.className = 'bg-red-900/90 text-red-200';
+      panel.appendChild(badge);
+      out.badge = getComputedStyle(badge).color;
+      badge.remove();
+      return out;
+    });
+    check('in Light, warning, error, done and info text reads on the panels (4.5:1 or more); on a dark badge it stays light',
+      ['text-amber-300', 'text-red-300', 'text-emerald-300', 'text-sky-300', 'text-amber-200'].every((name) => contrast[name] >= 4.5) && contrast.badge === 'rgb(254, 202, 202)',
+      JSON.stringify(contrast));
     const system = await choose('System');
     check('System follows Windows: the page and the native controls agree with it', system.source === 'system' && system.page === (system.dark ? 'dark' : 'light'), JSON.stringify(system));
     const dark = await choose('Dark');
