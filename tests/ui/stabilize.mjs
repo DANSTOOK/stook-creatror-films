@@ -16,7 +16,9 @@ import { _electron as electron } from 'playwright';
  *      half of what it was - steadied, not just softened - and the sound is
  *      still there;
  *   3. the original file is untouched, the stabilized one kept in the app's
- *      folder; Off brings the shake back.
+ *      folder; Off brings the shake back;
+ *   4. saved while stabilized and reopened after a restart, it is stabilized
+ *      again in the export's picture.
  *
  * Needs a build (npm run build). The window is never shown.
  */
@@ -32,6 +34,35 @@ const check = (name, passed, detail = '') => {
   checks.push(passed);
   console.log(`   ${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`);
 };
+
+/** The mean jump from frame to frame, in the export's picture (grey levels, 0..255), over a second. */
+const jumpOf = (window) => window.evaluate(async () => {
+  const renderer = window.__scfRenderer();
+  const { project } = window.__scfStore.getState();
+  renderer.beginExclusive();
+  try {
+    let previous = null;
+    let total = 0;
+    let count = 0;
+    // Away from the edges, where a zoom-in crops.
+    for (let frame = 40; frame < 70; frame += 1) {
+      const rgba = await renderer.renderExact(project, frame, false);
+      const grey = [];
+      for (let y = 60; y < 300; y += 4) for (let x = 100; x < 540; x += 4) {
+        const at = (y * project.width + x) * 4;
+        grey.push((rgba[at] + rgba[at + 1] + rgba[at + 2]) / 3);
+      }
+      if (previous) {
+        total += grey.reduce((sum, value, i) => sum + Math.abs(value - previous[i]), 0) / grey.length;
+        count += 1;
+      }
+      previous = grey;
+    }
+    return +(total / count).toFixed(2);
+  } finally {
+    renderer.endExclusive();
+  }
+});
 
 async function main() {
   if (!existsSync(join(root, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
@@ -75,34 +106,7 @@ async function main() {
     });
     await sleep(800);
 
-    /** The mean jump from frame to frame, in the export's picture (grey levels, 0..255), over a second. */
-    const jump = () => window.evaluate(async () => {
-      const renderer = window.__scfRenderer();
-      const { project } = window.__scfStore.getState();
-      renderer.beginExclusive();
-      try {
-        let previous = null;
-        let total = 0;
-        let count = 0;
-        // Away from the edges, where a zoom-in crops.
-        for (let frame = 40; frame < 70; frame += 1) {
-          const rgba = await renderer.renderExact(project, frame, false);
-          const grey = [];
-          for (let y = 60; y < 300; y += 4) for (let x = 100; x < 540; x += 4) {
-            const at = (y * project.width + x) * 4;
-            grey.push((rgba[at] + rgba[at + 1] + rgba[at + 2]) / 3);
-          }
-          if (previous) {
-            total += grey.reduce((sum, value, i) => sum + Math.abs(value - previous[i]), 0) / grey.length;
-            count += 1;
-          }
-          previous = grey;
-        }
-        return +(total / count).toFixed(2);
-      } finally {
-        renderer.endExclusive();
-      }
-    });
+    const jump = () => jumpOf(window);
     const shake = await jump();
 
     console.log('1. stabilizing');
@@ -124,6 +128,12 @@ async function main() {
     void sound;
     check('the stabilized file keeps the sound', /Audio: aac/.test(probe), (probe.match(/Stream[^\n]*/g) ?? []).join(' | '));
 
+    const projectFile = join(work, 'steady.scf');
+    await app.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }); }, projectFile);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('app:menu-command', 'save'));
+    await window.waitForFunction(() => /Saved/.test(document.body.innerText), null, { timeout: 15_000 }).catch(() => undefined);
+    await sleep(500);
+
     console.log('3. the original, and Off');
     const after = execFileSync(ffmpeg, ['-v', 'error', '-i', shaky, '-f', 'md5', '-']).toString().trim();
     check('the original is untouched, the stabilized one kept in the app’s folder', before === after && made.length === 1, `${made.length} kept`);
@@ -138,6 +148,34 @@ async function main() {
     await app.close().catch(() => undefined);
     try {
       execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+    } catch {
+      // Already gone.
+    }
+  }
+  console.log('4. saved and reopened');
+  const again = await electron.launch({
+    args: [`--user-data-dir=${profile}`, join(root, 'dist-electron/main/index.js')],
+    cwd: root,
+    env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: '1', ELECTRON_RUN_AS_NODE: undefined, SCF_BACKGROUND: '1', SCF_NO_CLOSE_PROMPT: '1' },
+  });
+  const againPid = again.process().pid;
+  try {
+    const window = await again.firstWindow();
+    await again.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
+    await window.getByRole('button', { name: 'Blank project' }).waitFor({ state: 'visible', timeout: 30_000 });
+    await again.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }); }, join(work, 'steady.scf'));
+    await again.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('app:menu-command', 'open'));
+    const opened = await window
+      .waitForFunction(() => window.__scfStore?.getState().assets[0]?.stabilize === 'medium' && Object.keys(window.__scfStore.getState().project.clips).length === 1, null, { timeout: 60_000 })
+      .then(() => true)
+      .catch(() => false);
+    await sleep(2000);
+    const reopened = opened ? await jumpOf(window) : null;
+    check('saved stabilized and reopened after a restart, it is still stabilized in the export’s picture', opened && reopened !== null && reopened < 8, `jump ${reopened}`);
+  } finally {
+    await again.close().catch(() => undefined);
+    try {
+      execFileSync('taskkill', ['/pid', String(againPid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } catch {
       // Already gone.
     }
