@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Clip } from '@shared/types';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { evaluateTransform } from '@renderer/engine/KeyframeEvaluator';
-import { followerKeyframes, followerScaleKeyframes, frameBoxToSource, sourceToFrame, trackRequest } from '@renderer/edit/track';
+import { followerKeyframes, followerRotationKeyframes, followerScaleKeyframes, frameBoxToSource, sourceToFrame, trackRequest } from '@renderer/edit/track';
 import { applyFollow, followOrigin, removeFollow } from '@renderer/edit/trackApply';
 import { applyClipAnimation } from '@renderer/fx/motion/apply';
 import { normalizeProject } from '@renderer/store/types';
@@ -124,6 +124,35 @@ describe('the follower’s size', () => {
   });
 });
 
+describe('the follower’s turn', () => {
+  it('turns as the thing turned, from its own rotation, with the video clip’s own turn, holding when lost', () => {
+    const clip = videoClip({
+      transform: {
+        position: [],
+        scale: [],
+        rotation: [
+          { id: 'a', frame: 40, value: 0, easing: 'linear' },
+          { id: 'b', frame: 100, value: 10, easing: 'linear' },
+        ],
+        opacity: [],
+        anchorPoint: { x: 0.5, y: 0.5 },
+      },
+    });
+    const samples = [
+      { t: 0, x: 0.5, y: 0.5, score: 1, angle: 0 },
+      { t: 1, x: 0.5, y: 0.5, score: 1, angle: 30 },
+      { t: 2, x: 0.5, y: 0.5, score: 0.1, angle: 90 },
+    ];
+    const keys = followerRotationKeyframes(samples, clip, 5, 40, 400, 30);
+    const transform = { position: [], scale: [], rotation: keys, opacity: [], anchorPoint: { x: 0.5, y: 0.5 } };
+    expect(evaluateTransform(transform, 40).rotation).toBeCloseTo(5, 6);
+    // 30 degrees of its own, and 5 of the clip's turning under it.
+    expect(evaluateTransform(transform, 70).rotation).toBeCloseTo(40, 6);
+    // Lost: the thing's last turn held; the clip's own keeps going.
+    expect(evaluateTransform(transform, 100).rotation).toBeCloseTo(45, 6);
+  });
+});
+
 describe('writing a follow onto a clip', () => {
   let clipId = '';
   beforeEach(() => {
@@ -171,6 +200,20 @@ describe('writing a follow onto a clip', () => {
     expect(clip().tracking?.beforeScale?.[0].id).toBe('own');
     removeFollow(clipId);
     expect(clip().transform.scale).toEqual([{ id: 'own', frame: 0, value: { x: 0.3, y: 0.3 }, easing: 'linear' }]);
+  });
+
+  it('a follow that takes the turn turns it from the marked frame, and stopping puts no turn back', () => {
+    const turns = [
+      { id: 'r1', frame: 30, value: 0, easing: 'linear' as const },
+      { id: 'r2', frame: 90, value: 45, easing: 'linear' as const },
+    ];
+    applyFollow(clipId, path, 30, undefined, turns);
+    expect(evaluateTransform(clip().transform, 60).rotation).toBeCloseTo(22.5, 4);
+    expect(clip().tracking?.beforeRotation).toEqual([]);
+    const opened = normalizeProject(JSON.parse(JSON.stringify(state().project)));
+    expect(opened.clips[clipId].tracking?.beforeRotation).toEqual([]);
+    removeFollow(clipId);
+    expect(clip().transform.rotation).toEqual([]);
   });
 
   it('stopping puts the position it had back, and a saved project keeps the follow', () => {

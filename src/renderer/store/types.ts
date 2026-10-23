@@ -506,6 +506,7 @@ function normalizeTracking(tracking: unknown): Clip['tracking'] {
     fromFrame: Math.max(0, Math.round(source.fromFrame)),
     before: source.before as NonNullable<Clip['tracking']>['before'],
     ...(Array.isArray(source.beforeScale) ? { beforeScale: source.beforeScale as NonNullable<Clip['tracking']>['before'] } : {}),
+    ...(Array.isArray(source.beforeRotation) ? { beforeRotation: source.beforeRotation as NonNullable<NonNullable<Clip['tracking']>['beforeRotation']> } : {}),
   };
 }
 

@@ -30,6 +30,8 @@ export interface TrackSampleLike {
   score: number;
   /** The thing's size against its size where it was marked (1 from a build that did not measure it). */
   scale?: number;
+  /** How far it has turned since it was marked, degrees clockwise (0 from a build that did not measure it). */
+  angle?: number;
 }
 
 /** A match under this holds the follower where it was (main/media/tracker.ts MIN_MATCH). */
@@ -155,6 +157,37 @@ export function followerScaleKeyframes(
   }
   // Half a percent of its own size: a change smaller than that does not show.
   return simplified([...byFrame.values()], Math.max(0.0005, 0.005 * Math.max(own.x, own.y)));
+}
+
+/**
+ * The follower's turn keyframes, for a follow that takes the turn too: from
+ * `startFrame` it turns as the thing turned on screen - in the file, and the
+ * video clip's own rotation - from `own`, its rotation there. A lost sample
+ * holds the last good turn. Keyframes only where it shows (a quarter degree).
+ */
+export function followerRotationKeyframes(
+  samples: readonly TrackSampleLike[],
+  target: Clip,
+  own: number,
+  startFrame: number,
+  endFrame: number,
+  fps: number,
+): Keyframe<number>[] {
+  if (samples.length === 0) return [];
+  const speed = speedOf(target);
+  const turnAt = (frame: number): number => evaluateTransform(target.transform, frame).rotation;
+  const turn0 = turnAt(startFrame);
+  const first = samples[0].angle ?? 0;
+  let last = first;
+  const byFrame = new Map<number, Keyframe<number>>();
+  for (const sample of samples) {
+    const frame = startFrame + Math.round((sample.t * fps) / speed);
+    if (frame > endFrame) break;
+    const angle = sample.score >= TRACK_MIN_SCORE && sample.angle !== undefined ? sample.angle : last;
+    last = angle;
+    byFrame.set(frame, { id: createId('kf'), frame, value: own + (angle - first) + (turnAt(frame) - turn0), easing: 'linear' });
+  }
+  return simplified([...byFrame.values()], 0.25);
 }
 
 /** The video clip a follower sits over at `frame`: the topmost one on a track below its own that can be followed. */

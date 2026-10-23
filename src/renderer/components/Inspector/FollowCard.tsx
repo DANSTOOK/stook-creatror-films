@@ -4,8 +4,8 @@ import type { Clip } from '@shared/types';
 import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { hasNativeBridge } from '@renderer/media/importMedia';
-import { followerKeyframes, followerScaleKeyframes, trackEndFrame, trackRequest, trackTargetFor } from '@renderer/edit/track';
-import { applyFollow, followOrigin, followOwnScale, removeFollow } from '@renderer/edit/trackApply';
+import { followerKeyframes, followerRotationKeyframes, followerScaleKeyframes, trackEndFrame, trackRequest, trackTargetFor } from '@renderer/edit/track';
+import { applyFollow, followOrigin, followOwnRotation, followOwnScale, removeFollow } from '@renderer/edit/trackApply';
 import { useTrackEditStore } from '@renderer/edit/trackEdit';
 
 /**
@@ -27,6 +27,7 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   // Size too, as CapCut's "position and scale" tracking: on by default; off keeps the clip's own size.
   const [withSize, setWithSize] = useState(true);
+  const [withTurn, setWithTurn] = useState(true);
 
   const frame = project.currentFrame;
   const target = hasNativeBridge() ? trackTargetFor(project, assets, clip, frame) : null;
@@ -69,6 +70,7 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
         followerKeyframes(samples, under, followOrigin(follower, frame), frame, end, now),
         frame,
         withSize ? followerScaleKeyframes(samples, under, followOwnScale(follower, frame), frame, end, now.fps) : undefined,
+        withTurn ? followerRotationKeyframes(samples, under, followOwnRotation(follower, frame), frame, end, now.fps) : undefined,
       );
       stopMarking();
       setStatus({ kind: 'idle' });
@@ -122,6 +124,18 @@ export function FollowCard({ clip }: { clip: Clip }): JSX.Element {
                     onChange={(event) => setWithSize(event.target.checked)}
                   />
                   {t('track.withSize')}
+                </label>
+              )}
+              {marking && (
+                <label className="flex w-full items-center gap-2 text-2xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    data-testid="clip-fx-follow-turn"
+                    checked={withTurn}
+                    disabled={status.kind === 'running'}
+                    onChange={(event) => setWithTurn(event.target.checked)}
+                  />
+                  {t('track.withTurn')}
                 </label>
               )}
               {marking && (

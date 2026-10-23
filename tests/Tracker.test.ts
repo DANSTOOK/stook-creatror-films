@@ -5,7 +5,7 @@ const W = 320;
 const H = 180;
 
 /** A noisy grey frame with a textured square at (cx, cy). */
-function frameWith(cx: number, cy: number, seed = 1, occluded = false, size = 1): Uint8Array {
+function frameWith(cx: number, cy: number, seed = 1, occluded = false, size = 1, turn = 0): Uint8Array {
   const frame = new Uint8Array(W * H);
   let s = seed;
   const rnd = (): number => {
@@ -14,15 +14,19 @@ function frameWith(cx: number, cy: number, seed = 1, occluded = false, size = 1)
   };
   for (let i = 0; i < frame.length; i += 1) frame[i] = 90 + Math.floor(rnd() * 30);
   if (!occluded) {
-    const half = Math.round(12 * size);
+    // Drawn turned by `turn` degrees clockwise: each pixel looked up turned back.
+    const cos = Math.cos((turn * Math.PI) / 180);
+    const sin = Math.sin((turn * Math.PI) / 180);
+    const half = Math.round(12 * size * (turn ? 1.5 : 1));
     for (let y = -half; y < half; y += 1) {
       for (let x = -half; x < half; x += 1) {
         const px = Math.round(cx + x);
         const py = Math.round(cy + y);
         if (px < 0 || py < 0 || px >= W || py >= H) continue;
         // A checker inside a bright ring: something with a shape to find, drawn at `size`.
-        const u = x / size;
-        const v = y / size;
+        const u = (cos * x + sin * y) / size;
+        const v = (-sin * x + cos * y) / size;
+        if (turn && Math.max(Math.abs(u), Math.abs(v)) >= 12) continue;
         const ring = Math.max(Math.abs(u), Math.abs(v)) >= 10;
         frame[py * W + px] = ring ? 250 : (Math.floor((u + 12) / 4) + Math.floor((v + 12) / 4)) % 2 ? 30 : 200;
       }
@@ -57,6 +61,21 @@ describe('following a thing', () => {
     let resting = { x: 0, y: 0, score: 0, scale: 1 };
     for (let i = 1; i <= 30; i += 1) resting = still.next(frameWith(100, 90, i + 1));
     expect(resting.scale).toBeCloseTo(1, 5);
+  });
+
+  it('follows a thing turning, by how far it has turned, clockwise as the screen shows it', () => {
+    const tracker = new TemplateTracker(frameWith(160, 90), W, H, { x: 160, y: 90, width: 24, height: 24 });
+    let point = { x: 0, y: 0, score: 0, scale: 1, angle: 0 };
+    for (let i = 1; i <= 30; i += 1) point = tracker.next(frameWith(160, 90, i + 1, false, 1, i * 1.5));
+    // Turned 45 degrees over 30 frames.
+    expect(point.angle).toBeGreaterThan(38);
+    expect(point.angle).toBeLessThan(52);
+    expect(Math.abs(point.scale - 1)).toBeLessThan(0.1);
+    expect(Math.hypot(point.x - 160, point.y - 90)).toBeLessThanOrEqual(1.5);
+    const still = new TemplateTracker(frameWith(100, 90), W, H, { x: 100, y: 90, width: 24, height: 24 });
+    let resting = { x: 0, y: 0, score: 0, scale: 1, angle: 0 };
+    for (let i = 1; i <= 30; i += 1) resting = still.next(frameWith(100, 90, i + 1));
+    expect(resting.angle).toBe(0);
   });
 
   it('keeps its place when the thing is hidden for a moment, and finds it again after', () => {
