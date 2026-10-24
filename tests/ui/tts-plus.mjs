@@ -8,10 +8,15 @@ import { _electron as electron } from 'playwright';
 /**
  * Text to speech, everywhere in the editor: `node tests/ui/tts-plus.mjs`
  *
- *   1. the timeline's Text to speech button opens the window;
- *   2. a line generated with Clear voice and captions lands at the playhead on
- *      a Voice track (dialogue bus), kept in the app's folder (not temp), not
- *      clipped, at about -16 LUFS, with captions covering what it says;
+ *   1. the timeline's Voice button opens the library's Voice tab, beside
+ *      Effects and Transitions - not a window over the editor;
+ *   2. a line generated as it comes is an audio clip and nothing else - no
+ *      captions - starting on its first word: at the playhead on a Voice
+ *      track (dialogue bus), kept in the app's folder (not temp), not
+ *      clipped, at about -16 LUFS; with "also add captions" ticked, captions
+ *      cover what it says;
+ *   2b. the Phone call character: Daniela, through a phone line (nothing
+ *      left above 4 kHz);
  *   3. pitch +4 raises the voice (its fundamental a quarter higher) and keeps
  *      its pace;
  *   4. a title's menu reads it aloud from where it starts;
@@ -61,6 +66,16 @@ const crossings = (path) => {
   return { rate: pitches[Math.floor(pitches.length / 2)] ?? 0, seconds: samples.length / rate };
 };
 
+/** Seconds of near silence before the first sound. */
+const leadingSilence = (path) => {
+  const text = spawnSync(ffmpeg, ['-hide_banner', '-i', path, '-af', 'silencedetect=noise=-45dB:d=0.01', '-f', 'null', '-'], { encoding: 'utf8' }).stderr;
+  const start = text.match(/silence_start: (-?[\d.]+)/);
+  const end = text.match(/silence_end: ([\d.]+)/);
+  return start && Number(start[1]) <= 0.001 && end ? Number(end[1]) : 0;
+};
+/** The mean level above `hz`, in dB. */
+const band = (path, hz) => Number(spawnSync(ffmpeg, ['-hide_banner', '-i', path, '-af', `highpass=f=${hz},highpass=f=${hz},volumedetect`, '-f', 'null', '-'], { encoding: 'utf8' }).stderr.match(/mean_volume: (-?[\d.]+) dB/)?.[1]);
+
 async function main() {
   if (!existsSync(join(root, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
   rmSync(work, { recursive: true, force: true });
@@ -104,25 +119,36 @@ async function main() {
 
     console.log('1. the button');
     await window.getByTestId('timeline-tts').click();
-    // The window of its own the panels use: found among the app's windows.
-    let popup = null;
-    for (let attempt = 0; attempt < 40 && !popup; attempt += 1) {
-      for (const page of app.windows()) {
-        if (page !== window && (await page.locator('[data-testid="tts-dialog"]').count().catch(() => 0)) > 0) popup = page;
-      }
-      if (!popup) await sleep(250);
-    }
-    const tts = popup ?? window;
-    const opened = Boolean(popup) && (await tts.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false));
-    check('the timeline’s Text to speech button opens the window', opened);
+    const tts = window;
+    const opened = await tts.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false);
+    const tab = await window.getByTestId('library-tab-voice').getAttribute('aria-selected').catch(() => null);
+    const windows = app.windows().length;
+    check('the timeline’s Voice button opens the library’s Voice tab, no window of its own', opened && tab === 'true' && windows === 1, `tab ${tab}, ${windows} windows`);
 
-    console.log('2. a line, with clear voice and captions');
+    console.log('2. a line: an audio clip, and nothing else');
     const line = 'Hola a todos. Hoy vamos a editar un video en pocos minutos, paso a paso. Empecemos.';
     await tts.getByTestId('tts-language').selectOption('es');
+    await tts.getByTestId('tts-voice-es-419-dora').click();
     await tts.getByTestId('tts-text').fill(line);
     await tts.getByTestId('tts-pitch').fill('0');
     if (!(await tts.getByTestId('tts-enhance').isChecked())) await tts.getByTestId('tts-enhance').check();
+    const captionsOff = !(await tts.getByTestId('tts-captions').isChecked());
+    await tts.getByTestId('tts-generate').click();
+    const alone = await window.waitForFunction(() => Object.values(window.__scfStore.getState().project.clips).some((c) => window.__scfStore.getState().project.tracks.find((t) => t.id === c.trackId)?.type === 'audio'), null, { timeout: 120_000 }).then(() => true).catch(() => false);
+    await sleep(600);
+    const first = await window.evaluate(() => {
+      const s = window.__scfStore.getState();
+      const clip = Object.values(s.project.clips).find((c) => s.project.tracks.find((t) => t.id === c.trackId)?.type === 'audio');
+      return { captions: Object.values(s.project.clips).filter((c) => c.caption).length, path: s.assets.find((a) => a.uri === clip?.sourceUri)?.sourcePath ?? '', id: clip?.id };
+    });
+    const lead = leadingSilence(first.path);
+    check('captions are off unless asked: the voice is an audio clip and nothing else', alone && captionsOff && first.captions === 0, JSON.stringify({ captionsOff, captions: first.captions }));
+    check('it starts on its first word: no silence left before it', lead < 0.12, `${lead.toFixed(3)} s before the first word`);
+    await window.evaluate((id) => window.__scfStore.getState().removeClips([id]), first.id);
+
+    console.log('2b. with captions, asked for');
     await tts.getByTestId('tts-captions').check();
+    await tts.getByTestId('tts-text').fill(line);
     await tts.getByTestId('tts-generate').click();
     const made = await window.waitForFunction(() => Object.values(window.__scfStore.getState().project.clips).some((c) => window.__scfStore.getState().project.tracks.find((t) => t.id === c.trackId)?.type === 'audio'), null, { timeout: 120_000 }).then(() => true).catch(() => false);
     await sleep(800);
@@ -150,8 +176,27 @@ async function main() {
     check('with captions covering what it says, from its start to its end', cues.length >= 3 && cues[0].start === 30 && Math.abs(cues[cues.length - 1].end - placed.end) <= 2 && /Hola a todos/.test(cues[0].text),
       JSON.stringify(cues.map((c) => `${c.start}-${c.end} ${c.text}`)));
 
-    console.log('3. pitch');
+    console.log('2c. the Phone call character');
     await tts.getByTestId('tts-captions').uncheck();
+    await tts.getByTestId('tts-character-call').click();
+    const chosen = await tts.evaluate(() => ({
+      voice: document.querySelector('[data-testid="tts-voice-es-AR-daniela"]')?.getAttribute('aria-checked'),
+      phone: document.querySelector('[data-testid="tts-effect-phone"]')?.getAttribute('aria-pressed'),
+    }));
+    await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(900));
+    await tts.getByTestId('tts-text').fill('Hola, te llamo para contarte una noticia importante.');
+    const beforeCall = await window.evaluate(() => window.__scfStore.getState().assets.length);
+    await tts.getByTestId('tts-generate').click();
+    await window.waitForFunction((count) => window.__scfStore.getState().assets.length > count, beforeCall, { timeout: 120_000 }).catch(() => undefined);
+    await sleep(500);
+    const callPath = await window.evaluate(() => window.__scfStore.getState().assets.at(-1).sourcePath);
+    const callHigh = band(callPath, 4500);
+    const naturalHigh = band(kept, 4500);
+    check('the Phone call character: Daniela, through a phone line (the top end gone)', chosen.voice === 'true' && chosen.phone === 'true' && callHigh < naturalHigh - 15,
+      `above 4.5 kHz: ${naturalHigh.toFixed(1)} dB natural, ${callHigh.toFixed(1)} dB on the phone`);
+    await tts.getByTestId('tts-effect-none').click();
+
+    console.log('3. pitch');
     const generateWith = async (value) => {
       await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(400));
       await tts.getByTestId('tts-text').fill('Esta es la misma frase dicha dos veces para comparar el tono.');
@@ -165,10 +210,10 @@ async function main() {
     const normal = crossings(await generateWith(0));
     const higher = crossings(await generateWith(4));
     const ratio = higher.rate / normal.rate;
-    // +4 semitones is ×1.26; a generated voice varies a little from one take to the next.
-    check('pitch +4 raises the voice and keeps its pace', ratio > 1.15 && ratio < 1.4 && Math.abs(higher.seconds / normal.seconds - 1) < 0.04,
+    // +4 semitones is ×1.26; a generated voice varies a little from one take to the next,
+    // in pitch and in length (Piper's durations are sampled: a few per cent).
+    check('pitch +4 raises the voice and keeps its pace', ratio > 1.15 && ratio < 1.4 && Math.abs(higher.seconds / normal.seconds - 1) < 0.08,
       `pitch ${normal.rate.toFixed(0)} → ${higher.rate.toFixed(0)} Hz (×${ratio.toFixed(2)}), length ${normal.seconds.toFixed(2)} → ${higher.seconds.toFixed(2)} s`);
-    if (popup) await popup.close().catch(() => undefined);
 
     const rightClick = async (clipId) => {
       const canvas = await window.locator('[data-panel="timeline"] canvas').first().boundingBox();

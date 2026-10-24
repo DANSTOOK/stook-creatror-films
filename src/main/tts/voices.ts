@@ -32,8 +32,17 @@ function voiceFiles(voice: TtsVoice): { onnx: ModelFile; json: ModelFile } | nul
   };
 }
 
+/** A Kokoro voice is one of the voices of a model in a folder of its own: these three files. */
+export const KOKORO_FILES = ['model.int8.onnx', 'voices.bin', 'tokens.txt'] as const;
+
 /** The folder a voice's .onnx is in, or null when it is not on this computer. */
 export function voiceDir(voice: TtsVoice, dirs: VoiceDirs): string | null {
+  if (voice.engine === 'kokoro') {
+    for (const dir of [...dirs.bundled, dirs.downloaded]) {
+      if (KOKORO_FILES.every((file) => existsSync(join(dir, voice.file, file)))) return dir;
+    }
+    return null;
+  }
   const onnx = `${voice.file}.onnx`;
   const json = `${voice.file}.onnx.json`;
   for (const dir of dirs.bundled) {
@@ -43,10 +52,11 @@ export function voiceDir(voice: TtsVoice, dirs: VoiceDirs): string | null {
   return null;
 }
 
-/** The path to a voice's .onnx, or null when it is not here. */
+/** The path to a voice's .onnx (a Kokoro voice: its model's folder), or null when it is not here. */
 export function voiceModelPath(voice: TtsVoice, dirs: VoiceDirs): string | null {
   const dir = voiceDir(voice, dirs);
-  return dir ? join(dir, `${voice.file}.onnx`) : null;
+  if (!dir) return null;
+  return voice.engine === 'kokoro' ? join(dir, voice.file) : join(dir, `${voice.file}.onnx`);
 }
 
 /**

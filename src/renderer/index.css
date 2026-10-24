@@ -640,11 +640,11 @@
     clip: auto;
   }
 
-  /* Docked at its narrowest, six icons and one name do not fit (the last icon
-     was cut off at 1280 px): icons alone, the open one marked by the
-     highlight, every name in its tooltip. */
-  @container (max-width: 239px) {
-    /* Seven tabs in a docked panel: a little less room round each icon. */
+  /* Docked, seven icons and one name do not fit (with Voice, the Captions tab
+     went under the viewer at the default 1600 px): icons alone, the open one
+     marked by the highlight, every name in its tooltip. */
+  @container (max-width: 329px) {
+    /* Eight tabs in a docked panel: a little less room round each icon. */
     .library-tabs .library-tab {
       padding-left: 5px;
       padding-right: 5px;

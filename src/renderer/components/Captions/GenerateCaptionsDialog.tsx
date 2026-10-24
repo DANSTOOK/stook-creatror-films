@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { Captions } from 'lucide-react';
 import type { CaptionLanguage, CaptionPreset } from '@shared/types';
 import type { CaptionModelId } from '@shared/types/ipc';
-import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { currentLocale, useLanguageStore, useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useCaptionJob, type CaptionScope } from '@renderer/captions/captionJob';
@@ -11,11 +10,12 @@ import { DEFAULT_MODEL, MODEL_NAME, formatBytes, useCaptionModels } from '@rende
 import { ModelDownloadPrompt } from './ModelDownloadPrompt';
 
 /**
- * Timeline > Generate captions.
+ * Timeline > Generate captions: in the library's Captions tab, beside the
+ * transcript it fills, not in a dialog over the editor (CaptionsTab).
  *
  * Four choices, as Resolve's "Create Subtitles from Audio" asks: the
  * language spoken, which sound to listen to, how carefully, and how the
- * captions are cut. Generate starts the job and closes the dialog - the
+ * captions are cut. Generate starts the job and closes the form - the
  * work goes on in the background (CaptionProgress) and the editor stays
  * usable. If the model chosen is not on this computer yet, the permission
  * to download it is asked first (ModelDownloadPrompt).
@@ -53,12 +53,11 @@ function remembered(): Remembered {
   }
 }
 
-export interface GenerateCaptionsDialogProps {
+export interface GenerateCaptionsFormProps {
   onClose(): void;
-  closing?: boolean;
 }
 
-export function GenerateCaptionsDialog({ onClose, closing = false }: GenerateCaptionsDialogProps): JSX.Element {
+export function GenerateCaptionsForm({ onClose }: GenerateCaptionsFormProps): JSX.Element {
   const t = useT();
   const locale = currentLocale();
   const uiLanguage = useLanguageStore((state) => state.language);
@@ -161,31 +160,12 @@ export function GenerateCaptionsDialog({ onClose, closing = false }: GenerateCap
 
   return (
     <>
-      <Dialog
-        title={t('captions.title')}
-        icon={Captions}
-        onClose={onClose}
-        closing={closing}
-        testId="captions-dialog"
-        widthClass="w-[460px]"
-        bodyClassName="space-y-3 p-4"
-        footer={
-          <>
-            <button type="button" className="tool-button" onClick={onClose}>
-              {t('dialog.cancel')}
-            </button>
-            <button
-              type="button"
-              className="button-primary"
-              data-testid="captions-generate"
-              disabled={engineMissing || busy || status === null}
-              onClick={() => (present ? generate() : setAsking(true))}
-            >
-              {t('captions.generate')}
-            </button>
-          </>
-        }
-      >
+      <section className="flex min-h-0 flex-1 flex-col" data-testid="captions-dialog" aria-label={t('captions.title')}>
+        <header className="flex shrink-0 items-center gap-1.5 border-b border-panel-800 px-2 py-1.5 text-xs font-semibold text-slate-100">
+          <Captions size={13} aria-hidden className="text-accent-hover" />
+          {t('captions.title')}
+        </header>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
         <div className="flex flex-col gap-1">
           <label htmlFor={languageId} className="field-label">
             {t('captions.language')}
@@ -340,7 +320,22 @@ export function GenerateCaptionsDialog({ onClose, closing = false }: GenerateCap
             {t('captions.privacy')} {status ? (status.gpu ? t('captions.engineGpu', { gpu: status.gpu }) : t('captions.engineCpu')) : ''}
           </p>
         )}
-      </Dialog>
+        </div>
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-[color:var(--hairline)] p-2">
+          <button type="button" className="tool-button" data-testid="captions-cancel" onClick={onClose}>
+            {t('dialog.cancel')}
+          </button>
+          <button
+            type="button"
+            className="button-primary"
+            data-testid="captions-generate"
+            disabled={engineMissing || busy || status === null}
+            onClick={() => (present ? generate() : setAsking(true))}
+          >
+            {t('captions.generate')}
+          </button>
+        </footer>
+      </section>
 
       {asking && (
         <ModelDownloadPrompt
@@ -356,4 +351,4 @@ export function GenerateCaptionsDialog({ onClose, closing = false }: GenerateCap
   );
 }
 
-export default GenerateCaptionsDialog;
+export default GenerateCaptionsForm;

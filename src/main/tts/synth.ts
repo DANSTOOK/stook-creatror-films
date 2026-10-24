@@ -1,7 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { piperCommand, splitText, type PiperEngine } from './engine';
+import { cpus } from 'node:os';
+import { kokoroCommand, piperCommand, splitText, windowsCodePage, type PiperEngine } from './engine';
+import type { TtsEngineKind } from './catalog';
 import { readWav, silence, writeWav } from './wav';
 
 /**
@@ -25,8 +27,12 @@ export class SynthError extends Error {
 
 export interface SynthRequest {
   text: string;
-  /** Path to the voice's .onnx (its .onnx.json sits beside it). */
+  /** Which program speaks: Piper, or Kokoro through sherpa-onnx. */
+  engine?: TtsEngineKind;
+  /** Piper: the voice's .onnx (its .onnx.json beside it). Kokoro: the model's folder. */
   model: string;
+  /** Kokoro: espeak-ng's voice for the text (es-419). */
+  phonemes?: string;
   speakerId: number;
   speed: number;
   /** Silence between joined pieces, seconds. */
@@ -56,6 +62,8 @@ export class Synthesizer {
     private readonly options: {
       tempRoot: string;
       engine: () => PiperEngine | null;
+      /** Kokoro's program, and the espeak-ng data it reads (Piper's own). */
+      kokoro?: () => { engine: PiperEngine; espeakData: string } | null;
     },
   ) {}
 
@@ -77,7 +85,8 @@ export class Synthesizer {
    * work does not block anything (Piper runs off in its own process).
    */
   async synth(jobId: string, request: SynthRequest, outPath: string, onProgress?: (fraction: number) => void): Promise<SynthOutcome> {
-    const engine = this.options.engine();
+    const kokoro = request.engine === 'kokoro' ? (this.options.kokoro?.() ?? null) : null;
+    const engine = request.engine === 'kokoro' ? (kokoro?.engine ?? null) : this.options.engine();
     if (!engine) throw new SynthError('The text-to-speech engine is not part of this build');
     const pieces = splitText(request.text);
     if (pieces.length === 0) throw new SynthError('There is no text to speak');
@@ -93,7 +102,8 @@ export class Synthesizer {
       for (let index = 0; index < pieces.length; index += 1) {
         if (job.cancelled) return { cancelled: true, path: null, durationSeconds: 0 };
         const pieceWav = join(dir, `${index}.wav`);
-        await this.runPiece(job, engine, request, pieces[index], pieceWav);
+        if (kokoro) await this.runKokoroPiece(job, kokoro.engine, kokoro.espeakData, request, pieces[index], pieceWav);
+        else await this.runPiece(job, engine, request, pieces[index], pieceWav);
         if (job.cancelled) return { cancelled: true, path: null, durationSeconds: 0 };
         const wav = await readWav(pieceWav);
         sampleRate = wav.sampleRate;
@@ -107,6 +117,37 @@ export class Synthesizer {
       this.jobs.delete(jobId);
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
+  }
+
+  /** One piece through Kokoro: the text is the program's last argument (engine.kokoroCommand). */
+  private runKokoroPiece(job: Job, engine: PiperEngine, espeakData: string, request: SynthRequest, text: string, output: string): Promise<void> {
+    const args = kokoroCommand({
+      modelDir: request.model,
+      espeakData,
+      speakerId: request.speakerId,
+      phonemes: request.phonemes ?? 'es-419',
+      output,
+      speed: request.speed,
+      // Leave a core to the editor.
+      threads: Math.max(1, cpus().length - 1),
+      codePage: windowsCodePage(),
+      text,
+    });
+    return new Promise((resolve, reject) => {
+      const child = spawn(engine.bin, args, { cwd: engine.dir, windowsHide: true });
+      job.child = child;
+      let stderr = '';
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr = (stderr + chunk.toString('utf8')).slice(-20_000);
+      });
+      child.stdout?.resume();
+      child.on('error', (error) => reject(new SynthError(String(error))));
+      child.on('close', (code) => {
+        job.child = null;
+        if (job.cancelled || code === 0) return resolve();
+        reject(new SynthError(tail(stderr) || `sherpa-onnx exited with ${code}`));
+      });
+    });
   }
 
   private runPiece(job: Job, engine: PiperEngine, request: SynthRequest, text: string, output: string): Promise<void> {

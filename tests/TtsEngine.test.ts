@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clampSpeed, engineIn, findEngine, MAX_SPEED, MIN_SPEED, piperCommand, splitText } from '@main/tts/engine';
+import { clampSpeed, commandLineText, engineIn, findEngine, kokoroCommand, MAX_SPEED, MIN_SPEED, piperCommand, splitText } from '@main/tts/engine';
 import { readWav, silence, writeWav } from '@main/tts/wav';
 import { ALL_VOICES, BUNDLED_VOICES, DOWNLOADABLE_VOICES, voiceById } from '@main/tts/catalog';
 
@@ -109,5 +109,40 @@ describe('catalogue', () => {
     expect(voiceById(BUNDLED_VOICES[0].id)?.id).toBe(BUNDLED_VOICES[0].id);
     expect(voiceById('no-such-voice')).toBeUndefined();
     expect(ALL_VOICES.length).toBe(BUNDLED_VOICES.length + DOWNLOADABLE_VOICES.length);
+  });
+});
+
+describe('Kokoro', () => {
+  it('reads Latin American Spanish, at the pace asked, the text last and never as an option', () => {
+    const args = kokoroCommand({ modelDir: 'k', espeakData: 'e', speakerId: 28, phonemes: 'es-419', output: 'o.wav', speed: 2, threads: 3, text: '--help\nHola' });
+    expect(args).toContain('--kokoro-lang=es-419');
+    expect(args).toContain('--sid=28');
+    expect(args).toContain('--kokoro-length-scale=0.5000');
+    expect(args[args.length - 1]).toBe('help Hola');
+  });
+
+  it('offers Latin American voices of both sexes, each with a name', () => {
+    const latin = BUNDLED_VOICES.filter((voice) => voice.language === 'es' && voice.region !== 'es-ES');
+    expect(latin.length).toBeGreaterThanOrEqual(6);
+    expect(latin.some((voice) => voice.sex === 'female')).toBe(true);
+    expect(latin.some((voice) => voice.sex === 'male')).toBe(true);
+    expect(latin.filter((voice) => voice.engine === 'kokoro').every((voice) => voice.phonemes === 'es-419')).toBe(true);
+    for (const voice of BUNDLED_VOICES) expect(voice.name.length).toBeGreaterThan(1);
+  });
+});
+
+describe('text on a Windows command line', () => {
+  it('reaches the program as UTF-8 through the ANSI code page, every accent intact', () => {
+    const text = 'Íñigo, ¿qué tal? Árbol, pingüino, canción.';
+    const passed = commandLineText(text, 1252);
+    // What Windows does with it: each character back to its byte in the code page.
+    const bytes = Buffer.from([...passed].map((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      if (code < 0x100 && !(code >= 0x80 && code < 0xa0)) return code;
+      return [...new TextDecoder('windows-1252').decode(Uint8Array.from({ length: 32 }, (_, i) => 0x80 + i))].indexOf(character) + 0x80;
+    }));
+    expect(bytes.toString('utf8')).toBe(text);
+    expect(commandLineText(text, null)).toBe(text);
+    expect(commandLineText('Ñandú', 932)).toBe('Nandu');
   });
 });

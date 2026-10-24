@@ -28,3 +28,9 @@ ggml-*.bin
 build/piper/
 build/tts-voices/
 build/whisper-models/
+
+# Text-to-speech engines staged for the installer (the release workflow fetches them).
+build/sherpa-onnx/
+build/sherpa-x/
+build/kokoro-x/
+build/downloads/

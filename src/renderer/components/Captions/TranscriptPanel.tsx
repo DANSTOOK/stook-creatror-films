@@ -489,6 +489,9 @@ export function TranscriptPanel(): JSX.Element {
           <WandSparkles size={13} />
           {warnings > 0 && <span data-testid="transcript-warnings">{warnings}</span>}
         </button>
+        <button type="button" className="tool-button tool-button-dense w-6 px-0" data-testid="transcript-generate-more" onClick={() => menuCommand('generateCaptions')} {...tip(t('menu.generateCaptions'))}>
+          <Captions size={13} />
+        </button>
         <button type="button" className="tool-button tool-button-dense w-6 px-0" data-testid="transcript-add" onClick={addCaption} {...tip(t('transcript.addCaption'))}>
           <Plus size={13} />
         </button>

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -84,6 +85,108 @@ export function piperCommand(run: PiperRun): string[] {
     args.push('--sentence_silence', Math.max(0, run.sentenceSilence).toFixed(3));
   }
   return args;
+}
+
+/**
+ * Kokoro's program: sherpa-onnx's `sherpa-onnx-offline-tts` (Apache-2.0),
+ * in resources/sherpa-onnx when installed and build/sherpa-onnx in a
+ * checkout (or SCF_KOKORO_DIR). Its own onnxruntime.dll sits beside it,
+ * apart from Piper's, which is another version.
+ */
+const KOKORO_BIN = process.platform === 'win32' ? 'sherpa-onnx-offline-tts.exe' : 'sherpa-onnx-offline-tts';
+
+export function kokoroEngineIn(dir: string): PiperEngine | null {
+  const bin = join(dir, KOKORO_BIN);
+  return existsSync(bin) ? { dir, bin } : null;
+}
+
+export function findKokoroEngine(places: { resourcesPath?: string; appPath?: string; env?: NodeJS.ProcessEnv }): PiperEngine | null {
+  const env = places.env ?? process.env;
+  const candidates = [
+    env.SCF_KOKORO_DIR,
+    places.resourcesPath ? join(places.resourcesPath, 'sherpa-onnx') : undefined,
+    places.appPath ? join(places.appPath, 'build', 'sherpa-onnx') : undefined,
+  ];
+  for (const dir of candidates) {
+    if (!dir) continue;
+    const engine = kokoroEngineIn(dir);
+    if (engine) return engine;
+  }
+  return null;
+}
+
+/**
+ * Text for a Windows program's command line, so that it receives UTF-8.
+ *
+ * sherpa-onnx reads its text from `argv`, which Windows hands a program in
+ * the system's ANSI code page, not UTF-8: "español" arrived as "espa?ol",
+ * and espeak spelled out what it could not read ("Spaya half all"). Its
+ * UTF-8 bytes, read as that code page, are a string Windows turns back into
+ * exactly those bytes. Every Western single-byte code page round-trips each
+ * byte; anywhere else, the accents are dropped rather than garbled.
+ */
+export function commandLineText(text: string, codePage: number | null): string {
+  if (codePage === null) return text;
+  if (SINGLE_BYTE_CODE_PAGES.has(codePage)) return new TextDecoder(`windows-${codePage}`).decode(Buffer.from(text, 'utf8'));
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, ' ');
+}
+
+const SINGLE_BYTE_CODE_PAGES = new Set([874, 1250, 1251, 1252, 1253, 1254, 1255, 1256, 1257, 1258]);
+
+let codePage: number | null | undefined;
+/** The system's ANSI code page on Windows (null elsewhere: there argv is UTF-8 already). */
+export function windowsCodePage(): number | null {
+  if (codePage !== undefined) return codePage;
+  codePage = null;
+  if (process.platform !== 'win32') return codePage;
+  try {
+    const out = execFileSync('reg', ['query', 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage', '/v', 'ACP'], { encoding: 'utf8', windowsHide: true });
+    const found = Number(/ACP\s+REG_SZ\s+(\d+)/.exec(out)?.[1]);
+    codePage = Number.isFinite(found) && found > 0 ? found : 1252;
+  } catch {
+    codePage = 1252;
+  }
+  return codePage;
+}
+
+export interface KokoroRun {
+  /** The model's folder: model.int8.onnx, voices.bin, tokens.txt. */
+  modelDir: string;
+  /** espeak-ng's data (Piper's, the same files). */
+  espeakData: string;
+  /** Which of the model's voices. */
+  speakerId: number;
+  /** espeak-ng's voice for the text: es-419 for Latin American Spanish. */
+  phonemes: string;
+  /** The system's ANSI code page on Windows (windowsCodePage), for the text on the command line. */
+  codePage?: number | null;
+  output: string;
+  speed: number;
+  threads: number;
+  text: string;
+}
+
+/**
+ * The arguments for one Kokoro run. sherpa-onnx takes the text as the last
+ * argument, not on stdin; spawned without a shell, nothing in it is
+ * interpreted - but a leading dash would read as an option, so it goes, and
+ * so do line breaks (one piece is one line).
+ */
+export function kokoroCommand(run: KokoroRun): string[] {
+  const text = run.text.replace(/[\r\n]+/g, ' ').replace(/^[\s\-–—]+/, '').trim();
+  return [
+    `--kokoro-model=${join(run.modelDir, 'model.int8.onnx')}`,
+    `--kokoro-voices=${join(run.modelDir, 'voices.bin')}`,
+    `--kokoro-tokens=${join(run.modelDir, 'tokens.txt')}`,
+    `--kokoro-data-dir=${run.espeakData}`,
+    `--kokoro-lang=${run.phonemes}`,
+    // Larger is slower, as Piper's length_scale.
+    `--kokoro-length-scale=${(1 / clampSpeed(run.speed)).toFixed(4)}`,
+    `--num-threads=${Math.max(1, Math.min(8, Math.round(run.threads)))}`,
+    `--sid=${Math.max(0, Math.round(run.speakerId))}`,
+    `--output-filename=${run.output}`,
+    commandLineText(text, run.codePage ?? null),
+  ];
 }
 
 export const MIN_SPEED = 0.5;

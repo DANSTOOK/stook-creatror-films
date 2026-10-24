@@ -23,7 +23,7 @@ import { TransitionDialog } from './components/TransitionDialog';
 import { SHOW_INSPECTOR_EVENT } from './components/Timeline/Timeline';
 import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
-import { GenerateCaptionsDialog } from './components/Captions/GenerateCaptionsDialog';
+import { openCaptionsForm } from './components/Captions/CaptionsTab';
 import { RemoveSilencesDialog } from './components/RemoveSilences/RemoveSilencesDialog';
 import { useSilenceDialogStore } from './edit/silenceDialog';
 import { ActivityBar } from './components/Layout/ActivityBar';
@@ -32,8 +32,7 @@ import { SceneCutsDialog, useSceneDialog } from './components/SceneCuts/SceneCut
 import { VoiceoverDialog, useVoiceoverDialog } from './voiceover/VoiceoverDialog';
 import { BeatDialog, useBeatDialog } from './components/Beats/BeatDialog';
 import { ScreenRecordDialog, useScreenRecordDialog } from './capture/ScreenRecordDialog';
-import { TextToSpeechWindow } from './components/TextToSpeech/TextToSpeechWindow';
-import { focusDetachedWindow } from './components/Layout/useDetachedWindow';
+import { showLibraryTab, type LibraryTab } from './components/MediaLibrary/libraryTabs';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
 import { exportCaptionsToDialog, importCaptionsFromDialog } from './captions/captionFiles';
 import { PreviewViewport } from './components/PreviewViewport';
@@ -168,8 +167,6 @@ export default function App(): JSX.Element {
     void loadLocalFamilies();
   }, []);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
-  const [captionsOpen, setCaptionsOpen] = useState(false);
-  const [ttsOpen, setTtsOpen] = useState(false);
   /**
    * Areas that are put away.
    *
@@ -234,14 +231,23 @@ export default function App(): JSX.Element {
     setHidden((current) => ({ ...current, [panel]: !current[panel] }));
   };
 
-  // The timeline's Text to speech button opens the window, as the menu does.
+  /**
+   * A tab of the library brought forward, the panel itself first if it was
+   * put away - text to speech and captions live there, beside Effects and
+   * Transitions, as in CapCut and Filmora.
+   */
+  const showInLibrary = useCallback((tab: LibraryTab): void => {
+    setHidden((current) => ({ ...current, media: false }));
+    if (compact) setRevealed((current) => ({ ...current, media: true }));
+    window.setTimeout(() => showLibraryTab(tab), 0);
+  }, [compact]);
+
+  // The timeline's Voice button opens the Voice tab, as the menu does.
   useEffect(() => {
-    const open = (): void => {
-      if (!(ttsOpen && focusDetachedWindow('textToSpeech'))) setTtsOpen(true);
-    };
+    const open = (): void => showInLibrary('voice');
     window.addEventListener(OPEN_TTS_EVENT, open);
     return () => window.removeEventListener(OPEN_TTS_EVENT, open);
-  }, [ttsOpen]);
+  }, [showInLibrary]);
 
   // A workspace picked in the title bar: which panels are out, and the mixer (workspaces/workspaces.ts).
   useEffect(
@@ -274,7 +280,6 @@ export default function App(): JSX.Element {
   const exportPresence = usePresence(exportOpen);
   const settingsPresence = usePresence(settingsOpen);
   const preferencesPresence = usePresence(preferencesOpen);
-  const captionsPresence = usePresence(captionsOpen);
   const silenceOpen = useSilenceDialogStore((state) => state.open);
   const silencePresence = usePresence(silenceOpen);
   const reframeOpen = useReframeDialog((state) => state.open);
@@ -607,14 +612,14 @@ export default function App(): JSX.Element {
         setLicensesOpen(true);
         return;
       case 'generateCaptions':
-        if (nativeAvailable) setCaptionsOpen(true);
+        // In the Captions tab, beside the transcript it fills.
+        if (nativeAvailable) {
+          openCaptionsForm();
+          showInLibrary('captions');
+        }
         return;
       case 'textToSpeech':
-        // Its own window now, not a modal: if it is already open, the menu
-        // brings that window to the front rather than opening a second.
-        if (nativeAvailable) {
-          if (!(ttsOpen && focusDetachedWindow('textToSpeech'))) setTtsOpen(true);
-        }
+        showInLibrary('voice');
         return;
       case 'importCaptions':
         if (nativeAvailable) void importCaptionsFromDialog();
@@ -895,16 +900,12 @@ export default function App(): JSX.Element {
           {view === 'editor' && <WelcomeTour />}
           {view === 'editor' && <SaveTemplateDialog />}
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
-          {captionsPresence.mounted && <GenerateCaptionsDialog closing={captionsPresence.closing} onClose={() => setCaptionsOpen(false)} />}
           {silencePresence.mounted && <RemoveSilencesDialog closing={silencePresence.closing} onClose={() => useSilenceDialogStore.getState().close()} />}
           {reframePresence.mounted && <ReframeDialog closing={reframePresence.closing} onClose={() => useReframeDialog.getState().close()} />}
           {scenesPresence.mounted && <SceneCutsDialog closing={scenesPresence.closing} onClose={() => useSceneDialog.getState().close()} />}
           {voiceoverPresence.mounted && <VoiceoverDialog closing={voiceoverPresence.closing} onClose={() => useVoiceoverDialog.getState().close()} />}
           {beatsPresence.mounted && <BeatDialog closing={beatsPresence.closing} onClose={() => useBeatDialog.getState().close()} />}
           {capturePresence.mounted && <ScreenRecordDialog closing={capturePresence.closing} onClose={() => useScreenRecordDialog.getState().close()} />}
-          {/* Text to speech lives in a window of its own now, not a modal, so
-              the editor stays live while a voice is set up (TextToSpeechWindow). */}
-          {view === 'editor' && ttsOpen && <TextToSpeechWindow onClose={() => setTtsOpen(false)} />}
           {preferencesPresence.mounted && (
             <PreferencesDialog closing={preferencesPresence.closing} onClose={() => setPreferencesOpen(false)} />
           )}

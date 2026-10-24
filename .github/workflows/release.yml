@@ -48,6 +48,10 @@ env:
   PIPER_VERSION: '2023.11.14-2'
   PIPER_ZIP: piper_windows_amd64.zip
   PIPER_SHA256: f3c58906402b24f3a96d92145f58acba6d86c9b5db896d207f78dc80811efcea
+  # Kokoro's engine (sherpa-onnx, Apache-2.0) and model (Kokoro-82M int8, Apache-2.0).
+  SHERPA_VERSION: v1.13.8
+  SHERPA_SHA256: 3e971a04b2e0ba4dfa53d381a006367ce8c9f5f09b4ae00043e9845c2baded22
+  KOKORO_SHA256: 4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e
 
 jobs:
   release:
@@ -248,7 +252,11 @@ jobs:
             @{ path = 'es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx'; sha = '40febfb1679c69a4505ff311dc136e121e3419a13a290ef264fdf43ddedd0fb1' },
             @{ path = 'es/es_ES/sharvard/medium/es_ES-sharvard-medium.onnx.json'; sha = '7438c9b699c72b0c3388dae1b68d3f364dc66a2150fe554a1c11f03372957b2c' },
             @{ path = 'es/es_MX/claude/high/es_MX-claude-high.onnx'; sha = '3ef40a71ea63852cd8ab7e6fa7d2ecdcfa67a0b47c9c48e3f10e02ee02083ea0' },
-            @{ path = 'es/es_MX/claude/high/es_MX-claude-high.onnx.json'; sha = '1afc81f703c0e4cb3b4d7c0dca096b8b54a98806807f0170cf5eb5557723c12d' }
+            @{ path = 'es/es_MX/claude/high/es_MX-claude-high.onnx.json'; sha = '1afc81f703c0e4cb3b4d7c0dca096b8b54a98806807f0170cf5eb5557723c12d' },
+            @{ path = 'es/es_MX/ald/medium/es_MX-ald-medium.onnx'; sha = '019b3803293c93e34a206dd2e53a3889209a514e786fd7144f7b70196c579b63' },
+            @{ path = 'es/es_MX/ald/medium/es_MX-ald-medium.onnx.json'; sha = '5a71498158e04afc8099bfd019c7e87c68eb9d042505a2b1a87e5c1ac2b1a61d' },
+            @{ path = 'es/es_AR/daniela/high/es_AR-daniela-high.onnx'; sha = '7ceb1fc0dab349418c5b54a639ae9ee595212d7c9ea422220d8419163d5cc985' },
+            @{ path = 'es/es_AR/daniela/high/es_AR-daniela-high.onnx.json'; sha = 'aedbf69647e1d754c62ecf8e0366ca5f16af3e768e3c6b5329af6eb6bde3852b' }
           )
           foreach ($v in $voices) {
             $name = Split-Path $v.path -Leaf
@@ -277,6 +285,38 @@ jobs:
           }
           Get-ChildItem $out | Format-Table Name, Length
 
+      # --- Kokoro: sherpa-onnx's offline TTS and the Kokoro model ------------
+      # Both Apache-2.0. Only the TTS program and its onnxruntime are kept from
+      # sherpa-onnx; from the model, its weights, voices and tokens (espeak-ng's
+      # data is Piper's, the same files).
+      - name: Stage Kokoro
+        shell: pwsh
+        run: |
+          $sherpa = Join-Path $env:RUNNER_TEMP 'sherpa.tar.bz2'
+          curl.exe -fL -o $sherpa "https://github.com/k2-fsa/sherpa-onnx/releases/download/$env:SHERPA_VERSION/sherpa-onnx-$env:SHERPA_VERSION-win-x64-shared-MD-Release.tar.bz2"
+          if ($LASTEXITCODE -ne 0) { throw 'sherpa-onnx could not be downloaded' }
+          $hash = (Get-FileHash $sherpa -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:SHERPA_SHA256) { throw "sherpa-onnx's checksum is $hash, not $env:SHERPA_SHA256" }
+          tar -xjf $sherpa -C $env:RUNNER_TEMP
+          $bin = "$env:RUNNER_TEMP/sherpa-onnx-$env:SHERPA_VERSION-win-x64-shared-MD-Release/bin"
+          New-Item -ItemType Directory -Force build/sherpa-onnx | Out-Null
+          foreach ($file in 'sherpa-onnx-offline-tts.exe', 'onnxruntime.dll', 'onnxruntime_providers_shared.dll') { Copy-Item "$bin/$file" build/sherpa-onnx/ -Force }
+          @"
+          sherpa-onnx (sherpa-onnx-offline-tts.exe) is Apache-2.0 licensed:
+            https://github.com/k2-fsa/sherpa-onnx  (release $env:SHERPA_VERSION)
+          onnxruntime is MIT licensed: https://github.com/microsoft/onnxruntime
+          "@ | Out-File -FilePath build/sherpa-onnx/LICENSE-sherpa-onnx.txt -Encoding utf8
+          $model = Join-Path $env:RUNNER_TEMP 'kokoro.tar.bz2'
+          curl.exe -fL -o $model 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2'
+          if ($LASTEXITCODE -ne 0) { throw 'Kokoro could not be downloaded' }
+          $hash = (Get-FileHash $model -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:KOKORO_SHA256) { throw "Kokoro's checksum is $hash, not $env:KOKORO_SHA256" }
+          tar -xjf $model -C $env:RUNNER_TEMP
+          $src = "$env:RUNNER_TEMP/kokoro-int8-multi-lang-v1_0"
+          New-Item -ItemType Directory -Force build/tts-voices/kokoro | Out-Null
+          foreach ($file in 'model.int8.onnx', 'voices.bin', 'tokens.txt') { Copy-Item "$src/$file" build/tts-voices/kokoro/ -Force }
+          Copy-Item "$src/LICENSE" build/tts-voices/kokoro/LICENSE-kokoro.txt -Force
+
       - name: Check the text-to-speech engine runs
         shell: pwsh
         run: |
@@ -284,6 +324,9 @@ jobs:
           'Hola, esto es una prueba.' | & build/piper/piper.exe --model build/tts-voices/es_ES-davefx-medium.onnx --output_file $env:RUNNER_TEMP/piper-check.wav
           if ($LASTEXITCODE -ne 0) { throw 'piper.exe did not run' }
           if (-not (Test-Path $env:RUNNER_TEMP/piper-check.wav)) { throw 'piper produced no audio' }
+          & build/sherpa-onnx/sherpa-onnx-offline-tts.exe --kokoro-model=build/tts-voices/kokoro/model.int8.onnx --kokoro-voices=build/tts-voices/kokoro/voices.bin --kokoro-tokens=build/tts-voices/kokoro/tokens.txt --kokoro-data-dir=build/piper/espeak-ng-data --kokoro-lang=es-419 --sid=28 --output-filename=$env:RUNNER_TEMP/kokoro-check.wav 'Hola, esto es una prueba.'
+          if ($LASTEXITCODE -ne 0) { throw 'sherpa-onnx-offline-tts.exe did not run' }
+          if (-not (Test-Path $env:RUNNER_TEMP/kokoro-check.wav)) { throw 'Kokoro produced no audio' }
 
       - name: Build installer
         run: npm run build && node ./node_modules/electron-builder/cli.js --win --publish never

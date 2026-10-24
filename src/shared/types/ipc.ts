@@ -308,8 +308,17 @@ export interface CaptionProgressEvent {
 /** A voice id from main/tts/catalog.ts, e.g. 'es-ES-davefx'. */
 export type TtsVoiceId = string;
 
+/** A character for a generated voice (main/tts/finish.ts). */
+export type TtsEffect = 'none' | 'warm' | 'radio' | 'phone' | 'megaphone' | 'robot' | 'whisper' | 'cave' | 'stadium';
+
 export interface TtsVoiceStatus {
   id: TtsVoiceId;
+  /** Which program speaks it. */
+  engine: 'piper' | 'kokoro';
+  /** A person's name for it (Dora, Aldo, ...). */
+  name: string;
+  /** What it sounds like, as an i18n key's last part (tts.persona.<persona>). */
+  persona: string;
   language: 'es' | 'en';
   region: string;
   sex: 'male' | 'female';
@@ -352,6 +361,8 @@ export interface TtsRequest {
   pitch?: number;
   /** "Clear voice": cleaned, compressed and levelled to -16 LUFS. On unless false. */
   enhance?: boolean;
+  /** A character: narrator's warmth, radio, phone, robot, ... (main/tts/finish.ts). None when absent. */
+  effect?: TtsEffect;
 }
 
 export interface TtsResult {

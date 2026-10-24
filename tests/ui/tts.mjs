@@ -73,40 +73,27 @@ async function transcribe(wav, lang) {
 }
 
 /**
- * The text-to-speech window: its own Electron window now, not a modal in the
- * editor (components/TextToSpeech/TextToSpeechWindow). The menu opens it, or
- * brings it to the front if it is already open.
+ * Text to speech is the library's Voice tab (components/TextToSpeech/VoicePanel);
+ * the Timeline menu brings it forward.
  */
-async function ttsWindow(app, window) {
+async function generate(app, window, { language, voice, text }) {
   await appMenu(window, 'Timeline', /Text to speech|Texto a voz/);
-  for (let tries = 0; tries < 50; tries += 1) {
-    for (const page of app.windows()) {
-      if (page !== window && (await page.locator('[data-testid="tts-dialog"]').count()) > 0) return page;
-    }
-    await sleep(200);
-  }
-  throw new Error('the text-to-speech window did not open');
-}
-
-async function generate(app, window, { language, voiceContains, text }) {
-  const tts = await ttsWindow(app, window);
-  check(`${language}: text to speech opens in a window of its own, not in the editor`, (await window.locator('[data-testid="tts-dialog"]').count()) === 0);
-  await tts.waitForFunction(() => (document.querySelector('[data-testid="tts-voice"]')?.options.length ?? 0) > 0, null, { timeout: 15_000 });
-  await tts.getByTestId('tts-language').selectOption(language);
-  await tts.getByTestId('tts-text').fill(text);
-  // Pick the requested voice if present.
-  const picked = await tts.evaluate((needle) => {
-    const sel = document.querySelector('[data-testid="tts-voice"]');
-    const opt = Array.from(sel.options).find((o) => o.textContent.includes(needle));
-    if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); return opt.textContent; }
-    return sel.options[0]?.textContent ?? '';
-  }, voiceContains);
+  const tts = window.getByTestId('tts-dialog');
+  await tts.waitFor({ state: 'visible', timeout: 15_000 });
+  await window.getByTestId('tts-language').selectOption(language);
+  const card = window.getByTestId(`tts-voice-${voice}`);
+  const present = await card.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
+  if (!present) return { present: false };
+  await card.click();
+  await window.getByTestId('tts-text').fill(text);
   const before = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
-  await tts.getByTestId('tts-generate').click();
-  // The window stays open for the next line; the clip landing is the signal.
-  await window.waitForFunction((n) => Object.keys(window.__scfStore.getState().project.clips).length > n, before, { timeout: 60_000 });
-  check(`${language}: the window stays open after generating, its text cleared`, !tts.isClosed() && (await tts.getByTestId('tts-text').inputValue()) === '');
-  return picked;
+  const started = Date.now();
+  await window.getByTestId('tts-generate').click();
+  // The clip landing is the signal; the tab stays for the next line.
+  await window.waitForFunction((n) => Object.keys(window.__scfStore.getState().project.clips).length > n, before, { timeout: 120_000 });
+  const seconds = (Date.now() - started) / 1000;
+  await window.waitForFunction(() => document.querySelector('[data-testid="tts-generate"]') !== null, null, { timeout: 30_000 });
+  return { present: true, seconds, stays: (await tts.count()) === 1 };
 }
 
 /** The newest audio clip and its asset's file on disk. */
@@ -159,29 +146,37 @@ async function main() {
   window.on('pageerror', (e) => issues.push(`pageerror ${e.message}`));
   await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
 
+  // Every voice the installer ships, each read back by the captions engine.
+  const es = { language: 'es', text: 'Hola, esto es una prueba de la voz en español. El resultado debería ser claro.', ref: 'hola esto es una prueba de la voz en espanol el resultado deberia ser claro' };
+  const en = { language: 'en', text: 'Hello, this is a test of the English voice. The result should be clear.', ref: 'hello this is a test of the english voice the result should be clear' };
   const cases = [
-    { language: 'es', voiceContains: 'es-ES', fps: null, text: 'Hola, esto es una prueba de la voz en español. El resultado debería ser claro.', ref: 'hola esto es una prueba de la voz en espanol el resultado deberia ser claro' },
-    { language: 'en', voiceContains: 'en-US', text: 'Hello, this is a test of the English voice. The result should be clear.', ref: 'hello this is a test of the english voice the result should be clear' },
+    ...['es-419-dora', 'es-419-alex', 'es-MX-ald', 'es-MX-claude', 'es-AR-daniela', 'es-419-santa', 'es-ES-davefx', 'es-ES-sharvard'].map((voice) => ({ ...es, voice })),
+    ...['en-US-kristin', 'en-US-norman'].map((voice) => ({ ...en, voice })),
   ];
 
   for (const c of cases) {
-    const picked = await generate(app, window, c);
+    const made = await generate(app, window, c);
+    const label = `${c.voice}`;
+    check(`${label}: the voice is offered in the Voice tab`, made.present);
+    if (!made.present) continue;
     const info = await newestAudioClip(window);
-    check(`${c.language}: a clip landed on an audio track`, info && info.trackType === 'audio', picked);
-    check(`${c.language}: the clip is at the playhead`, info && Math.abs(info.start - info.playhead) <= 1, info ? `start ${info.start} vs playhead ${info.playhead}` : 'no clip');
+    check(`${label}: a clip landed on an audio track, the tab still there`, info && info.trackType === 'audio' && made.stays, `${made.seconds.toFixed(1)} s to make`);
+    const picked = label;
+    void picked;
+    check(`${label}: the clip is at the playhead`, info && Math.abs(info.start - info.playhead) <= 1, info ? `start ${info.start} vs playhead ${info.playhead}` : 'no clip');
     const fpsGuess = info ? info.duration / Math.max(0.01, info.assetSeconds) : 0;
-    check(`${c.language}: the clip's length matches the audio`, info && info.duration > 0 && Math.abs(fpsGuess - Math.round(fpsGuess)) < 0.2, info ? `${info.duration}f for ${info.assetSeconds.toFixed(2)}s` : '');
+    check(`${label}: the clip's length matches the audio`, info && info.duration > 0 && Math.abs(fpsGuess - Math.round(fpsGuess)) < 0.2, info ? `${info.duration}f for ${info.assetSeconds.toFixed(2)}s` : '');
 
     const wav = info?.sourcePath;
     const onDisk = wav && existsSync(wav);
-    check(`${c.language}: the generated WAV exists`, onDisk, wav);
+    check(`${label}: the generated WAV exists`, onDisk, wav);
     if (onDisk) {
       const { peak, seconds } = wavPeak(wav);
-      check(`${c.language}: the audio is not silent`, peak > 1000, `peak ${peak}`);
-      check(`${c.language}: the audio is at least a couple of seconds`, seconds > 2, `${seconds.toFixed(2)}s`);
+      check(`${label}: the audio is not silent`, peak > 1000, `peak ${peak}`);
+      check(`${label}: the audio is at least a couple of seconds`, seconds > 2, `${seconds.toFixed(2)}s`);
       const heard = await transcribe(wav, c.language);
       const rate = wer(fold(c.ref), fold(heard));
-      check(`${c.language}: the app's captions read the speech back (WER ${(rate * 100).toFixed(0)}%)`, rate <= 0.25, heard.slice(0, 120));
+      check(`${label}: the app's captions read the speech back (WER ${(rate * 100).toFixed(0)}%)`, rate <= 0.25, heard.slice(0, 120));
     }
   }
 

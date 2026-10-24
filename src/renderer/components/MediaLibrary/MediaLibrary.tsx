@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
-import {
+import { AudioLines,
   ArrowRightToLine,
   ChevronDown,
   ChevronRight,
@@ -59,7 +59,8 @@ import { StickersBrowser } from './StickersBrowser';
 import { SoundsBrowser } from './SoundsBrowser';
 import { useScreenRecordDialog } from '@renderer/capture/ScreenRecordDialog';
 import { TitlesBrowser } from './TitlesBrowser';
-import { TranscriptPanel } from '@renderer/components/Captions/TranscriptPanel';
+import { CaptionsTab } from '@renderer/components/Captions/CaptionsTab';
+import { VoicePanel } from '@renderer/components/TextToSpeech/VoicePanel';
 import { LIBRARY_TAB_EVENT, takeRequestedLibraryTab, type LibraryTab } from './libraryTabs';
 import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
@@ -98,7 +99,7 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'sounds', 'captions'];
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'sounds', 'voice', 'captions'];
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
@@ -106,6 +107,8 @@ const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   effects: 'library.effects',
   stickers: 'library.stickers',
   sounds: 'library.sounds',
+  // Text to speech (components/TextToSpeech/VoicePanel).
+  voice: 'library.voice',
   // The transcript: the captions as a list (components/Captions/TranscriptPanel).
   captions: 'library.captions',
 };
@@ -123,6 +126,7 @@ const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
   effects: Sparkles,
   stickers: Smile,
   sounds: Music2,
+  voice: AudioLines,
   captions: Captions,
 };
 
@@ -138,6 +142,7 @@ const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
   effects: 'library.effectsTip',
   stickers: 'library.stickersTip',
   sounds: 'library.soundsTip',
+  voice: 'library.voiceTip',
   captions: 'library.captionsTip',
 };
 
@@ -706,7 +711,8 @@ export function MediaLibrary(): JSX.Element {
       {tab === 'effects' && <EffectsBrowser />}
       {tab === 'stickers' && <StickersBrowser />}
       {tab === 'sounds' && <SoundsBrowser />}
-      {tab === 'captions' && <TranscriptPanel />}
+      {tab === 'voice' && <VoicePanel />}
+      {tab === 'captions' && <CaptionsTab />}
       {/* Bins above the clips in a narrow panel; beside them, as Resolve's
           Media Pool keeps its bin list, once the panel is wide (index.css). */}
       {tab === 'media' && (

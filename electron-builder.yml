@@ -47,10 +47,17 @@ extraResources:
     to: piper
     filter:
       - '**/*'
+  # Kokoro's program: sherpa-onnx's offline TTS (Apache-2.0), with its own
+  # onnxruntime beside it. It reads espeak-ng's data from piper/.
+  - from: build/sherpa-onnx
+    to: sherpa-onnx
+    filter:
+      - '**/*'
   # The voices that ship ready to use (main/tts/catalog.ts BUNDLED_VOICES):
-  # five Piper voices with commercially usable licences (CC0, public domain,
-  # Apache, permissive attribution). Extra voices are downloaded on request
-  # into the app's data folder. Each voice is its .onnx plus its .onnx.json.
+  # seven Piper voices with commercially usable licences (CC0, public domain,
+  # Unlicense, Apache, attribution), each its .onnx plus its .onnx.json, and
+  # the Kokoro model (Apache-2.0) in tts-voices/kokoro, whose three Spanish
+  # voices it holds.
   - from: build/tts-voices
     to: tts-voices
     filter:

@@ -1,7 +1,7 @@
 import { app, ipcMain, net, type BrowserWindow } from 'electron';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   IPC,
   type TtsEngineStatus,
@@ -15,10 +15,12 @@ import { allowPath } from '../ipc/fileSystem';
 import { mt } from '../language';
 import { ChecksumError } from '../subtitles/models';
 import { ALL_VOICES, BUNDLED_VOICES, VOICE_SOURCE, voiceById, type TtsVoice } from './catalog';
-import { findEngine, type PiperEngine } from './engine';
+import { findEngine, findKokoroEngine, kokoroEngineIn, type PiperEngine } from './engine';
+import { TTS_EFFECTS } from './finish';
 import { Synthesizer, SynthError } from './synth';
 import { deleteVoice, downloadVoice, isVoiceReady, voiceModelPath, type VoiceDirs } from './voices';
 import { finishVoice } from './finish';
+import { readWav } from './wav';
 import { resolveFfmpegPath } from '../exporter/HardwareAccel';
 
 /**
@@ -58,8 +60,27 @@ const currentEngine = (): PiperEngine | null => {
   return engine;
 };
 
+let kokoroEngine: PiperEngine | null | undefined;
+const currentKokoro = (): { engine: PiperEngine; espeakData: string } | null => {
+  const piper = currentEngine();
+  if (kokoroEngine === undefined) {
+    // Where it is installed or built, or else beside Piper's folder, where both are staged.
+    kokoroEngine =
+      findKokoroEngine({ resourcesPath: app.isPackaged ? process.resourcesPath : undefined, appPath: app.isPackaged ? undefined : app.getAppPath() }) ??
+      (piper ? kokoroEngineIn(join(dirname(piper.dir), 'sherpa-onnx')) : null);
+  }
+  // Kokoro reads espeak-ng's data from beside Piper: the same files, shipped once.
+  return kokoroEngine && piper ? { engine: kokoroEngine, espeakData: join(piper.dir, 'espeak-ng-data') } : null;
+};
+
+/** Whether the program that speaks `voice` is here. */
+const engineFor = (voice: TtsVoice): boolean => (voice.engine === 'kokoro' ? currentKokoro() !== null : currentEngine() !== null);
+
+/** A character the page may ask for, or none. */
+const effectOf = (value: unknown): TtsRequest['effect'] => (TTS_EFFECTS.includes(value as never) ? (value as TtsRequest['effect']) : 'none');
+
 export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synthesizer {
-  const synth = new Synthesizer({ tempRoot: join(app.getPath('temp'), 'scf-tts'), engine: currentEngine });
+  const synth = new Synthesizer({ tempRoot: join(app.getPath('temp'), 'scf-tts'), engine: currentEngine, kokoro: currentKokoro });
   void synth.sweep();
 
   const send = (channel: string, payload: unknown): void => {
@@ -69,7 +90,7 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
 
   const status = async (): Promise<TtsEngineStatus> => {
     const places = dirs();
-    const available = currentEngine() !== null;
+    const available = currentEngine() !== null || currentKokoro() !== null;
     return {
       available,
       supportsPitch: true,
@@ -78,12 +99,15 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
       voices: await Promise.all(
         ALL_VOICES.map(async (voice) => ({
           id: voice.id,
+          engine: voice.engine,
+          name: voice.name,
+          persona: voice.persona,
           language: voice.language,
           region: voice.region,
           sex: voice.sex,
           licence: voice.licence,
           bundled: voice.onnx === null,
-          present: available && (await isVoiceReady(voice, places)),
+          present: engineFor(voice) && (await isVoiceReady(voice, places)),
           downloadBytes: voice.onnx ? voice.onnx.bytes + (voice.json?.bytes ?? 0) : 0,
         })),
       ),
@@ -138,8 +162,8 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
   /* Preview and generation ------------------------------------------------------ */
 
   const prepare = async (request: TtsRequest): Promise<{ voice: TtsVoice; model: string }> => {
-    const voice = voiceById(request?.voice) ?? BUNDLED_VOICES[0];
-    if (!(await isVoiceReady(voice, dirs()))) throw new Error(mt('tts.errorNoVoice'));
+    const voice = voiceById(request?.voice) ?? BUNDLED_VOICES.find(engineFor) ?? BUNDLED_VOICES[0];
+    if (!engineFor(voice) || !(await isVoiceReady(voice, dirs()))) throw new Error(mt('tts.errorNoVoice'));
     const model = voiceModelPath(voice, dirs());
     if (!model) throw new Error(mt('tts.errorNoVoice'));
     return { voice, model };
@@ -152,11 +176,11 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
     try {
       // A short line, so the preview is quick whatever the box holds.
       const text = (typeof request.text === 'string' ? request.text : '').trim().slice(0, 200) || mt('tts.previewFallback');
-      const outcome = await synth.synth(jobId, { text, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.2 }, out);
+      const outcome = await synth.synth(jobId, { text, engine: voice.engine, phonemes: voice.phonemes, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.2 }, out);
       if (!outcome.path) throw new Error(mt('tts.errorEngine', { detail: 'cancelled' }));
       // Heard as it will be: the same pitch and the same clear voice as the clip.
       const finished = `${out}.ready.wav`;
-      await finishVoice(resolveFfmpegPath(), outcome.path, finished, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate });
+      await finishVoice(resolveFfmpegPath(), outcome.path, finished, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate, effect: effectOf(request.effect) });
       const bytes = await readFile(finished);
       await rm(finished, { force: true }).catch(() => undefined);
       return `data:audio/wav;base64,${bytes.toString('base64')}`;
@@ -179,17 +203,20 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
     try {
       const outcome = await synth.synth(
         jobId,
-        { text, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.35 },
+        { text, engine: voice.engine, phonemes: voice.phonemes, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.35 },
         raw,
         (fraction) => send(IPC.ttsProgress, { jobId, fraction: fraction * 0.9 } satisfies TtsProgressEvent),
       );
       if (!outcome.path) return { cancelled: outcome.cancelled, path: null, durationSeconds: 0 };
       await mkdir(folder, { recursive: true });
       const kept = join(folder, `voice-${randomUUID()}.wav`);
-      await finishVoice(resolveFfmpegPath(), outcome.path, kept, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate });
+      await finishVoice(resolveFfmpegPath(), outcome.path, kept, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate, effect: effectOf(request.effect) });
       send(IPC.ttsProgress, { jobId, fraction: 1 } satisfies TtsProgressEvent);
       allowPath(kept);
-      return { cancelled: false, path: kept, durationSeconds: outcome.durationSeconds };
+      // The length of what is kept: the silence at its ends is gone, so captions of it end with its last word.
+      const finished = await readWav(kept).catch(() => null);
+      const durationSeconds = finished ? finished.samples.length / finished.sampleRate : outcome.durationSeconds;
+      return { cancelled: false, path: kept, durationSeconds };
     } catch (error) {
       if (error instanceof SynthError) throw new Error(mt('tts.errorEngine', { detail: error.detail }));
       throw error;

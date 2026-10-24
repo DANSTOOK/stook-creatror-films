@@ -1,4 +1,4 @@
-import type { TtsEngineStatus } from '@shared/types/ipc';
+import type { TtsEffect, TtsEngineStatus } from '@shared/types/ipc';
 import type { Clip } from '@shared/types';
 import { t } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -25,9 +25,13 @@ export interface TtsOptions {
   pitch: number;
   /** Clear voice: cleaned, compressed and levelled. */
   enhance: boolean;
-  /** Captions of what is said, on a track of their own. */
+  /** Captions of what is said, on a track of their own - only when asked: the clip is the voice. */
   captions: boolean;
+  /** A character for the voice: narrator, radio, phone, robot, ... (main/tts/finish.ts). */
+  effect: TtsEffect;
 }
+
+const EFFECTS: readonly TtsEffect[] = ['none', 'warm', 'radio', 'phone', 'megaphone', 'robot', 'whisper', 'cave', 'stadium'];
 
 export const TTS_OPTIONS_KEY = 'scf.tts.options';
 export const MIN_SPEED = 0.5;
@@ -50,6 +54,7 @@ export function ttsOptions(uiLanguage: string): TtsOptions {
     pitch: number(raw.pitch, -6, 6, 0),
     enhance: raw.enhance !== false,
     captions: raw.captions === true,
+    effect: EFFECTS.includes(raw.effect as TtsEffect) ? (raw.effect as TtsEffect) : 'none',
   };
 }
 
@@ -122,12 +127,12 @@ async function generate(text: string, options: TtsOptions, voice: string, onProg
   const jobId = job ?? createId('tts');
   const stop = onProgress ? window.filmora.onTtsProgress?.((event) => event.jobId === jobId && onProgress(event.fraction)) : undefined;
   try {
-    const result = await window.filmora.ttsGenerate?.(jobId, { text, voice, speed: options.speed, pitch: options.pitch, enhance: options.enhance });
+    const result = await window.filmora.ttsGenerate?.(jobId, { text, voice, speed: options.speed, pitch: options.pitch, enhance: options.enhance, effect: options.effect });
     if (!result || result.cancelled || !result.path) return null;
     const uri = await window.filmora.mediaUrl(result.path);
     const fps = useProjectStore.getState().project.fps;
     const words = text.trim().split(/\s+/).slice(0, 5).join(' ');
-    const asset = await buildAsset({ name: `${t('tts.title')} · ${words}${text.trim().split(/\s+/).length > 5 ? '…' : ''}.wav`, uri, sourcePath: result.path, hasAudio: true }, fps);
+    const asset = await buildAsset({ name: `${t('tts.track')} · ${words}${text.trim().split(/\s+/).length > 5 ? '…' : ''}.wav`, uri, sourcePath: result.path, hasAudio: true }, fps);
     return { asset, seconds: result.durationSeconds || asset.durationSeconds || 0, jobId };
   } finally {
     stop?.();

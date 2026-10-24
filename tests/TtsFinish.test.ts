@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { finishFilter } from '../src/main/tts/finish';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { finishFilter, TTS_EFFECTS } from '../src/main/tts/finish';
+
+const ffmpeg = createRequire(import.meta.url)('ffmpeg-static') as string;
 import { captionLines } from '../src/renderer/tts/speak';
 
 describe('a generated voice made ready', () => {
@@ -45,5 +49,27 @@ describe('captions of what a voice says', () => {
     expect(lines.length).toBeGreaterThan(1);
     expect(lines.every((line) => line.text.length <= 64)).toBe(true);
     expect(lines.map((line) => line.text).join(' ')).toBe(long);
+  });
+});
+
+describe('characters for a generated voice', () => {
+  it('cuts the silence before the first word and after the last, before anything else', () => {
+    const filter = finishFilter(0, 24000, true);
+    expect(filter.startsWith('silenceremove=start_periods=1')).toBe(true);
+    expect(filter.match(/areverse/g)?.length).toBe(2);
+  });
+
+  it('puts the style after the pitch and before the levelling', () => {
+    const filter = finishFilter(-6, 22050, true, 'robot');
+    expect(filter.indexOf('afftfilt')).toBeGreaterThan(filter.indexOf('atempo'));
+    expect(filter.indexOf('afftfilt')).toBeLessThan(filter.indexOf('loudnorm'));
+    expect(finishFilter(0, 22050, true, 'phone')).toContain('lowpass=f=3200');
+  });
+
+  it('every style is a filter ffmpeg runs', () => {
+    for (const effect of TTS_EFFECTS) {
+      const run = spawnSync(ffmpeg, ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'sine=f=220:d=1:sample_rate=22050', '-af', finishFilter(2, 22050, true, effect), '-f', 'null', '-'], { encoding: 'utf8' });
+      expect(`${effect}: ${run.status} ${run.stderr.trim()}`).toBe(`${effect}: 0 `);
+    }
   });
 });
