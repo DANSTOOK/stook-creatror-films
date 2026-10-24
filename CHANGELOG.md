@@ -7,11 +7,86 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1679 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1682 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.78.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.79.0-beta.1 — Ajustar stickers e imágenes en el visor, y registro de errores
+2026-10-24 · pre-release para probar · lo pedido
+
+### Cambiado
+- **Lo que seleccionas en la línea de tiempo se ajusta en el visor**, como en
+  CapCut: un sticker, una imagen, un video encima de otro o un título muestran
+  su caja con tiradores en cuanto se seleccionan, para moverlos, cambiarles el
+  tamaño y girarlos ahí mismo. Ya no hace falta el «modo transformar»
+  (Shift+T y su botón se quitaron).
+  - Si el cabezal no estaba sobre el sticker, al hacer clic en él en la línea
+    de tiempo el cabezal va a ese punto, para que se vea con su caja.
+  - Un clic simple en el visor solo selecciona: no se mueve nada hasta que se
+    arrastra unos píxeles.
+  - Los subtítulos y las capas de ajuste ya no muestran tiradores que no hacían
+    nada.
+  - *Comprobado:* `tests/ui/viewer-select.mjs` **9/9**: sin selección no hay
+    tiradores y al seleccionar el sticker sí; la caja rodea el sticker (189 px
+    en un visor de 948, no el cuadro entero); arrastrarlo lo mueve 81×41 px;
+    una esquina lo agranda; una imagen recibe lo mismo; un clic en el visor la
+    selecciona sin moverla; con el cabezal en otro sitio, un clic en la línea
+    de tiempo lleva el cabezal al sticker y muestra su caja.
+
+### Arreglado
+- **Un sticker animado solo crecía en un fotograma.** Los stickers traen
+  animación (entrada «pop» y «pulso»); al agrandarlo, solo cambiaba en el
+  fotograma del cabezal y luego volvía a su tamaño. Ahora el cambio se aplica
+  al sticker entero y la animación sigue encima; todo el arrastre se deshace
+  con un solo Ctrl+Z.
+- **Grabar pantalla:** una ventana minimizada no tiene miniatura y se dibujaba
+  como imagen rota; ahora muestra su icono.
+- Las pestañas de la biblioteca vuelven a decir su nombre al pasar el ratón,
+  con las 8 dentro del panel.
+
+### Añadido
+- **Registro de errores.** La app escribe en un archivo de texto por día todo
+  lo que falla, con hora y lugar:
+  - errores de la interfaz y promesas sin atender;
+  - errores de consola y cada aviso rojo que se le muestra al usuario;
+  - cada operación del motor que falla, con su nombre (exportar, voz,
+    subtítulos…);
+  - y los cierres inesperados de la ventana o de la GPU.
+
+  Está en la carpeta de datos de la app (`scf/logs`), se guarda 14 días y
+  nunca se envía a ningún sitio. Un mensaje repetido se escribe una vez con
+  cuántas veces pasó.
+  - **Ayuda › Abrir registro de errores** y **Ayuda › Copiar informe de
+    diagnóstico** (versiones de la app y del sistema, la GPU y las últimas 300
+    líneas, listo para pegar). En Preferencias, **Diagnóstico** cuenta los
+    errores de hoy y muestra el último.
+  - *Comprobado:* `tests/ui/app-log.mjs` **9/9**, provocando a propósito cada
+    tipo de error: los seis quedan escritos con su origen (`renderer:window`,
+    `renderer:promise`, `renderer:console`, `renderer:notice`,
+    `ipc:templates:read`), Preferencias cuenta 5 errores, y el informe copiado
+    lleva las versiones y las líneas. 3 pruebas unitarias nuevas.
+  - **Primera pasada con el registro:** las 59 pruebas de interfaz con el
+    registro activo dejaron 7 entradas; 3 eran provocadas por las propias
+    pruebas, y las otras dos causas eran reales y quedan arregladas arriba (la
+    miniatura vacía) o filtradas (el aviso «ResizeObserver loop» del navegador,
+    que es inofensivo).
+
+### Comprobado en conjunto
+- 1682 pruebas unitarias; las **60** pruebas de interfaz (con la general,
+  127/127) pasan con el registro activo, que solo anotó las 3 entradas que
+  las pruebas provocan a propósito; 22/22 de extremo a extremo, 41/41 de
+  proyectos, 26/26 de movimiento.
+
+### Pruebas puestas al día
+- `tests/ui/fx.mjs` **101/101**: esperaba que brillo/contraste y tono/saturación
+  no hicieran nada con sus valores por defecto, pero desde la v1.72 se ven al
+  aplicarlos; ahora comprueba que en cero no cambian ni un nivel (0,000). El
+  destello se mira en un golpe de destello y la censura por la parte de la
+  imagen que tapa.
 
 ---
 

@@ -56,6 +56,10 @@ export const IPC = {
   clipboardWrite: 'app:clipboard-write',
   templatesList: 'templates:list',
   cloudBackupState: 'cloud-backup:state',
+  logWrite: 'log:write',
+  logState: 'log:state',
+  logReport: 'log:report',
+  logOpen: 'log:open',
   cloudBackupChoose: 'cloud-backup:choose',
   cloudBackupSet: 'cloud-backup:set',
   cloudBackupNow: 'cloud-backup:now',
@@ -411,6 +415,13 @@ export interface ExportStartResult {
  * only names it and the page runs it - the same code a toolbar button runs.
  */
 /** One of the user's own project templates. */
+export interface LogState {
+  folder: string;
+  file: string;
+  errorsToday: number;
+  lastError: { at: string; message: string } | null;
+}
+
 export interface CloudBackupState {
   folder: string | null;
   candidates: Array<{ label: string; path: string }>;
@@ -450,6 +461,8 @@ export type MenuCommand =
   | 'mixer'
   | 'shortcuts'
   | 'tour'
+  | 'openLog'
+  | 'copyDiagnostics'
   | 'saveTemplate'
   | 'commandPalette'
   | 'preferences'
@@ -757,6 +770,14 @@ export interface FilmoraApi {
   cloudBackupNow(path: string): Promise<CloudBackupState>;
   /** The copies' folder, in the file manager. */
   cloudBackupOpen(): Promise<void>;
+  /** An entry for the app's log (main/logging/log.ts). Fire and forget. */
+  logWrite(entry: { level: 'error' | 'warn' | 'info'; source?: string; message: string; stack?: string; context?: Record<string, unknown> }): void;
+  /** Where the log is, and today's errors. */
+  logState(): Promise<LogState>;
+  /** The machine and the newest lines, for "Copy diagnostic report". */
+  logReport(): Promise<string>;
+  /** The log's folder, in the file manager. */
+  logOpen(): Promise<void>;
   /** A project kept as a template under `name`: its id. */
   templateSave(name: string, documentJson: string): Promise<string>;
   /** A template's project document, as saved. */

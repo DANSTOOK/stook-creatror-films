@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
-import { Circle, Loader2, MonitorUp, Square } from 'lucide-react';
+import { AppWindow, Circle, Loader2, MonitorUp, Square } from 'lucide-react';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -235,7 +235,14 @@ export function ScreenRecordDialog({ closing, onClose }: { closing: boolean; onC
                 className={`press w-full rounded-md border p-1 text-left transition-colors ${sourceId === source.id ? 'border-accent bg-accent/15' : 'border-panel-700 bg-panel-900 hover:border-panel-600'}`}
                 onClick={() => setSourceId(source.id)}
               >
-                <img src={source.thumbnail} alt="" className="aspect-video w-full rounded-[3px] bg-panel-950 object-contain" />
+                {source.thumbnail ? (
+                  <img src={source.thumbnail} alt="" className="aspect-video w-full rounded-[3px] bg-panel-950 object-contain" />
+                ) : (
+                  // A minimised window shows no picture: its kind, drawn.
+                  <span className="flex aspect-video w-full items-center justify-center rounded-[3px] bg-panel-950 text-slate-500" data-testid="capture-source-blank">
+                    {source.kind === 'screen' ? <MonitorUp size={18} aria-hidden /> : <AppWindow size={18} aria-hidden />}
+                  </span>
+                )}
                 <span className="mt-1 block truncate text-2xs text-slate-300">{source.kind === 'screen' ? t('capture.screen', { name: source.name }) : source.name}</span>
               </button>
             </li>

@@ -138,3 +138,48 @@ export function clearMotionPreset(clipId: string): void {
   }
   store.updateClip(clipId, { transform: { ...clip.transform, ...restingMove(clip, store.project, store.assets) } });
 }
+
+/** How a drag in the viewer changes a clip as a whole: moved by, scaled by, turned by. */
+export interface PlacementChange {
+  offset?: Vector2D;
+  scaleBy?: Vector2D;
+  turnBy?: number;
+}
+
+/**
+ * A clip with a move or animations on it, moved, scaled or turned in the
+ * viewer: the change goes to the transform under them (`fx.base`), from
+ * `startBase` - the base when the drag began - and they are written again on
+ * top. Its keyframes would otherwise take the change at the playhead alone:
+ * a sticker made bigger grew for one frame, then its pulse shrank it back.
+ */
+export function placeAnimatedClip(clipId: string, startBase: ClipTransform, change: PlacementChange, mergeKey?: string): void {
+  const store = useProjectStore.getState();
+  const clip = store.project.clips[clipId];
+  if (!clip?.fx) return;
+  const { project, assets } = store;
+  const fit = assets.find((candidate) => candidate.uri === clip.sourceUri);
+  const restScale = (fit ? fitScale(fit, project) : null) ?? { x: 1, y: 1 };
+  const at = clip.startFrame;
+  const base: ClipTransform = { ...startBase };
+  if (change.offset) {
+    const { x, y } = change.offset;
+    base.position = startBase.position.length
+      ? startBase.position.map((key) => ({ ...key, value: { x: key.value.x + x, y: key.value.y + y } }))
+      : [{ id: `kf-place-${clipId}`, frame: at, value: { x, y }, easing: 'linear' }];
+  }
+  if (change.scaleBy) {
+    const { x, y } = change.scaleBy;
+    base.scale = startBase.scale.length
+      ? startBase.scale.map((key) => ({ ...key, value: { x: key.value.x * x, y: key.value.y * y } }))
+      : [{ id: `kf-place-scale-${clipId}`, frame: at, value: { x: restScale.x * x, y: restScale.y * y }, easing: 'linear' }];
+  }
+  if (change.turnBy !== undefined) {
+    const turn = change.turnBy;
+    base.rotation = startBase.rotation.length
+      ? startBase.rotation.map((key) => ({ ...key, value: key.value + turn }))
+      : [{ id: `kf-place-turn-${clipId}`, frame: at, value: turn, easing: 'linear' }];
+  }
+  const kept = cleanFx(clip.fx);
+  store.updateClip(clipId, { transform: composeFx(base, kept, clip, project, assets), fx: { ...kept, base } }, mergeKey);
+}

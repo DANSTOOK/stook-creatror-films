@@ -26,6 +26,8 @@ import {
   type Point,
 } from './viewportTransform';
 import { TitleTextEditor } from './TitleTextEditor';
+import { hasClipFx, legacyBase, placeAnimatedClip } from '@renderer/fx/motion/apply';
+import type { ClipTransform } from '@shared/types';
 
 /**
  * Moving, scaling and turning a clip by dragging it in the viewer.
@@ -35,9 +37,13 @@ import { TitleTextEditor } from './TitleTextEditor';
  * inspector shows: a drag writes Position, Scale and Rotation at the playhead,
  * so it lands on the keyframe track and animates like anything else.
  *
- * Titles are handled as Final Cut handles them: a click on the text picks
- * the title and a drag moves it - with or without the transform mode - and
- * a double-click types into it where it is (TitleTextEditor). Their box is
+ * As in CapCut, whatever is selected - a sticker, a picture, a picture in
+ * picture, a title - shows its box and grips in the viewer, picked on the
+ * timeline or by a click on the picture itself, and moves, scales and turns
+ * there; no mode to switch on first. A press only becomes a move once the
+ * pointer has travelled a few pixels, so a click that only selects never
+ * nudges the shot. A double-click on a title types into it where it is
+ * (TitleTextEditor). Their box is
  * their text, not the frame, and they turn about the text's centre. While
  * one is dragged the title-safe area is drawn, and the text sticks to it.
  *
@@ -54,6 +60,8 @@ import { TitleTextEditor } from './TitleTextEditor';
  */
 const HANDLE_CSS_PX = 7;
 const ROTATE_ARM_CSS_PX = 26;
+/** How far the pointer travels, on screen, before a press becomes a move. */
+const MOVE_THRESHOLD_CSS_PX = 3;
 /** Shift-rotate lands on multiples of this. */
 const ROTATION_SNAP_DEGREES = 15;
 /**
@@ -106,14 +114,13 @@ interface Placed {
 }
 
 type Drag =
-  | { kind: 'move'; startPointer: Point; startTransform: ResolvedTransform; basePosition: { x: number; y: number }; placed: Placed }
+  | { kind: 'move'; startPointer: Point; startTransform: ResolvedTransform; basePosition: { x: number; y: number }; placed: Placed; moving?: boolean }
   | { kind: 'scale'; handle: Handle; startTransform: ResolvedTransform; placed: Placed }
   | { kind: 'rotate'; grabAngle: number; startTransform: ResolvedTransform; placed: Placed };
 
 export function ViewportControls(): JSX.Element | null {
   const project = useProjectStore((state) => state.project);
   const selectedClipIds = useProjectStore((state) => state.ui.selectedClipIds);
-  const transformMode = useProjectStore((state) => state.ui.transformMode);
   const showSafeAreas = useProjectStore((state) => state.ui.showSafeAreas);
   const snapping = useProjectStore((state) => state.ui.snappingEnabled);
   const editingTitleId = useProjectStore((state) => state.ui.editingTitleId);
@@ -123,6 +130,12 @@ export function ViewportControls(): JSX.Element | null {
 
   const surfaceRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<Drag | null>(null);
+  /**
+   * A clip with a move or animations on it is placed as a whole: the drag
+   * changes the transform under them, from what it was when the drag began
+   * (fx/motion/apply.placeAnimatedClip); the whole drag is one undo step.
+   */
+  const baseRef = useRef<{ base: ClipTransform; key: string } | null>(null);
   const [dragging, setDragging] = useState<Drag['kind'] | null>(null);
   /** Which guide lines to draw while a drag is held against them. */
   const [guides, setGuides] = useState<{ lines: Guide[]; safe: boolean }>({ lines: [], safe: false });
@@ -148,7 +161,9 @@ export function ViewportControls(): JSX.Element | null {
     return Object.values(project.clips)
       .filter((clip) => {
         const track = tracks.get(clip.trackId);
-        if (!track || !track.visible || track.type === 'audio') return false;
+        // Pictures only: captions are placed by their track's style, and an adjustment layer has no picture.
+        if (!track || !track.visible || track.type === 'audio' || track.type === 'captions' || track.type === 'adjustment') return false;
+        if (clip.audioOnly || clip.caption || clip.adjustment) return false;
         return currentFrame >= clip.startFrame && currentFrame < clip.startFrame + clip.durationFrames;
       })
       .sort((a, b) => (tracks.get(a.trackId)?.order ?? 0) - (tracks.get(b.trackId)?.order ?? 0))
@@ -167,22 +182,13 @@ export function ViewportControls(): JSX.Element | null {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.clips, project.tracks, project.fps, currentFrame, frame, editingTitleId, fontsLoaded]);
 
-  /**
-   * The clip being moved: one selected clip, with the transform mode on - or
-   * a title, which moves without it, as Final Cut's do.
-   *
-   * Both conditions matter for any other clip. Final Cut asks for the mode
-   * (Shift+T) and Premiere asks for the selection; wanting neither means
-   * wanting to watch the picture, which is what a viewer is for.
-   */
+  /** The clip being placed: the one selected clip with a picture under the playhead. */
   const selected: Placed | null = useMemo(() => {
     if (selectedClipIds.length !== 1) return null;
-    const found = visible.find((placed) => placed.clip.id === selectedClipIds[0]) ?? null;
-    if (!found || (!transformMode && !found.clip.title)) return null;
-    return found;
-  }, [transformMode, selectedClipIds, visible]);
-  /** Grips to scale and turn: the transform mode only. */
-  const withGrips = transformMode && selected !== null;
+    return visible.find((placed) => placed.clip.id === selectedClipIds[0]) ?? null;
+  }, [selectedClipIds, visible]);
+  /** Grips to scale and turn: on whatever is selected, as CapCut draws them. */
+  const withGrips = selected !== null;
 
   // Grips are drawn in project units, so they have to be sized against the
   // picture's size on screen - which is the parent box, not this one: this one
@@ -234,6 +240,11 @@ export function ViewportControls(): JSX.Element | null {
 
       if (drag.kind === 'move') {
         const delta = { x: pointer.x - drag.startPointer.x, y: pointer.y - drag.startPointer.y };
+        // A click that selects is not a move: nothing shifts until the pointer really travels.
+        if (!drag.moving) {
+          if (Math.hypot(delta.x, delta.y) < MOVE_THRESHOLD_CSS_PX * projectPxPerCssPx) return;
+          drag.moving = true;
+        }
         const wanted = movedPosition(drag.startTransform, delta);
         let snapped: { x: number; y: number };
         if (placed.layer) {
@@ -249,6 +260,10 @@ export function ViewportControls(): JSX.Element | null {
           const snap = snappedMove(wanted, drag.startTransform, frame, tolerance);
           snapped = snap.position;
           setGuides({ lines: snap.guides, safe: false });
+        }
+        if (baseRef.current) {
+          placeAnimatedClip(placed.clip.id, baseRef.current.base, { offset: { x: snapped.x - drag.startTransform.position.x, y: snapped.y - drag.startTransform.position.y } }, baseRef.current.key);
+          return;
         }
         // The same distance on the keyframed position, whatever the animation adds.
         setTransformAt(placed.clip.id, currentFrame, {
@@ -273,18 +288,30 @@ export function ViewportControls(): JSX.Element | null {
           tolerance,
         );
         setGuides({ lines, safe: false });
+        if (baseRef.current) {
+          const from = drag.startTransform;
+          const ratio = (to: number, was: number): number => (Math.abs(was) > 1e-9 ? to / was : 1);
+          placeAnimatedClip(placed.clip.id, baseRef.current.base, {
+            scaleBy: { x: ratio(result.scale.x, from.scale.x), y: ratio(result.scale.y, from.scale.y) },
+            offset: { x: result.position.x - from.position.x, y: result.position.y - from.position.y },
+          }, baseRef.current.key);
+          return;
+        }
         setTransformAt(placed.clip.id, currentFrame, toKeyframes(placed, result));
         return;
       }
-      setTransformAt(placed.clip.id, currentFrame, {
-        rotation: rotationFromPointer(
-          drag.startTransform,
-          pointer,
-          frame,
-          { grabAngle: drag.grabAngle, snapDegrees: event.shiftKey ? ROTATION_SNAP_DEGREES : undefined },
-          placed.layer,
-        ),
-      });
+      const rotation = rotationFromPointer(
+        drag.startTransform,
+        pointer,
+        frame,
+        { grabAngle: drag.grabAngle, snapDegrees: event.shiftKey ? ROTATION_SNAP_DEGREES : undefined },
+        placed.layer,
+      );
+      if (baseRef.current) {
+        placeAnimatedClip(placed.clip.id, baseRef.current.base, { turnBy: rotation - drag.startTransform.rotation }, baseRef.current.key);
+        return;
+      }
+      setTransformAt(placed.clip.id, currentFrame, { rotation });
     },
     // toKeyframes reads only its arguments.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -311,6 +338,11 @@ export function ViewportControls(): JSX.Element | null {
       event.preventDefault();
       event.stopPropagation();
       surfaceRef.current?.setPointerCapture(event.pointerId);
+      const { clip } = drag.placed;
+      if (hasClipFx(clip.fx)) {
+        const { project: now, assets } = useProjectStore.getState();
+        baseRef.current = { base: clip.fx?.base ?? legacyBase(clip, now, assets), key: `viewer:${clip.id}:${performance.now()}` };
+      } else baseRef.current = null;
       dragRef.current = drag;
       setDragging(drag.kind);
     },
@@ -318,9 +350,6 @@ export function ViewportControls(): JSX.Element | null {
   );
 
   const startMove = (event: ReactPointerEvent<SVGElement>, placed: Placed, pointer: Point): void => {
-    // Only a clip that may move starts a drag: any clip in the transform
-    // mode, a title always.
-    if (!transformMode && !placed.clip.title) return;
     startDrag(event, {
       kind: 'move',
       startPointer: pointer,

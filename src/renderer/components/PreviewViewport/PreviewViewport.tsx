@@ -8,7 +8,6 @@ import {
   Frame,
   Maximize2,
   Minimize2,
-  Move,
   Pause,
   Play,
   Repeat,
@@ -344,16 +343,6 @@ export function PreviewViewport(): JSX.Element {
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              data-testid="transform-mode"
-              aria-pressed={ui.transformMode}
-              className={`tool-button tool-button-dense w-6 px-0 ${ui.transformMode ? 'tool-button-active' : ''}`}
-              onClick={() => setUi({ transformMode: !ui.transformMode })}
-              {...tip(t('viewer.transform'), { shortcut: 'Shift+T', hint: t('viewer.transformHint') })}
-            >
-              <Move size={14} />
-            </button>
             {/* Before/after: the grade off, or a curtain across the picture. */}
             <button
               type="button"

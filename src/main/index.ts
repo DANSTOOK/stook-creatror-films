@@ -10,6 +10,7 @@ import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
 import { registerSubtitleHandlers } from './subtitles/subtitlesIpc';
 import { registerTtsHandlers } from './tts/ttsIpc';
+import { logFailedRequests, registerLogHandlers } from './logging/logIpc';
 import { registerMattingHandlers } from './matting/mattingIpc';
 import type { Transcriber } from './subtitles/transcriber';
 import { applyGpuPreferenceAtStartup } from './gpu/gpuSettings';
@@ -339,6 +340,9 @@ app.whenReady().then(() => {
   // handlers or open a window on the way.
   if (!isOnlyInstance) return;
 
+  // The log first: every handler registered after this has its failures written down.
+  logFailedRequests();
+  registerLogHandlers();
   registerMediaProtocolHandler();
   pipeline = registerFileSystemHandlers(() => mainWindow);
   registerYouTubeHandlers(() => mainWindow);

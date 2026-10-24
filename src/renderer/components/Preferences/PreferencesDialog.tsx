@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { AppearancePicker } from './AppearancePicker';
 import { CloudBackup } from './CloudBackup';
+import { Diagnostics } from './Diagnostics';
 import { Languages, Settings, Timer } from 'lucide-react';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import {
@@ -172,6 +173,9 @@ export function PreferencesDialog({ onClose, closing = false }: PreferencesDialo
       </div>
       <div className="pt-2">
         <CloudBackup />
+      </div>
+      <div className="pt-2">
+        <Diagnostics />
       </div>
       <div className="pt-2">
         <MatteStorage />

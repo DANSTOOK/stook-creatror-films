@@ -529,10 +529,9 @@ export function useEditorShortcuts(): void {
           store.setTool('hand');
           return;
         case 't':
-          // Shift+T puts the transform handles on the selected clip, the key
-          // Final Cut uses; plain T is the trim tool.
-          if (event.shiftKey) store.setUi({ transformMode: !store.ui.transformMode });
-          else store.setTool('trim');
+          // T is the trim tool. (Shift+T used to switch the viewer's grips on;
+          // a selected clip has them now, as in CapCut.)
+          if (!event.shiftKey) store.setTool('trim');
           return;
         case 'f':
           // Shift+F fills the window with the picture; Escape comes back.

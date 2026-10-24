@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { logError } from '@renderer/diagnostics/appLog';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 
 /**
@@ -96,6 +97,8 @@ export function notify(
 ): number {
   const id = nextId;
   nextId += 1;
+  // What the user was told went wrong goes in the log too, in their words.
+  if (tone === 'error') logError('notice', message);
   const entry: AppNotification = {
     id,
     message,

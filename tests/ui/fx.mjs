@@ -17,7 +17,11 @@ import { _electron as electron } from 'playwright';
  *   - at its still point it is neither black nor either picture unchanged.
  * For every effect in fx/effects/catalog.ts, at its defaults on one clip:
  *   - it compiles, draws, is not black, and differs from the clip without
- *     it; switched off it is exactly the clip without it.
+ *     it - on average, or for one that works on a part of the picture (the
+ *     censor), over at least 1 % of it; switched off it is exactly the clip
+ *     without it. A flash is looked at on a beat, when it flashes.
+ * The colour adjustments at zero change nothing at all. (Their defaults do
+ * something you can see, since v1.72: applied, an effect shows.)
  * The lists are read from the catalogs and their length checked, so the run
  * cannot pass by finding nothing to test.
  *
@@ -208,21 +212,34 @@ async function main() {
     console.log(`3. ${effectTypes.length} effects`);
     await window.evaluate((transitionId) => window.__scfStore.getState().removeTransition(transitionId), ids.transition);
     await render(20, 'plain');
-    // Adjustments start neutral, as Premiere's and Resolve's do: at their
-    // defaults they must change nothing, and are tried with these instead.
-    const NEUTRAL = { brightnessContrast: { brightness: 0.2, contrast: 0.3 }, hueSaturation: { hue: 0.3, saturation: 0.4 } };
-    for (const type of Object.keys(NEUTRAL)) {
-      await window.evaluate(([clipId, effectType]) => window.__scfStore.getState().updateClip(clipId, { effects: [{ id: 'fx-test', type: effectType, enabled: true, params: {} }] }), [ids.first, type]);
+    // The colour adjustments at zero are the picture as it is, to the level.
+    const ZERO = { brightnessContrast: { brightness: 0, contrast: 0 }, hueSaturation: { hue: 0, saturation: 0 } };
+    for (const [type, params] of Object.entries(ZERO)) {
+      await window.evaluate(([clipId, effectType, values]) => window.__scfStore.getState().updateClip(clipId, { effects: [{ id: 'fx-test', type: effectType, enabled: true, params: values }] }), [ids.first, type, params]);
       await render(20, 'neutral');
       const neutral = await diff('neutral', 'plain');
-      check(`${type} at its defaults changes nothing`, neutral < 0.01, neutral.toFixed(3));
+      check(`${type} at zero changes nothing`, neutral < 0.01, neutral.toFixed(3));
     }
+    /** The share of the picture that changed by more than 10 levels. */
+    const changedShare = (one, two) =>
+      window.evaluate(
+        ([x, y]) => {
+          const p = window.__fxPixels[x];
+          const q = window.__fxPixels[y];
+          let changed = 0;
+          for (let i = 0; i < p.length; i += 4) if (Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 30) changed += 1;
+          return changed / (p.length / 4);
+        },
+        [one, two],
+      );
     for (const type of effectTypes) {
       const errorsBefore = consoleErrors.length;
       // At its defaults: a setting that is not stored draws at its default.
-      await window.evaluate(([clipId, effectType, params]) => window.__scfStore.getState().updateClip(clipId, { effects: [{ id: 'fx-test', type: effectType, enabled: true, params }] }), [ids.first, type, NEUTRAL[type] ?? {}]);
-      const luma = await render(20, 'fx');
+      await window.evaluate(([clipId, effectType]) => window.__scfStore.getState().updateClip(clipId, { effects: [{ id: 'fx-test', type: effectType, enabled: true, params: {} }] }), [ids.first, type]);
+      // A flash flashes on its beats (twice a second): the second at frame 30 is one.
+      const luma = await render(type === 'flash' ? 30 : 20, 'fx');
       const changed = await diff('fx', 'plain');
+      const share = await changedShare('fx', 'plain');
       await window.evaluate((clipId) => {
         const clip = window.__scfStore.getState().project.clips[clipId];
         window.__scfStore.getState().updateClip(clipId, { effects: clip.effects.map((effect) => ({ ...effect, enabled: false })) });
@@ -230,8 +247,8 @@ async function main() {
       await render(20, 'off');
       const off = await diff('off', 'plain');
       const compiled = consoleErrors.length === errorsBefore;
-      check(`${type}: compiles, draws, changes the picture, and does nothing when off`, compiled && luma > 3 && changed > 1 && off === 0,
-        `${compiled ? '' : 'COMPILE ERROR '}luma ${luma.toFixed(1)}, differs by ${changed.toFixed(2)}, off differs by ${off.toFixed(3)}`);
+      check(`${type}: compiles, draws, changes the picture, and does nothing when off`, compiled && luma > 3 && (changed > 1 || share >= 0.01) && off === 0,
+        `${compiled ? '' : 'COMPILE ERROR '}luma ${luma.toFixed(1)}, differs by ${changed.toFixed(2)} (${(share * 100).toFixed(1)} % of it), off differs by ${off.toFixed(3)}`);
       if (shotsDir) {
         await window.evaluate(([clipId]) => {
           const clip = window.__scfStore.getState().project.clips[clipId];

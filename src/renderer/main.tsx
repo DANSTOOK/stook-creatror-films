@@ -5,6 +5,10 @@ import { AudioStream } from './audio/AudioStream';
 import { renderTimelineAudio, streamTimelineAudio } from './audio/renderMix';
 import { useHistoryStore } from './store/useHistoryStore';
 import { useExportQueue } from './export/queue';
+import { captureErrors } from './diagnostics/appLog';
+
+// Before anything else runs: what goes wrong from here on is written down (main/logging).
+captureErrors();
 import { useProjectStore } from './store/useProjectStore';
 import { useMediaStore } from './store/useMediaStore';
 import { getAudioEngine } from './audio/AudioEngine';

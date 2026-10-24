@@ -33,6 +33,7 @@ import { VoiceoverDialog, useVoiceoverDialog } from './voiceover/VoiceoverDialog
 import { BeatDialog, useBeatDialog } from './components/Beats/BeatDialog';
 import { ScreenRecordDialog, useScreenRecordDialog } from './capture/ScreenRecordDialog';
 import { showLibraryTab, type LibraryTab } from './components/MediaLibrary/libraryTabs';
+import { copyDiagnostics } from './diagnostics/appLog';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
 import { exportCaptionsToDialog, importCaptionsFromDialog } from './captions/captionFiles';
 import { PreviewViewport } from './components/PreviewViewport';
@@ -585,6 +586,12 @@ export default function App(): JSX.Element {
         return;
       case 'tour':
         useTour.getState().start();
+        return;
+      case 'openLog':
+        void window.filmora.logOpen?.();
+        return;
+      case 'copyDiagnostics':
+        void copyDiagnostics();
         return;
       case 'saveTemplate':
         useSaveTemplate.getState().show();

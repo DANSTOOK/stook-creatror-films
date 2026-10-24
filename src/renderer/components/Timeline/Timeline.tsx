@@ -1232,6 +1232,18 @@ export function Timeline(): JSX.Element {
       }
 
       const pointerFrame = (x + ui.scrollLeftPx) / ui.pixelsPerFrame;
+      // A picture picked on the timeline is shown in the viewer with its box
+      // and grips, to move and size it there (ViewportControls): when the
+      // playhead is not over it, the playhead goes to where it was clicked.
+      // Sound, captions and adjustment layers have no box, and leave it be.
+      {
+        const kind = state.project.tracks.find((track) => track.id === hit.clip.trackId)?.type;
+        const picture = kind !== 'audio' && kind !== 'captions' && kind !== 'adjustment' && !hit.clip.audioOnly && !hit.clip.caption && !hit.clip.adjustment;
+        const playhead = state.project.currentFrame;
+        if (picture && !event.shiftKey && (playhead < hit.clip.startFrame || playhead >= clipEndFrame(hit.clip))) {
+          state.setCurrentFrame(Math.min(clipEndFrame(hit.clip) - 1, Math.max(hit.clip.startFrame, Math.floor(pointerFrame))));
+        }
+      }
       const selection = store.getState().ui.selectedClipIds;
 
       if (selection.length > 1) {

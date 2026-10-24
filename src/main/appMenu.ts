@@ -204,6 +204,9 @@ export function buildMenuTemplate(
       command('menu.shortcuts', 'shortcuts', { accelerator: 'Shift+/', enabled: inEditor }),
       command('menu.tour', 'tour', { enabled: inEditor }),
       { type: 'separator' },
+      command('menu.openLog', 'openLog'),
+      command('menu.copyDiagnostics', 'copyDiagnostics'),
+      { type: 'separator' },
       { id: 'about', label: t('menu.about', { app: APP_NAME }), click: options.about },
       // The fonts' licences, which the OFL asks to be shown with the app.
       command('menu.fontLicenses', 'fontLicenses'),

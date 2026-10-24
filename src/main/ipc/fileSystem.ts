@@ -1230,7 +1230,13 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 180 }, fetchWindowIcons: false });
     return sources
       .filter((source) => !source.name.startsWith('STOOK CREATOR FILMS'))
-      .map((source) => ({ id: source.id, name: source.name, kind: source.id.startsWith('screen') ? 'screen' : 'window', thumbnail: source.thumbnail.toDataURL() }));
+      .map((source) => ({
+        id: source.id,
+        name: source.name,
+        kind: source.id.startsWith('screen') ? 'screen' : 'window',
+        // A minimised window has no picture: no thumbnail rather than an empty image.
+        thumbnail: source.thumbnail.isEmpty() ? '' : source.thumbnail.toDataURL(),
+      }));
   });
 
   /** A screen or webcam recording: WebM in, an MP4 at a steady 30 fps out, kept in the app's folder. */

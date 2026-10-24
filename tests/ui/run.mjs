@@ -910,16 +910,10 @@ async function main() {
       };
     });
 
-    // The handles are a mode, as they are in Final Cut: a selected clip on
-    // its own leaves the viewer alone.
-    const handlesBeforeMode = await window.evaluate(() =>
-      document.querySelectorAll('[data-testid^="viewport-handle-"]').length);
-    await window.evaluate(() => window.__scfStore.getState().setUi({ transformMode: true }));
+    // As in CapCut, the selected clip has its handles in the viewer: no mode to switch on.
     const viewportGrip = window.getByTestId('viewport-handle-topRight');
     const viewportGripShown = await viewportGrip.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
-    check('the transform mode puts handles on the selected clip, and nothing before it',
-      viewportGripShown && handlesBeforeMode === 0,
-      `${handlesBeforeMode} handles before the mode, grip visible ${viewportGripShown}`);
+    check('the selected clip has its handles in the viewer, with nothing to switch on', viewportGripShown, `grip visible ${viewportGripShown}`);
 
     const beforeViewportDrag = await viewportTransformNow();
     const viewportGripBox = await viewportGrip.boundingBox();
@@ -1747,7 +1741,7 @@ async function main() {
     }, fadeSetup);
     await window.waitForTimeout(200);
 
-    /* The viewer: transform mode, full screen, and the magnet ---------------- */
+    /* The viewer: grips on the selection, full screen, and the magnet ------- */
     const viewerClip = await window.evaluate(() => {
       const store = window.__scfStore.getState();
       const video = store.assets.find((asset) => asset.kind === 'video');
@@ -1756,9 +1750,6 @@ async function main() {
       const state = window.__scfStore.getState();
       state.setCurrentFrame(3010);
       state.selectClips([id]);
-      // An earlier check turned the mode on to drag a grip; this one is about
-      // what happens before anyone asks for it.
-      state.setUi({ transformMode: false });
       // Half size, so there is room to push it about inside the frame.
       window.__scfStore.getState().setTransformAt(id, 3010, { scale: { x: 0.5, y: 0.5 } });
       return id;
@@ -1768,14 +1759,8 @@ async function main() {
     const handleCount = () => window.evaluate(() =>
       document.querySelectorAll('[data-testid^="viewport-handle-"]').length);
 
-    const beforeTransform = await handleCount();
-    await window.getByTestId('project-name').click();
-    await window.keyboard.press('Shift+T');
-    await window.waitForTimeout(300);
     const withTransform = await handleCount();
-    check('the handles wait to be asked for, and Shift+T asks',
-      beforeTransform === 0 && withTransform > 0,
-      `selected alone ${beforeTransform}, after Shift+T ${withTransform}`);
+    check('a clip selected on the timeline has its grips in the viewer, nothing to switch on', withTransform > 0, `${withTransform} handles`);
 
     await window.evaluate(() => window.__scfStore.getState().selectClips([]));
     await window.waitForTimeout(250);
@@ -1848,7 +1833,6 @@ async function main() {
       exact.x !== 0 && exact.y !== 0, `${exact.x.toFixed(1)},${exact.y.toFixed(1)}`);
 
     // Leave the editor as the rest of the checks expect it.
-    await window.keyboard.press('Shift+T');
     await window.evaluate((id) => {
       const store = window.__scfStore.getState();
       store.removeClips([id]);

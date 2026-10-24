@@ -640,16 +640,27 @@
     clip: auto;
   }
 
-  /* Docked, seven icons and one name do not fit (with Voice, the Captions tab
-     went under the viewer at the default 1600 px): icons alone, the open one
-     marked by the highlight, every name in its tooltip. */
+  /* Docked, eight icons and the open tab's name do not fit (with Voice, the
+     Captions tab went under the viewer at the default 1600 px): the open one
+     is its icon and the highlight, and only the tab pointed at or focused
+     says its name - tighter round each icon, so that one name still fits. */
   @container (max-width: 329px) {
-    /* Eight tabs in a docked panel: a little less room round each icon. */
     .library-tabs .library-tab {
-      padding-left: 5px;
-      padding-right: 5px;
+      padding-left: 3px;
+      padding-right: 3px;
     }
 
+    .library-tab[aria-selected='true']:not(:hover):not(:focus-visible) .library-tab-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+  }
+
+  /* Narrower still, not even that: icons alone, every name in its tooltip. */
+  @container (max-width: 239px) {
     .library-tab:hover .library-tab-label,
     .library-tab:focus-visible .library-tab-label,
     .library-tab[aria-selected='true'] .library-tab-label {
