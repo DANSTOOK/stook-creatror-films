@@ -17,6 +17,7 @@ import {
   thumbnailNameFor,
 } from '../projects/recentProjects';
 import { BackupStore, RecoveryStore } from '../projects/backups';
+import { CloudBackup } from '../projects/cloudBackup';
 import { ProxyStore, proxySize } from '../media/proxies';
 import { PlayableStore } from '../media/playable';
 import { audioArgs, gifArgs, type DeliverableKind } from '../exporter/deliverables';
@@ -652,6 +653,35 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
   const recentProjects = new RecentProjectsStore(join(app.getPath('userData'), 'scf'));
   const backups = new BackupStore(join(app.getPath('userData'), 'scf', 'backups'));
   const recovery = new RecoveryStore(join(app.getPath('userData'), 'scf'));
+  const cloud = new CloudBackup(join(app.getPath('userData'), 'scf', 'cloud-backup.json'));
+
+  ipcMain.handle(IPC.cloudBackupState, () => cloud.state());
+  ipcMain.handle(IPC.cloudBackupChoose, async () => {
+    const window = getWindow();
+    const options = { properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>, title: mt('main.cloudBackupFolder') };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (!result.canceled && result.filePaths[0]) await cloud.setFolder(result.filePaths[0]);
+    return cloud.state();
+  });
+  // Only a folder the scan found, or off: any other comes through the dialog above.
+  ipcMain.handle(IPC.cloudBackupSet, async (_event, folder: unknown) => {
+    const found = (await cloud.state()).candidates.some((candidate) => candidate.path === folder);
+    if (folder !== null && !found) throw new Error(mt('main.cloudBackupFolder'));
+    await cloud.setFolder(folder as string | null);
+    return cloud.state();
+  });
+  ipcMain.handle(IPC.cloudBackupNow, async (_event, path: unknown) => {
+    if (typeof path !== 'string') throw new Error(mt('main.nothingToSave'));
+    assertAllowed(path);
+    await cloud.copy(path, await readFile(path, 'utf8'));
+    return cloud.state();
+  });
+  ipcMain.handle(IPC.cloudBackupOpen, async () => {
+    const root = cloud.root();
+    if (!root) return;
+    await mkdir(root, { recursive: true });
+    await shell.openPath(root);
+  });
   const proxies = new ProxyStore(join(app.getPath('userData'), 'scf', 'proxies'), resolveFfmpegPath());
 
   ipcMain.handle(IPC.projectsList, async (): Promise<RecentProject[]> => {
@@ -731,6 +761,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     }
     await writeFile(target, contents, { encoding: 'utf8', flag: 'wx' });
     allowedPaths.add(target);
+    void cloud.copy(target, contents);
     return target;
   });
 
@@ -770,6 +801,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     } finally {
       if (saveQueues.get(path) === write) saveQueues.delete(path);
     }
+    // And a copy in the cloud folder, when there is one; the save does not wait for it.
+    void cloud.copy(path, contents);
     return path;
   });
 
@@ -972,6 +1005,7 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
 
     allowedPaths.add(result.filePath);
     await writeFile(result.filePath, contents, 'utf8');
+    void cloud.copy(result.filePath, contents);
     return result.filePath;
   });
 

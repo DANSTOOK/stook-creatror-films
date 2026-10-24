@@ -7,11 +7,94 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1668 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1673 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.75.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.77.0-beta.1 — Cola de render, curvas de animación, muletillas fuera y copia en la nube
+2026-10-23 · pre-release para probar · la lista de 10 mejoras
+
+### Añadido
+- **Cola de render** (como la de DaVinci o Media Encoder). En la ventana de
+  exportación, **«Añadir a la cola»** guarda esa exportación con sus ajustes
+  *y la línea de tiempo tal como está en ese momento*: se puede seguir
+  editando, cambiar el tamaño, encolar otra versión y al final pulsar
+  **«Renderizar cola (N)»**: se hacen una tras otra, cada una como se encoló.
+  Dos con el mismo nombre no se pisan (la segunda es «nombre (2)»). La lista
+  dice cuál va, cuáles están hechas, cuál falló; «Cancelar render» la detiene.
+  - *Comprobado:* `tests/ui/export-queue.mjs` **9/9**: se encola a 320×180 y
+    2 s, se cambia la línea de tiempo y el tamaño, se encola otra; la cola
+    sigue al volver a abrir la ventana; salen `cut.mp4` (2 s, 320×180) y
+    `cut (2).mp4` (1 s, 640×360), y dice «1 de 2», «2 de 2».
+- **Curva de animación** (inspector, pestaña Vídeo, en cuanto una propiedad
+  tiene dos fotogramas clave). Para el tramo bajo el cabezal: Lineal, Suave,
+  Entrada suave, Salida suave, Rápido y frena, Rebote; o se arrastran los dos
+  tiradores de la curva. Las flechas cambian de tramo y «Usar esta curva en
+  todos los tramos» la reparte. Un arrastre es un solo paso de deshacer.
+  - *Comprobado:* `tests/ui/curves-fillers.mjs` (parte 2): la tarjeta aparece
+    en el tramo 0 → 60; «Rebote» pone su curva en el primer fotograma clave y
+    queda marcado; arrastrar el tirador cambia la curva en un solo paso;
+    «Lineal» la quita.
+- **Quitar muletillas.** Clic derecho en un clip con voz que tenga subtítulos
+  transcritos: **«Quitar muletillas (N)»** corta los «eh», «em», «mmm», «um»,
+  «uh»… del clip (y de su sonido), cierra los huecos y los quita del texto de
+  los subtítulos. Palabras que pueden ser palabras («este», «bueno», «like»)
+  se respetan. Un solo paso de deshacer.
+  - *Comprobado:* misma prueba (parte 1): con «Hola eh a todos, um
+    bienvenidos.» el clip de 120 fotogramas queda en tres trozos
+    (0–20, 20–42, 42–98), el subtítulo dice «Hola a todos, bienvenidos.» y un
+    deshacer lo deja como estaba. 3 pruebas unitarias nuevas.
+- **Mejorar voz** (inspector › Audio, junto a Reducir ruido): limpia, iguala
+  y deja la voz a −16 LUFS sin saturar.
+  - *Comprobado:* `tests/ui/pro-edits.mjs`: una voz baja y desigual queda a
+    unos −16 LUFS con picos por debajo de −1 dB.
+- **Teclas tipo Premiere:** **Mayús+Supr** borra y cierra el hueco aunque el
+  imán esté apagado; **Q** recorta el clip bajo el cabezal hasta él por el
+  inicio y **W** por el final, lo que sigue se acerca. Cada uno, un paso de
+  deshacer.
+  - *Comprobado:* `tests/ui/pro-edits.mjs` con tres clips: posiciones exactas
+    tras cada tecla y tres deshacer lo dejan como estaba.
+- **Mis plantillas.** Archivo › **Guardar como plantilla** guarda el proyecto
+  (intro, rótulos, música, color…) para empezar otros desde él; la pantalla de
+  inicio lo muestra en «Mis plantillas» y abrirlo es un proyecto nuevo sin
+  título con su contenido.
+  - *Comprobado:* `tests/ui/pro-edits.mjs` **8/8** en total.
+- **Copia en la nube** (Preferencias › Copia en la nube). Encuentra sola la
+  carpeta de OneDrive, Google Drive o Dropbox del equipo (o se elige
+  cualquiera): cada guardado deja ahí una copia del proyecto con fecha, en su
+  propia carpeta dentro de «STOOK Backups», las 20 más recientes; la app de la
+  nube la sube. «Copiar ahora» hace una al momento. Los vídeos no se copian
+  (pesan demasiado). El editor nunca inicia sesión en ningún servicio.
+  - *Comprobado:* `tests/ui/cloud-backup.mjs` **7/7**: el primer guardado y
+    los siguientes dejan cada uno una copia idéntica al archivo; «Copiar
+    ahora» hace otra y dice cuándo; con «Desactivada» ya no se copia. 2
+    pruebas unitarias nuevas (detección de carpetas y límite de 20).
+
+### Ya estaba (puntos 6 y 7 de la lista)
+- **Reencuadre vertical que sigue a la persona:** Exportar › Reencuadrar (o
+  clic derecho en el clip) con «Seguir a la persona».
+- **Texto animado palabra por palabra:** en una pista de subtítulos,
+  Animación: Resaltar, Caja, Karaoke, Aparecer y Palabra a palabra.
+
+### Velocidad de exportación (punto 9), medida
+- Con la RTX (la GPU que se usa por defecto desde la v1.71): **2 minutos de
+  vídeo 4K a 1080p en 13,6 s** (264 fps, unas 9 veces el tiempo real); 10 s
+  con cuatro efectos y tres títulos, 1,9 s. La mezcla de sonido previa es el
+  7 % del tiempo.
+- Con la Intel UHD el límite es su codificador de vídeo: incluso una imagen
+  fija sale a unos 50 fps. Probé el codificador por hardware forzado y el modo
+  de baja latencia: ninguno lo cambia, así que no los dejé.
+- El banco de pruebas de efectos ahora dice dónde se va cada milisegundo
+  (dibujar frente a codificar) y mide un proyecto cargado.
+
+### Comprobado en conjunto
+- 1673 pruebas unitarias, 127/127 de interfaz, 22/22 de extremo a extremo,
+  41/41 de proyectos; exportación para redes 5/5 y extras 5/5 tras el cambio
+  de la cola.
 
 ---
 

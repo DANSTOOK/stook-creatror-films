@@ -55,6 +55,11 @@ export const IPC = {
   setAppearance: 'app:set-appearance',
   clipboardWrite: 'app:clipboard-write',
   templatesList: 'templates:list',
+  cloudBackupState: 'cloud-backup:state',
+  cloudBackupChoose: 'cloud-backup:choose',
+  cloudBackupSet: 'cloud-backup:set',
+  cloudBackupNow: 'cloud-backup:now',
+  cloudBackupOpen: 'cloud-backup:open',
   templateSave: 'templates:save',
   templateRead: 'templates:read',
   templateDelete: 'templates:delete',
@@ -395,6 +400,14 @@ export interface ExportStartResult {
  * only names it and the page runs it - the same code a toolbar button runs.
  */
 /** One of the user's own project templates. */
+export interface CloudBackupState {
+  folder: string | null;
+  candidates: Array<{ label: string; path: string }>;
+  lastAt: string | null;
+  lastFile: string | null;
+  lastError: string | null;
+}
+
 export interface ProjectTemplate {
   id: string;
   name: string;
@@ -723,6 +736,16 @@ export interface FilmoraApi {
   clipboardWrite(text: string): Promise<void>;
   /** The user's own project templates (renderer/project/templates.ts), newest first. */
   templatesList(): Promise<ProjectTemplate[]>;
+  /** Copies of every save in a cloud folder (main/projects/cloudBackup.ts): where, and how the last went. */
+  cloudBackupState(): Promise<CloudBackupState>;
+  /** A folder picked in a dialog becomes where copies go. */
+  cloudBackupChoose(): Promise<CloudBackupState>;
+  /** One of the cloud folders found becomes where copies go, or (null) none. */
+  cloudBackupSet(folder: string | null): Promise<CloudBackupState>;
+  /** A copy of this project file now. */
+  cloudBackupNow(path: string): Promise<CloudBackupState>;
+  /** The copies' folder, in the file manager. */
+  cloudBackupOpen(): Promise<void>;
   /** A project kept as a template under `name`: its id. */
   templateSave(name: string, documentJson: string): Promise<string>;
   /** A template's project document, as saved. */

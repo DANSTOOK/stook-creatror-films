@@ -12,7 +12,10 @@ import {
   Youtube,
   ImagePlay,
   Music2,
+  ListPlus,
 } from 'lucide-react';
+import { ExportQueueList } from './ExportQueueList';
+import { useExportQueue, type ExportSource, type QueuedExport } from '@renderer/export/queue';
 import type {
   ExportFormat,
   ExportProgress,
@@ -424,8 +427,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
    * written; false when it could not start, was cancelled or failed.
    */
   const dialogSettings = settings;
-  const startExport = useCallback(async (override?: Partial<ExportSettings>): Promise<boolean> => {
-    const settings: ExportSettings = { ...dialogSettings, ...override };
+  const startExport = useCallback(async (override?: Partial<ExportSettings>, job?: QueuedExport): Promise<boolean> => {
+    const settings: ExportSettings = { ...(job?.settings ?? dialogSettings), ...override };
+    // What is rendered: a queued job's timeline as it was queued, or the one on screen.
+    const run: ExportSource = job ?? {
+      project,
+      assets,
+      burnTrackIds: burnCaptions ? burnTrackIds : new Set(),
+      captionFile,
+      embedCaptions,
+      deliverTracks,
+      thumbnailPath: COVER_ART_FORMATS.has(settings.format) ? thumbnailPath : null,
+    };
     const renderer = getActiveFrameRenderer();
     if (!renderer) {
       setMessage(t('export.notReady'));
@@ -456,12 +469,12 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     if (!(window as { __scfSeekExport?: boolean }).__scfSeekExport) renderer.startSequentialDecode();
 
     // Captions not burnt in are simply not drawn; everything else is.
-    const drawn = withoutCaptions(project, burnCaptions ? burnTrackIds : new Set());
+    const drawn = withoutCaptions(run.project, run.burnTrackIds);
     // Whether the file will hold the frame's transparency; when not, it is flattened over black.
     const keepsAlpha = settings.exportAlpha && FORMATS.find((format) => format.value === settings.format)?.alpha === true;
 
     try {
-      await renderer.ensureLUTs(project);
+      await renderer.ensureLUTs(run.project);
 
       // Render the audio mix first: ffmpeg needs it as a file input, so it has
       // to exist before the encoder is spawned.
@@ -477,8 +490,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         let mix: Awaited<ReturnType<typeof streamTimelineAudio>> = null;
         try {
           mix = await streamTimelineAudio(
-            project,
-            assets,
+            run.project,
+            run.assets,
             settings.startFrame,
             settings.endFrame,
             (samples) => window.filmora.exportAudioAppend(mixPath, samples.buffer as ArrayBuffer),
@@ -521,10 +534,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       // ffmpeg reads beside the picture and the sound.
       // One stream a captions track, in order, named after it.
       const subtitleStreams: SubtitleStream[] = [];
-      if (embedCaptions && subtitleCodecFor(settings.format) !== null && window.filmora.captionsWriteTemp) {
+      if (run.embedCaptions && subtitleCodecFor(settings.format) !== null && window.filmora.captionsWriteTemp) {
         try {
-          for (const track of deliverTracks) {
-            const cues = captionCues(project, { trackId: track.id, fromFrame: settings.startFrame, toFrame: settings.endFrame });
+          for (const track of run.deliverTracks) {
+            const cues = captionCues(run.project, { trackId: track.id, fromFrame: settings.startFrame, toFrame: settings.endFrame });
             if (cues.length === 0) continue;
             subtitleStreams.push({ path: await window.filmora.captionsWriteTemp(writeSrt(cues)), language: subtitleLanguageCode(track.language), title: track.name });
           }
@@ -538,7 +551,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         hardwareEncoder: jobPlan.hardwareEncoder,
         ...(streamColour ? { streamColour } : {}),
         ...(audioPath ? { audioPath, audioBitrateKbps, audioRawFormat } : {}),
-        ...(thumbnailPath && coverArt ? { thumbnailPath } : {}),
+        ...(run.thumbnailPath ? { thumbnailPath: run.thumbnailPath } : {}),
         ...(subtitleStreams.length === 1 ? { subtitles: { path: subtitleStreams[0].path, language: subtitleStreams[0].language } } : {}),
         ...(subtitleStreams.length > 1 ? { subtitleStreams } : {}),
       };
@@ -558,6 +571,9 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         });
       }
 
+      // Where an export's time goes, for the benchmarks (tests/ui/fx-bench.mjs).
+      const stats = { setupMs: performance.now() - startedAt, frames: 0, renderMs: 0, encodeMs: 0 };
+      (window as { __scfExportStats?: typeof stats }).__scfExportStats = stats;
       for (let frame = settings.startFrame; frame < settings.endFrame; frame += 1) {
         if (cancelRef.current) {
           encoder?.close();
@@ -576,15 +592,26 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
           }
         }
 
+        const renderStart = performance.now();
         if (encoder) {
           await renderer.renderExactToCanvas(drawn, frame);
+          const encodeStart = performance.now();
+          stats.renderMs += encodeStart - renderStart;
           await encoder.encodeCanvas(renderer.canvas);
-        } else {
+          stats.encodeMs += performance.now() - encodeStart;
+          stats.frames += 1;
+          continue;
+        }
+        {
           // A file with no alpha channel shows the frame over black, as the viewer
           // does: ffmpeg drops alpha without blending, so a fade, an opacity
           // keyframe or a Fade in left straight would come out at full strength.
           const rgba = await renderer.renderExact(drawn, frame, settings.premultiplyAlpha || !keepsAlpha);
+          const encodeStart = performance.now();
+          stats.renderMs += encodeStart - renderStart;
           await window.filmora.exportFrame(activeJobId, rgba.buffer as ArrayBuffer);
+          stats.encodeMs += performance.now() - encodeStart;
+          stats.frames += 1;
         }
       }
 
@@ -593,18 +620,18 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       encoder = null;
 
       await window.filmora.exportFinish(activeJobId);
-      const fps = settings.fps || project.fps;
+      const fps = settings.fps || run.project.fps;
       // The subtitle file: the captions in the range rendered, counted from its start.
       // One file a track; with several, each named with its language (name.es.srt).
       let captionsFile: string | undefined;
-      if (captionFile !== 'none' && window.filmora.captionsWriteSidecar) {
+      if (run.captionFile !== 'none' && window.filmora.captionsWriteSidecar) {
         const written: string[] = [];
-        const tags = sidecarTags(deliverTracks);
+        const tags = sidecarTags(run.deliverTracks);
         try {
-          for (const track of deliverTracks) {
-            const cues = captionCues(project, { trackId: track.id, fromFrame: settings.startFrame, toFrame: settings.endFrame });
+          for (const track of run.deliverTracks) {
+            const cues = captionCues(run.project, { trackId: track.id, fromFrame: settings.startFrame, toFrame: settings.endFrame });
             if (cues.length === 0) continue;
-            const path = await window.filmora.captionsWriteSidecar(settings.outputPath, captionFile, writeSubtitles(captionFile, cues), several ? tags.get(track.id) : undefined);
+            const path = await window.filmora.captionsWriteSidecar(settings.outputPath, run.captionFile, writeSubtitles(run.captionFile, cues), run.deliverTracks.length > 1 ? tags.get(track.id) : undefined);
             written.push(splitPath(path).name);
           }
         } catch (error) {
@@ -639,7 +666,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       renderer.endExclusive();
       setRunning(false);
     }
-  }, [project, assets, dialogSettings, gpu, activeGpu, folder, thumbnailPath, coverArt, burnCaptions, captionFile, embedCaptions, deliverTracks, burnTrackIds, several, t]);
+  }, [project, assets, dialogSettings, gpu, activeGpu, folder, thumbnailPath, burnCaptions, captionFile, embedCaptions, deliverTracks, burnTrackIds, t]);
 
   const totalFrames = Math.max(0, settings.endFrame - settings.startFrame);
   const renderFps = settings.fps || project.fps;
@@ -751,6 +778,57 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
     setBatch(null);
     if (written.length > 0) notify(t('export.networksDone', { count: written.length, names: written.join(', ') }), 'success');
   };
+  /* Render queue ------------------------------------------------------------ */
+
+  const queue = useExportQueue((state) => state.jobs);
+  const [queueAt, setQueueAt] = useState<{ index: number; total: number; name: string } | null>(null);
+  const waiting = queue.filter((job) => job.status === 'waiting');
+
+  /** This export, as set now and of the timeline as it is now, kept to render later. */
+  const addToQueue = async (): Promise<void> => {
+    if (!folder || !settings.outputPath) {
+      setMessage(t('export.chooseFolderFirst'));
+      return;
+    }
+    // Its own file: a second job of the same name is "name (2)", not written over the first.
+    const taken = waiting.map((job) => job.settings.outputPath);
+    let target = await window.filmora.resolveExportTarget(folder, fileName, settings.format);
+    for (let n = 2; taken.includes(target.path) && n < 100; n += 1) {
+      target = await window.filmora.resolveExportTarget(folder, `${fileName} (${n})`, settings.format);
+    }
+    const outputPath = target.path;
+    const name = splitPath(outputPath).name;
+    useExportQueue.getState().add({
+      name,
+      settings: { ...settings, outputPath },
+      project,
+      assets,
+      burnTrackIds: burnCaptions ? burnTrackIds : new Set(),
+      captionFile,
+      embedCaptions,
+      deliverTracks,
+      thumbnailPath: coverArt ? thumbnailPath : null,
+    });
+    notify(t('queue.added', { name }), 'success');
+  };
+
+  /** Every waiting job, one after another; a cancel stops the queue there. */
+  const renderQueue = async (): Promise<void> => {
+    const jobs = useExportQueue.getState().jobs.filter((job) => job.status === 'waiting');
+    let made = 0;
+    for (const [index, job] of jobs.entries()) {
+      setQueueAt({ index: index + 1, total: jobs.length, name: job.name });
+      useExportQueue.getState().update(job.id, { status: 'rendering' });
+      const ok = await startExport(undefined, job);
+      const cancelled = !ok && cancelRef.current;
+      useExportQueue.getState().update(job.id, { status: ok ? 'done' : cancelled ? 'cancelled' : 'failed' });
+      if (ok) made += 1;
+      if (cancelled) break;
+    }
+    setQueueAt(null);
+    if (made > 0) notify(t('queue.done', { count: made }), 'success');
+  };
+
   const view = describeExportProgress({
     frame: progress?.frame ?? 0,
     totalFrames: progress?.totalFrames || totalFrames,
@@ -838,6 +916,20 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 {t('export.newExport')}
               </button>
             ) : (
+              <>
+              {!running && (
+                <button
+                  type="button"
+                  data-testid="export-queue-add"
+                  className="tool-button border border-panel-600"
+                  disabled={!canStart}
+                  onClick={() => void addToQueue()}
+                  title={t('queue.addHint')}
+                >
+                  <ListPlus size={14} aria-hidden />
+                  {t('queue.add')}
+                </button>
+              )}
               <button
                 key="start-export"
                 type="button"
@@ -848,6 +940,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                 {running && <Loader2 size={14} className="animate-spin" />}
                 {running ? t('export.rendering') : t('export.start')}
               </button>
+              </>
             )}
           </div>
       }
@@ -862,6 +955,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         */}
         {!done && (
           <div className="shrink-0 space-y-2 border-b border-panel-700 bg-panel-950 px-4 py-3">
+            {queueAt && (
+              <p data-testid="export-queue-progress" className="text-2xs font-semibold uppercase tracking-wide text-accent-hover">
+                {t('queue.progress', { index: queueAt.index, total: queueAt.total, name: queueAt.name })}
+              </p>
+            )}
             {batch && (
               <p data-testid="export-networks-progress" className="text-2xs font-semibold uppercase tracking-wide text-accent-hover">
                 {t('export.networksProgress', { index: batch.index, total: batch.total, name: batch.name })}
@@ -935,6 +1033,13 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         )}
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {queue.length > 0 && (
+            <ExportQueueList
+              jobs={queue}
+              running={running}
+              onRender={() => void renderQueue()}
+            />
+          )}
           {done && result && (
             // Beside the result while it is two buttons; once "Upload from
             // here" opens its form, the panel takes the full width below the

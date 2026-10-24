@@ -224,16 +224,18 @@ async function main() {
 
     if (process.env.FX_KRATOS) {
       await mkdir(exportDir, { recursive: true });
-      const kratos = await window.evaluate(() => {
+      // FX_SECONDS: how much of it (ten seconds unless said).
+      const kratosFrames = Math.round(Number(process.env.FX_SECONDS ?? 10) * 30);
+      const kratos = await window.evaluate((frames) => {
         const s = window.__scfStore.getState();
         s.removeClips(Object.keys(s.project.clips));
         const track = window.__scfStore.getState().project.tracks.find((candidate) => candidate.type === 'video' && candidate.order === 0);
         const asset = window.__scfStore.getState().assets.find((candidate) => candidate.name.startsWith('KRATOS'));
         const id = window.__scfStore.getState().addAssetToTimeline(asset, track.id, 0);
         // Ten seconds from a minute in, where it is all fighting.
-        window.__scfStore.getState().updateClip(id, { sourceOffsetFrames: 1800, durationFrames: 300 });
+        window.__scfStore.getState().updateClip(id, { sourceOffsetFrames: 1800, durationFrames: frames });
         return id;
-      });
+      }, kratosFrames);
       const exportOnce = async (name) => {
         await app.evaluate(({ dialog }, folder) => {
           dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
@@ -250,13 +252,29 @@ async function main() {
         await dialog.getByRole('button', { name: 'Start export' }).click();
         await window.getByText('Export finished', { exact: false }).waitFor({ state: 'visible', timeout: 600_000 });
         const seconds = (Date.now() - started) / 1000;
+        const stats = await window.evaluate(() => window.__scfExportStats ?? null);
+        if (stats) console.log(`   ${name}: before the first frame ${(stats.setupMs / 1000).toFixed(2)} s, render ${(stats.renderMs / stats.frames).toFixed(1)} ms/frame, encode ${(stats.encodeMs / stats.frames).toFixed(1)} ms/frame, ${stats.frames} frames`);
         await dialog.getByTitle('Close').click();
         await dialog.waitFor({ state: 'detached', timeout: 5_000 }).catch(() => undefined);
         const file = (await readdir(exportDir)).find((entry) => entry.startsWith(name));
         const size = file ? (await stat(join(exportDir, file))).size : 0;
-        return { seconds, fps: 300 / seconds, file, size };
+        return { seconds, fps: kratosFrames / seconds, file, size };
       };
       const stamp = Date.now();
+      if (process.env.FX_STILL) {
+        // The encoder alone: ten seconds of a still, nothing to decode.
+        const still = await window.evaluate(() => {
+          const s = window.__scfStore.getState();
+          const track = s.project.tracks.find((candidate) => candidate.type === 'video' && candidate.order === 0);
+          s.updateClip(Object.values(s.project.clips).find((clip) => clip.trackId === track.id).id, { durationFrames: 0 });
+          const id = window.__scfStore.getState().addAssetToTimeline(s.assets.find((asset) => asset.name === 'a.png'), track.id, 400);
+          window.__scfStore.getState().updateClip(id, { durationFrames: 300 });
+          return id;
+        });
+        result.still = await exportOnce(`fx-bench-still-${preference}-${stamp}`);
+        console.log(`A still, 10 s at 1080p: ${result.still.seconds.toFixed(1)} s (${result.still.fps.toFixed(1)} fps)`);
+        await window.evaluate((id) => window.__scfStore.getState().removeClips([id]), still);
+      }
       result.kratosPlain = await exportOnce(`fx-bench-plain-${preference}-${stamp}`);
       console.log(`Kratos 10 s at 1080p, plain: ${result.kratosPlain.seconds.toFixed(1)} s (${result.kratosPlain.fps.toFixed(1)} fps)`);
       await window.evaluate((clipId) => window.__scfStore.getState().updateClip(clipId, {
@@ -269,6 +287,18 @@ async function main() {
       }), kratos);
       result.kratosEffects = await exportOnce(`fx-bench-effects-${preference}-${stamp}`);
       console.log(`Kratos 10 s at 1080p, four effects: ${result.kratosEffects.seconds.toFixed(1)} s (${result.kratosEffects.fps.toFixed(1)} fps)`);
+      // A busier project: the effects, a picture in picture over them and three titles across all of it.
+      await window.evaluate(() => {
+        const s = window.__scfStore.getState();
+        const upper = s.addTrack ? s.addTrack('video') : null;
+        void upper;
+        for (const template of ['cin-epic', 'lowerThird', 'title']) {
+          const id = window.__scfStore.getState().addTitle(template, { trackId: null, startFrame: 0 });
+          window.__scfStore.getState().updateClip(id, { durationFrames: 300 });
+        }
+      });
+      result.kratosBusy = await exportOnce(`fx-bench-busy-${preference}-${stamp}`);
+      console.log(`Kratos 10 s at 1080p, effects and three titles: ${result.kratosBusy.seconds.toFixed(1)} s (${result.kratosBusy.fps.toFixed(1)} fps)`);
     }
   } finally {
     await app.close().catch(() => undefined);

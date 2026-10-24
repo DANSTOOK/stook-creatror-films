@@ -4,6 +4,7 @@ import App from './App';
 import { AudioStream } from './audio/AudioStream';
 import { renderTimelineAudio, streamTimelineAudio } from './audio/renderMix';
 import { useHistoryStore } from './store/useHistoryStore';
+import { useExportQueue } from './export/queue';
 import { useProjectStore } from './store/useProjectStore';
 import { useMediaStore } from './store/useMediaStore';
 import { getAudioEngine } from './audio/AudioEngine';
@@ -42,6 +43,8 @@ prepareGhosts();
 (window as { __scfHistory?: typeof useHistoryStore }).__scfHistory = useHistoryStore;
 // Waveforms and filmstrips arrive from the main process; the probes wait for them.
 (window as { __scfMediaStore?: typeof useMediaStore }).__scfMediaStore = useMediaStore;
+// The render queue's jobs, for its test.
+(window as { __scfExportQueue?: typeof useExportQueue }).__scfExportQueue = useExportQueue;
 // The mixer's meters read the engine; the probes count how often, and when.
 (window as { __scfAudioEngine?: typeof getAudioEngine }).__scfAudioEngine = getAudioEngine;
 
