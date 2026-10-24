@@ -11,7 +11,35 @@ Cifras de referencia al día de hoy: **1684 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.79.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.80.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.81.0-beta.1 — La línea de tiempo, al estilo CapCut (bloque 3a del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño
+
+### Cambiado
+- **El cabezal es blanco y más grueso:** una línea de 2 px con una sombra
+  fina a cada lado, que sigue viéndose sobre una imagen clara, y una cabeza
+  redonda en la regla. Las tijeras siguen dentro: un clic ahí corta. Al
+  arrastrarlo, el tiempo exacto va a su lado en una etiqueta blanca. En el
+  tema claro, el cabezal es casi negro.
+- **La selección es blanca, como en CapCut:**
+  - el clip elegido lleva un borde blanco de 2,5 px;
+  - sus **tiradores de recorte se ven siempre**, sin tener que pasar el ratón
+    (en cian el que está bajo el puntero);
+  - arriba a la derecha muestra **su duración** en una etiqueta.
+- **Las ondas de audio son más vivas y simétricas:** se dibujan hacia arriba
+  y hacia abajo desde el centro. Bajo el video van en turquesa; en los clips
+  de sonido, en verde claro. Siguen superando el contraste mínimo de 3:1
+  (pruebas unitarias de `ClipContent`).
+
+### Comprobado en conjunto
+- Las **61** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: no anotó nada fuera de lo que las pruebas provocan.
+- 1684 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- La v1.80 instalada pasa **129/129** sin red.
 
 ---
 

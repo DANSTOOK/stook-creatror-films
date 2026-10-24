@@ -58,6 +58,11 @@
   --tl-tick-text: 148 163 184;
   /* The Effects panel's families: sky-300 and violet-300, light on the dark panels. */
   --tl-clip-outline: 14 15 17;
+  /* What is selected, and the playhead: white on the dark tracks, as CapCut draws them. */
+  --tl-selected: 255 255 255;
+  --tl-playhead: 255 255 255;
+  /* What is written on the playhead's head. */
+  --tl-playhead-ink: 15 23 42;
   --fx-camera: 125 211 252;
   --fx-look: 196 181 253;
 
@@ -94,6 +99,9 @@
   --tl-tick-text: 71 85 105;
   /* sky-700 and violet-700: 5.9:1 and 7.1:1 on white. */
   --tl-clip-outline: 100 116 139;
+  --tl-selected: 15 23 42;
+  --tl-playhead: 15 23 42;
+  --tl-playhead-ink: 255 255 255;
   --fx-camera: 3 105 161;
   --fx-look: 109 40 217;
 

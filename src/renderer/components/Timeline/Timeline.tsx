@@ -2174,7 +2174,7 @@ export function Timeline(): JSX.Element {
               <span
                 data-testid="scrub-time"
                 aria-hidden
-                className="timecode pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded bg-accent px-1.5 py-0.5 text-2xs font-semibold leading-none text-accent-contrast shadow-lg"
+                className="timecode pointer-events-none absolute top-[26px] z-10 ml-3 rounded-full bg-[rgb(var(--tl-playhead))] px-2 py-0.5 text-2xs font-semibold leading-none text-[rgb(var(--tl-playhead-ink))] shadow-lg"
                 style={{ left: project.currentFrame * ui.pixelsPerFrame }}
               >
                 {framesToTimecode(project.currentFrame, project.fps)}

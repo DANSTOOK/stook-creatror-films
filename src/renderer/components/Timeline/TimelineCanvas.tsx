@@ -53,11 +53,9 @@ export function setTrackHeight(height: number): void {
 }
 
 /**
- * The outline of a selected clip: yellow, as Final Cut draws it. The pale blue
- * it replaced was a lighter shade of the video clips' own blue, so a selected
- * video clip read as the same thing, only brighter. No clip is drawn in
- * yellow; measured against the four clip colours it is 3.3:1 to 3.8:1 (3:1 is
- * the bar for a boundary) and 11:1 against an empty track.
+ * The outline of a selected transition. A selected clip is outlined in the
+ * theme's --tl-selected instead - white on the dark tracks, as CapCut draws
+ * it, with its grips showing and its length on it (drawClip).
  */
 export const SELECTED_OUTLINE = '#facc15';
 export const TRACK_GAP = 2;
@@ -192,6 +190,8 @@ function drawTrimHandles(
   progress: number,
   hotEdge: 'start' | 'end' | null,
   held: boolean,
+  /** On a selected clip the grips stay, in the selection's white. */
+  selected = false,
 ): void {
   if (clipWidth < 18 || progress <= 0) return;
 
@@ -204,7 +204,9 @@ function drawTrimHandles(
     const hot = hotEdge === edge;
     const left = edge === 'start' ? x : x + clipWidth - handleWidth;
 
-    context.fillStyle = hot ? (held ? '#93c5fd' : '#60a5fa') : 'rgba(226, 232, 240, 0.35)';
+    const surface = surfaceOf(context);
+    context.fillStyle = hot ? surface.accent : selected ? surface.selected : 'rgba(226, 232, 240, 0.35)';
+    if (hot && held) context.globalAlpha = 0.85;
     context.beginPath();
     context.roundRect(
       left,
@@ -214,10 +216,11 @@ function drawTrimHandles(
       edge === 'start' ? [4, 0, 0, 4] : [0, 4, 4, 0],
     );
     context.fill();
+    context.globalAlpha = 1;
 
     // Two grip lines, the conventional "you can pull this" mark.
     if (handleWidth > 3) {
-      context.strokeStyle = hot ? '#0e0f11' : 'rgba(13, 15, 20, 0.6)';
+      context.strokeStyle = hot || selected ? surfaceOf(context).playheadInk : 'rgba(13, 15, 20, 0.6)';
       context.lineWidth = 1;
       const mid = left + handleWidth / 2;
       const gripTop = bodyTop + bodyHeight / 2 - 6;
@@ -323,6 +326,13 @@ interface Surface {
   tickText: string;
   /** A clip's edge: near black on the dark tracks, a soft slate on the light ones. */
   clipOutline: string;
+  /** The selected clip's outline and its grips: white on the dark tracks, near black on the light. */
+  selected: string;
+  /** The playhead, and what is written on its head. */
+  playhead: string;
+  playheadInk: string;
+  /** The accent: a grip under the pointer. */
+  accent: string;
 }
 
 const surfaces = new WeakMap<Document, { key: string; colours: Surface }>();
@@ -331,7 +341,7 @@ const surfaces = new WeakMap<Document, { key: string; colours: Surface }>();
 function surfaceOf(context: CanvasRenderingContext2D): Surface {
   const doc = context.canvas.ownerDocument;
   const root = doc.documentElement;
-  const key = `${root.getAttribute('data-theme') ?? 'dark'}`;
+  const key = `${root.getAttribute('data-theme') ?? 'dark'}|${root.getAttribute('data-accent') ?? 'cyan'}`;
   const known = surfaces.get(doc);
   if (known && known.key === key) return known.colours;
   const style = doc.defaultView?.getComputedStyle(root);
@@ -349,6 +359,10 @@ function surfaceOf(context: CanvasRenderingContext2D): Surface {
     clipOutline: read('--tl-clip-outline', '#0e0f11'),
     tick: read('--tl-tick', '#41454e'),
     tickText: read('--tl-tick-text', '#94a3b8'),
+    selected: read('--tl-selected', '#ffffff'),
+    playhead: read('--tl-playhead', '#ffffff'),
+    playheadInk: read('--tl-playhead-ink', '#0f172a'),
+    accent: read('--accent', '#06c4de'),
   };
   surfaces.set(doc, { key, colours });
   return colours;
@@ -495,10 +509,9 @@ function drawWaveform(
   const step = Math.max(1, clipWidth / span);
   const bucketsPerPixel = Math.min(64, Math.max(1, Math.floor(span / clipWidth)));
 
-  context.save();
-  context.fillStyle = fill;
-  context.beginPath();
-  context.moveTo(x + firstPixel, bandBottom);
+  // Each column's loudness first; the shape is then drawn out from the
+  // band's middle, up and down alike, as CapCut and Premiere draw a wave.
+  const columns: Array<{ left: number; right: number; level: number }> = [];
   for (let pixel = firstPixel; pixel <= lastPixel; pixel += step) {
     const ratio = reversed ? 1 - pixel / clipWidth : pixel / clipWidth;
     const from = Math.max(0, Math.min(peaks.bucketCount - 1, Math.floor(firstBucket + ratio * span)));
@@ -508,11 +521,25 @@ function drawWaveform(
       const loud = Math.max(Math.abs(peaks.peaks[bucket * 2]), Math.abs(peaks.peaks[bucket * 2 + 1]));
       if (loud > level) level = loud;
     }
-    const columnTop = bandBottom - Math.min(1, level) * height;
-    context.lineTo(x + pixel, columnTop);
-    context.lineTo(Math.min(x + lastPixel, x + pixel + step), columnTop);
+    columns.push({ left: x + pixel, right: Math.min(x + lastPixel, x + pixel + step), level: Math.min(1, level) });
   }
-  context.lineTo(x + lastPixel, bandBottom);
+  const middle = (bandTop + bandBottom) / 2;
+  // Never thinner than a hairline: a quiet passage is still a line, not a gap.
+  const reach = (level: number): number => Math.max(0.5, (level * height) / 2);
+
+  context.save();
+  context.fillStyle = fill;
+  context.beginPath();
+  context.moveTo(x + firstPixel, middle);
+  for (const column of columns) {
+    context.lineTo(column.left, middle - reach(column.level));
+    context.lineTo(column.right, middle - reach(column.level));
+  }
+  for (let index = columns.length - 1; index >= 0; index -= 1) {
+    const column = columns[index];
+    context.lineTo(column.right, middle + reach(column.level));
+    context.lineTo(column.left, middle + reach(column.level));
+  }
   context.closePath();
   context.fill();
   context.restore();
@@ -851,8 +878,9 @@ export interface ClipContent {
  * sound strip of a video clip (3:1 is the bar for graphics).
  */
 export const WAVE_FILL: Record<Track['type'], string> = {
-  video: '#bfdbfe',
-  audio: '#a7f3d0',
+  // teal-300 on the sound strip, green-200 on the green of a sound clip: CapCut's colours, brighter than before.
+  video: '#5eead4',
+  audio: '#bbf7d0',
   text: '#e9d5ff',
   adjustment: '#fde68a',
   captions: '#fecdd3',
@@ -979,9 +1007,24 @@ function drawClip(
   context.globalAlpha = 1;
   context.beginPath();
   context.roundRect(bodyLeft, bodyTop, bodyWidth, bodyHeight, radius);
-  context.lineWidth = selected ? 2 : 1;
-  context.strokeStyle = selected ? SELECTED_OUTLINE : surfaceOf(context).clipOutline;
+  context.lineWidth = selected ? 2.5 : 1;
+  context.strokeStyle = selected ? surfaceOf(context).selected : surfaceOf(context).clipOutline;
   context.stroke();
+
+  // Selected, a clip says how long it is, in a chip at its top right, as CapCut's do.
+  if (selected && bodyWidth > 76) {
+    const length = framesToShortLabel(clip.durationFrames, fps);
+    context.font = LABEL_FONT;
+    const textWidth = context.measureText(length).width;
+    const chipRight = Math.min(bodyRight, canvasWidth) - 9;
+    context.fillStyle = NAME_BAND;
+    context.beginPath();
+    context.roundRect(chipRight - textWidth - 8, bodyTop + 3, textWidth + 8, 15, 4);
+    context.fill();
+    context.fillStyle = CLIP_NAME;
+    context.textBaseline = 'middle';
+    context.fillText(length, chipRight - textWidth - 4, bodyTop + 11);
+  }
 
   drawFades(context, clip, x, clipWidth, top, ui.pixelsPerFrame, hovered);
 
@@ -1192,47 +1235,42 @@ function drawPlayhead(
   height: number,
 ): void {
   const x = Math.round(frameToPixel(project.currentFrame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;
+  const surface = surfaceOf(context);
 
   /*
-    One head, not two. There used to be a triangle at the very top and a
-    separate red square below it, which read as two marks arguing about where
-    the playhead was. This is a single tab, rounded at the top and pointed at
-    the bottom, sitting on the line it belongs to - the shape Resolve and
-    Premiere both use - with the scissors inside it, because a click there
-    cuts, as it does in Filmora.
+    White and a little thicker, as CapCut's: a round head on the ruler with
+    the scissors in it - a click there cuts, as it does in Filmora - and a
+    point under it onto the line. A hairline of shadow either side keeps the
+    line visible over a white picture.
   */
-  const halfWidth = SCISSORS_HALF;
-  const top = 2;
-  const bottom = SCISSORS_Y + SCISSORS_HALF;
+  const radius = SCISSORS_HALF + 0.5;
+  const centre = SCISSORS_Y - 1;
 
   context.save();
+  context.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  context.lineWidth = 3.5;
   context.beginPath();
-  context.moveTo(x - halfWidth, top + 3);
-  context.quadraticCurveTo(x - halfWidth, top, x - halfWidth + 3, top);
-  context.lineTo(x + halfWidth - 3, top);
-  context.quadraticCurveTo(x + halfWidth, top, x + halfWidth, top + 3);
-  context.lineTo(x + halfWidth, bottom - 4);
-  context.lineTo(x, bottom);
-  context.lineTo(x - halfWidth, bottom - 4);
-  context.closePath();
-
-  context.fillStyle = '#f87171';
-  context.fill();
-  // A hairline of shadow under the head, so it lifts off the ruler instead of
-  // sitting in it.
-  context.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-  context.lineWidth = 1;
-  context.stroke();
-  context.restore();
-
-  drawScissors(context, x, SCISSORS_Y - 2, '#1a1b1e');
-
-  context.strokeStyle = '#f87171';
-  context.lineWidth = 1;
-  context.beginPath();
-  context.moveTo(x, bottom);
+  context.moveTo(x, centre + radius);
   context.lineTo(x, height);
   context.stroke();
+  context.strokeStyle = surface.playhead;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(x, centre + radius);
+  context.lineTo(x, height);
+  context.stroke();
+
+  context.beginPath();
+  context.arc(x, centre, radius, Math.PI * 0.8, Math.PI * 2.2);
+  context.lineTo(x, centre + radius + 4);
+  context.closePath();
+  context.fillStyle = surface.playhead;
+  context.shadowColor = 'rgba(0, 0, 0, 0.45)';
+  context.shadowBlur = 3;
+  context.fill();
+  context.restore();
+
+  drawScissors(context, x, centre - 1, surface.playheadInk);
 }
 
 export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
@@ -1409,15 +1447,17 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
         if (drift !== undefined) drawSyncMark(context, clip, top, ui, project.fps, drift, width);
 
         const held = activeTrim?.clipId === clip.id;
-        if (held || hover?.clipId === clip.id) {
+        const chosen = selected.has(clip.id);
+        if (held || chosen || hover?.clipId === clip.id) {
           drawTrimHandles(
             context,
             startX,
             endX - startX,
             top,
-            held ? 1 : handleProgress,
-            held ? activeTrim.edge : (hover?.edge ?? null),
+            held || chosen ? 1 : handleProgress,
+            held ? activeTrim.edge : hover?.clipId === clip.id ? (hover?.edge ?? null) : null,
             held,
+            chosen,
           );
         }
       }
