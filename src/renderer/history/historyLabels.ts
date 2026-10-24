@@ -17,6 +17,7 @@ const SPANISH: Record<string, string> = {
   'Add title': 'Añadir título',
   'Add track': 'Añadir pista',
   'Add transition': 'Añadir transición',
+  'Aspect ratio': 'Proporción',
   'Auto ducking': 'Atenuación automática',
   'Beat markers': 'Marcadores de ritmo',
   'Break apart compound clip': 'Descomponer clip compuesto',

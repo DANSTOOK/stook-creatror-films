@@ -142,6 +142,13 @@ export function ViewportControls(): JSX.Element | null {
    * (fx/motion/apply.placeAnimatedClip); the whole drag is one undo step.
    */
   const baseRef = useRef<{ base: ClipTransform; key: string } | null>(null);
+  /**
+   * The drag's own undo step. Every write of one drag lands in it; the next
+   * drag starts another, however soon it follows - two drags at the same
+   * frame used to merge into one step, so a second undo took back whatever
+   * came before them.
+   */
+  const gestureRef = useRef('');
   const [dragging, setDragging] = useState<Drag['kind'] | null>(null);
   /** Which guide lines to draw while a drag is held against them. */
   const [guides, setGuides] = useState<{ lines: Guide[]; safe: boolean }>({ lines: [], safe: false });
@@ -277,7 +284,7 @@ export function ViewportControls(): JSX.Element | null {
             x: tidy(drag.basePosition.x + (snapped.x - drag.startTransform.position.x)),
             y: tidy(drag.basePosition.y + (snapped.y - drag.startTransform.position.y)),
           },
-        });
+        }, gestureRef.current);
         return;
       }
       if (drag.kind === 'scale') {
@@ -303,7 +310,7 @@ export function ViewportControls(): JSX.Element | null {
           }, baseRef.current.key);
           return;
         }
-        setTransformAt(placed.clip.id, currentFrame, toKeyframes(placed, result));
+        setTransformAt(placed.clip.id, currentFrame, toKeyframes(placed, result), gestureRef.current);
         return;
       }
       const rotation = rotationFromPointer(
@@ -317,7 +324,7 @@ export function ViewportControls(): JSX.Element | null {
         placeAnimatedClip(placed.clip.id, baseRef.current.base, { turnBy: rotation - drag.startTransform.rotation }, baseRef.current.key);
         return;
       }
-      setTransformAt(placed.clip.id, currentFrame, { rotation });
+      setTransformAt(placed.clip.id, currentFrame, { rotation }, gestureRef.current);
     },
     // toKeyframes reads only its arguments.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -345,9 +352,10 @@ export function ViewportControls(): JSX.Element | null {
       event.stopPropagation();
       surfaceRef.current?.setPointerCapture(event.pointerId);
       const { clip } = drag.placed;
+      gestureRef.current = `viewer:${clip.id}:${performance.now()}`;
       if (hasClipFx(clip.fx)) {
         const { project: now, assets } = useProjectStore.getState();
-        baseRef.current = { base: clip.fx?.base ?? legacyBase(clip, now, assets), key: `viewer:${clip.id}:${performance.now()}` };
+        baseRef.current = { base: clip.fx?.base ?? legacyBase(clip, now, assets), key: gestureRef.current };
       } else baseRef.current = null;
       dragRef.current = drag;
       setDragging(drag.kind);

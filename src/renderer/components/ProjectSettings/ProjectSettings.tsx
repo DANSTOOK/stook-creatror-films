@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useReframeDialog } from '@renderer/components/Reframe/ReframeDialog';
 import { Clock, Crop, History, Image as ImageIcon } from 'lucide-react';
 import { COMMON_FPS } from '@shared/types';
@@ -7,6 +7,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { BackupSettings } from './BackupSettings';
 import { Dialog } from '@renderer/components/Dialog/Dialog';
 import { useT } from '@renderer/i18n';
+import { refitForFrame } from '@renderer/edit/frameShape';
 
 /**
  * Project settings.
@@ -36,6 +37,52 @@ const PRESETS: { label: string; width: number; height: number }[] = [
 ];
 
 const isCommonRate = (fps: number): boolean => COMMON_FPS.includes(fps as (typeof COMMON_FPS)[number]);
+
+/**
+ * The project at a new size with every picture fitted to it, not stretched:
+ * a 16:9 clip in a frame made vertical keeps its shape, with bars, and a
+ * picture in picture stays where it was as the frame grows to 4K
+ * (edit/frameShape.ts). Plain setProjectSettings kept the old scales, which
+ * squeezed every clip to the new shape.
+ */
+function resizeProject(size: { width: number; height: number }): void {
+  const state = useProjectStore.getState();
+  if (size.width === state.project.width && size.height === state.project.height) return;
+  state.setFrameShape(size, refitForFrame(state.project, size), 'Project settings');
+}
+
+/**
+ * A side of the frame, applied when the field is left or Enter pressed - not
+ * at every key, which would fit every picture to a frame 1 or 10 px wide on
+ * the way to 1080. Anything under 2 px is put back.
+ */
+function SizeField({ label, value, onCommit }: { label: string; value: number; onCommit(value: number): void }): JSX.Element {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = (): void => {
+    const next = Math.round(Number(draft));
+    if (Number.isFinite(next) && next >= 2) {
+      if (next !== value) onCommit(next);
+    } else setDraft(String(value));
+  };
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="field-label">{label}</span>
+      <input
+        type="number"
+        className="numeric-input timecode"
+        min={2}
+        step={2}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+        }}
+      />
+    </label>
+  );
+}
 
 function Group({ title, icon: Icon, children }: { title: string; icon: typeof Clock; children: ReactNode }): JSX.Element {
   return (
@@ -98,7 +145,7 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
             value={presetMatch?.label ?? 'custom'}
             onChange={(event) => {
               const preset = PRESETS.find((candidate) => candidate.label === event.target.value);
-              if (preset) setProjectSettings({ width: preset.width, height: preset.height });
+              if (preset) resizeProject({ width: preset.width, height: preset.height });
             }}
           >
             {!presetMatch && <option value="custom">{t('settings.customSize')}</option>}
@@ -126,28 +173,8 @@ export function ProjectSettings({ onClose, onRestore, closing = false }: Project
         </button>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="field-label">{t('settings.width')}</span>
-            <input
-              type="number"
-              className="numeric-input timecode"
-              min={2}
-              step={2}
-              value={project.width}
-              onChange={(event) => setProjectSettings({ width: Number(event.target.value) })}
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="field-label">{t('settings.height')}</span>
-            <input
-              type="number"
-              className="numeric-input timecode"
-              min={2}
-              step={2}
-              value={project.height}
-              onChange={(event) => setProjectSettings({ height: Number(event.target.value) })}
-            />
-          </label>
+          <SizeField label={t('settings.width')} value={project.width} onCommit={(width) => resizeProject({ width, height: project.height })} />
+          <SizeField label={t('settings.height')} value={project.height} onCommit={(height) => resizeProject({ width: project.width, height })} />
         </div>
 
         <label className="flex items-center gap-2 text-xs text-slate-300">

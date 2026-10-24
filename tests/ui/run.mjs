@@ -928,6 +928,9 @@ async function main() {
     check('the selected clip has its handles in the viewer, with nothing to switch on', viewportGripShown, `grip visible ${viewportGripShown}`);
 
     const beforeViewportDrag = await viewportTransformNow();
+    // How many steps the history holds: two drags must add two, and two undos take back those two and nothing more.
+    const undoSteps = () => window.evaluate(() => window.__scfHistory.getState().undoStack.length);
+    const stepsBeforeDrags = await undoSteps();
     const viewportGripBox = await viewportGrip.boundingBox();
     await window.mouse.move(viewportGripBox.x + viewportGripBox.width / 2, viewportGripBox.y + viewportGripBox.height / 2);
     await window.mouse.down();
@@ -951,14 +954,20 @@ async function main() {
       `position ${afterViewportScale.position.x.toFixed(0)},${afterViewportScale.position.y.toFixed(0)} -> ${afterViewportMove.position.x.toFixed(0)},${afterViewportMove.position.y.toFixed(0)}`);
 
     // One drag is one edit: two of them, two undos, back where it started.
+    // (They used to merge into one step when quick enough, and the second undo
+    // took back whatever came before them - here, a change of frame size.)
+    const stepsAfterDrags = await undoSteps();
     await window.keyboard.press('Control+z');
     await window.keyboard.press('Control+z');
     const afterViewportUndo = await viewportTransformNow();
+    const stepsAfterUndo = await undoSteps();
     check('each drag in the viewer is a single undo step',
-      Math.abs(afterViewportUndo.scale.x - beforeViewportDrag.scale.x) < 0.001
+      stepsAfterDrags === stepsBeforeDrags + 2 && stepsAfterUndo === stepsBeforeDrags
+      && Math.abs(afterViewportUndo.scale.x - beforeViewportDrag.scale.x) < 0.001
+      && Math.abs(afterViewportUndo.scale.y - beforeViewportDrag.scale.y) < 0.001
       && Math.abs(afterViewportUndo.position.x - beforeViewportDrag.position.x) < 0.5
       && Math.abs(afterViewportUndo.position.y - beforeViewportDrag.position.y) < 0.5,
-      `back to scale ${afterViewportUndo.scale.x.toFixed(3)}, position ${afterViewportUndo.position.x.toFixed(0)},${afterViewportUndo.position.y.toFixed(0)}`);
+      `${stepsAfterDrags - stepsBeforeDrags} steps for two drags, ${stepsAfterDrags - stepsAfterUndo} undone; back to scale ${afterViewportUndo.scale.x.toFixed(3)} x ${afterViewportUndo.scale.y.toFixed(3)}, position ${afterViewportUndo.position.x.toFixed(0)},${afterViewportUndo.position.y.toFixed(0)}`);
 
     // Markers: drop one at the playhead, walk away, and jump back to it.
     // Placed by pixels, not frames: a ruler click within a few pixels of a

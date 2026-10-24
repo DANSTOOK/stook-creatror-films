@@ -1,8 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
-  ChevronFirst,
-  ChevronLast,
   CircleSlash2,
   Film,
   Frame,
@@ -40,14 +38,18 @@ import { PREVIEW_QUALITIES, type PreviewQuality } from '@renderer/engine/preview
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
 import { useWorkspaceStore } from '@renderer/store/useWorkspaceStore';
 import { MENU_IMPORT_EVENT } from '@renderer/components/MediaLibrary/MediaLibrary';
+import { ASPECTS, aspectOf, frameForAspect, isAspectId } from './aspect';
+import { refitForFrame } from '@renderer/edit/frameShape';
 
 /**
  * The viewer: the picture, what is being shown, and the transport.
  *
- * Laid out like Final Cut's viewer and Resolve's: the header says whose
- * picture this is (the project), how big it is drawn, and its format; the
- * picture takes the rest; under it a large timecode, the transport, and the
- * sequence's real length. The thick slider that used to run under the picture
+ * Laid out like CapCut's player: the header says whose picture this is (the
+ * project), how big it is drawn, and holds the looking tools - loop, safe
+ * areas, before/after, scopes; the picture takes the rest; under it the time
+ * on the left, the transport in the middle - a big round play between the two
+ * frame steps, nothing more - and on the right the frame's shape, the
+ * playback quality and full screen. The thick slider that used to run under the picture
  * is gone - the timeline's ruler is where the playhead is dragged, and neither
  * Resolve nor Final Cut repeat it under the viewer. It survives only in the
  * full-screen viewer, where there is no timeline.
@@ -223,49 +225,75 @@ export function PreviewViewport(): JSX.Element {
 
   const zoomLabel = (value: Zoom): string => (value === 'fit' ? t('viewer.fit') : `${value * 100}%`);
 
+  // Centred and few, as CapCut's: a frame back, play, a frame on. Home and End still go to either end.
   const transportButtons = (
-    <div className="flex items-center gap-1">
-      <button type="button" className="tool-button w-7 px-0" onClick={() => transport.seek(0)} {...tip(t('viewer.toStart'), { shortcut: 'Home' })}>
-        <ChevronFirst size={16} />
-      </button>
+    <div className="flex items-center gap-1.5">
       <button type="button" className="tool-button w-7 px-0" onClick={() => transport.step(-1)} {...tip(t('viewer.previousFrame'), { shortcut: '←' })}>
         <SkipBack size={16} />
       </button>
       <button
         type="button"
-        className="tool-button tool-button-active w-9 px-0"
+        data-testid="viewer-play"
+        className="button-primary h-9 w-9 rounded-full px-0"
         onClick={transport.toggle}
         {...tip(ui.isPlaying ? t('viewer.pause') : t('viewer.play'), { shortcut: 'Space' })}
       >
-        {ui.isPlaying ? <Pause size={16} /> : <Play size={16} />}
+        {ui.isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" className="translate-x-px" />}
       </button>
       <button type="button" className="tool-button w-7 px-0" onClick={() => transport.step(1)} {...tip(t('viewer.nextFrame'), { shortcut: '→' })}>
         <SkipForward size={16} />
       </button>
-      <button type="button" className="tool-button w-7 px-0" onClick={() => transport.seek(length)} {...tip(t('viewer.toEnd'), { shortcut: 'End' })}>
-        <ChevronLast size={16} />
-      </button>
-      <button
-        type="button"
-        data-testid="viewer-loop"
-        aria-pressed={ui.loopPlayback}
-        className={`tool-button w-7 px-0 ${ui.loopPlayback ? 'tool-button-active' : ''}`}
-        onClick={() => setUi({ loopPlayback: !ui.loopPlayback })}
-        {...tip(t('viewer.loop'), { shortcut: 'Ctrl+/', hint: t('viewer.loopHint') })}
-      >
-        <Repeat size={16} />
-      </button>
-      <button
-        type="button"
-        data-testid="toggle-safe-areas"
-        aria-pressed={ui.showSafeAreas}
-        className={`tool-button w-7 px-0 ${ui.showSafeAreas ? 'tool-button-active' : ''}`}
-        onClick={() => setUi({ showSafeAreas: !ui.showSafeAreas })}
-        {...tip(t('viewer.safeAreas'))}
-      >
-        <Frame size={16} />
-      </button>
     </div>
+  );
+
+  // Looking tools: loop and safe areas, beside before/after and the scopes.
+  const loopButton = (
+    <button
+      type="button"
+      data-testid="viewer-loop"
+      aria-pressed={ui.loopPlayback}
+      className={`tool-button tool-button-dense w-6 px-0 ${ui.loopPlayback ? 'tool-button-active' : ''}`}
+      onClick={() => setUi({ loopPlayback: !ui.loopPlayback })}
+      {...tip(t('viewer.loop'), { shortcut: 'Ctrl+/', hint: t('viewer.loopHint') })}
+    >
+      <Repeat size={14} />
+    </button>
+  );
+
+  /*
+    The frame's shape, under the picture as CapCut has it: 16:9, 9:16, 1:1
+    or 4:5, the short side kept so the picture stays as sharp (aspect.ts).
+    Any other shape - set in Project settings - shows as itself, to keep.
+  */
+  const aspect = aspectOf(project.width, project.height);
+  const aspectSelect = (
+    <>
+      <label className="sr-only" htmlFor="viewer-aspect">
+        {t('viewer.aspect')}
+      </label>
+      <select
+        id="viewer-aspect"
+        data-testid="viewer-aspect"
+        className="numeric-input h-control-dense w-[70px] text-2xs"
+        value={aspect ?? 'custom'}
+        onChange={(event) => {
+          const chosen = event.target.value;
+          if (!isAspectId(chosen)) return;
+          // The pictures are fitted to the new frame, not stretched to it (edit/frameShape.ts).
+          const size = frameForAspect(project.width, project.height, chosen);
+          const state = useProjectStore.getState();
+          state.setFrameShape(size, refitForFrame(state.project, size));
+        }}
+        {...tip(t('viewer.aspect'), { hint: t('viewer.aspectHint', { width: project.width, height: project.height }), named: false })}
+      >
+        {!aspect && <option value="custom">{`${project.width}×${project.height}`}</option>}
+        {ASPECTS.map((entry) => (
+          <option key={entry.id} value={entry.id}>
+            {entry.id}
+          </option>
+        ))}
+      </select>
+    </>
   );
 
   const timecodes = (
@@ -325,24 +353,17 @@ export function PreviewViewport(): JSX.Element {
                 </option>
               ))}
             </select>
-            {/* Playback resolution, as Resolve and Premiere have it: lighter while playing, never in an export. */}
-            <label className="sr-only" htmlFor="viewer-quality">
-              {t('viewer.quality')}
-            </label>
-            <select
-              id="viewer-quality"
-              data-testid="viewer-quality"
-              className="numeric-input h-control-dense w-[66px] text-2xs"
-              value={previewQuality}
-              onChange={(event) => setPreviewQuality(event.target.value as PreviewQuality)}
-              {...tip(t('viewer.quality'), { hint: t('viewer.qualityHint'), named: false })}
+            {loopButton}
+            <button
+              type="button"
+              data-testid="toggle-safe-areas"
+              aria-pressed={ui.showSafeAreas}
+              className={`tool-button tool-button-dense w-6 px-0 ${ui.showSafeAreas ? 'tool-button-active' : ''}`}
+              onClick={() => setUi({ showSafeAreas: !ui.showSafeAreas })}
+              {...tip(t('viewer.safeAreas'))}
             >
-              {PREVIEW_QUALITIES.map((value) => (
-                <option key={value} value={value}>
-                  {t(`viewer.quality.${value}` as 'viewer.quality.auto')}
-                </option>
-              ))}
-            </select>
+              <Frame size={14} />
+            </button>
             {/* Before/after: the grade off, or a curtain across the picture. */}
             <button
               type="button"
@@ -374,15 +395,6 @@ export function PreviewViewport(): JSX.Element {
             >
               <Activity size={14} />
             </button>
-            <button
-              type="button"
-              data-testid="fullscreen-viewer"
-              className="tool-button tool-button-dense w-6 px-0"
-              onClick={() => setUi({ fullscreenViewer: true })}
-              {...tip(t('viewer.fullscreen'), { shortcut: 'Shift+F' })}
-            >
-              <Maximize2 size={14} />
-            </button>
           </div>
         </header>
       )}
@@ -390,7 +402,7 @@ export function PreviewViewport(): JSX.Element {
       <div className="flex min-h-0 flex-1">
       <div
         className={`flex min-h-0 min-w-0 flex-1 ${
-          fullscreen ? 'items-center justify-center bg-black p-0' : zoom === 'fit' ? 'items-center justify-center bg-panel-950 p-4' : 'overflow-auto bg-panel-950 p-4'
+          fullscreen ? 'items-center justify-center bg-black p-0' : zoom === 'fit' ? 'items-center justify-center bg-panel-950 p-2' : 'overflow-auto bg-panel-950 p-2'
         }`}
       >
         {error ? (
@@ -475,18 +487,21 @@ export function PreviewViewport(): JSX.Element {
             style={{ '--fill': `${(Math.min(project.currentFrame, length) / Math.max(1, length)) * 100}%` } as React.CSSProperties}
             aria-label={t('viewer.playhead')}
           />
-          <div className="flex items-center justify-between gap-4">
-            {timecodes}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            <div className="min-w-0">{timecodes}</div>
             {transportButtons}
-            <button
-              type="button"
-              className="tool-button"
-              onClick={() => setUi({ fullscreenViewer: false })}
-              {...tip(t('viewer.leaveFullscreen'), { shortcut: 'Esc', named: false })}
-            >
-              <Minimize2 size={14} />
-              {t('viewer.leaveFullscreen')}
-            </button>
+            <div className="flex items-center justify-end gap-1">
+              {loopButton}
+              <button
+                type="button"
+                className="tool-button"
+                onClick={() => setUi({ fullscreenViewer: false })}
+                {...tip(t('viewer.leaveFullscreen'), { shortcut: 'Esc', named: false })}
+              >
+                <Minimize2 size={14} />
+                {t('viewer.leaveFullscreen')}
+              </button>
+            </div>
           </div>
         </footer>
       ) : (
@@ -508,11 +523,42 @@ export function PreviewViewport(): JSX.Element {
             />
           </div>
         )}
-        <footer className={`flex shrink-0 items-center justify-between gap-3 bg-panel-800 px-3 py-2 ${apart ? '' : 'border-t border-panel-700'}`}>
-          <div className="min-w-0 flex-1">{timecodes}</div>
+        <footer
+          data-testid="viewer-footer"
+          className={`grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 bg-panel-800 px-3 py-1.5 ${apart ? '' : 'border-t border-panel-700'}`}
+        >
+          <div className="min-w-0">{timecodes}</div>
           {transportButtons}
-          {/* Balances the timecode, so the transport sits in the middle. */}
-          <div className="flex-1" />
+          <div className="flex min-w-0 items-center justify-end gap-1">
+            {aspectSelect}
+            {/* Playback resolution, as Resolve and Premiere have it: lighter while playing, never in an export. */}
+            <label className="sr-only" htmlFor="viewer-quality">
+              {t('viewer.quality')}
+            </label>
+            <select
+              id="viewer-quality"
+              data-testid="viewer-quality"
+              className="numeric-input h-control-dense w-[66px] text-2xs"
+              value={previewQuality}
+              onChange={(event) => setPreviewQuality(event.target.value as PreviewQuality)}
+              {...tip(t('viewer.quality'), { hint: t('viewer.qualityHint'), named: false })}
+            >
+              {PREVIEW_QUALITIES.map((value) => (
+                <option key={value} value={value}>
+                  {t(`viewer.quality.${value}` as 'viewer.quality.auto')}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              data-testid="fullscreen-viewer"
+              className="tool-button tool-button-dense w-6 px-0"
+              onClick={() => setUi({ fullscreenViewer: true })}
+              {...tip(t('viewer.fullscreen'), { shortcut: 'Shift+F' })}
+            >
+              <Maximize2 size={14} />
+            </button>
+          </div>
         </footer>
         </>
       )}

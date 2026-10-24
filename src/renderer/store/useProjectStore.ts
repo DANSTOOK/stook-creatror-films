@@ -216,6 +216,13 @@ interface ProjectStore {
    */
   reframeProject(size: { width: number; height: number }, transforms: Record<string, Pick<ClipTransform, 'position' | 'scale'>>): void;
 
+  /**
+   * The viewer's shape menu (edit/frameShape.ts): the project at a new size,
+   * every picture given the position and scale that keep it as it looked -
+   * its screen moves kept, made again for the new frame. One undo step.
+   */
+  setFrameShape(size: { width: number; height: number }, transforms: Record<string, Pick<ClipTransform, 'position' | 'scale'>>, label?: string): void;
+
   /* Markers -------------------------------------------------------------- */
   /** Drop a marker at `frame`, defaulting to the playhead. Returns its id. */
   addMarker(frame?: number, label?: string): string | null;
@@ -586,6 +593,12 @@ interface ProjectStore {
     clipId: string,
     frame: number,
     patch: { position?: Vector2D; scale?: Vector2D; rotation?: number },
+    /**
+     * What makes the writes one undo step. A drag in the viewer passes one of
+     * its own, so two drags are two steps however quickly they follow; by
+     * default it is the clip and the frame, as an inspector slider wants.
+     */
+    mergeKey?: string,
   ): void;
   removeKeyframe(clipId: string, property: VectorProperty | NumberProperty, keyframeId: string): void;
   clearKeyframes(clipId: string, property: VectorProperty | NumberProperty): void;
@@ -862,6 +875,29 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           : { ...clip, transform: composeFx(base, kept, clip, { ...project, width: size.width, height: size.height }, get().assets), fx: { ...kept, base } };
       }
       return { ...project, width: size.width, height: size.height, clips };
+    });
+    const project = get().project;
+    get().setExportSettings({
+      width: project.width,
+      height: project.height,
+      bitrateKbps: recommendedBitrateKbps(project.width, project.height, project.fps),
+    });
+  },
+
+  setFrameShape(size, transforms, label = 'Aspect ratio') {
+    get().transact(label, (project) => {
+      const framed = { ...project, width: size.width, height: size.height };
+      const clips = { ...project.clips };
+      for (const [id, move] of Object.entries(transforms)) {
+        const clip = clips[id];
+        if (!clip) continue;
+        const base = { ...(clip.fx?.base ?? clip.transform), position: move.position, scale: move.scale };
+        // Unlike a reframe, the screen moves stay: made again on the new tracks, for the new frame.
+        clips[id] = clip.fx && !fxIsEmpty(clip.fx)
+          ? { ...clip, transform: composeFx(base, clip.fx, clip, framed, get().assets), fx: { ...clip.fx, base } }
+          : { ...clip, transform: base, fx: undefined };
+      }
+      return { ...framed, clips };
     });
     const project = get().project;
     get().setExportSettings({
@@ -2501,7 +2537,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
-  setTransformAt(clipId, frame, patch) {
+  setTransformAt(clipId, frame, patch, mergeKey = `kf:${clipId}:transform:${frame}`) {
     get().transact(
       'Transform',
       (project) => {
@@ -2523,7 +2559,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
         return { ...project, clips: { ...project.clips, [clipId]: { ...clip, transform } } };
       },
-      `kf:${clipId}:transform:${frame}`,
+      mergeKey,
     );
   },
 

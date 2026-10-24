@@ -7,11 +7,96 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1693 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1710 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.82.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.83.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.84.0-beta.1 — El visor, al estilo CapCut (bloque 4a del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: «Visor más grande», «Sí, bajo el visor» (la proporción) y «Centrados y mínimos» (los controles)
+
+### Cambiado
+- **La imagen del visor es más grande:** el margen a su alrededor pasa de 16 a
+  8 px.
+- **La barra de abajo, como la del reproductor de CapCut:**
+  - a la izquierda, el tiempo: dónde está el cabezal y cuánto dura el montaje;
+  - en el centro, **un botón de reproducir grande y redondo**, en cian, entre
+    «fotograma anterior» y «fotograma siguiente». Los botones de ir al inicio
+    y al final desaparecen; Inicio y Fin siguen haciéndolo con el teclado;
+  - a la derecha, la **proporción**, la calidad de reproducción y la pantalla
+    completa.
+- **Bucle y zonas seguras** suben a la cabecera del visor, junto a
+  antes/después y los scopes.
+
+### Añadido
+- **Selector de proporción bajo el visor: 16:9, 9:16, 1:1 y 4:5.**
+  - Mantiene el lado corto del cuadro: un montaje de 1080p sigue teniendo
+    1080 px de ancho en cualquier forma, así que no pierde nitidez.
+  - **Los clips no se deforman.** Cada imagen conserva su forma y su tamaño
+    respecto al cuadro. Un video 16:9 que llenaba el ancho de un cuadro
+    horizontal llena el de uno vertical, con franjas arriba y abajo, como en
+    CapCut. Lo que estaba a un lado del centro sigue a la misma proporción del
+    centro.
+  - Los movimientos de cámara (zoom, Ken Burns…) se conservan y se rehacen
+    para el cuadro nuevo.
+  - Es un solo paso para deshacer, «Proporción».
+  - Si el cuadro tiene otra forma (por ejemplo 1440×1080), el selector la
+    muestra tal cual.
+
+### Arreglado
+- **Ajustes del proyecto deformaba los clips al cambiar la forma del cuadro.**
+  Elegir «1080 x 1920 (vertical)» apretaba un video 16:9 hasta la forma
+  vertical. Ahora los presets encajan los clips igual que el selector del
+  visor. Al pasar de 1080p a 4K, la imagen en imagen se queda donde estaba,
+  en lugar de acercarse al centro.
+- **Ancho y alto se aplican al salir del campo o al pulsar Enter**, no con
+  cada tecla. Escribir «1080» ya no pasa por cuadros de 1 y de 10 px.
+- **Dos arrastres seguidos en el visor contaban como un solo paso de
+  deshacer.** Pasaba si el segundo empezaba menos de medio segundo después
+  del primero, en el mismo fotograma. Entonces un segundo Ctrl+Z se llevaba
+  también lo anterior. Lo destapó la suite general: deshacía un cambio de
+  tamaño del cuadro y los 60 fotogramas exportados salían mal. Ahora cada
+  arrastre es su propio paso.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/viewer-bar.mjs` (**14/14**):
+  - el «play» es redondo y está en el centro de la barra (a menos del 2 %);
+  - el tiempo va a la izquierda, y la proporción, la calidad y la pantalla
+    completa a la derecha;
+  - bucle y zonas seguras están en la cabecera;
+  - reproducir y pausar funcionan;
+  - 16:9 → 9:16 da 1080×1920, con el video a todo el ancho y su altura
+    propia (escala 1 × 0,316). Lo dibujado tiene negro arriba y abajo y la
+    imagen en el centro;
+  - un solo «deshacer» lo devuelve todo;
+  - un cuadro de 1440×1080 se muestra tal cual;
+  - el preset vertical de Ajustes y los campos de ancho y alto también encajan
+    el video.
+- **17 pruebas unitarias nuevas:** las cuatro proporciones y el cuadro que da
+  cada una (también desde 4K, siempre con lados pares); el reajuste de cada
+  imagen (video, foto vertical, imagen en imagen, imagen reflejada); que
+  títulos, subtítulos y sonido no se tocan; y que todo es un solo paso de
+  deshacer.
+- La comprobación «cada arrastre en el visor es un paso de deshacer» ya no
+  mira solo que la imagen vuelva a su sitio. Ahora cuenta los pasos: dos
+  arrastres suman dos y dos «deshacer» quitan esos dos. Con ella, la suite
+  general pasa 127/127 y los 60 fotogramas exportados coinciden con la
+  fuente. Se repitieron las pruebas que arrastran en el visor:
+  `playhead-layers` 20/20, `titles-motion` 30/30 y `viewer-select` 9/9.
+- Las **64** pruebas de interfaz pasan, con el registro de errores activo:
+  solo anotó lo que las pruebas provocan a propósito.
+- 1710 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento, sin nada nuevo lento.** La memoria empieza
+  y termina en 28 MB. En una de las dos ejecuciones completas, la selección
+  con recuadro tuvo 2 fotogramas largos (67 ms). No se repitió en otras tres:
+  sola, tras los escenarios que la preceden y en la ejecución completa
+  siguiente, siempre por debajo de 23 ms. Sigue en *Problemas conocidos* el
+  arrastre del cabezal por 4K sin proxies (ver la v1.82).
+- La v1.83 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ---
 
