@@ -9,7 +9,8 @@ import { _electron as electron } from 'playwright';
  * Panels in windows of their own use the room they have:
  * `node tests/ui/detached-fill.mjs`
  *
- *   1. Docked, a timeline's rows are the familiar 56 px.
+ *   1. Docked, a timeline's picture rows are 70 px and the rest 42 px - the
+ *      56 px base, picture tracks taller and the others lower, as CapCut has them.
  *   2. In a window of its own, a few tracks grow to fill it, rather than three
  *      thin rows over an empty half-window - and the clip's pictures grow with
  *      them, over the whole clip when its sound is silence.
@@ -63,11 +64,25 @@ async function main() {
     });
     await window.waitForFunction(() => Object.keys(window.__scfMediaStore.getState().filmstrips).length > 0, null, { timeout: 60_000 });
     await sleep(500);
-    const rowHeights = (page) => page.evaluate(() => [...document.querySelectorAll('[data-panel="timeline"] .group.relative.flex, .group.relative.flex')].filter((row) => row.closest('aside, section, div') && row.querySelector('button')).map((row) => Math.round(row.getBoundingClientRect().height)).filter((h) => h >= 50));
+    /**
+     * Each track header's height, with its track's kind: the rows are as tall
+     * as their headers. The kinds come from the editor's window - a panel in a
+     * window of its own has no test hooks - and the heights from `page`.
+     */
+    const rowHeights = async (page) => {
+      const kinds = await window.evaluate(() => Object.fromEntries(window.__scfStore.getState().project.tracks.map((track) => [track.id, track.type])));
+      return page.evaluate((known) => [...document.querySelectorAll('[data-testid^="track-header-"]')].map((row) => ({
+        type: known[row.dataset.testid.replace('track-header-', '')] ?? '?',
+        h: Math.round(row.getBoundingClientRect().height),
+      })), kinds);
+    };
+    const docks = { video: 70, other: 42 };
+    const dockedHeight = (type) => (type === 'video' ? docks.video : docks.other);
+    const list = (rows) => rows.map((row) => `${row.type} ${row.h}`).join(', ');
 
     console.log('1. docked');
     const docked = await rowHeights(window);
-    check('docked, the rows are the familiar 56 px', docked.length >= 3 && docked.every((h) => h === 56), docked.join(','));
+    check('docked, picture rows are 70 px and the rest 42', docked.length >= 3 && docked.every((row) => row.h === dockedHeight(row.type)), list(docked));
 
     console.log('2. the timeline in a window of its own');
     await window.getByTestId('detach-timeline').click();
@@ -76,18 +91,18 @@ async function main() {
     const tall = timelineWindow ? await rowHeights(timelineWindow) : [];
     const used = timelineWindow
       ? await timelineWindow.evaluate(() => {
-          const rows = [...document.querySelectorAll('.group.relative.flex')].filter((row) => row.querySelector('button'));
+          const rows = [...document.querySelectorAll('[data-testid^="track-header-"]')];
           const last = rows.at(-1).getBoundingClientRect();
           return Math.round((last.bottom / innerHeight) * 100);
         })
       : 0;
-    check('a few tracks grow to fill the window: the rows reach most of the way down', tall.length >= 3 && tall.every((h) => h > 56) && used >= 75, `${tall.join(',')} px, rows reach ${used}% down`);
+    check('a few tracks grow to fill the window: the rows reach most of the way down', tall.length >= 3 && tall.every((row) => row.h > dockedHeight(row.type)) && used >= 75, `${list(tall)} px, rows reach ${used}% down`);
     const picture = timelineWindow
       ? await timelineWindow.evaluate(() => {
           // The clip's lower part: pictures (varied colour) rather than a flat band.
           const canvas = document.querySelector('canvas');
           const context = canvas.getContext('2d');
-          const rows = [...document.querySelectorAll('.group.relative.flex')].filter((row) => row.querySelector('button'));
+          const rows = [...document.querySelectorAll('[data-testid^="track-header-"]')];
           const v1 = rows[1].getBoundingClientRect();
           const box = canvas.getBoundingClientRect();
           const scale = canvas.width / box.width;

@@ -37,7 +37,15 @@ const shotsDir = process.env.GRADE_SHOTS ?? '';
 const W = 1280;
 const H = 720;
 const GREY = 64;
-const VIDEO1_ROW_Y = 24 + 58 + 28;
+/**
+ * The middle of Video 1's row on the timeline canvas, asked of the app: rows
+ * are not all one height (picture rows are taller), so they are not counted.
+ */
+const video1RowY = (page) => page.evaluate(() => {
+  const track = window.__scfStore.getState().project.tracks.find((t) => t.type === 'video' && t.order === 0);
+  const lane = window.__scfTimelineRow(track.id);
+  return lane.top + lane.height / 2;
+});
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const checks = [];
@@ -288,11 +296,11 @@ async function main() {
       const { ui } = window.__scfStore.getState();
       return f * ui.pixelsPerFrame - ui.scrollLeftPx + 20;
     }, frame);
-    await surface.click({ button: 'right', position: { x: await clipX(0), y: VIDEO1_ROW_Y } });
+    await surface.click({ button: 'right', position: { x: await clipX(0), y: await video1RowY(window) } });
     await window.getByRole('menuitem', { name: 'Copy grade' }).click();
     await window.evaluate(({ b, c }) => window.__scfStore.getState().selectClips([b, c]), { b: clipB, c: clipC });
     depth = await undoDepth();
-    await surface.click({ button: 'right', position: { x: await clipX(200), y: VIDEO1_ROW_Y } });
+    await surface.click({ button: 'right', position: { x: await clipX(200), y: await video1RowY(window) } });
     await window.getByRole('menuitem', { name: 'Paste grade onto 2 clips' }).click();
     const [gradeB, gradeC] = [await grading(clipB), await grading(clipC)];
     check('Paste grade from the menu onto two clips', gradeB.gain[0] === 1 && gradeC.gain[0] === 1 && gradeB.enabled && gradeC.enabled);

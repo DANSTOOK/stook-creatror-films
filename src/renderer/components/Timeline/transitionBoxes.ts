@@ -13,7 +13,7 @@ import { frameToPixel } from './snapping';
 /** Row geometry, handed in so this module does not depend on the canvas. */
 export interface RowGeometry {
   rowTop(index: number): number;
-  rowHeight: number;
+  rowHeight(index: number): number;
 }
 
 export interface TransitionBox {
@@ -60,8 +60,8 @@ export function transitionBoxes(
       cutX,
       left,
       right,
-      top: rowTop + rows.rowHeight * 0.36,
-      bottom: rowTop + rows.rowHeight * 0.84,
+      top: rowTop + rows.rowHeight(trackIndex) * 0.36,
+      bottom: rowTop + rows.rowHeight(trackIndex) * 0.84,
     });
   }
   return boxes;

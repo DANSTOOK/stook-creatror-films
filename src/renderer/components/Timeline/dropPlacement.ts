@@ -11,7 +11,10 @@ import type { MediaKind, ProjectState, Track } from '@shared/types';
  *   locked, otherwise the first one that can - and if none exists, a new track
  *   of the right type is asked for (`trackId: null`);
  * - the first asset starts where it was dropped, and several dropped together
- *   follow one another on their track.
+ *   follow one another on their track;
+ * - with the magnet on, the main track keeps no hole at its end, as CapCut's
+ *   main track: a drop past its last clip lands against it (at 0 on an empty
+ *   track).
  *
  * Nothing ends up on top of an existing clip, but that is settled when the
  * clips are placed (`insertIntoTrack`): the new clip is INSERTED where it was
@@ -39,14 +42,31 @@ export interface DropPlacement {
 export const trackTypeFor = (kind: MediaKind): Track['type'] =>
   kind === 'audio' ? 'audio' : 'video';
 
+/** The main track: the bottom picture track, the one the edit is built on. */
+export function mainTrackOf(tracks: readonly Track[]): Track | null {
+  return [...tracks].filter((track) => track.type === 'video').sort((a, b) => a.order - b.order)[0] ?? null;
+}
+
+/** Where the last clip on a track ends, or 0 when it has none. */
+function trackEnd(project: ProjectState, trackId: string): number {
+  let end = 0;
+  for (const clip of Object.values(project.clips)) {
+    if (clip.trackId === trackId) end = Math.max(end, clip.startFrame + clip.durationFrames);
+  }
+  return end;
+}
+
 export function planDrop(
   project: ProjectState,
   assets: readonly DroppedAsset[],
   targetTrackId: string | null,
   frame: number,
+  /** The magnet: on the main track a drop past the last clip lands against it. */
+  options: { magnet?: boolean } = {},
 ): DropPlacement[] {
   const ordered = [...project.tracks].sort((a, b) => a.order - b.order);
   const target = ordered.find((track) => track.id === targetTrackId);
+  const main = options.magnet ? mainTrackOf(project.tracks) : null;
 
   const chooseTrack = (type: Track['type']): Track | null => {
     if (target && target.type === type && !target.locked) return target;
@@ -65,7 +85,10 @@ export function planDrop(
     const key = track?.id ?? `new:${trackType}`;
     const length = assetLengthFrames(asset, project.fps);
 
-    const startFrame = Math.max(0, Math.round(cursor.get(key) ?? frame));
+    let start = cursor.get(key) ?? frame;
+    // The first one on the main track, with the magnet: no hole before it.
+    if (main && track?.id === main.id && !cursor.has(key)) start = Math.min(start, trackEnd(project, main.id));
+    const startFrame = Math.max(0, Math.round(start));
     cursor.set(key, startFrame + length);
 
     return { assetId: asset.id, trackId: track?.id ?? null, trackType, startFrame, durationFrames: length };

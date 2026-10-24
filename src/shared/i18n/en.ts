@@ -420,6 +420,8 @@ export const en = {
   'timeline.deleteSelected': 'Delete selected clips',
   'timeline.snap': 'Snap',
   'timeline.snapHint': 'Snap to clip edges, the playhead and markers',
+  'timeline.mainTrack': 'Main',
+  'timeline.mainTrackHint': 'The main track: with the magnet on, a clip dropped past its end lands against its last clip',
   'timeline.magnet': 'Magnet',
   'timeline.magnetHint': 'Magnet: deleting, moving or trimming a clip closes the gap it leaves',
   'timeline.addMarker': 'Add marker',

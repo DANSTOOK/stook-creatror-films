@@ -251,12 +251,12 @@ async function main() {
     await sleep(400);
     const surface = window.locator('canvas').last();
     const canvas = await surface.boundingBox();
-    const rowOfV1 = await store(() => {
+    // Video 1's row as the timeline laid it out: picture rows are taller than the rest.
+    const laneOfV1 = await store(() => {
       const { tracks } = window.__scfStore.getState().project;
-      const visual = tracks.filter((t) => t.type !== 'audio').sort((a, b) => b.order - a.order);
-      return visual.findIndex((t) => t.order === 0);
+      return window.__scfTimelineRow(tracks.find((t) => t.type !== 'audio' && t.order === 0).id);
     });
-    const boxY = canvas.y + 24 + rowOfV1 * 58 + 56 * 0.6;
+    const boxY = canvas.y + laneOfV1.top + laneOfV1.height * 0.6;
     const cutX = canvas.x + 300 * 2;
     await window.mouse.click(cutX, boxY);
     await sleep(200);
@@ -291,7 +291,7 @@ async function main() {
     const afterDelete = await store(() => ({ t: Object.keys(window.__scfStore.getState().project.transitions ?? {}).length, clips: Object.keys(window.__scfStore.getState().project.clips).length }));
     check('Delete removes the transition and keeps the clips', afterDelete.t === 0 && afterDelete.clips === 3, JSON.stringify(afterDelete));
     // The menu on the cut.
-    await window.mouse.click(cutX + 3, canvas.y + 24 + rowOfV1 * 58 + 12, { button: 'right' });
+    await window.mouse.click(cutX + 3, canvas.y + laneOfV1.top + 12, { button: 'right' });
     await window.getByRole('menuitem', { name: 'Add transition' }).click();
     await window.getByRole('menuitem', { name: 'Dip to black' }).click();
     await ask.waitFor({ state: 'visible', timeout: 5_000 });

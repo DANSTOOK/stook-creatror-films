@@ -430,7 +430,7 @@ async function main() {
       const bounds = target.getBoundingClientRect();
       const dataTransfer = new DataTransfer();
       item.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }));
-      const init = { bubbles: true, cancelable: true, dataTransfer, clientX: bounds.left + f * window.__scfStore.getState().ui.pixelsPerFrame, clientY: bounds.top + 24 + r * 58 + 28 };
+      const init = { bubbles: true, cancelable: true, dataTransfer, clientX: bounds.left + f * window.__scfStore.getState().ui.pixelsPerFrame, clientY: bounds.top + window.__scfTimelineRow(r).top + window.__scfTimelineRow(r).height / 2 };
       target.dispatchEvent(new DragEvent('dragenter', init));
       target.dispatchEvent(new DragEvent('dragover', init));
       if (finish) {
@@ -450,7 +450,7 @@ async function main() {
       const scale = canvas.width / canvas.clientWidth;
       const ppf = window.__scfStore.getState().ui.pixelsPerFrame;
       return fs.map((f) => {
-        const [red, green, blueValue] = context.getImageData(Math.round(f * ppf * scale), Math.round((24 + r * 58 + 14) * scale), 1, 1).data;
+        const [red, green, blueValue] = context.getImageData(Math.round(f * ppf * scale), Math.round((window.__scfTimelineRow(r).top + 14) * scale), 1, 1).data;
         return red > 130 && red < 170 && green > 180 && blueValue > 230;
       });
     }, [frames, row]);

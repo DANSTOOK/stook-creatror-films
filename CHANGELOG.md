@@ -7,11 +7,78 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1688 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1693 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.81.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.82.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.83.0-beta.1 — Pistas al estilo CapCut y pista principal magnética (bloque 3b del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: «Video alta, resto baja» y «Pista principal magnética: Sí»
+
+### Cambiado
+- **Las pistas de video son más altas y las demás, más bajas**, como en CapCut:
+  - las de video miden **70 px** (antes 56), así que la tira de miniaturas se
+    ve más grande;
+  - las de audio, títulos, subtítulos y ajustes miden **42 px**;
+  - dos de cada caben en el mismo alto que cuatro filas de antes, así que la
+    línea de tiempo acoplada no necesita más sitio;
+  - en una ventana propia las filas siguen creciendo para llenarla, con la
+    misma proporción.
+- **Las cabeceras de las filas bajas van en una sola línea:** el nombre y los
+  botones, uno al lado del otro, y el nombre se lee completo. El botón de
+  borrar la pista aparece al pasar el ratón por el final del nombre; también
+  sigue en el menú contextual.
+- **La pista principal se distingue:** la pista de video de abajo, la que
+  sostiene el montaje, lleva la etiqueta **«Principal»**.
+
+### Añadido
+- **La pista principal es magnética, como la de CapCut.** Con el imán activo,
+  un clip que sueltas en ella **más allá del final** queda pegado a su último
+  clip, sin hueco; si la pista está vacía, empieza en 0. Vale tanto desde la
+  biblioteca como desde el Explorador. En las demás pistas, y con el imán
+  apagado, el clip queda donde lo sueltas. Al borrar, mover o recortar, el
+  imán ya cerraba los huecos.
+
+### Arreglado (en las pruebas)
+- **La mega prueba de rendimiento medía mal la selección con recuadro.** El
+  recuadro empezaba por debajo de la parte visible de la línea de tiempo,
+  fuera de la ventana, así que no llegaba a ser un recuadro. Al cambiar el alto
+  de las filas pareció que empeoraba (62 ms). Ahora se arrastra sobre las filas
+  que se ven: selecciona 13 clips, con el peor fotograma en 17 ms y sin
+  fotogramas largos. Si algún día no empieza sobre el lienzo, la prueba lo
+  anota como problema en vez de medir otra cosa en silencio.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/track-rows.mjs` (**10/10**):
+  - las filas miden 70 y 42 px;
+  - en las filas bajas, nombre y botones van en una línea y el nombre se lee
+    completo;
+  - la etiqueta «Principal» aparece solo en la pista de video de abajo;
+  - cada cabecera queda a la altura de su fila en el lienzo;
+  - un clic en el centro de cada fila elige su clip (video, audio y
+    subtítulo);
+  - con el imán, el clip soltado más allá del final queda pegado al último.
+    Sin imán, o en otra pista, queda donde se suelta.
+- **5 pruebas unitarias nuevas** de cómo se coloca lo que se suelta en la pista
+  principal.
+- Las **13 pruebas** que calculaban las filas con 58 px fijos ahora preguntan
+  a la app dónde está cada fila.
+- `detached-fill`: acoplada, las filas miden 70/70/42; en una ventana propia
+  crecen a 155/155/93 y llegan al 97 % de su alto.
+- **La mega prueba de rendimiento, sin nada lento:**
+  - arrastrar un clip, recortar, mover el sticker y deshacer, sin un solo
+    fotograma largo;
+  - la memoria, 30 MB al empezar y 30 MB al terminar.
+- Las **63** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+  `detached-fill` falló en la batería porque la ventana separada no tiene los
+  ganchos de prueba; se corrigió la prueba y pasó 6/6.
+- 1693 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- La v1.82 instalada pasa **129/129** sin red.
 
 ---
 

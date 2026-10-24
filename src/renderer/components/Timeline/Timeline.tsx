@@ -64,7 +64,7 @@ import { detachSelectionAudio, rejoinSelectionAudio } from '@renderer/hooks/useT
 import { currentLoopRange } from '@renderer/timing/loopRange';
 import { SpeedDialog } from './SpeedDialog';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
-import { ASSET_DRAG_TYPE, planDrop } from './dropPlacement';
+import { ASSET_DRAG_TYPE, mainTrackOf, planDrop } from './dropPlacement';
 import { clipsInMarquee } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
 import { emitScrub } from '@renderer/audio/scrubAudio';
@@ -129,12 +129,13 @@ import TimelineCanvas, {
   RULER_HEIGHT,
   TRACK_TYPE_COLORS,
   TRACK_GAP,
-  TRACK_HEIGHT,
   fitTrackHeight,
+  setRowLayout,
   setTrackHeight,
   hitsPlayheadScissors,
   markerAtPixel,
   trackIndexAtY,
+  trackRowHeight,
   trackRowTop,
 } from './TimelineCanvas';
 
@@ -145,6 +146,8 @@ const FADE_GRIP_PX = 7;
 /** The strip along the top of a clip where the fade grips live. */
 const FADE_GRIP_ZONE_PX = 12;
 const HEADER_WIDTH = 168;
+/** A track header lower than this lays out on one line. */
+const LOW_HEADER_PX = 52;
 
 /** Asks the app to show the inspector: a double-clicked transition opens there. */
 export const SHOW_INSPECTOR_EVENT = 'scf:show-inspector';
@@ -331,9 +334,12 @@ export function Timeline(): JSX.Element {
     viewportWidth,
     (project.durationFrames + project.fps * 5) * ui.pixelsPerFrame,
   );
-  // Rows as tall as the room allows (TimelineCanvas.fitTrackHeight), set before anything below places one.
-  setTrackHeight(fitTrackHeight(bodyHeight, tracks.length));
-  const canvasHeight = RULER_HEIGHT + tracks.length * (TRACK_HEIGHT + TRACK_GAP) + 8;
+  // Rows as tall as the room allows (TimelineCanvas.fitTrackHeight), picture rows taller than the rest,
+  // laid out before anything below places one.
+  setTrackHeight(fitTrackHeight(bodyHeight, tracks));
+  setRowLayout(tracks);
+  const canvasHeight = trackRowTop(tracks.length) + 8;
+  const mainTrackId = mainTrackOf(project.tracks)?.id ?? null;
 
   // The height the rows have to fill.
   useLayoutEffect(() => {
@@ -987,7 +993,7 @@ export function Timeline(): JSX.Element {
 
       // A transition: its kind, and deleting it.
       const onTransition = y >= RULER_HEIGHT
-        ? transitionAt(transitionBoxes(project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }), x, y)
+        ? transitionAt(transitionBoxes(project, tracks, ui, { rowTop: trackRowTop, rowHeight: trackRowHeight }), x, y)
         : null;
       if (onTransition) {
         store.getState().selectTransition(onTransition.box.transition.id);
@@ -1053,7 +1059,7 @@ export function Timeline(): JSX.Element {
     (event: React.MouseEvent<HTMLCanvasElement>) => {
       const bounds = event.currentTarget.getBoundingClientRect();
       const on = transitionAt(
-        transitionBoxes(store.getState().project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }),
+        transitionBoxes(store.getState().project, tracks, ui, { rowTop: trackRowTop, rowHeight: trackRowHeight }),
         event.clientX - bounds.left,
         event.clientY - bounds.top,
       );
@@ -1121,7 +1127,7 @@ export function Timeline(): JSX.Element {
       // A transition sits over its cut, above the clips: it is picked first.
       if (state.ui.tool === 'select' || state.ui.tool === 'trim') {
         const onTransition = transitionAt(
-          transitionBoxes(state.project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }),
+          transitionBoxes(state.project, tracks, ui, { rowTop: trackRowTop, rowHeight: trackRowHeight }),
           x,
           y,
         );
@@ -1191,7 +1197,7 @@ export function Timeline(): JSX.Element {
       // The fade grips live in the top corners, inside the clip. They are
       // checked before the trim edges, which occupy the same few pixels
       // lower down: the top strip fades, the rest trims.
-      const withinRowY = (y - RULER_HEIGHT) % (TRACK_HEIGHT + TRACK_GAP);
+      const withinRowY = y - trackRowTop(trackIndexAtY(y));
       if (state.ui.tool === 'select' && withinRowY <= FADE_GRIP_ZONE_PX) {
         const clipStartX = hit.clip.startFrame * ui.pixelsPerFrame - ui.scrollLeftPx;
         const clipEndX = clipEndFrame(hit.clip) * ui.pixelsPerFrame - ui.scrollLeftPx;
@@ -1213,12 +1219,13 @@ export function Timeline(): JSX.Element {
         // join rolls, a free edge ripples, the top half slips and the
         // bottom half slides - the way Resolve's trim tool decides.
         const frameAt = (x + ui.scrollLeftPx) / ui.pixelsPerFrame;
-        const withinRow = (y - RULER_HEIGHT) % (TRACK_HEIGHT + TRACK_GAP);
+        const row = trackIndexAtY(y);
+        const withinRow = y - trackRowTop(row);
         const target = trimTargetAt(
           state.project.clips,
           hit.clip,
           frameAt,
-          Math.min(1, Math.max(0, withinRow / TRACK_HEIGHT)),
+          Math.min(1, Math.max(0, withinRow / trackRowHeight(row))),
           TRIM_HANDLE_PX / ui.pixelsPerFrame,
         );
         dragRef.current = {
@@ -1298,7 +1305,7 @@ export function Timeline(): JSX.Element {
         const current = store.getState();
         setOverScissors(y < RULER_HEIGHT && hitsPlayheadScissors(current.project, current.ui, x, y));
         const onTransition = y >= RULER_HEIGHT
-          ? transitionAt(transitionBoxes(current.project, tracks, current.ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT }), x, y)
+          ? transitionAt(transitionBoxes(current.project, tracks, current.ui, { rowTop: trackRowTop, rowHeight: trackRowHeight }), x, y)
           : null;
         setOverTransitionEdge(Boolean(onTransition?.edge));
         return;
@@ -1608,7 +1615,7 @@ export function Timeline(): JSX.Element {
       if (assets.length === 0) return;
 
       const current = store.getState();
-      current.placeAssets(assets, planDrop(current.project, assets, trackId, frame));
+      current.placeAssets(assets, planDrop(current.project, assets, trackId, frame, { magnet: current.ui.rippleEnabled }));
     },
     [dropTargetAt, libraryTargetAt, store],
   );
@@ -1975,11 +1982,15 @@ export function Timeline(): JSX.Element {
           style={{ width: HEADER_WIDTH }}
         >
           <div style={{ height: RULER_HEIGHT }} className="border-b border-panel-700" />
-          {tracks.map((track, index) => (
+          {tracks.map((track, index) => {
+            // A low row - sound, titles, captions - has room for one line: its name and its buttons side by side.
+            const low = trackRowHeight(index) < LOW_HEADER_PX;
+            return (
             <div
               key={track.id}
-              className="group relative flex flex-col justify-center gap-1 border-b border-panel-800 pl-3 pr-2 hover:bg-panel-800"
-              style={{ height: TRACK_HEIGHT, marginTop: index === 0 ? 0 : TRACK_GAP }}
+              data-testid={`track-header-${track.id}`}
+              className={`group relative flex ${low ? 'flex-row items-center' : 'flex-col justify-center'} gap-1 border-b border-panel-800 pl-3 pr-2 hover:bg-panel-800`}
+              style={{ height: trackRowHeight(index), marginTop: index === 0 ? 0 : TRACK_GAP }}
               onContextMenu={(event) => openMenu(event, trackMenuItems(track))}
             >
               {/* The kind of track as a colour, the one its clips are drawn in,
@@ -1990,7 +2001,7 @@ export function Timeline(): JSX.Element {
                 style={{ background: TRACK_TYPE_COLORS[track.type] }}
               />
               <span className="sr-only">{t(track.type === 'audio' ? 'timeline.audioTrack' : track.type === 'captions' ? 'timeline.captionsTrack' : 'timeline.videoTrack')}</span>
-              <div className="flex items-center justify-between gap-1">
+              <div className={`flex min-w-0 items-center justify-between gap-1 ${low ? 'relative flex-1' : ''}`}>
                 {renamingTrackId === track.id ? (
                   <input
                     autoFocus
@@ -2020,7 +2031,8 @@ export function Timeline(): JSX.Element {
                     </button>
                     <button
                       type="button"
-                      className="tool-button tool-button-dense shrink-0 opacity-0 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
+                      // On a low row it floats over the end of the name, so the name has the room until the pointer comes.
+                      className={`tool-button tool-button-dense shrink-0 opacity-0 hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100 ${low ? 'absolute right-0 top-1/2 -translate-y-1/2 bg-panel-800' : ''}`}
                       title={t('timeline.deleteTrack')}
                       aria-label={t('timeline.deleteTrack')}
                       disabled={tracks.length <= 1}
@@ -2037,7 +2049,7 @@ export function Timeline(): JSX.Element {
                   headers. Both can be muted (a video clip carries its sound)
                   and locked. The state reads from the button itself: pressed,
                   and in colour when it changes what is heard or seen. */}
-              <div className="flex items-center gap-0.5">
+              <div className="flex shrink-0 items-center gap-0.5">
                 {track.type !== 'audio' && (
                   <button
                     type="button"
@@ -2087,9 +2099,21 @@ export function Timeline(): JSX.Element {
                 >
                   {track.locked ? <Lock size={13} /> : <LockOpen size={13} />}
                 </button>
+                {/* The main track - the bottom picture track - is what the edit is built
+                    on: with the magnet, what is dropped past its end lands against it. */}
+                {track.id === mainTrackId && (
+                  <span
+                    data-testid="main-track-badge"
+                    className="ml-auto truncate rounded-full bg-accent/15 px-1.5 text-2xs font-medium text-accent-hover"
+                    {...tip(t('timeline.mainTrack'), { hint: t('timeline.mainTrackHint') })}
+                  >
+                    {t('timeline.mainTrack')}
+                  </span>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
@@ -2165,7 +2189,7 @@ export function Timeline(): JSX.Element {
                     data-testid="cut-flash"
                     aria-hidden
                     className="scf-cut-flash pointer-events-none absolute w-0.5 rounded-full bg-white"
-                    style={{ left: flash.frame * ui.pixelsPerFrame - 1, top: trackRowTop(row) + 2, height: TRACK_HEIGHT - 4 }}
+                    style={{ left: flash.frame * ui.pixelsPerFrame - 1, top: trackRowTop(row) + 2, height: trackRowHeight(row) - 4 }}
                   />
                 );
               }),

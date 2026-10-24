@@ -102,6 +102,40 @@ describe('planDrop', () => {
   });
 });
 
+describe('the main track, with the magnet', () => {
+  /** Video 1 - the bottom picture track - with one clip on frames 0-90. */
+  const edited = () => {
+    const base = project();
+    return { base, p: withClip(base, base.v1, 0, 90) };
+  };
+
+  it('takes a drop past its last clip against that clip, as CapCut does', () => {
+    const { base, p } = edited();
+    expect(planDrop(p, [video('a', 60)], base.v1, 300, { magnet: true })[0].startFrame).toBe(90);
+  });
+
+  it('lines several dropped together up from there', () => {
+    const { base, p } = edited();
+    expect(planDrop(p, [video('a', 60), video('b', 40)], base.v1, 300, { magnet: true }).map((entry) => entry.startFrame)).toEqual([90, 150]);
+  });
+
+  it('starts an empty main track at the beginning', () => {
+    const base = project();
+    expect(planDrop(base, [video('a', 60)], base.v1, 120, { magnet: true })[0].startFrame).toBe(0);
+  });
+
+  it('keeps a drop inside the edit where it was, for the insertion to settle', () => {
+    const { base, p } = edited();
+    expect(planDrop(p, [video('a', 60)], base.v1, 30, { magnet: true })[0].startFrame).toBe(30);
+  });
+
+  it('leaves the other tracks free, and the main track too with the magnet off', () => {
+    const { base, p } = edited();
+    expect(planDrop(p, [video('a', 60)], base.v2, 300, { magnet: true })[0].startFrame).toBe(300);
+    expect(planDrop(p, [video('a', 60)], base.v1, 300)[0].startFrame).toBe(300);
+  });
+});
+
 describe('placing dropped media through the store', () => {
   const asset = (id: string, kind: MediaAsset['kind'] = 'video', durationFrames = 60): MediaAsset => ({
     id,

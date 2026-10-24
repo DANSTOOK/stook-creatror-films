@@ -19,6 +19,7 @@ import { installTheme } from './theme/theme';
 import { installKeyRemap } from './keys/remap';
 import { ghostCount, prepareGhosts } from './motion/ghost';
 import { zoomStats } from './components/Timeline/zoomMotion';
+import { timelineRowOf } from './components/Timeline/TimelineCanvas';
 import { useCaptionJob } from './captions/captionJob';
 import { useCaptionModels } from './captions/captionModels';
 import { checkCue, isWeak, rulesFor } from './captions/rules';
@@ -42,6 +43,9 @@ prepareGhosts();
 // (how many clips, where a cut landed) rather than guessing from pixels. The
 // page already owns this state; naming it adds no access.
 (window as { __scfStore?: typeof useProjectStore }).__scfStore = useProjectStore;
+// Where a track's row is on the timeline: rows are of two heights (picture
+// tracks taller), so the tests ask the layout rather than count rows.
+(window as { __scfTimelineRow?: typeof timelineRowOf }).__scfTimelineRow = timelineRowOf;
 // The stress test storms undo and redo and has to stop exactly where it began,
 // which only the history itself can say.
 (window as { __scfHistory?: typeof useHistoryStore }).__scfHistory = useHistoryStore;

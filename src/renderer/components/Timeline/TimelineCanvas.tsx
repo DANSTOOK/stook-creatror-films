@@ -27,29 +27,64 @@ import { syncOffsetLabel } from './detachAudio';
  */
 
 /**
- * A track's height. Never under 56 px; taller when the timeline has the room -
- * a few tracks in a tall panel, or a timeline in a window of its own - so the
- * rows fill it and their pictures and sound grow, rather than three thin rows
- * over an empty half-window. A live binding: the Timeline sets it from the
- * room it has (fitTrackHeight) before it draws, and everything that places a
- * row reads it from here.
+ * The base row height, which every row's height comes from. Never under
+ * 56 px; taller when the timeline has the room - a few tracks in a tall panel,
+ * or a timeline in a window of its own - so the rows fill it and their
+ * pictures and sound grow, rather than three thin rows over an empty
+ * half-window. A live binding: the Timeline sets it from the room it has
+ * (fitTrackHeight), and lays the rows out (setRowLayout), before it draws;
+ * everything that places a row reads it from here.
  */
 export let TRACK_HEIGHT = 56;
 export const MIN_TRACK_HEIGHT = 56;
 export const MAX_TRACK_HEIGHT = 144;
 
-/** The row height that fills `available` px of timeline body with `count` tracks, within the bounds. */
-export function fitTrackHeight(available: number, count: number): number {
-  if (!(available > 0) || count <= 0) return MIN_TRACK_HEIGHT;
-  const each = Math.floor((available - RULER_HEIGHT - 8) / count) - TRACK_GAP;
-  // A little spare room is not worth rows of a new size: the docked timeline keeps its familiar 56 px,
-  // and rows grow only where most of the panel would otherwise be empty.
+/**
+ * Picture tracks are taller than the base and the rest lower, as CapCut draws
+ * its tracks: the video is what an edit is built on and its filmstrip wants
+ * the room, while sound, titles, captions and adjustments read well in a lower
+ * row. At the base 56 px: video 70, the rest 42 - two of each take the room
+ * four 56 px rows did, so the docked timeline needs no more height than before.
+ */
+export const TALL_ROW = 1.25;
+export const LOW_ROW = 0.75;
+
+const shareOf = (type: Track['type']): number => (type === 'video' ? TALL_ROW : LOW_ROW);
+
+/** The base height that fills `available` px of timeline body with these tracks, within the bounds. */
+export function fitTrackHeight(available: number, tracks: readonly Pick<Track, 'type'>[]): number {
+  if (!(available > 0) || tracks.length === 0) return MIN_TRACK_HEIGHT;
+  const shares = tracks.reduce((sum, track) => sum + shareOf(track.type), 0);
+  const each = Math.floor((available - RULER_HEIGHT - 8 - tracks.length * TRACK_GAP) / shares);
+  // A little spare room is not worth rows of a new size: the docked timeline keeps its familiar rows,
+  // and they grow only where most of the panel would otherwise be empty.
   if (each < 76) return MIN_TRACK_HEIGHT;
   return Math.min(MAX_TRACK_HEIGHT, each);
 }
 
 export function setTrackHeight(height: number): void {
   TRACK_HEIGHT = height;
+}
+
+/** Each row's height and track, top to bottom, as the Timeline laid them out. */
+let rowHeights: readonly number[] = [];
+let rowIds: readonly string[] = [];
+
+/** Lay the rows out for these tracks, top to bottom, at the current base height. */
+export function setRowLayout(tracks: readonly Pick<Track, 'id' | 'type'>[]): void {
+  rowHeights = tracks.map((track) => Math.round(TRACK_HEIGHT * shareOf(track.type)));
+  rowIds = tracks.map((track) => track.id);
+}
+
+/** Row `index`'s height. Past the last row, the base height. */
+export function trackRowHeight(index: number): number {
+  return rowHeights[index] ?? TRACK_HEIGHT;
+}
+
+/** Where a track's row is on the canvas - by its id, or by its row - from the live layout: the interface tests ask this rather than count. */
+export function timelineRowOf(track: string | number): { index: number; top: number; height: number } | null {
+  const index = typeof track === 'number' ? track : rowIds.indexOf(track);
+  return index < 0 || index >= rowIds.length ? null : { index, top: trackRowTop(index), height: trackRowHeight(index) };
 }
 
 /**
@@ -187,6 +222,7 @@ function drawTrimHandles(
   x: number,
   clipWidth: number,
   top: number,
+  rowHeight: number,
   progress: number,
   hotEdge: 'start' | 'end' | null,
   held: boolean,
@@ -198,7 +234,7 @@ function drawTrimHandles(
   const eased = 1 - (1 - progress) ** 3; // ease-out cubic
   const handleWidth = 6 * eased;
   const bodyTop = top + 2;
-  const bodyHeight = TRACK_HEIGHT - 4;
+  const bodyHeight = rowHeight - 4;
 
   const drawEdge = (edge: 'start' | 'end'): void => {
     const hot = hotEdge === edge;
@@ -238,13 +274,20 @@ function drawTrimHandles(
 }
 
 /** Vertical offset of a track row inside the canvas. */
-export const trackRowTop = (index: number): number =>
-  RULER_HEIGHT + index * (TRACK_HEIGHT + TRACK_GAP);
+export function trackRowTop(index: number): number {
+  let top = RULER_HEIGHT;
+  for (let row = 0; row < index; row += 1) top += trackRowHeight(row) + TRACK_GAP;
+  return top;
+}
 
-/** Which track row a y coordinate lands on, or -1 for the ruler. */
+/** Which track row a y coordinate lands on, or -1 for the ruler. Below the last row, the rows it would be. */
 export function trackIndexAtY(y: number): number {
-  if (y < RULER_HEIGHT) return -1;
-  return Math.floor((y - RULER_HEIGHT) / (TRACK_HEIGHT + TRACK_GAP));
+  if (!(y >= RULER_HEIGHT) || !Number.isFinite(y)) return -1;
+  let bottom = RULER_HEIGHT;
+  for (let row = 0; ; row += 1) {
+    bottom += trackRowHeight(row) + TRACK_GAP;
+    if (y < bottom) return row;
+  }
 }
 
 /** Frame step between ruler ticks, chosen so labels never collide. */
@@ -290,7 +333,7 @@ function drawLoopBar(context: CanvasRenderingContext2D, range: { start: number; 
  * from the other, white on red at the foot of the clip's start. Red-600 under
  * white is 4.8:1.
  */
-function drawSyncMark(context: CanvasRenderingContext2D, clip: Clip, top: number, ui: EditorUiState, fps: number, frames: number, canvasWidth: number): void {
+function drawSyncMark(context: CanvasRenderingContext2D, clip: Clip, top: number, rowHeight: number, ui: EditorUiState, fps: number, frames: number, canvasWidth: number): void {
   const x = frameToPixel(clip.startFrame, ui.pixelsPerFrame, ui.scrollLeftPx);
   const clipWidth = clip.durationFrames * ui.pixelsPerFrame;
   if (clipWidth < 24 || x + clipWidth < 0 || x > canvasWidth) return;
@@ -303,7 +346,7 @@ function drawSyncMark(context: CanvasRenderingContext2D, clip: Clip, top: number
     context.restore();
     return;
   }
-  const chipTop = top + TRACK_HEIGHT - 2 - 16;
+  const chipTop = top + rowHeight - 2 - 16;
   context.fillStyle = '#dc2626';
   context.beginPath();
   context.roundRect(left, chipTop, width, 14, 3);
@@ -597,10 +640,11 @@ function drawOffline(
   bodyLeft: number,
   bodyWidth: number,
   top: number,
+  rowHeight: number,
   label: string,
 ): void {
   const bodyTop = top + 2;
-  const height = TRACK_HEIGHT - 4;
+  const height = rowHeight - 4;
   context.fillStyle = '#3b1717';
   context.fillRect(bodyLeft, bodyTop, bodyWidth, height);
   context.strokeStyle = 'rgba(248, 113, 113, 0.28)';
@@ -653,12 +697,13 @@ function drawFades(
   x: number,
   clipWidth: number,
   top: number,
+  rowHeight: number,
   pixelsPerFrame: number,
   hovered: boolean,
 ): void {
   const { fadeIn, fadeOut } = fadeLengths(clip);
   const bodyTop = top + 2;
-  const bodyBottom = top + TRACK_HEIGHT - 2;
+  const bodyBottom = top + rowHeight - 2;
 
   const wedge = (fromX: number, toX: number, risingRight: boolean): void => {
     context.save();
@@ -735,7 +780,7 @@ function drawLibraryDrop(
     const left = Math.round(x(start)) + 0.5;
     const right = Math.round(x(end)) - 0.5;
     const top = row < 0 ? RULER_HEIGHT + 1.5 : trackRowTop(row) + 2.5;
-    const height = row < 0 ? 4 : TRACK_HEIGHT - 5;
+    const height = row < 0 ? 4 : trackRowHeight(row) - 5;
     context.fillStyle = fill;
     context.fillRect(left, top, Math.max(1, right - left), height);
     context.lineWidth = 3;
@@ -764,7 +809,7 @@ function drawLibraryDrop(
     const cx = Math.round(x(cut.frame));
     if (row < 0 || cx < -4 || cx > width + 4) continue;
     const top = trackRowTop(row) + 6;
-    const bottom = trackRowTop(row) + TRACK_HEIGHT - 6;
+    const bottom = trackRowTop(row) + trackRowHeight(row) - 6;
     context.fillStyle = DROP_KEYLINE;
     context.fillRect(cx - 3, top - 1, 6, bottom - top + 2);
     context.fillStyle = DROP_MARK;
@@ -928,6 +973,7 @@ function drawClip(
   clip: Clip,
   track: Track,
   top: number,
+  rowHeight: number,
   ui: EditorUiState,
   selected: boolean,
   content: ClipContent,
@@ -949,7 +995,7 @@ function drawClip(
   const bodyRight = Math.min(x + clipWidth, canvasWidth + 8);
   const bodyWidth = Math.max(2, bodyRight - bodyLeft);
   const bodyTop = top + 2;
-  const bodyHeight = TRACK_HEIGHT - 4;
+  const bodyHeight = rowHeight - 4;
   const bodyBottom = bodyTop + bodyHeight;
 
   context.save();
@@ -974,7 +1020,7 @@ function drawClip(
   if (content.offline) {
     context.save();
     context.clip();
-    drawOffline(context, bodyLeft, bodyWidth, top, labels.offline);
+    drawOffline(context, bodyLeft, bodyWidth, top, rowHeight, labels.offline);
     context.restore();
   } else if (appearance !== 'name') {
     const picture = track.type !== 'audio' && appearance !== 'waveform' ? content.filmstrip : undefined;
@@ -1026,7 +1072,7 @@ function drawClip(
     context.fillText(length, chipRight - textWidth - 4, bodyTop + 11);
   }
 
-  drawFades(context, clip, x, clipWidth, top, ui.pixelsPerFrame, hovered);
+  drawFades(context, clip, x, clipWidth, top, rowHeight, ui.pixelsPerFrame, hovered);
 
   // Alpha-bearing sources get a marker, since that is what decides whether a
   // clip can be exported as a transparent sprite.
@@ -1056,7 +1102,7 @@ function drawClip(
   if (bodyWidth > 42) {
     context.save();
     context.beginPath();
-    context.rect(bodyLeft + 4, top, bodyWidth - 8, TRACK_HEIGHT);
+    context.rect(bodyLeft + 4, top, bodyWidth - 8, rowHeight);
     context.clip();
 
     // The label rides along the visible part of the clip, so a long clip that
@@ -1402,13 +1448,14 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     tracks.forEach((track, index) => {
       const top = trackRowTop(index);
       if (top > height) return;
+      const rowHeight = trackRowHeight(index);
 
       context.fillStyle = index % 2 === 0 ? surface.trackA : surface.trackB;
-      context.fillRect(0, top, width, TRACK_HEIGHT);
+      context.fillRect(0, top, width, rowHeight);
 
       if (track.locked) {
         context.fillStyle = 'rgba(148, 163, 184, 0.06)';
-        context.fillRect(0, top, width, TRACK_HEIGHT);
+        context.fillRect(0, top, width, rowHeight);
       }
 
       // Same order the pointer hit-tests in, reversed: what is drawn on top is
@@ -1425,6 +1472,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
           clip,
           track,
           top,
+          rowHeight,
           ui,
           selected.has(clip.id),
           {
@@ -1444,7 +1492,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
         );
 
         const drift = syncMarks?.get(clip.id);
-        if (drift !== undefined) drawSyncMark(context, clip, top, ui, project.fps, drift, width);
+        if (drift !== undefined) drawSyncMark(context, clip, top, rowHeight, ui, project.fps, drift, width);
 
         const held = activeTrim?.clipId === clip.id;
         const chosen = selected.has(clip.id);
@@ -1454,6 +1502,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
             startX,
             endX - startX,
             top,
+            rowHeight,
             held || chosen ? 1 : handleProgress,
             held ? activeTrim.edge : hover?.clipId === clip.id ? (hover?.edge ?? null) : null,
             held,
@@ -1464,7 +1513,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     });
 
     // Transitions over their cuts, above the clips they join.
-    const boxes = transitionBoxes(project, tracks, ui, { rowTop: trackRowTop, rowHeight: TRACK_HEIGHT });
+    const boxes = transitionBoxes(project, tracks, ui, { rowTop: trackRowTop, rowHeight: trackRowHeight });
     for (const box of boxes) {
       if (box.right < 0 || box.left > width) continue;
       drawTransitionBox(context, box, box.transition.id === ui.selectedTransitionId, transitionShortfalls?.get(box.transition.id));

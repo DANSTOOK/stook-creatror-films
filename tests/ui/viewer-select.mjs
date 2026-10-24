@@ -154,10 +154,9 @@ async function main() {
     const spot = await window.evaluate((id) => {
       const { project, ui } = window.__scfStore.getState();
       const clip = project.clips[id];
-      const visual = project.tracks.filter((t) => t.type !== 'audio').sort((a, b) => b.order - a.order);
-      const audio = project.tracks.filter((t) => t.type === 'audio').sort((a, b) => a.order - b.order);
-      const row = [...visual, ...audio].findIndex((t) => t.id === clip.trackId);
-      return { x: (clip.startFrame + clip.durationFrames * 0.6) * ui.pixelsPerFrame - ui.scrollLeftPx, y: 24 + row * 58 + 34, start: clip.startFrame, end: clip.startFrame + clip.durationFrames };
+      // The clip's row as the timeline laid it out: picture rows are taller than the rest.
+      const lane = window.__scfTimelineRow(clip.trackId);
+      return { x: (clip.startFrame + clip.durationFrames * 0.6) * ui.pixelsPerFrame - ui.scrollLeftPx, y: lane.top + lane.height * 0.6, start: clip.startFrame, end: clip.startFrame + clip.durationFrames };
     }, sticker);
     await window.mouse.click(surface.x + spot.x, surface.y + spot.y);
     await sleep(500);

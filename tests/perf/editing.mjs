@@ -235,10 +235,11 @@ async function main() {
     const clipCentre = async (id) => window.evaluate((clipId) => {
       const { project, ui } = window.__scfStore.getState();
       const clip = project.clips[clipId];
-      const visual = project.tracks.filter((t) => t.type !== 'audio').sort((a, b) => b.order - a.order);
-      const audio = project.tracks.filter((t) => t.type === 'audio').sort((a, b) => a.order - b.order);
-      const row = [...visual, ...audio].findIndex((t) => t.id === clip.trackId);
-      return { x: (clip.startFrame + clip.durationFrames / 2) * ui.pixelsPerFrame - ui.scrollLeftPx, y: 24 + row * 58 + 30, end: (clip.startFrame + clip.durationFrames) * ui.pixelsPerFrame - ui.scrollLeftPx };
+      // The clip's row as the timeline laid it out: picture rows are taller than the rest.
+      // (A build from before that has rows of 56 px, 2 apart, under a 24 px ruler.)
+      const rows = [...project.tracks.filter((t) => t.type !== 'audio').sort((a, b) => b.order - a.order), ...project.tracks.filter((t) => t.type === 'audio').sort((a, b) => a.order - b.order)];
+      const lane = window.__scfTimelineRow?.(clip.trackId) ?? { top: 24 + rows.findIndex((t) => t.id === clip.trackId) * 58, height: 56 };
+      return { x: (clip.startFrame + clip.durationFrames / 2) * ui.pixelsPerFrame - ui.scrollLeftPx, y: lane.top + lane.height / 2, end: (clip.startFrame + clip.durationFrames) * ui.pixelsPerFrame - ui.scrollLeftPx };
     }, id);
     void scroller;
 
@@ -298,15 +299,32 @@ async function main() {
     });
     await window.keyboard.press('Control+z');
     await scenario('rubber band select', async () => {
-      const bottom = await window.evaluate(() => 24 + window.__scfStore.getState().project.tracks.length * 58 + 20);
-      const y = Math.min(canvas.height - 6, bottom);
-      await window.mouse.move(canvas.x + canvas.width - 40, canvas.y + y);
+      // From the bottom right of the rows in view to near the top left: the
+      // canvas is as tall as all the rows, most of them scrolled out of sight,
+      // so the band is placed by the part of the timeline on screen.
+      const view = await window.evaluate(() => {
+        const body = document.querySelector('[data-testid="timeline-canvas"]').closest('.overflow-y-auto');
+        const box = body.getBoundingClientRect();
+        return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+      });
+      // Above the horizontal scrollbar, which takes the last few pixels.
+      const from = { x: Math.min(canvas.x + canvas.width, view.right) - 30, y: view.bottom - 24 };
+      const to = { x: canvas.x + 40, y: view.top + 30 };
+      // Started anywhere but on the canvas, the drag is not a band at all, and what is measured means nothing.
+      const startsOn = await window.evaluate(([x, y]) => {
+        const element = document.elementFromPoint(x, y);
+        return element?.dataset.testid || element?.tagName || 'nothing';
+      }, [from.x, from.y]);
+      if (startsOn !== 'timeline-canvas') issues.push(`the rubber band started on ${startsOn}, not on the timeline`);
+      await window.mouse.move(from.x, from.y);
       await window.mouse.down();
       for (let step = 1; step <= 30; step += 1) {
-        await window.mouse.move(canvas.x + canvas.width - 40 - step * 25, canvas.y + y - step * 8);
+        await window.mouse.move(from.x + ((to.x - from.x) * step) / 30, from.y + ((to.y - from.y) * step) / 30);
         await sleep(16);
       }
       await window.mouse.up();
+      const chosen = await window.evaluate(() => window.__scfStore.getState().ui.selectedClipIds.length);
+      if (only) console.log(`        the band chose ${chosen} clips`);
     });
 
     /* 7-8. the viewer: a sticker moved and sized ---------------------------- */

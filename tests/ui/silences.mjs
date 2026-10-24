@@ -129,7 +129,12 @@ async function main() {
     await window.evaluate(() => window.__scfStore.getState().setUi({ pixelsPerFrame: 4, scrollLeftPx: 0 }));
     await sleep(200);
     // Right-click the picture on Video 1, the second picture row from the top.
-    await window.mouse.click(box.x + 60, box.y + 24 + 58 + 28, { button: 'right' });
+    await window.mouse.click(box.x + 60, box.y + (await window.evaluate(() => {
+      // Video 1's row as the timeline laid it out: picture rows are taller than the rest.
+      const track = window.__scfStore.getState().project.tracks.find((t) => t.type === 'video' && t.order === 0);
+      const lane = window.__scfTimelineRow(track.id);
+      return lane.top + lane.height / 2;
+    })), { button: 'right' });
     await window.getByRole('menuitem', { name: 'Remove silences…' }).click();
     await window.getByTestId('silence-dialog').waitFor({ state: 'visible', timeout: 5_000 });
     await window.waitForFunction(() => /found/.test(document.querySelector('[data-testid="silence-status"]')?.textContent ?? ''), null, { timeout: 30_000 });

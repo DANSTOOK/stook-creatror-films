@@ -561,10 +561,9 @@ async function main() {
       const spot = await store(([clipId, fraction]) => {
         const { project, ui } = window.__scfStore.getState();
         const clip = project.clips[clipId];
-        const visual = project.tracks.filter((t) => t.type !== 'audio').sort((a, b) => b.order - a.order);
-        const audio = project.tracks.filter((t) => t.type === 'audio').sort((a, b) => a.order - b.order);
-        const row = [...visual, ...audio].findIndex((t) => t.id === clip.trackId);
-        return { x: (clip.startFrame + clip.durationFrames * fraction) * ui.pixelsPerFrame - ui.scrollLeftPx, y: 24 + row * 58 + 28 };
+        // The clip's row as the timeline laid it out: picture rows are taller than the rest.
+        const lane = window.__scfTimelineRow(clip.trackId);
+        return { x: (clip.startFrame + clip.durationFrames * fraction) * ui.pixelsPerFrame - ui.scrollLeftPx, y: lane.top + lane.height / 2 };
       }, [id, along]);
       return { x: box.x + spot.x, y: box.y + spot.y };
     };

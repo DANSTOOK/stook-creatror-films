@@ -54,7 +54,18 @@ const EXPORT_FRAMES = 60;
 // Timeline rows, top to bottom: Video 2 (covers), Video 1, Audio 1. Centres,
 // from the top of the timeline canvas: 24 px ruler, then 58 px per row.
 const VIDEO2_ROW_Y = 24 + 28;
-const VIDEO1_ROW_Y = 24 + 58 + 28;
+/**
+ * The middle of Video 1's row on the timeline canvas, asked of the app: rows
+ * are not all one height (picture rows are taller), so they are not counted.
+ */
+const video1RowY = (page) => page.evaluate(() => {
+  const track = window.__scfStore.getState().project.tracks.find((t) => t.type === 'video' && t.order === 0);
+  const lane = window.__scfTimelineRow(track.id);
+  return lane.top + lane.height / 2;
+});
+
+/** Row `index` of the timeline canvas, top to bottom ({ top, height }), from the app's own layout. */
+const laneAt = (page, index) => page.evaluate((row) => window.__scfTimelineRow(row), index);
 
 const checks = [];
 const check = (name, passed, detail = '') => {
@@ -443,7 +454,7 @@ async function main() {
     // The inspector is the observable proof a clip exists and is selectable.
     // The clip lands on Video 1, the lower of the two picture rows (the one
     // above covers it, as in every editor).
-    await window.locator('canvas').last().click({ position: { x: 60, y: VIDEO1_ROW_Y } });
+    await window.locator('canvas').last().click({ position: { x: 60, y: await video1RowY(window) } });
     // The inspector names the clip it is inspecting, which is proof the click
     // selected one. "TRANSFORM" is a heading in that panel and also the name
     // of the viewer's mode, so it is the wrong word to look for.
@@ -552,7 +563,8 @@ async function main() {
     // Rubber band: from empty space at the bottom right to the top left of the
     // tracks - both clips on the timeline (the video and the dropped still).
     const bandBox = await surface.boundingBox();
-    await window.mouse.move(bandBox.x + bandBox.width - 6, bandBox.y + 24 + 58 * 2 + 30);
+    const bandLane = await laneAt(window, 2);
+    await window.mouse.move(bandBox.x + bandBox.width - 6, bandBox.y + bandLane.top + bandLane.height / 2);
     await window.mouse.down();
     await window.mouse.move(bandBox.x + bandBox.width / 2, bandBox.y + 60, { steps: 6 });
     await window.mouse.move(bandBox.x + 3, bandBox.y + 26, { steps: 6 });
@@ -651,7 +663,7 @@ async function main() {
       return project.tracks.filter((t) => t.type === 'video').length;
     });
     const beforeCut = (await clipsNow()).clips.length;
-    await window.mouse.click(frameX(videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)), bandBox.y + VIDEO1_ROW_Y);
+    await window.mouse.click(frameX(videoClip.startFrame + Math.round(videoClip.durationFrames * 0.8)), bandBox.y + (await video1RowY(window)));
     const afterRazor = await clipsNow();
     const halves = afterRazor.clips.filter((c) => c[0] === videoClip.trackId).sort((a, b) => a[1] - b[1]);
     const boundary = halves.find((c) => c[1] > videoClip.startFrame)?.[1];
@@ -672,7 +684,7 @@ async function main() {
     /* Point 9: the magnet closes the hole a deleted clip leaves -------------- */
     // Select the left half of the cut and press Delete: the right half has to
     // move up to where the left half began.
-    await window.mouse.click(frameX(videoClip.startFrame + 2), bandBox.y + VIDEO1_ROW_Y);
+    await window.mouse.click(frameX(videoClip.startFrame + 2), bandBox.y + (await video1RowY(window)));
     await window.keyboard.press('Delete');
     const afterDelete = await clipsNow();
     const survivor = afterDelete.clips.filter((c) => c[0] === videoClip.trackId);
@@ -683,7 +695,7 @@ async function main() {
     await window.keyboard.press('Control+z');
 
     /* Point 10: Ctrl+C / Ctrl+V with the real keys --------------------------- */
-    await window.mouse.click(frameX(videoClip.startFrame + 5), bandBox.y + VIDEO1_ROW_Y);
+    await window.mouse.click(frameX(videoClip.startFrame + 5), bandBox.y + (await video1RowY(window)));
     await window.keyboard.press('Control+c');
     const toolAfterCopy = await window.evaluate(() => window.__scfStore.getState().ui.tool);
     const pasteAt = videoClip.startFrame + videoClip.durationFrames + 10;
@@ -698,7 +710,7 @@ async function main() {
     await window.keyboard.press('Control+z');
 
     /* LUT survives save and reopen ------------------------------------------- */
-    await surface.click({ position: { x: 60, y: VIDEO1_ROW_Y } });
+    await surface.click({ position: { x: 60, y: await video1RowY(window) } });
     await app.evaluate(({ dialog }, lut) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [lut] });
     }, lutPath);
@@ -729,7 +741,7 @@ async function main() {
       .waitFor({ state: 'visible', timeout: 30_000 });
 
     // Reopening clears the selection, so the clip has to be picked again.
-    await surface.click({ position: { x: 60, y: VIDEO1_ROW_Y } });
+    await surface.click({ position: { x: 60, y: await video1RowY(window) } });
     await window.getByRole('tab', { name: 'Color' }).click();
     const lutSurvived = await window.getByTestId('lut-current').filter({ hasText: 'identity.cube' })
       .isVisible().catch(() => false);
@@ -1435,7 +1447,9 @@ async function main() {
       return { perFrame: ui.pixelsPerFrame, scroll: ui.scrollLeftPx };
     });
     const trimBox = await surface.boundingBox();
-    const trimRowTop = trimBox.y + 24 + trimSetup.row * 58;
+    const trimLane = await laneAt(window, trimSetup.row);
+    const trimRowTop = trimBox.y + trimLane.top;
+    const trimRowAt = (fraction) => trimRowTop + trimLane.height * fraction;
     const atFrame = (frame) => trimBox.x + frame * trimView.perFrame - trimView.scroll;
     const trimDrag = async (fromFrame, y, toFrame) => {
       await window.mouse.move(atFrame(fromFrame), y);
@@ -1451,7 +1465,7 @@ async function main() {
     check('the trim tool starts from three clips in a row',
       laid.join(' ') === `0+${unit}@0 ${unit}+${unit}@${unit} ${unit * 2}+${unit}@${unit * 2}`, laid.join('  '));
 
-    await trimDrag(unit, trimRowTop + 28, unit + step);
+    await trimDrag(unit, trimRowAt(0.5), unit + step);
     const rolled = await trimShape();
     check('dragging a shared join rolls it: one gives what the other takes',
       rolled[0] === `0+${unit + step}@0`
@@ -1460,13 +1474,13 @@ async function main() {
       rolled.join('  '));
 
     const slipFrom = Math.round(unit * 1.5) + step;
-    await trimDrag(slipFrom, trimRowTop + 14, slipFrom + step);
+    await trimDrag(slipFrom, trimRowAt(0.25), slipFrom + step);
     const slipped = await trimShape();
     check('dragging the top of a clip slips the footage inside it, and nothing moves',
       slipped[1] === `${unit + step}+${unit - step}@${unit}` && slipped[0] === rolled[0] && slipped[2] === rolled[2],
       slipped.join('  '));
 
-    await trimDrag(slipFrom, trimRowTop + 44, slipFrom + step);
+    await trimDrag(slipFrom, trimRowAt(0.78), slipFrom + step);
     const slid = await trimShape();
     check('dragging the bottom slides it, and its neighbours give and take',
       slid[0] === `0+${unit + step * 2}@0`
@@ -1474,7 +1488,7 @@ async function main() {
       && slid[2] === `${unit * 2 + step}+${unit - step}@${unit * 2 + step}`,
       slid.join('  '));
 
-    await trimDrag(unit * 3, trimRowTop + 28, unit * 3 - step);
+    await trimDrag(unit * 3, trimRowAt(0.5), unit * 3 - step);
     const rippled = await trimShape();
     check('dragging a free edge ripples it',
       rippled[2] === `${unit * 2 + step}+${unit - step * 2}@${unit * 2 + step}`, rippled.join('  '));
@@ -1557,7 +1571,8 @@ async function main() {
     });
     const linkBox = await surface.boundingBox();
     const linkX = (frame) => linkBox.x + frame * linkView.perFrame - linkView.scroll;
-    const linkY = (row) => linkBox.y + 24 + row * 58 + 28;
+    const linkLanes = await window.evaluate(() => Array.from({ length: window.__scfStore.getState().project.tracks.length }, (_, row) => window.__scfTimelineRow(row)));
+    const linkY = (row) => linkBox.y + linkLanes[row].top + linkLanes[row].height / 2;
     const linkDrag = async (fromFrame, row, toFrame, modifiers = []) => {
       await window.mouse.move(linkX(fromFrame), linkY(row));
       await window.mouse.down();
@@ -1661,7 +1676,7 @@ async function main() {
     }, fadeSetup);
 
     const fadeBox = await surface.boundingBox();
-    const fadeRowTop = fadeBox.y + 24 + fadeSetup.row * 58;
+    const fadeRowTop = fadeBox.y + (await laneAt(window, fadeSetup.row)).top;
     // The clip sits past the others, so the canvas is scrolled to it - and the
     // scroll that actually took effect is what the clicks are measured from,
     // because the view clamps it to the content it has.

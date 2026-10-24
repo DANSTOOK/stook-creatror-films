@@ -284,7 +284,7 @@ describe('on the timeline', () => {
     const b = clip({ id: 'b', startFrame: 90, durationFrames: 90 });
     const dissolve = createTransition(a, b, 'crossDissolve', 30, 'center');
     const tracks = [{ id: 'v1' } as never];
-    const rows = { rowTop: (index: number) => 24 + index * 58, rowHeight: 56 };
+    const rows = { rowTop: (index: number) => 24 + index * 58, rowHeight: () => 56 };
     const [box] = transitionBoxes({ clips: { a, b }, transitions: { [dissolve.id]: dissolve } }, tracks, { pixelsPerFrame: 2, scrollLeftPx: 0 }, rows);
     expect(box).toMatchObject({ cutX: 180, left: 150, right: 210 });
     expect(transitionAt([box], 180, box.top + 5)?.edge).toBeNull();

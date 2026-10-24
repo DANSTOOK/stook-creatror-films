@@ -142,7 +142,7 @@ async function main() {
       const bounds = target.getBoundingClientRect();
       const dataTransfer = new DataTransfer();
       item.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }));
-      const init = { bubbles: true, cancelable: true, dataTransfer, clientX: bounds.left + f * window.__scfStore.getState().ui.pixelsPerFrame, clientY: bounds.top + 24 + r * 58 + 28 };
+      const init = { bubbles: true, cancelable: true, dataTransfer, clientX: bounds.left + f * window.__scfStore.getState().ui.pixelsPerFrame, clientY: bounds.top + window.__scfTimelineRow(r).top + window.__scfTimelineRow(r).height / 2 };
       target.dispatchEvent(new DragEvent('dragenter', init));
       target.dispatchEvent(new DragEvent('dragover', init));
       target.dispatchEvent(new DragEvent('drop', init));

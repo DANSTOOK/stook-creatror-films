@@ -419,6 +419,8 @@ export const es: Messages = {
   'timeline.deleteSelected': 'Eliminar los clips seleccionados',
   'timeline.snap': 'Ajuste',
   'timeline.snapHint': 'Ajustar a los bordes de los clips, el cursor y los marcadores',
+  'timeline.mainTrack': 'Principal',
+  'timeline.mainTrackHint': 'La pista principal: con el imán activo, un clip soltado más allá del final queda pegado al último',
   'timeline.magnet': 'Imán',
   'timeline.magnetHint': 'Imán: al eliminar, mover o recortar un clip se cierra el hueco que deja',
   'timeline.addMarker': 'Añadir marcador',
