@@ -850,6 +850,8 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       const built = await proxies.build(path, size, Number(seconds) || 0, (fraction) => {
         getWindow()?.webContents.send(IPC.proxiesProgress, { path, fraction });
       });
+      // Stopped with the panel's Stop: not a failure, and not one for the log.
+      if (!built && proxies.lastStopped) return null;
       // FFmpeg's own words kept, inside a sentence in the page's language.
       if (!built) throw new Error(mt('main.proxyFailed', { detail: proxies.lastError ?? '-' }));
       allowedPaths.add(built.file);

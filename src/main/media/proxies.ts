@@ -140,8 +140,14 @@ export class ProxyStore {
   /** Running ffmpeg processes, so they can be stopped. */
   private readonly running = new Map<string, () => void>();
 
+  /** Builds being stopped by cancel(), by key: they end without having failed. */
+  private readonly stopping = new Set<string>();
+
   /** Why the last build failed, for the interface to repeat rather than shrug. */
   lastError: string | null = null;
+
+  /** Whether the last build that came back empty was stopped on purpose (cancel), not a failure. */
+  lastStopped = false;
 
   constructor(
     private readonly folder: string,
@@ -193,6 +199,7 @@ export class ProxyStore {
     const run = this.encode(key, path, size, totalSeconds, onProgress).finally(() => {
       this.building.delete(key);
       this.running.delete(key);
+      this.stopping.delete(key);
     });
     this.building.set(key, run);
     return run;
@@ -243,7 +250,9 @@ export class ProxyStore {
 
     if (done !== null) {
       await rm(temporary, { force: true });
-      this.lastError = done;
+      // Stopped from the interface: nothing went wrong, so there is nothing to report.
+      this.lastStopped = this.stopping.has(key);
+      this.lastError = this.lastStopped ? null : done;
       return null;
     }
 
@@ -260,7 +269,9 @@ export class ProxyStore {
   /** Stop a build in progress. The half-written file goes with it. */
   cancel(key?: string): void {
     for (const [running, kill] of this.running) {
-      if (key === undefined || running === key) kill();
+      if (key !== undefined && running !== key) continue;
+      this.stopping.add(running);
+      kill();
     }
   }
 

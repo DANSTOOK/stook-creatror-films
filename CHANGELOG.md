@@ -7,11 +7,105 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1684 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1688 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.80.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.81.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.82.0-beta.1 — Mega prueba de rendimiento de edición, y lo que encontró
+2026-10-24 · pre-release para probar · lo pedido: «un mega test de rendimiento de edición, para pulir lo que has generado»
+
+### Añadido
+- **Una prueba de rendimiento de edición** (`node tests/perf/editing.mjs`).
+  Arma un proyecto del tamaño de uno real: **120 clips en 11 pistas** (40
+  clips de 1080p y 4K, 12 con efectos, 10 transiciones, 12 títulos, música,
+  imagen en imagen, 60 subtítulos y 6 stickers animados). Después hace con el
+  ratón y el teclado de verdad **15 cosas de todos los días**:
+  - desplazar y hacer zoom en la línea de tiempo, y arrastrar el cabezal;
+  - mover y recortar un clip, y seleccionar con un recuadro;
+  - mover y escalar un sticker en el visor, y arrastrar un deslizador del
+    inspector;
+  - cambiar de pestaña en la biblioteca y recorrer las miniaturas de efectos;
+  - reproducir 6 s, 25 deshacer y 25 rehacer, escribir en un título y una
+    ráfaga de avisos.
+
+  Mide cada fotograma y los fotogramas largos del navegador, y dice qué
+  función los retuvo. `PERF_ONLY="zoom|scrub"` corre solo algunas;
+  `PERF_PROXIES=1` crea antes los proxies.
+- **La app sugiere proxies al importar metraje pesado.** Al traer un video de
+  1440p, 4K o más, sale un aviso con el botón **«Crear proxies»**. Antes solo
+  había un chip diminuto («0/1») en la cabecera de Medios que casi nadie ve.
+  - Sale **una vez por archivo** y sesión, y uno solo para varios archivos.
+  - No sale si los proxies están desactivados o ya se están creando.
+  - Si el proxy ya existe en el disco de una sesión anterior, se usa sin
+    preguntar.
+  - El botón crea los proxies **de los clips que nombra**; el chip sigue
+    creando todos los pesados, también los de 1080p.
+  - Funciona aunque se pulse con otra pestaña de la biblioteca abierta.
+
+### Arreglado
+- **Cambiar de pestaña en la biblioteca ya no congela la interfaz.**
+  - Antes, abrir Transiciones creaba y dibujaba **60 lienzos a la vez**
+    (97–159 ms cada vez). Ahora cada miniatura se dibuja cuando aparece en
+    pantalla: las de abajo, al desplazarte.
+  - Antes, abrir Efectos la primera vez compilaba **40 shaders seguidos**
+    (259 ms con la imagen congelada). Ahora el controlador los compila en
+    segundo plano, unos pocos a la vez, sin que nada espere. Mientras tanto la
+    miniatura muestra la escena sin efecto.
+  - Títulos, Transiciones, Efectos, Stickers y Sonidos **se quedan montados**
+    al salir de ellos: volver es instantáneo y conservan lo que buscaste.
+- **«Detener» en Proxies detiene toda la cola.** Antes paraba solo el archivo
+  que se estaba creando y empezaba el siguiente. Además, detenerlo ya no se
+  anota como un error en el registro: no falló nada.
+
+### Comprobado
+- **La prueba de rendimiento**, antes y después, en la RTX 4060 Laptop con
+  pantalla de 180 Hz (5,6 ms por fotograma):
+  - **cambiar de pestaña en la biblioteca:** el peor fotograma pasa de
+    **233 a 67 ms** y el tiempo bloqueado de **278 ms a 0**;
+  - **abrir Transiciones** la primera vez: de **159 a 19 ms**; **Efectos**: de
+    **259 a 23 ms**; volver a cualquiera de las dos: unos 10 ms;
+  - **25 deshacer y 25 rehacer:** de 3 fotogramas largos a **ninguno**;
+  - **arrastrar el cabezal con proxies:** peor fotograma 22 ms, sin
+    fotogramas largos;
+  - las otras 11 acciones (desplazar, zoom, mover y recortar clips, el
+    recuadro, el sticker en el visor, el deslizador, los efectos, escribir y
+    los avisos), **sin un solo fotograma largo**. Al reproducir hay 3 al
+    arrancar, de 65 ms como mucho;
+  - la memoria de JavaScript: 28 MB al empezar y **28 MB al terminar**.
+- **Proxies** (`tests/ui/proxy-suggest.mjs`, **10/10**):
+  - importar 1080p no sugiere nada;
+  - dos clips de 1440p dan un solo aviso, y su botón crea solo esos dos,
+    aunque se pulse desde otra pestaña;
+  - «Detener» para toda la cola y no deja nada en el registro;
+  - el chip crea el resto y dice «3/3»;
+  - volver a importar los mismos archivos no repite el aviso.
+
+  Antes de la corrección, la prueba del registro fallaba con la compilación
+  anterior: así se comprobó que detecta el problema.
+- Pruebas unitarias nuevas: la regla de qué metraje se sugiere, y que
+  detener un proxy de verdad (con ffmpeg) no cuenta como fallo ni deja medio
+  archivo, mientras que un archivo roto sí da su error.
+- Las **62** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo. El registro solo anotó lo que las pruebas provocan a
+  propósito, más el «Detener» de proxies, que ya no se anota (ver arriba).
+  `audio-edit` falló una vez la comprobación de chasquidos, con la CPU
+  ocupada por las pruebas unitarias corriendo a la vez; sola pasó 47/47.
+- 1688 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- La v1.81 instalada pasa **129/129** sin red.
+
+### Problemas conocidos
+- Arrastrar el cabezal por metraje 4K **sin proxies** todavía puede retener
+  algún fotograma unos 150–200 ms. No es la interfaz: el hilo principal está
+  libre las tres cuartas partes del tiempo y esos fotogramas no ejecutan
+  código. Lo que espera es el decodificador de video, que tiene que
+  decodificar desde el fotograma clave anterior (en el archivo de prueba hay
+  uno cada 8 s, el peor caso). Con proxies, el mismo arrastre no tiene ni un
+  fotograma largo; por eso ahora la app los sugiere.
 
 ---
 

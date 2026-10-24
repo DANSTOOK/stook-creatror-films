@@ -26,6 +26,66 @@ function compileShader(
   return shader;
 }
 
+/**
+ * A program the driver compiles and links in the background
+ * (KHR_parallel_shader_compile): asked each frame whether it is done, never
+ * waited on. Asking a shader's or a program's status the moment it is
+ * compiled, as GLProgram does, blocks until the driver finishes - 130 ms for
+ * one transition's shader, the first time the Transitions panel opened.
+ * Without the extension it is done at once, and finish() waits as before.
+ */
+export class PendingProgram {
+  private readonly ext: { COMPLETION_STATUS_KHR: number } | null;
+  private readonly program: WebGLProgram;
+  private readonly vertex: WebGLShader;
+  private readonly fragment: WebGLShader;
+
+  constructor(
+    private readonly gl: WebGL2RenderingContext,
+    private readonly vertexSource: string,
+    private readonly fragmentSource: string,
+    readonly label: string,
+  ) {
+    this.ext = gl.getExtension('KHR_parallel_shader_compile') as { COMPLETION_STATUS_KHR: number } | null;
+    const shader = (type: number, source: string): WebGLShader => {
+      const made = gl.createShader(type);
+      if (!made) throw new Error(`Failed to allocate ${label} shader`);
+      gl.shaderSource(made, source);
+      gl.compileShader(made);
+      return made;
+    };
+    this.vertex = shader(gl.VERTEX_SHADER, vertexSource);
+    this.fragment = shader(gl.FRAGMENT_SHADER, fragmentSource);
+    const program = gl.createProgram();
+    if (!program) throw new Error(`Failed to allocate program "${label}"`);
+    gl.attachShader(program, this.vertex);
+    gl.attachShader(program, this.fragment);
+    gl.linkProgram(program);
+    this.program = program;
+  }
+
+  /** Whether the driver has finished with it: asking does not wait. */
+  done(): boolean {
+    return !this.ext || this.gl.getProgramParameter(this.program, this.ext.COMPLETION_STATUS_KHR) === true;
+  }
+
+  /** The program, ready to use; throws with the driver's log when it did not compile. */
+  finish(): GLProgram {
+    const { gl } = this;
+    const linked = gl.getProgramParameter(this.program, gl.LINK_STATUS) === true;
+    if (!linked) {
+      const log = [gl.getShaderInfoLog(this.vertex), gl.getShaderInfoLog(this.fragment), gl.getProgramInfoLog(this.program)].filter(Boolean).join('\n');
+      gl.deleteProgram(this.program);
+      gl.deleteShader(this.vertex);
+      gl.deleteShader(this.fragment);
+      throw new Error(`Failed to build program "${this.label}":\n${log || '(no log)'}`);
+    }
+    gl.deleteShader(this.vertex);
+    gl.deleteShader(this.fragment);
+    return new GLProgram(gl, this.vertexSource, this.fragmentSource, this.label, this.program);
+  }
+}
+
 export type UniformValue =
   | number
   | boolean
@@ -43,7 +103,13 @@ export class GLProgram {
     vertexSource: string,
     fragmentSource: string,
     readonly label: string,
+    /** A program already compiled and linked (PendingProgram.finish): nothing is compiled again. */
+    linked?: WebGLProgram,
   ) {
+    if (linked) {
+      this.program = linked;
+      return;
+    }
     const vertex = compileShader(gl, gl.VERTEX_SHADER, vertexSource, `${label} vertex`);
     const fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource, `${label} fragment`);
 

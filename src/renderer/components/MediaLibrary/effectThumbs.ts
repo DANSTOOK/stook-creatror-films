@@ -1,4 +1,5 @@
-import { FULLSCREEN_MATRIX, GLProgram, RenderTarget } from '@renderer/engine/GLProgram';
+import { FULLSCREEN_MATRIX, GLProgram, PendingProgram, RenderTarget } from '@renderer/engine/GLProgram';
+import { requestFrame } from '@renderer/timing/animationFrame';
 import { createEffect, effectDef } from '@renderer/fx/effects/catalog';
 import { samplePicture } from './samplePictures';
 import { EFFECT_PASSES } from '@renderer/fx/effects/shaders';
@@ -213,6 +214,80 @@ function pictureOf(type: string): ImageBitmap | HTMLCanvasElement | null {
   copy.getContext('2d')?.drawImage(drawn, 0, 0);
   pictures.set(type, copy);
   return copy;
+}
+
+/*
+  The pictures one a frame. Each tile asks for its own; compiling the forty
+  effects' programs at once, the first time the panel opened, held a frame up
+  for a quarter of a second (getProgramParameter waits for every compile).
+  One a frame, in the order asked, the panel opens at once and the pictures
+  arrive within a second.
+*/
+const asked: Array<{ type: string; done(): void }> = [];
+let pump = 0;
+
+const pendingPrograms = new Map<string, PendingProgram>();
+
+/**
+ * Every program effect `type` needs, compiled in the background
+ * (PendingProgram): true once all are ready to draw with, never waiting on
+ * the driver. One that fails is left to programFor, which says why.
+ */
+function prepared(type: string): boolean {
+  const s = setUp();
+  if (!s) return true;
+  let all = true;
+  (EFFECT_PASSES[type] ?? []).forEach((step, index) => {
+    if (s.programs.has(step.source)) return;
+    let pending = pendingPrograms.get(step.source);
+    if (!pending) {
+      try {
+        pending = new PendingProgram(s.gl, baseVertexSource, step.source, `thumb:${type}:${index}`);
+      } catch {
+        return;
+      }
+      pendingPrograms.set(step.source, pending);
+    }
+    if (!pending.done()) {
+      all = false;
+      return;
+    }
+    pendingPrograms.delete(step.source);
+    try {
+      s.programs.set(step.source, pending.finish());
+    } catch {
+      // Left out: programFor compiles it again when drawn, and reports why it fails.
+    }
+  });
+  return all;
+}
+
+/** How many effects are compiled at once. */
+const IN_FLIGHT = 4;
+
+function drawNext(): void {
+  pump = 0;
+  for (let index = 0; index < Math.min(IN_FLIGHT, asked.length); ) {
+    const entry = asked[index];
+    if (prepared(entry.type)) {
+      asked.splice(index, 1);
+      pictureOf(entry.type);
+      entry.done();
+    } else index += 1;
+  }
+  if (asked.length > 0) pump = requestFrame(drawNext);
+}
+
+/** Whether effect `type`'s picture is already made. */
+export const effectThumbCached = (type: string): boolean => pictures.has(type);
+
+/** Resolves once effect `type`'s picture is made (or could not be), one effect a frame, in the order asked. */
+export function effectThumbReady(type: string): Promise<void> {
+  if (pictures.has(type)) return Promise.resolve();
+  return new Promise((done) => {
+    asked.push({ type, done });
+    if (!pump) pump = requestFrame(drawNext);
+  });
 }
 
 /** Whether effect `type` moves by itself, and so plays on hover rather than wiping between before and after. */

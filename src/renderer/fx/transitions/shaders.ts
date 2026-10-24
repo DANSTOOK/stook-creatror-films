@@ -1,5 +1,5 @@
 import type { TransitionParamValue } from '@shared/types';
-import { GLProgram } from '@renderer/engine/GLProgram';
+import { GLProgram, PendingProgram } from '@renderer/engine/GLProgram';
 import { resolvedShaderParams, shaderTransition, type ShaderParam, type ShaderTransitionDef } from './catalog';
 
 /**
@@ -119,6 +119,39 @@ export class ShaderTransitionPrograms {
   /** Whether `id` has been compiled already: a first use is a compile. */
   has(id: string): boolean {
     return this.programs.has(id);
+  }
+
+  private readonly pending = new Map<string, PendingProgram>();
+
+  /**
+   * `id` compiled in the background (PendingProgram): the first call starts
+   * it, and each call after says whether it is ready, never waiting for the
+   * driver. True once it can be used - or once it failed, as program() would.
+   */
+  prepare(id: string): boolean {
+    if (this.programs.has(id) || this.failed.has(id)) return true;
+    const entry = shaderTransition(id);
+    if (!entry) return true;
+    let pending = this.pending.get(id);
+    if (!pending) {
+      try {
+        pending = new PendingProgram(this.gl, this.vertexSource, fragmentSourceFor(entry), `transition:${id}`);
+      } catch (error) {
+        this.failed.add(id);
+        console.error(error);
+        return true;
+      }
+      this.pending.set(id, pending);
+    }
+    if (!pending.done()) return false;
+    this.pending.delete(id);
+    try {
+      this.programs.set(id, pending.finish());
+    } catch (error) {
+      this.failed.add(id);
+      console.error(error);
+    }
+    return true;
   }
 
   /**

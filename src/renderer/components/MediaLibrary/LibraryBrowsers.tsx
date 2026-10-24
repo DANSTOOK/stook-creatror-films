@@ -12,6 +12,7 @@ import { drawTransitionThumb, transitionLoopProgress } from './libraryThumbs';
 import { TITLE_DRAG_TYPE, TRANSITION_DRAG_TYPE, useLibraryDragStore, type LibraryDragKind } from './libraryDrag';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { LibraryFinder } from './LibraryFinder';
+import { useOnScreen } from './onScreen';
 
 /**
  * The Titles and Transitions tabs of the library panel: templates to drag
@@ -45,7 +46,10 @@ export type Draw = (context: CanvasRenderingContext2D, seconds: number | null) =
  */
 function Thumb({ draw, playing, ready }: { draw: Draw; playing: boolean; ready: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Its canvas drawn once it comes on screen: not sixty of them as the panel opens (onScreen.ts).
+  const onScreen = useOnScreen(canvasRef);
   useEffect(() => {
+    if (!onScreen) return undefined;
     const context = canvasRef.current?.getContext('2d');
     if (!context || !ready) return undefined;
     draw(context, null);
@@ -66,7 +70,7 @@ function Thumb({ draw, playing, ready }: { draw: Draw; playing: boolean; ready: 
       cancelFrame(frame);
       draw(context, null);
     };
-  }, [draw, playing, ready]);
+  }, [draw, playing, ready, onScreen]);
   return (
     <canvas
       ref={canvasRef}

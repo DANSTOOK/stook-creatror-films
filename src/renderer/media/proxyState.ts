@@ -22,9 +22,23 @@ export interface ProxyStatus {
   fraction: number;
 }
 
+/**
+ * Footage at least this wide - 1440p, 4K and up - is offered a proxy the
+ * moment it is imported. Past it, dragging the playhead across a file with
+ * keyframes seconds apart waits on the decoder: measured on a 4K timeline,
+ * frames held up to 150 ms, and none over 7 ms with proxies. 1080p is not
+ * offered one - it scrubs well - though the chip in Media builds it too.
+ */
+export const PROXY_SUGGEST_WIDTH = 2560;
+
 /** Is this asset one a proxy would help with? */
 export function wantsProxy(asset: MediaAsset): boolean {
   return asset.kind === 'video' && !asset.missing && Math.max(asset.width, asset.height) >= PROXY_WORTH_IT_WIDTH;
+}
+
+/** Of these, the ones to offer a proxy for as they arrive: 4K-class footage without one. */
+export function proxySuggestions(assets: readonly MediaAsset[]): MediaAsset[] {
+  return assets.filter((asset) => wantsProxy(asset) && !asset.proxyUri && Math.max(asset.width, asset.height) >= PROXY_SUGGEST_WIDTH);
 }
 
 /** Those still to build: heavy footage with no proxy yet. */

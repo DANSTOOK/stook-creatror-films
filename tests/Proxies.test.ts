@@ -1,7 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRequire } from 'node:module';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   PROXY_LONG_EDGE,
+  ProxyStore,
   parseProgress,
   proxyArgs,
   proxyFileName,
@@ -118,4 +124,38 @@ describe('reading ffmpeg progress', () => {
   it('says nothing when the length is unknown', () => {
     expect(parseProgress('out_time_us=5000000', 0)).toBeNull();
   });
+});
+
+describe('stopping a build', () => {
+  const ffmpeg: string = createRequire(import.meta.url)('ffmpeg-static');
+  const dir = mkdtempSync(join(tmpdir(), 'scf-proxy-'));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('is a stop, not a failure: nothing to report, and no half a proxy left behind', async () => {
+    const source = join(dir, 'long.mp4');
+    execFileSync(ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=2560x1440:r=30:d=30', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', source]);
+    const store = new ProxyStore(join(dir, 'stopped'), ffmpeg);
+    // Stopped at its first word of progress, as the panel's Stop would.
+    let asked = false;
+    const built = await store.build(source, proxySize(2560, 1440), 30, () => {
+      if (asked) return;
+      asked = true;
+      store.cancel();
+    });
+    expect(asked).toBe(true);
+    expect(built).toBeNull();
+    expect(store.lastStopped).toBe(true);
+    expect(store.lastError).toBeNull();
+    expect(await store.find(source)).toBeNull();
+    expect(readdirSync(join(dir, 'stopped'))).toEqual([]);
+  }, 60_000);
+
+  it('leaves a real failure a failure, with what ffmpeg said', async () => {
+    const broken = join(dir, 'broken.mp4');
+    writeFileSync(broken, 'not a video at all');
+    const store = new ProxyStore(join(dir, 'failed'), ffmpeg);
+    expect(await store.build(broken, { width: 960, height: 540 }, 1)).toBeNull();
+    expect(store.lastStopped).toBe(false);
+    expect(store.lastError).toBeTruthy();
+  }, 60_000);
 });

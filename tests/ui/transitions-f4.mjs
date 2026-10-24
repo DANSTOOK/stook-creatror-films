@@ -361,6 +361,13 @@ async function main() {
       }
       return { hash, lit, total: data.length / 4 };
     }, testId);
+    // A transition tile draws once it comes on screen, as a title tile does: bring this one there first.
+    await window.getByTestId('library-transition-push').scrollIntoViewIfNeeded();
+    await window.waitForFunction(() => {
+      const canvas = document.querySelector('[data-testid="library-transition-push"] canvas');
+      const data = canvas?.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      return Boolean(data) && data[3] > 0 && data[data.length - 1] > 0;
+    }, null, { timeout: 5_000 }).catch(() => undefined);
     const still1 = await thumb('library-transition-push');
     await sleep(400);
     const still2 = await thumb('library-transition-push');

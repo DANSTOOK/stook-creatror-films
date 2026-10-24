@@ -45,6 +45,7 @@ import {
 import { assetsInBin, binPath, childBins, countAssetsDeep } from '@renderer/media/bins';
 import { useFlip } from '@renderer/motion/useFlip';
 import { ProxyBar } from './ProxyBar';
+import { suggestProxies } from '@renderer/media/useProxies';
 import { AssetItem, TILE_ZOOM, loadMediaView, loadTileZoom, saveMediaView, saveTileZoom, type MediaView } from './AssetItem';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { canRelink, relinkMissing } from '@renderer/media/relink';
@@ -100,6 +101,8 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * open is a convenience of this machine.
  */
 const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'sounds', 'voice', 'captions'];
+/** The parts that show the app's own templates, not the project: kept mounted once opened. */
+const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'sounds']);
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
@@ -240,6 +243,14 @@ export function MediaLibrary(): JSX.Element {
     setTab('media');
   }, [projectEpoch]);
   const tabIndicator = useIndicator<HTMLDivElement, HTMLSpanElement>(tab);
+  // The parts whose content is the app's own, not the project's, stay
+  // mounted once opened - hidden, not rebuilt - so coming back to one is
+  // instant and keeps what was searched in it (KEPT_TABS).
+  const [visited, setVisited] = useState<ReadonlySet<LibraryTab>>(() => new Set());
+  useEffect(() => {
+    if (!KEPT_TABS.has(tab) || visited.has(tab)) return;
+    setVisited((current) => new Set([...current, tab]));
+  }, [tab, visited]);
   // New captions bring their list forward, as a new title selects itself.
   useEffect(() => {
     const show = (event: Event): void => {
@@ -289,6 +300,8 @@ export function MediaLibrary(): JSX.Element {
       } else {
         addAssets(outcome.assets);
       }
+      // 4K footage is offered its proxies as it arrives (useProxies).
+      void suggestProxies(outcome.assets);
 
       if (outcome.rejected.length > 0) {
         const detail = outcome.rejected
@@ -700,6 +713,26 @@ export function MediaLibrary(): JSX.Element {
         }}
       />
 
+      {/* The kept parts: each in its own panel, shown when chosen. Shown again,
+          its content comes in with the same short fade (the animation restarts). */}
+      {[...KEPT_TABS].map((id) =>
+        visited.has(id) || tab === id ? (
+          <div
+            key={`kept-${id}`}
+            id={tab === id ? 'library-tabpanel' : `library-tabpanel-${id}`}
+            role="tabpanel"
+            aria-labelledby={`library-tab-${id}`}
+            className={`scf-tab-enter min-h-0 min-w-0 flex-1 flex-col ${tab === id ? 'flex' : 'hidden'}`}
+          >
+            {id === 'titles' && <TitlesBrowser />}
+            {id === 'transitions' && <TransitionsBrowser />}
+            {id === 'effects' && <EffectsBrowser />}
+            {id === 'stickers' && <StickersBrowser />}
+            {id === 'sounds' && <SoundsBrowser />}
+          </div>
+        ) : null,
+      )}
+      {!KEPT_TABS.has(tab) && (
       <div
         // A new tab's content comes in with a short fade, not a cut (index.css).
         key={tab}
@@ -708,11 +741,6 @@ export function MediaLibrary(): JSX.Element {
         aria-labelledby={`library-tab-${tab}`}
         className={`scf-tab-enter flex min-h-0 min-w-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
       >
-      {tab === 'titles' && <TitlesBrowser />}
-      {tab === 'transitions' && <TransitionsBrowser />}
-      {tab === 'effects' && <EffectsBrowser />}
-      {tab === 'stickers' && <StickersBrowser />}
-      {tab === 'sounds' && <SoundsBrowser />}
       {tab === 'voice' && <VoicePanel />}
       {tab === 'captions' && <CaptionsTab />}
       {/* Bins above the clips in a narrow panel; beside them, as Resolve's
@@ -883,6 +911,7 @@ export function MediaLibrary(): JSX.Element {
       </div>
       )}
       </div>
+      )}
       </div>
 
       {dragActive && (

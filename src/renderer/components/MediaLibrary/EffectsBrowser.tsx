@@ -30,7 +30,8 @@ import { EFFECT_CATEGORIES, EFFECTS, effectCategoryLabel, effectFamily, effectLa
 import { MOTION_PRESETS, motionPresetHint, motionPresetLabel, motionPreview, type MotionPresetId } from '@renderer/fx/motion/presets';
 import { applyLibraryItem, type LibraryEffectItem } from '@renderer/fx/applyLibraryItem';
 import { animationLabel, animationPreview, animationsOf, type AnimationPose, type ClipAnimationId, type ClipAnimationPhase } from '@renderer/fx/motion/animations';
-import { drawEffectCompare, drawEffectFrame, drawEffectSample, drawEffectThumb, effectMoves } from './effectThumbs';
+import { drawEffectCompare, drawEffectFrame, drawEffectSample, drawEffectThumb, effectMoves, effectThumbCached, effectThumbReady } from './effectThumbs';
+import { useOnScreen } from './onScreen';
 import { EFFECT_DRAG_TYPE, useLibraryDragStore } from './libraryDrag';
 import { THUMB_HEIGHT, THUMB_WIDTH } from './LibraryBrowsers';
 import { LibraryFinder } from './LibraryFinder';
@@ -323,11 +324,27 @@ function AnimationTile({ id, phase, hintId, onApply }: { id: ClipAnimationId; ph
  */
 function EffectThumb({ type, playing }: { type: string; playing: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Drawn once on screen, and with the effect once its picture is made: the
+  // pictures are made one a frame (effectThumbs), the plain scene meanwhile.
+  const onScreen = useOnScreen(canvasRef);
+  const [ready, setReady] = useState(() => effectThumbCached(type));
   useEffect(() => {
+    if (!onScreen || ready) return undefined;
+    let alive = true;
+    void effectThumbReady(type).then(() => alive && setReady(true));
+    return () => {
+      alive = false;
+    };
+  }, [onScreen, ready, type]);
+  useEffect(() => {
+    if (!onScreen) return undefined;
     const context = canvasRef.current?.getContext('2d');
     if (!context) return undefined;
+    if (!ready) {
+      drawEffectSample(context, THUMB_WIDTH, THUMB_HEIGHT);
+      return undefined;
+    }
     const still = (): void => drawEffectThumb(context, THUMB_WIDTH, THUMB_HEIGHT, type);
-    // Drawn a frame later, so opening the panel is not held up by sixty pictures.
     let frame = requestFrame(still);
     if (!playing || motionReduced() || motionQuiet()) return () => cancelFrame(frame);
     const started = performance.now();
@@ -352,7 +369,7 @@ function EffectThumb({ type, playing }: { type: string; playing: boolean }): JSX
       cancelFrame(frame);
       still();
     };
-  }, [type, playing]);
+  }, [type, playing, onScreen, ready]);
   return <canvas ref={canvasRef} width={THUMB_WIDTH} height={THUMB_HEIGHT} aria-hidden className="block aspect-video w-full rounded-control bg-panel-950" />;
 }
 

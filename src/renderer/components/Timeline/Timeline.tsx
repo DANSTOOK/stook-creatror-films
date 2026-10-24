@@ -51,6 +51,7 @@ import { useMediaStore } from '@renderer/store/useMediaStore';
 import { CUT_EVENT, useProjectStore } from '@renderer/store/useProjectStore';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { dismissNotification, notify } from '@renderer/notifications/notifications';
+import { suggestProxies } from '@renderer/media/useProxies';
 import { keyLabel, t, useT, type MessageKey } from '@renderer/i18n';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
@@ -1593,6 +1594,7 @@ export function Timeline(): JSX.Element {
         // assets with it, so read them back rather than using the originals.
         const ids = new Set(outcome.assets.map((asset) => asset.id));
         assets = store.getState().assets.filter((asset) => ids.has(asset.id));
+        void suggestProxies(outcome.assets);
 
         dismissNotification(importing);
         if (outcome.rejected.length > 0) {

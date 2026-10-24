@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   pendingProxies,
   proxyPhaseOf,
+  proxySuggestions,
   proxySummary,
   readableBytes,
   wantsProxy,
@@ -41,6 +42,17 @@ describe('which footage wants a proxy', () => {
   it('leaves out what already has one', () => {
     const library = [asset({ id: 'a' }), asset({ id: 'b', proxyUri: 'media://proxy-b' })];
     expect(pendingProxies(library).map((entry) => entry.id)).toEqual(['a']);
+  });
+});
+
+describe('which footage is offered a proxy as it arrives', () => {
+  it('is 4K-class footage, either way up', () => {
+    expect(proxySuggestions([asset({ id: 'uhd' }), asset({ id: 'tall', width: 2160, height: 3840 }), asset({ id: 'qhd', width: 2560, height: 1440 })]).map((entry) => entry.id)).toEqual(['uhd', 'tall', 'qhd']);
+  });
+
+  it('is not 1080p, which scrubs well, nor what has a proxy already, nor what is not video', () => {
+    const library = [asset({ id: 'hd', width: 1920, height: 1080 }), asset({ id: 'done', proxyUri: 'media://p' }), asset({ id: 'still', kind: 'image' }), asset({ id: 'gone', missing: true })];
+    expect(proxySuggestions(library)).toEqual([]);
   });
 });
 

@@ -189,6 +189,23 @@ async function main() {
 
     await window.getByTestId('library-effects-filter-all').click();
     await sleep(600);
+    // A tile draws its picture once it comes on screen, and the pictures are
+    // made a few at a time (effectThumbs): every tile is scrolled to first,
+    // as a person scrolling the panel would, and given the time to arrive.
+    await window.evaluate(async () => {
+      for (const tile of document.querySelectorAll('[data-testid^="library-effect-"]')) {
+        tile.scrollIntoView({ block: 'center' });
+        await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+      }
+    });
+    await sleep(2500);
+    await window.evaluate(async () => {
+      for (const tile of document.querySelectorAll('[data-testid^="library-effect-"]')) {
+        tile.scrollIntoView({ block: 'center' });
+        await new Promise((done) => requestAnimationFrame(done));
+      }
+    });
+    await sleep(400);
     const tilesSeen = await window.evaluate(() => {
       const pictures = [...document.querySelectorAll('[data-testid^="library-effect-"] canvas')].map((canvas) => {
         const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;

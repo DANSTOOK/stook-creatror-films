@@ -16,8 +16,9 @@ import baseVertexSource from '@renderer/engine/shaders/BaseVertex.glsl?raw';
  * tile's own 2D canvas at once.
  *
  * Fifty-odd programs compiled the moment the panel opens would stall it, so
- * they are compiled one after another, one per animation frame, in the
- * order the tiles ask; a tile shows its still once its program is ready.
+ * the driver compiles them in the background, a few in flight at a time, in
+ * the order the tiles ask (ShaderTransitionPrograms.prepare): nothing waits
+ * on a compile, and a tile shows its still once its program is ready.
  */
 
 const WIDTH = 256;
@@ -116,12 +117,20 @@ function vaoFor(state: Thumbs, program: GLProgram): WebGLVertexArrayObject | nul
 const waiting: Array<{ id: string; done(): void }> = [];
 let pump = 0;
 
+/** How many programs the driver is asked to compile at once. */
+const IN_FLIGHT = 6;
+
 function compileNext(): void {
   pump = 0;
-  const next = waiting.shift();
-  if (!next) return;
-  setUp()?.programs.program(next.id);
-  next.done();
+  const programs = setUp()?.programs;
+  // The first few in the queue are started (or asked again); those done leave it.
+  for (let index = 0; index < Math.min(IN_FLIGHT, waiting.length); ) {
+    const entry = waiting[index];
+    if (!programs || programs.prepare(entry.id)) {
+      waiting.splice(index, 1);
+      entry.done();
+    } else index += 1;
+  }
   if (waiting.length > 0) pump = requestFrame(compileNext);
 }
 
