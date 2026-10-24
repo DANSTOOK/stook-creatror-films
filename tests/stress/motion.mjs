@@ -494,6 +494,9 @@ async function main() {
     }, workDir);
     await window.getByRole('button', { name: 'Export', exact: true }).click();
     const exportDialog = window.getByRole('dialog', { name: 'Export' });
+    // The hardware line is under More settings, folded until opened.
+    const moreSettings = exportDialog.getByTestId('export-more');
+    if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
     await exportDialog.getByText('This render:').waitFor({ timeout: 60_000 });
     await exportDialog.getByLabel('File name').fill('motion-export');
     await exportDialog.getByRole('button', { name: 'Browse' }).click();

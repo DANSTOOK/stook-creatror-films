@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Check,
   ChevronRight,
   CircleCheck,
   Clapperboard,
@@ -143,6 +144,13 @@ interface FinishedExport {
   captionsEmbedded?: string;
 }
 
+/** Where the More settings fold is remembered. */
+const MORE_OPEN_KEY = 'scf.exportMoreOpen';
+/** The preview's width at most, in pixels: the picture is shown smaller than that. */
+const PREVIEW_WIDTH = 640;
+/** How often the render's frame is copied into the preview. */
+const PREVIEW_EVERY_MS = 400;
+
 /** Split a path at its last separator, either kind. */
 function splitPath(path: string): { folder: string; name: string } {
   const at = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'));
@@ -190,6 +198,77 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
   const [result, setResult] = useState<FinishedExport | null>(null);
   /** The finished state's folded record of the settings, opened by hand. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** More settings, open or folded: remembered, as somebody who wants them wants them every time. */
+  const [moreOpen, setMoreOpenState] = useState(() => {
+    try {
+      return window.localStorage.getItem(MORE_OPEN_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const setMoreOpen = (open: boolean): void => {
+    setMoreOpenState(open);
+    try {
+      window.localStorage.setItem(MORE_OPEN_KEY, open ? '1' : '0');
+    } catch {
+      // Kept for this session only.
+    }
+  };
+
+  /*
+    The picture at the top: the frame at the playhead as the render will draw
+    it, when the dialog opens; then, while it renders, the frame just made,
+    every PREVIEW_EVERY_MS - a copy of the render canvas, made before the next
+    frame is drawn into it. An export waits for the first one, so the two
+    never draw at once.
+  */
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  const previewJob = useRef<Promise<void>>(Promise.resolve());
+  /** Whether the opening picture is drawn yet: a file just opened takes a second or so to seek to it. */
+  const [previewState, setPreviewState] = useState<'loading' | 'ready' | 'failed'>(() => (getActiveFrameRenderer() ? 'loading' : 'failed'));
+  const showPreview = useCallback((source: CanvasImageSource, width: number, height: number): void => {
+    const canvas = previewRef.current;
+    if (!canvas || !(width > 0) || !(height > 0)) return;
+    const scale = Math.min(1, PREVIEW_WIDTH / width);
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    canvas.getContext('2d')?.drawImage(source, 0, 0, w, h);
+    setPreviewState('ready');
+  }, []);
+  useEffect(() => {
+    const renderer = getActiveFrameRenderer();
+    if (!renderer) return undefined;
+    let alive = true;
+    previewJob.current = (async () => {
+      const { project: now } = useProjectStore.getState();
+      renderer.beginExclusive();
+      try {
+        // The first exact render of a file can arrive before its seek has landed - black;
+        // the second is the picture.
+        await renderer.renderExact(now, now.currentFrame, false);
+        if (!alive) return;
+        const rgba = await renderer.renderExact(now, now.currentFrame, false);
+        if (!alive) return;
+        const full = document.createElement('canvas');
+        full.width = now.width;
+        full.height = now.height;
+        full.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(rgba), now.width, now.height), 0, 0);
+        showPreview(full, now.width, now.height);
+      } catch {
+        // A frame the export would refuse (a background not removed yet): said under the picture.
+        if (alive) setPreviewState('failed');
+      } finally {
+        renderer.endExclusive();
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [showPreview]);
   /** Show in folder or Play failing - no player for the format, say. */
   const [actionError, setActionError] = useState<string | null>(null);
   const cancelRef = useRef(false);
@@ -449,6 +528,8 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       return false;
     }
 
+    // The opening picture renders on the same canvas: done before this starts.
+    await previewJob.current.catch(() => undefined);
     cancelRef.current = false;
     setRunning(true);
     setMessage(null);
@@ -574,6 +655,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
       // Where an export's time goes, for the benchmarks (tests/ui/fx-bench.mjs).
       const stats = { setupMs: performance.now() - startedAt, frames: 0, renderMs: 0, encodeMs: 0 };
       (window as { __scfExportStats?: typeof stats }).__scfExportStats = stats;
+      let previewAt = 0;
       for (let frame = settings.startFrame; frame < settings.endFrame; frame += 1) {
         if (cancelRef.current) {
           encoder?.close();
@@ -595,6 +677,11 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
         const renderStart = performance.now();
         if (encoder) {
           await renderer.renderExactToCanvas(drawn, frame);
+          // The frame just drawn, into the picture at the top, now and then: before the next one replaces it.
+          if (renderStart - previewAt >= PREVIEW_EVERY_MS) {
+            previewAt = renderStart;
+            showPreview(renderer.canvas, settings.width, settings.height);
+          }
           const encodeStart = performance.now();
           stats.renderMs += encodeStart - renderStart;
           await encoder.encodeCanvas(renderer.canvas);
@@ -607,6 +694,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
           // does: ffmpeg drops alpha without blending, so a fade, an opacity
           // keyframe or a Fade in left straight would come out at full strength.
           const rgba = await renderer.renderExact(drawn, frame, settings.premultiplyAlpha || !keepsAlpha);
+          if (renderStart - previewAt >= PREVIEW_EVERY_MS) {
+            previewAt = renderStart;
+            showPreview(renderer.canvas, settings.width, settings.height);
+          }
           const encodeStart = performance.now();
           stats.renderMs += encodeStart - renderStart;
           await window.filmora.exportFrame(activeJobId, rgba.buffer as ArrayBuffer);
@@ -1040,23 +1131,318 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               onRender={() => void renderQueue()}
             />
           )}
-          {done && result && (
-            // Beside the result while it is two buttons; once "Upload from
-            // here" opens its form, the panel takes the full width below the
-            // result card - in the narrow column it grew long and left a
-            // hole under the card.
-            <div className={`mb-3 grid gap-3 md:items-start ${uploadOpen ? '' : 'md:grid-cols-[minmax(0,1fr)_20rem]'}`}>
-              <ExportResult
-                result={result}
-                error={actionError}
-                onShowInFolder={() => runAction(() => window.filmora.showExportInFolder(result.path))}
-                onPlay={() => runAction(() => window.filmora.playExport(result.path))}
-              />
-              {/* A finished video YouTube takes: offer to send it there, beside the result. */}
-              {/\.(mp4|mov|webm)$/i.test(result.path) && (
-                <YouTubePanel path={result.path} defaultTitle={fileName} onExpandedChange={setUploadOpen} />
+
+          {/*
+            What will be made, as CapCut's export opens: a large picture of it -
+            the frame at the playhead, as the render will draw it; the render
+            itself while it runs; a tick when it is done - and beside it what
+            most exports need: the name and the place, the format and the size,
+            and the stretch of the timeline. The rest waits under More settings.
+          */}
+          <section data-testid="export-hero" className="mb-4 grid gap-4 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="space-y-1.5">
+              <div
+                className="relative mx-auto max-h-[46vh] max-w-full overflow-hidden rounded-lg border border-panel-700 bg-black"
+                style={{ aspectRatio: `${settings.width} / ${settings.height}` }}
+              >
+                <canvas ref={previewRef} data-testid="export-preview" data-state={previewState} aria-label={t('export.preview')} className="block h-full w-full object-contain" />
+                {previewState === 'loading' && !running && !done && (
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400">
+                    <Loader2 size={20} className="animate-spin" aria-hidden />
+                    <span className="text-2xs">{t('export.previewLoading')}</span>
+                  </div>
+                )}
+                {running && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/85 to-transparent px-3 pb-2 pt-10">
+                    <span data-testid="export-preview-percent" className="text-2xl font-semibold tabular-nums text-white">
+                      {view.percent.toFixed(0)}%
+                    </span>
+                    <span className="text-2xs tabular-nums text-slate-300">
+                      {view.videoDone} / {view.videoTotal}
+                    </span>
+                  </div>
+                )}
+                {done && (
+                  <div data-testid="export-preview-done" className="scf-export-done pointer-events-none absolute inset-0 grid place-items-center bg-black/40">
+                    <span className="grid h-20 w-20 place-items-center rounded-full bg-success shadow-2xl shadow-black/50">
+                      <Check size={44} strokeWidth={3} className="text-panel-950" />
+                    </span>
+                  </div>
+                )}
+              </div>
+              <p className="text-center text-2xs text-slate-400">
+                {t(running ? 'export.previewRendering' : done ? 'export.previewDone' : previewState === 'failed' ? 'export.previewFailed' : 'export.previewHint')}
+              </p>
+            </div>
+            <div className="min-w-0 space-y-3">
+              {done && result ? (
+                <ExportResult
+                  result={result}
+                  error={actionError}
+                  onShowInFolder={() => runAction(() => window.filmora.showExportInFolder(result.path))}
+                  onPlay={() => runAction(() => window.filmora.playExport(result.path))}
+                />
+              ) : (
+                <fieldset disabled={running} className="min-w-0 space-y-3 disabled:opacity-70">
+                  {/* The name and the place first, accent-bordered: the fields to fill in
+                      before Export, the way Resolve's Custom Export leads with File name and Location. */}
+                  <section className="space-y-2 rounded-lg border border-accent/40 bg-accent/[0.05] p-3">
+                    <h3 className="field-label text-slate-200">{t('export.stepSave')}</h3>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-2xs text-slate-400">{t('export.fileName')}</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          ref={fileNameRef}
+                          className="numeric-input"
+                          value={fileName}
+                          spellCheck={false}
+                          onChange={(event) => setFileName(event.target.value)}
+                        />
+                        <span className="shrink-0 text-2xs text-slate-400">{extension}</span>
+                      </div>
+                    </label>
+                    <div className="flex items-end gap-2">
+                      <label className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className="text-2xs text-slate-400">{t('export.saveIn')}</span>
+                        <input readOnly className="numeric-input" value={folder ?? ''} placeholder={t('export.notChosen')} />
+                      </label>
+                      <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
+                        <FolderOpen size={14} />
+                        {t('export.browse')}
+                      </button>
+                    </div>
+                    {folder && settings.outputPath && (
+                      <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-400'}`}>
+                        {targetExists ? t('export.willReplace') : t('export.willSave')}{' '}
+                        <span className="text-slate-300">{settings.outputPath}</span>
+                      </p>
+                    )}
+                    {/*
+                      The export name defaults to the first video's name, so a folder the
+                      footage came from aims the render at the footage itself. That is
+                      not a replace, it is a loss - said plainly, and the button is off.
+                    */}
+                    {targetInUse && (
+                      <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
+                        {t('export.sourceFootage')}
+                      </p>
+                    )}
+                  </section>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-2xs text-slate-400">{t('export.format')}</span>
+                      <select
+                        className="numeric-input"
+                        value={settings.format}
+                        onChange={(event) =>
+                          setExportSettings({ format: event.target.value as ExportFormat, outputPath: '' })
+                        }
+                      >
+                        {FORMATS.map((format) => (
+                          <option key={format.value} value={format.value}>
+                            {formatLabel(format.value)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-2xs text-slate-400">{t('export.resolution')}</span>
+                      <select
+                        className="numeric-input"
+                        value={activePreset?.id ?? 'custom'}
+                        onChange={(event) => {
+                          const preset = presets.find((candidate) => candidate.id === event.target.value);
+                          if (preset) resize(preset.width, preset.height);
+                        }}
+                      >
+                        {presets.map((preset) => (
+                          <option key={preset.id} value={preset.id}>
+                            {preset.id === 'project' ? t('export.projectSize', { width: preset.width, height: preset.height }) : preset.label}
+                          </option>
+                        ))}
+                        {!activePreset && <option value="custom">{t('export.customSize', { width: settings.width, height: settings.height })}</option>}
+                      </select>
+                    </label>
+                  </div>
+                  <p className="text-2xs text-slate-400">
+                    {t('export.bitrate', { mbps: (settings.bitrateKbps / 1000).toFixed(1), width: settings.width, height: settings.height, fps: settings.fps })}
+                  </p>
+                  {fontsMissing.length > 0 && (
+                    <p role="status" data-testid="export-fonts-missing" className="text-2xs text-amber-300">
+                      {t('export.missingFonts', { fonts: fontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
+                    </p>
+                  )}
+                  {/* Which stretch of the timeline: the whole edit, the part marked on the ruler, or frames typed. */}
+                  <Section title={t('export.sectionRange')}>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs text-slate-400">
+                          {t('export.startFrame')} <span className="text-slate-400">({formatClock(settings.startFrame / renderFps)})</span>
+                        </span>
+                        <input
+                          type="number"
+                          className="numeric-input"
+                          value={settings.startFrame}
+                          onChange={(event) => setExportSettings({ startFrame: Number(event.target.value) })}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs text-slate-400">
+                          {t('export.endFrame')} <span className="text-slate-400">({formatClock(settings.endFrame / renderFps)})</span>
+                        </span>
+                        <input
+                          type="number"
+                          className="numeric-input"
+                          value={settings.endFrame}
+                          onChange={(event) => setExportSettings({ endFrame: Number(event.target.value) })}
+                        />
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-slate-300">
+                        {around(t('export.renders'), 'length')[0]}
+                        <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span>
+                        {around(t('export.renders'), 'length')[1]}{' '}
+                        <span className="text-slate-400">
+                          {t('export.rendersFrames', { frames: totalFrames.toLocaleString(currentLocale()), fps: renderFps })}
+                        </span>
+                      </p>
+                      <button
+                        type="button"
+                        className="tool-button h-7 shrink-0"
+                        title={t('export.wholeTimelineHint')}
+                        onClick={() => setExportSettings({ startFrame: 0, endFrame: exportEndFrame(project) })}
+                      >
+                        {t('export.wholeTimeline')}
+                      </button>
+                      {marked && (
+                        <button
+                          type="button"
+                          className="tool-button h-7 shrink-0"
+                          title={t('export.inToOutHint')}
+                          onClick={() => setExportSettings({ startFrame: marked.start, endFrame: marked.end })}
+                        >
+                          {t('export.inToOut')}
+                        </button>
+                      )}
+                    </div>
+                  </Section>
+                </fieldset>
               )}
             </div>
+          </section>
+
+          {/* A finished video YouTube takes: offer to send it there, under the result. */}
+          {done && result && /\.(mp4|mov|webm)$/i.test(result.path) && (
+            <div className={uploadOpen ? 'mb-3' : 'mb-3 md:max-w-md'}>
+              <YouTubePanel path={result.path} defaultTitle={fileName} onExpandedChange={setUploadOpen} />
+            </div>
+          )}
+
+          {/* Captions, when the edit has any: in the picture, in the file, beside it. */}
+          {!done && captionCount > 0 && (
+            <fieldset disabled={running} className="mb-4 min-w-0 disabled:opacity-70">
+              <Section title={t('export.captions')}>
+                {/* Three ways out, each said for what it is: in the picture, in
+                    the file as a track, or beside it as a file. Any or all. */}
+                <p className="text-2xs text-slate-400" data-testid="export-captions-intro">
+                  {t('export.captionsCount', { count: captionCount })} {t('export.captionsIntro')}
+                </p>
+                <label className="flex items-start gap-2 text-xs text-slate-200">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    data-testid="export-captions-burn"
+                    checked={burnCaptions}
+                    onChange={(event) => setBurnCaptions(event.target.checked)}
+                  />
+                  <span>
+                    {t('export.captionsBurn')}
+                    <span className="block text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnHint2')}</span>
+                  </span>
+                </label>
+                {several && burnCaptions && (
+                  <fieldset className="ml-6 flex flex-col gap-1" data-testid="export-captions-burn-tracks" aria-label={t('export.captionsBurn')}>
+                    {deliverTracks.map((track) => (
+                      <label key={track.id} className="flex items-center gap-2 text-xs text-slate-200">
+                        <input
+                          type="checkbox"
+                          data-testid="export-captions-burn-track"
+                          data-track={track.id}
+                          checked={burnTrackIds.has(track.id)}
+                          onChange={(event) =>
+                            setBurnOff((off) => {
+                              const next = new Set(off);
+                              if (event.target.checked) next.delete(track.id);
+                              else next.add(track.id);
+                              return next;
+                            })
+                          }
+                        />
+                        {t('export.captionsTrackLabel', { name: track.name, language: t(track.language === 'en' ? 'captions.languageNameEn' : 'captions.languageNameEs') })}
+                      </label>
+                    ))}
+                    <span className="text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnTracks')}</span>
+                  </fieldset>
+                )}
+                <label className={`flex items-start gap-2 text-xs ${canEmbed ? 'text-slate-200' : 'text-slate-400'}`}>
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    data-testid="export-captions-embed"
+                    disabled={!canEmbed}
+                    checked={embedCaptions && canEmbed}
+                    onChange={(event) => setEmbedCaptions(event.target.checked)}
+                  />
+                  <span>
+                    {t('export.captionsEmbed')}
+                    <span className="block text-2xs leading-relaxed text-slate-400">
+                      {canEmbed ? t(several ? 'export.captionsEmbedHintMany' : 'export.captionsEmbedHint') : t('export.captionsEmbedUnsupported', { format: formatLabel(selectedFormat?.value) })}
+                    </span>
+                  </span>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-slate-200">{t('export.captionsFile')}</span>
+                  <select
+                    className="numeric-input"
+                    data-testid="export-captions-file"
+                    value={captionFile}
+                    onChange={(event) => setCaptionFile(event.target.value === 'srt' || event.target.value === 'vtt' ? event.target.value : 'none')}
+                  >
+                    <option value="none">{t('export.captionsFileNone')}</option>
+                    <option value="srt">{t('export.captionsFileSrt')}</option>
+                    <option value="vtt">{t('export.captionsFileVtt')}</option>
+                  </select>
+                  <span className="text-2xs leading-relaxed text-slate-400">{several ? t('export.captionsFileHintMany', { name: fileName || 'video' }) : t('export.captionsFileHint')}</span>
+                </label>
+                {burnCaptions && burnTrackIds.size > 0 && embedCaptions && canEmbed && (
+                  <p role="status" className="text-2xs leading-relaxed text-amber-200" data-testid="export-captions-twice">
+                    {t('export.captionsTwice')}
+                  </p>
+                )}
+                {captionFontsMissing.length > 0 && burnCaptions && burnTrackIds.size > 0 && (
+                  <p role="status" data-testid="export-caption-fonts-missing" className="text-2xs text-amber-300">
+                    {t('export.missingFonts', { fonts: captionFontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
+                  </p>
+                )}
+              </Section>
+            </fieldset>
+          )}
+
+          {/* Everything else, folded until wanted: presets, networks, a GIF or the sound alone, and the details. */}
+          {!done && (
+            <button
+              type="button"
+              data-testid="export-more"
+              aria-expanded={moreOpen}
+              aria-controls="export-settings"
+              className="mb-3 flex w-full items-center gap-2 rounded-lg border border-panel-700 bg-panel-950 px-3 py-2 text-left hover:border-panel-600"
+              onClick={() => setMoreOpen(!moreOpen)}
+            >
+              <ChevronRight size={14} className={`shrink-0 text-slate-400 transition-transform ${moreOpen ? 'rotate-90' : ''}`} />
+              <span className="field-label shrink-0">{t('export.moreSettings')}</span>
+              <span className="truncate text-2xs text-slate-500">{t('export.moreSettingsHint')}</span>
+            </button>
           )}
 
           {/*
@@ -1090,7 +1476,7 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
           <fieldset
             id="export-settings"
             disabled={running || done}
-            hidden={done && !settingsOpen}
+            hidden={done ? !settingsOpen : !moreOpen}
             className="min-w-0 disabled:opacity-70"
           >
             {done && (
@@ -1254,80 +1640,10 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
               </div>
             </section>
 
-            {/* Step 2 (the primary path): name the file and choose where it goes.
-                Accent-bordered so it reads as the field to fill in before Export -
-                the way Resolve's Custom Export leads with File name and Location. */}
-            <section className="mb-4 space-y-2 rounded-lg border border-accent/40 bg-accent/[0.05] p-3">
-              <h3 className="field-label text-slate-200">{t('export.stepSave')}</h3>
-              <label className="flex flex-col gap-1">
-                <span className="text-2xs text-slate-400">{t('export.fileName')}</span>
-                <div className="flex items-center gap-1">
-                  <input
-                    ref={fileNameRef}
-                    className="numeric-input"
-                    value={fileName}
-                    spellCheck={false}
-                    onChange={(event) => setFileName(event.target.value)}
-                  />
-                  <span className="shrink-0 text-2xs text-slate-400">{extension}</span>
-                </div>
-              </label>
-              <div className="flex items-end gap-2">
-                <label className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="text-2xs text-slate-400">{t('export.saveIn')}</span>
-                  <input readOnly className="numeric-input" value={folder ?? ''} placeholder={t('export.notChosen')} />
-                </label>
-                <button type="button" className="tool-button" onClick={() => void chooseFolder()}>
-                  <FolderOpen size={14} />
-                  {t('export.browse')}
-                </button>
-              </div>
-              {folder && settings.outputPath && (
-                <p className={`break-all text-2xs ${targetExists ? 'text-amber-300' : 'text-slate-400'}`}>
-                  {targetExists ? t('export.willReplace') : t('export.willSave')}{' '}
-                  <span className="text-slate-300">{settings.outputPath}</span>
-                </p>
-              )}
-              {/*
-                The export name defaults to the first video's name, so a folder the
-                footage came from aims the render at the footage itself. That is
-                not a replace, it is a loss - said plainly, and the button is off.
-              */}
-              {targetInUse && (
-                <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-2xs text-red-300">
-                  {t('export.sourceFootage')}
-                </p>
-              )}
-            </section>
-
-            {/* Everything else, grouped under one heading: the dialog reads as a
-                short primary path with the detail below, not one dense wall. */}
-            <div className="mb-2 flex items-baseline gap-2 border-t border-panel-700 pt-3">
-              <h3 className="field-label">{t('export.moreSettings')}</h3>
-              <span className="text-2xs text-slate-500">{t('export.moreSettingsHint')}</span>
-            </div>
-
             <div className="grid gap-3 md:grid-cols-2">
               {/* The picture: what it is and how big. */}
               <div className="space-y-3">
                 <Section title={t('export.sectionVideo')}>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-2xs text-slate-400">{t('export.format')}</span>
-                    <select
-                      className="numeric-input"
-                      value={settings.format}
-                      onChange={(event) =>
-                        setExportSettings({ format: event.target.value as ExportFormat, outputPath: '' })
-                      }
-                    >
-                      {FORMATS.map((format) => (
-                        <option key={format.value} value={format.value}>
-                          {formatLabel(format.value)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
                   {/* Transparency belongs with the format: the format decides whether it can exist. */}
                   <div className="space-y-1.5 rounded border border-panel-700 bg-panel-900 p-2">
                     <label className="flex items-center gap-2 text-xs text-slate-200">
@@ -1361,25 +1677,6 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     )}
                   </div>
 
-                  <label className="flex flex-col gap-1">
-                    <span className="text-2xs text-slate-400">{t('export.resolution')}</span>
-                    <select
-                      className="numeric-input"
-                      value={activePreset?.id ?? 'custom'}
-                      onChange={(event) => {
-                        const preset = presets.find((candidate) => candidate.id === event.target.value);
-                        if (preset) resize(preset.width, preset.height);
-                      }}
-                    >
-                      {presets.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.id === 'project' ? t('export.projectSize', { width: preset.width, height: preset.height }) : preset.label}
-                        </option>
-                      ))}
-                      {!activePreset && <option value="custom">{t('export.customSize', { width: settings.width, height: settings.height })}</option>}
-                    </select>
-                  </label>
-
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-1">
                       <span className="text-2xs text-slate-400">{t('export.width')}</span>
@@ -1406,14 +1703,6 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                       {t('export.upscaled', { width: project.width, height: project.height })}
                     </p>
                   )}
-                  {fontsMissing.length > 0 && (
-                    <p role="status" data-testid="export-fonts-missing" className="text-2xs text-amber-300">
-                      {t('export.missingFonts', { fonts: fontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
-                    </p>
-                  )}
-                  <p className="text-2xs text-slate-400">
-                    {t('export.bitrate', { mbps: (settings.bitrateKbps / 1000).toFixed(1), width: settings.width, height: settings.height, fps: settings.fps })}
-                  </p>
 
                   {/* Rarely wanted, and wrong for filmed footage, so it is folded away -
                       but opens by itself when it is on, so a setting in force is
@@ -1438,64 +1727,6 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
 
               {/* The range, cover image, captions and hardware. */}
               <div className="space-y-3">
-                {/* Which stretch of the timeline, first in this column: the two
-                    columns used to end 270px apart, with Range alone under the
-                    picture settings and a hole beside it. */}
-                <Section title={t('export.sectionRange')}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="flex flex-col gap-1">
-                      <span className="text-2xs text-slate-400">
-                        {t('export.startFrame')} <span className="text-slate-400">({formatClock(settings.startFrame / renderFps)})</span>
-                      </span>
-                      <input
-                        type="number"
-                        className="numeric-input"
-                        value={settings.startFrame}
-                        onChange={(event) => setExportSettings({ startFrame: Number(event.target.value) })}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className="text-2xs text-slate-400">
-                        {t('export.endFrame')} <span className="text-slate-400">({formatClock(settings.endFrame / renderFps)})</span>
-                      </span>
-                      <input
-                        type="number"
-                        className="numeric-input"
-                        value={settings.endFrame}
-                        onChange={(event) => setExportSettings({ endFrame: Number(event.target.value) })}
-                      />
-                    </label>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-slate-300">
-                      {around(t('export.renders'), 'length')[0]}
-                      <span className="font-medium text-slate-100">{formatClock(totalFrames / renderFps)}</span>
-                      {around(t('export.renders'), 'length')[1]}{' '}
-                      <span className="text-slate-400">
-                        {t('export.rendersFrames', { frames: totalFrames.toLocaleString(currentLocale()), fps: renderFps })}
-                      </span>
-                    </p>
-                    <button
-                      type="button"
-                      className="tool-button h-7 shrink-0"
-                      title={t('export.wholeTimelineHint')}
-                      onClick={() => setExportSettings({ startFrame: 0, endFrame: exportEndFrame(project) })}
-                    >
-                      {t('export.wholeTimeline')}
-                    </button>
-                    {marked && (
-                      <button
-                        type="button"
-                        className="tool-button h-7 shrink-0"
-                        title={t('export.inToOutHint')}
-                        onClick={() => setExportSettings({ startFrame: marked.start, endFrame: marked.end })}
-                      >
-                        {t('export.inToOut')}
-                      </button>
-                    )}
-                  </div>
-                </Section>
-
                 <Section title={t('export.sectionThumbnail')}>
                   {coverArt ? (
                     <>
@@ -1538,93 +1769,6 @@ export function ExportDialog({ onClose, closing = false }: ExportDialogProps): J
                     </p>
                   )}
                 </Section>
-
-                {captionCount > 0 && (
-                  <Section title={t('export.captions')}>
-                    {/* Three ways out, each said for what it is: in the picture, in
-                        the file as a track, or beside it as a file. Any or all. */}
-                    <p className="text-2xs text-slate-400" data-testid="export-captions-intro">
-                      {t('export.captionsCount', { count: captionCount })} {t('export.captionsIntro')}
-                    </p>
-                    <label className="flex items-start gap-2 text-xs text-slate-200">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        data-testid="export-captions-burn"
-                        checked={burnCaptions}
-                        onChange={(event) => setBurnCaptions(event.target.checked)}
-                      />
-                      <span>
-                        {t('export.captionsBurn')}
-                        <span className="block text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnHint2')}</span>
-                      </span>
-                    </label>
-                    {several && burnCaptions && (
-                      <fieldset className="ml-6 flex flex-col gap-1" data-testid="export-captions-burn-tracks" aria-label={t('export.captionsBurn')}>
-                        {deliverTracks.map((track) => (
-                          <label key={track.id} className="flex items-center gap-2 text-xs text-slate-200">
-                            <input
-                              type="checkbox"
-                              data-testid="export-captions-burn-track"
-                              data-track={track.id}
-                              checked={burnTrackIds.has(track.id)}
-                              onChange={(event) =>
-                                setBurnOff((off) => {
-                                  const next = new Set(off);
-                                  if (event.target.checked) next.delete(track.id);
-                                  else next.add(track.id);
-                                  return next;
-                                })
-                              }
-                            />
-                            {t('export.captionsTrackLabel', { name: track.name, language: t(track.language === 'en' ? 'captions.languageNameEn' : 'captions.languageNameEs') })}
-                          </label>
-                        ))}
-                        <span className="text-2xs leading-relaxed text-slate-400">{t('export.captionsBurnTracks')}</span>
-                      </fieldset>
-                    )}
-                    <label className={`flex items-start gap-2 text-xs ${canEmbed ? 'text-slate-200' : 'text-slate-400'}`}>
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        data-testid="export-captions-embed"
-                        disabled={!canEmbed}
-                        checked={embedCaptions && canEmbed}
-                        onChange={(event) => setEmbedCaptions(event.target.checked)}
-                      />
-                      <span>
-                        {t('export.captionsEmbed')}
-                        <span className="block text-2xs leading-relaxed text-slate-400">
-                          {canEmbed ? t(several ? 'export.captionsEmbedHintMany' : 'export.captionsEmbedHint') : t('export.captionsEmbedUnsupported', { format: formatLabel(selectedFormat?.value) })}
-                        </span>
-                      </span>
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-slate-200">{t('export.captionsFile')}</span>
-                      <select
-                        className="numeric-input"
-                        data-testid="export-captions-file"
-                        value={captionFile}
-                        onChange={(event) => setCaptionFile(event.target.value === 'srt' || event.target.value === 'vtt' ? event.target.value : 'none')}
-                      >
-                        <option value="none">{t('export.captionsFileNone')}</option>
-                        <option value="srt">{t('export.captionsFileSrt')}</option>
-                        <option value="vtt">{t('export.captionsFileVtt')}</option>
-                      </select>
-                      <span className="text-2xs leading-relaxed text-slate-400">{several ? t('export.captionsFileHintMany', { name: fileName || 'video' }) : t('export.captionsFileHint')}</span>
-                    </label>
-                    {burnCaptions && burnTrackIds.size > 0 && embedCaptions && canEmbed && (
-                      <p role="status" className="text-2xs leading-relaxed text-amber-200" data-testid="export-captions-twice">
-                        {t('export.captionsTwice')}
-                      </p>
-                    )}
-                    {captionFontsMissing.length > 0 && burnCaptions && burnTrackIds.size > 0 && (
-                      <p role="status" data-testid="export-caption-fonts-missing" className="text-2xs text-amber-300">
-                        {t('export.missingFonts', { fonts: captionFontsMissing.join(', '), fallback: FALLBACK_FAMILY })}
-                      </p>
-                    )}
-                  </Section>
-                )}
 
                 {/* Rarely changed, so it stays folded; the summary still says what will render. */}
                 <details className="rounded border border-panel-700 bg-panel-950 p-3" open={restartPending || undefined}>

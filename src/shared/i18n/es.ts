@@ -1028,9 +1028,9 @@ export const es: Messages = {
   'export.rendering': 'Renderizando…',
   'export.start': 'Empezar a exportar',
   'export.presets': 'Preajustes rápidos',
-  // Los tres pasos del camino sencillo: elegir un preajuste, nombrar y ubicar
-  // el archivo, exportar. Todo lo demás se agrupa en "Ajustes de exportación".
-  'export.stepPreset': '1. Empieza con un preajuste',
+  // El camino sencillo, arriba junto a la imagen: nombrar y ubicar el archivo, el
+  // formato, el tamaño y el intervalo. Los preajustes y lo demás esperan en "Más ajustes".
+  'export.stepPreset': 'Empieza con un preajuste',
   'export.stepNetworks': 'Para redes sociales',
   'reframe.open': 'Reencuadrar a vertical…',
   'reframe.title': 'Reencuadrar el proyecto',
@@ -1075,9 +1075,15 @@ export const es: Messages = {
   'export.networksStart': 'Exportar para {count} redes',
   'export.networksProgress': 'Versión {index} de {total}: {name}',
   'export.networksDone': '{count} versiones exportadas: {names}',
-  'export.stepSave': '2. Dale un nombre y elige dónde se guarda',
-  'export.moreSettings': 'Ajustes de exportación',
-  'export.moreSettingsHint': 'Formato, resolución, intervalo, miniatura y hardware',
+  'export.stepSave': 'Ponle nombre y elige dónde se guarda',
+  'export.moreSettings': 'Más ajustes',
+  'export.moreSettingsHint': 'Preajustes, redes sociales, un GIF o solo el sonido, transparencia, portada y hardware',
+  'export.preview': 'Cómo se verá el archivo',
+  'export.previewHint': 'El fotograma del cabezal, tal como saldrá en el archivo',
+  'export.previewRendering': 'El render, mientras se hace',
+  'export.previewDone': 'Listo',
+  'export.previewLoading': 'Preparando la vista previa…',
+  'export.previewFailed': 'Este fotograma no se puede mostrar antes del render; la exportación lo dibujará igual',
   'export.presetProject': 'Proyecto',
   'export.presetProjectHint': 'MP4 al tamaño del proyecto',
   'export.presetYouTube': 'YouTube 1080p',

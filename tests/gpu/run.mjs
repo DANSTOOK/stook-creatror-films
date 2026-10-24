@@ -158,6 +158,9 @@ async function runPreference(preference) {
 
     // A picture of the dialog the user will see, for the report.
     await window.getByRole('button', { name: /Export/ }).last().click();
+    // The hardware line is under More settings, folded until opened.
+    const moreSettings = window.getByTestId('export-more');
+    if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
     await window.getByText('This render:').waitFor({ timeout: 30_000 });
     await window.screenshot({ path: join(workDir, `dialog-${preference}.png`) });
   } finally {

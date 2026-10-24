@@ -1419,6 +1419,28 @@ section[data-section] > [id^='inspector-section-'],
   }
 }
 
+/* The export's picture, finished: it dims, and the tick grows in over it with the bounce. */
+.scf-export-done {
+  transition: opacity var(--settle-quick) var(--spring-quick);
+}
+
+.scf-export-done > span {
+  transition:
+    opacity var(--settle-quick) var(--spring-quick),
+    transform var(--settle-emphasis-bounce) var(--spring-emphasis-bounce);
+}
+
+@starting-style {
+  .scf-export-done {
+    opacity: 0;
+  }
+
+  .scf-export-done > span {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
 /*
   The full-screen viewer's controls: they fade up when the pointer moves, and
   fade away (drifting 8px down) after a moment of stillness. Opacity only

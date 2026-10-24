@@ -390,7 +390,7 @@ async function main() {
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, workDir);
-    const panel = window.locator('.panel').filter({ hasText: 'Target bitrate' }).first();
+    const panel = window.getByRole('dialog', { name: 'Export' });
     /** Export the timeline through the dialog, with a fault and another video decoding if asked. */
     const exportTimeline = async (name, { fault = null, contention = false } = {}) => {
       // Browse picks the work folder, whatever an import left the dialog doing.
@@ -416,6 +416,9 @@ async function main() {
         }
       }, { fault, contention });
       await window.getByTestId('title-bar').getByRole('button', { name: 'Export', exact: true }).click();
+      // The hardware line is under More settings, folded until opened.
+      const moreSettings = panel.getByTestId('export-more');
+      if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
       await panel.getByText('This render:').waitFor({ timeout: 60_000 });
       await panel.getByLabel('File name').fill(name);
       await panel.getByRole('button', { name: 'Browse' }).click();

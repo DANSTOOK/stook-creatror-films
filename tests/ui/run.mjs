@@ -1204,6 +1204,9 @@ async function main() {
       const s = window.__scfStore.getState().exportSettings;
       return { format: s.format, alpha: s.exportAlpha, size: `${s.width}x${s.height}` };
     });
+    // The presets, networks, GIF and the rest are under More settings, folded until opened.
+    const more = dialog.getByTestId('export-more');
+    if ((await more.getAttribute('aria-expanded')) === 'false') await more.click();
     await dialog.getByRole('button', { name: /^Sprite frames/ }).click();
     const spritePreset = await exportState();
     await dialog.getByRole('button', { name: /^Project/ }).click();

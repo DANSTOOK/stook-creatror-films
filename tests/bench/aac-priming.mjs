@@ -217,6 +217,9 @@ async function main() {
       await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, workDir);
       await window.getByRole('button', { name: 'Export' }).click();
       const dialog = window.locator('div[role="dialog"]').first();
+      // The hardware line is under More settings, folded until opened.
+      const moreSettings = dialog.getByTestId('export-more');
+      if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
       await dialog.getByText('This render:').waitFor({ timeout: 60_000 });
       await dialog.getByLabel('File name').fill(exportName);
       await dialog.getByRole('button', { name: 'Browse' }).click();

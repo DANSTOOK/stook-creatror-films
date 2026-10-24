@@ -11,9 +11,71 @@ Cifras de referencia al día de hoy: **1717 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.85.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.86.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.87.0-beta.1 — Exportar al estilo CapCut: una imagen grande y lo justo al lado (bloque 5b del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: exportar sencillo, con una miniatura grande y lo avanzado plegado en «Más ajustes»; mientras exporta, la vista previa del render y el porcentaje; al terminar, una animación de éxito y abrir o compartir
+
+### Cambiado
+- **La ventana de exportar se abre con una imagen grande de lo que va a
+  salir:** el fotograma del cabezal, dibujado tal como lo dibujará el render
+  (con los efectos, los títulos y el color). Mientras se prepara dice
+  «Preparando la vista previa…».
+- **Al lado, solo lo que casi toda exportación necesita:**
+  - el nombre del archivo y dónde se guarda;
+  - el formato y la resolución;
+  - la tasa de bits que saldrá;
+  - el tramo de la línea de tiempo, con «Toda la línea de tiempo» y, si hay
+    puntos de entrada y salida, «De entrada a salida».
+- **Lo demás queda plegado en «Más ajustes»:** los preajustes, las redes
+  sociales, el GIF, solo el sonido, la transparencia, la portada y el
+  hardware. La app recuerda si lo dejaste abierto, así que quien lo usa
+  siempre lo encuentra abierto.
+- Los **subtítulos**, cuando el montaje los tiene, siguen a la vista, fuera
+  del pliegue: se ven antes de exportar.
+- **Mientras renderiza, la imagen es el propio render**, fotograma a
+  fotograma (se refresca cada 0,4 s), con el porcentaje y el tiempo hecho
+  encima.
+- **Al terminar, una marca verde aparece sobre la imagen** con un pequeño
+  rebote, y al lado la tarjeta del archivo con «Mostrar en la carpeta» y
+  «Reproducir». «Compartir en YouTube» queda debajo.
+- Los pasos ya no llevan número («1.», «2.»): «Ponle nombre y elige dónde se
+  guarda».
+
+### Comprobado
+- **Prueba nueva** `tests/ui/export-simple.mjs` (**7/7**):
+  - la ventana se abre con la imagen del fotograma del cabezal, grande y no
+    negra;
+  - al lado están el nombre, la carpeta, el formato, la resolución y el
+    tramo, y «Más ajustes» empieza plegado;
+  - «Más ajustes» abre los preajustes, las redes y el GIF, y sigue abierto
+    la vez siguiente;
+  - mientras renderiza, la imagen cambia con el render y muestra el
+    porcentaje;
+  - al terminar salen la marca, la tarjeta con «Mostrar en la carpeta» y el
+    archivo donde se pidió;
+  - sin errores en la página.
+- La general, `export-extras` y `export-networks` abren «Más ajustes» antes
+  de usar los preajustes y las redes.
+- Las **68** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+- 1717 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+  - La primera vez, la de extremo a extremo dio 21/22 y la de movimiento no
+    terminó: esperaban la línea de hardware, que ahora está dentro de «Más
+    ajustes», y buscaban la ventana por la tasa de bits, que no se pinta al
+    terminar. Esas pruebas, y los bancos que hacen lo mismo, abren ahora «Más
+    ajustes» y buscan la ventana por su nombre. Pasan 22/22 y 26/26, y la de
+    fotogramas exactos 25/25.
+  - Con ese cambio pasan también los bancos de sincronía de imagen y sonido
+    (4/4 y 9/9) y la prueba de GPU (22/22).
+- **La mega prueba de rendimiento, con nada lento en sus 16 escenarios.** La
+  memoria es de 28 MB al empezar y al terminar.
+  - Las notas de la v1.85 y la v1.86 decían 17 escenarios: eran 16 (conté
+    mal). Corregido en esas dos entradas.
+- La v1.86 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ## v1.86.0-beta.1 — La pantalla de inicio al estilo CapCut, y vuelven los botones del visor (bloque 5a del rediseño)
 2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: «Galería visual» en el inicio; y lo pedido después: «deberías dejar de nuevo los botones del visualizador, los de regresar hasta el principio del track y demás»
@@ -82,7 +144,7 @@ y sin red: **129/129** con la v1.85.0-beta.1 (ninguna petición a la red).
   - Las cuatro pruebas de banco de subtítulos entran ahora desde el inicio.
 - 1717 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
   26/26 de movimiento.
-- **La mega prueba de rendimiento, con nada lento en sus 17 escenarios.** La
+- **La mega prueba de rendimiento, con nada lento en sus 16 escenarios.** La
   memoria es de 32 MB al empezar y al terminar.
 - La v1.85 instalada pasa **129/129** sin red, con la suite de su versión.
 
@@ -205,7 +267,7 @@ y sin red: **129/129** con la v1.85.0-beta.1 (ninguna petición a la red).
   `viewer-select` (9/9).
 - 1715 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
   26/26 de movimiento.
-- **La mega prueba de rendimiento, con nada lento en sus 17 escenarios.** Los
+- **La mega prueba de rendimiento, con nada lento en sus 16 escenarios.** Los
   dos recuadros, de 12 y de 61 clips, no pasan de 7 ms por fotograma. La
   memoria es de 33 MB al empezar y al terminar.
 - La v1.84 instalada pasa **129/129** sin red, con la suite de su versión.

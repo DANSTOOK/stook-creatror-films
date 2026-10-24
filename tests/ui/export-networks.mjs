@@ -81,6 +81,9 @@ async function main() {
     await dialog.getByLabel('File name').fill('trip');
     await dialog.getByRole('button', { name: 'Browse' }).click();
     await sleep(400);
+    // The presets, networks, GIF and the rest are under More settings, folded until opened.
+    const more = dialog.getByTestId('export-more');
+    if ((await more.getAttribute('aria-expanded')) === 'false') await more.click();
 
     console.log('1. how it shows on each');
     await dialog.getByTestId('export-network-tiktok').click();

@@ -832,6 +832,9 @@ async function main() {
     await pick(app, [workDir]);
     await window.getByRole('button', { name: 'Export' }).click();
     const dialog = window.locator('div[role="dialog"]').first();
+    // The hardware line is under More settings, folded until opened.
+    const moreSettings = dialog.getByTestId('export-more');
+    if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
     await dialog.getByText('This render:').waitFor({ timeout: 120_000 });
     await dialog.getByRole('button', { name: /^Project/ }).click();
     const endFrame = Number(await dialog.getByLabel('End frame').inputValue());

@@ -153,7 +153,10 @@ async function main() {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
     }, workDir);
     await window.getByRole('button', { name: 'Export' }).click();
-    const dialog = window.locator('.panel').filter({ hasText: 'Target bitrate' }).first();
+    const dialog = window.getByRole('dialog', { name: 'Export' });
+    // The hardware line is under More settings, folded until opened.
+    const moreSettings = dialog.getByTestId('export-more');
+    if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
     await dialog.getByText('This render:').waitFor({ timeout: 60_000 });
     await dialog.getByLabel('Start frame').fill(String(30 * 60 * FPS));
     await dialog.getByLabel('End frame').fill(String(30 * 60 * FPS + 10 * FPS));

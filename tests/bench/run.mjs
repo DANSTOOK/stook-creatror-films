@@ -28,7 +28,10 @@ if (!source) throw new Error('set BENCH_SOURCE to a video file');
 async function exportOnce(app, window, name, seekPath) {
   await window.evaluate((flag) => { window.__scfSeekExport = flag; }, seekPath);
   await window.getByRole('button', { name: 'Export' }).click();
-  const dialog = window.locator('.panel').filter({ hasText: 'Target bitrate' }).first();
+  const dialog = window.getByRole('dialog', { name: 'Export' });
+  // The hardware line is under More settings, folded until opened.
+  const moreSettings = dialog.getByTestId('export-more');
+  if ((await moreSettings.getAttribute('aria-expanded')) === 'false') await moreSettings.click();
   await dialog.getByText('This render:').waitFor({ timeout: 60_000 });
   await dialog.getByLabel('File name').fill(name);
   await dialog.getByRole('button', { name: 'Browse' }).click();
