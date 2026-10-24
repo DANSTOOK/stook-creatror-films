@@ -360,6 +360,24 @@
     transform: scale(1.15);
   }
 
+  /*
+    The inspector's sliders are bigger, as CapCut's are: a thicker track and
+    a larger knob, easier to catch and to read at a glance across the cards.
+  */
+  [data-testid='inspector-panel'] input[type='range'] {
+    height: 20px;
+  }
+
+  [data-testid='inspector-panel'] input[type='range']::-webkit-slider-runnable-track {
+    height: 4px;
+  }
+
+  [data-testid='inspector-panel'] input[type='range']::-webkit-slider-thumb {
+    width: 15px;
+    height: 15px;
+    margin-top: -5.5px;
+  }
+
   input[type='range']:focus-visible {
     outline: none;
   }

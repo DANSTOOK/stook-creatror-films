@@ -123,7 +123,7 @@ async function main() {
     }, fraction);
 
     console.log('1. the wheels (English)');
-    await window.getByRole('tab', { name: 'Color' }).click();
+    await window.getByRole('tab', { name: 'Adjust' }).click();
     const names = await window.locator('[data-testid^="wheel-"][data-testid$="-disc"]').evaluateAll((discs) => discs.map((disc) => disc.getAttribute('aria-label')));
     check('four wheels, Lift, Gamma, Gain, Offset', names.join('|') === 'Lift colour wheel|Gamma colour wheel|Gain colour wheel|Offset colour wheel', names.join(' / '));
     const liftTip = await window.getByTestId('wheel-lift').locator('.field-label').getAttribute('data-tooltip');
@@ -365,7 +365,7 @@ async function main() {
     await window.getByTestId('language-select').selectOption('es');
     await window.keyboard.press('Escape');
     await sleep(400);
-    await window.getByRole('tab', { name: 'Color' }).click();
+    await window.getByRole('tab', { name: 'Ajustar' }).click();
     const namesEs = await window.locator('[data-testid^="wheel-"][data-testid$="-disc"]').evaluateAll((discs) => discs.map((disc) => disc.getAttribute('aria-label')));
     check('Sombras, Medios, Luces, Global', namesEs.join('|') === 'Rueda de color de Sombras|Rueda de color de Medios|Rueda de color de Luces|Rueda de color de Global', namesEs.join(' / '));
     const tipEs = await window.getByTestId('wheel-lift').locator('.field-label').getAttribute('data-tooltip');

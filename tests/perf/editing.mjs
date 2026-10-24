@@ -242,6 +242,12 @@ async function main() {
       return { x: (clip.startFrame + clip.durationFrames / 2) * ui.pixelsPerFrame - ui.scrollLeftPx, y: lane.top + lane.height / 2, end: (clip.startFrame + clip.durationFrames) * ui.pixelsPerFrame - ui.scrollLeftPx };
     }, id);
     void scroller;
+    // The view the timeline opened with: put back before a scenario that depends on what is on screen.
+    const openingView = await window.evaluate(() => ({ pixelsPerFrame: window.__scfStore.getState().ui.pixelsPerFrame, scrollLeftPx: 0 }));
+    const viewAt = async (view) => {
+      await window.evaluate((ui) => window.__scfStore.getState().setUi(ui), view);
+      await sleep(400);
+    };
 
     /* 1-3. the timeline: scroll, zoom, scrub -------------------------------- */
     await window.mouse.move(canvas.x + canvas.width / 2, canvas.y + 120);
@@ -298,10 +304,14 @@ async function main() {
       await window.mouse.up();
     });
     await window.keyboard.press('Control+z');
-    await scenario('rubber band select', async () => {
-      // From the bottom right of the rows in view to near the top left: the
-      // canvas is as tall as all the rows, most of them scrolled out of sight,
-      // so the band is placed by the part of the timeline on screen.
+    /**
+     * A band from the bottom right of the rows in view to near the top left:
+     * the canvas is as tall as all the rows, most of them scrolled out of
+     * sight, so it is placed by the part of the timeline on screen. How many
+     * clips it chose goes in the report - the same band over more clips is
+     * more work, and a run that chose more is not comparable.
+     */
+    const band = async (name) => {
       const view = await window.evaluate(() => {
         const body = document.querySelector('[data-testid="timeline-canvas"]').closest('.overflow-y-auto');
         const box = body.getBoundingClientRect();
@@ -323,9 +333,31 @@ async function main() {
         await sleep(16);
       }
       await window.mouse.up();
-      const chosen = await window.evaluate(() => window.__scfStore.getState().ui.selectedClipIds.length);
-      if (only) console.log(`        the band chose ${chosen} clips`);
+      return window.evaluate(() => window.__scfStore.getState().ui.selectedClipIds.length);
+    };
+    // The same view every run: the zoom before has its own easing to finish.
+    await viewAt(openingView);
+    let chosen = 0;
+    await scenario('rubber band select', async () => {
+      chosen = await band('rubber band select');
     });
+    if (report.scenarios['rubber band select']) {
+      report.scenarios['rubber band select'].chosen = chosen;
+      console.log(`        the band chose ${chosen} clips`);
+    }
+    // The whole edit in view, and a band over all of it: a selection of many clips at once.
+    await window.evaluate(() => window.__scfStore.getState().selectClips([]));
+    await window.evaluate(() => window.__scfStore.getState().zoomToFit());
+    await sleep(800);
+    await scenario('rubber band over the whole edit', async () => {
+      chosen = await band('rubber band over the whole edit');
+    });
+    if (report.scenarios['rubber band over the whole edit']) {
+      report.scenarios['rubber band over the whole edit'].chosen = chosen;
+      console.log(`        the band chose ${chosen} clips`);
+    }
+    await window.evaluate(() => window.__scfStore.getState().selectClips([]));
+    await viewAt(openingView);
 
     /* 7-8. the viewer: a sticker moved and sized ---------------------------- */
     const sticker = await window.evaluate(() => {
@@ -366,10 +398,14 @@ async function main() {
     /* 9. the inspector: a slider --------------------------------------------- */
     await window.evaluate((id) => window.__scfStore.getState().selectClips([id]), built.ids[0]);
     await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(20));
-    await window.getByRole('tab', { name: 'Color' }).click().catch(() => undefined);
+    // The grade's tab: Adjust, as CapCut names it (Color in builds before v1.85).
+    const gradeTab = window.getByTestId('inspector-panel').getByRole('tab', { name: /^(Adjust|Color)$/ });
+    await gradeTab.click().catch(() => undefined);
     await sleep(500);
-    const slider = window.locator('[data-panel="inspector"] input[type="range"]').first();
+    const slider = window.locator('[data-panel="inspector"] input[type="range"]:visible').first();
     const sliderBox = await slider.boundingBox().catch(() => null);
+    // A scenario that cannot run says so: skipped in silence, it read as a pass.
+    if (!sliderBox && (!only || new RegExp(only).test('drag an inspector slider'))) issues.push('no inspector slider on screen to drag');
     if (sliderBox) {
       await scenario('drag an inspector slider', async () => {
         await window.mouse.move(sliderBox.x + sliderBox.width / 2, sliderBox.y + sliderBox.height / 2);
@@ -445,7 +481,7 @@ async function main() {
     report.heap.end = await heap();
     console.log(`\nJS heap: ${report.heap.start} MB at the start, ${report.heap.end} MB at the end`);
     console.log(report.flagged.length ? `slow: ${report.flagged.join(', ')}` : 'nothing slow');
-    if (issues.length) console.log(`page errors: ${issues.slice(0, 3).join(' | ')}`);
+    if (issues.length) console.log(`issues: ${issues.slice(0, 5).join(' | ')}`);
     report.issues = issues;
   } finally {
     await writeFile(join(work, 'report.json'), JSON.stringify(report, null, 2)).catch(() => undefined);

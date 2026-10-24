@@ -222,7 +222,7 @@ export const fxEn = {
   'fxp.brightness': 'Brightness',
   'fxp.remove': 'Remove',
   'fxp.applied': 'On this clip ({count})',
-  'fxp.nothingApplied': 'Nothing yet. Drag an effect, a movement or an animation from the Effects tab of the library onto the clip, or pick one below.',
+  'fxp.nothingApplied': 'Nothing yet. Drag an effect, a movement or an animation from the Effects tab of the library onto the clip, or pick a movement or an animation below.',
   'fxp.kind': 'Which',
   'fxp.none': 'None',
   'fxp.zoom': 'Zoom',

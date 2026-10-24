@@ -35,12 +35,13 @@ export function effectClipAt(project: ProjectState, trackId: string | null, fram
   );
 }
 
-/** Put `item` on the clip, and bring the clip forward in the inspector, on its Effects tab, where what is on it shows. */
+/** Put `item` on the clip, and bring the clip forward in the inspector, on the tab where it is changed. */
 export function applyLibraryItem(clip: Clip, item: LibraryEffectItem): void {
   const [kind, id] = item.split(':');
   if (kind === 'effect') addStackEffect(clip, id);
   else if (kind === 'anim') applyClipAnimation(clip.id, id as ClipAnimationId);
   else applyMotionPreset(clip.id, id as MotionPresetId);
   useProjectStore.getState().setUi({ selectedClipIds: [clip.id], selectedTrackId: clip.trackId });
-  window.dispatchEvent(new Event(SHOW_CLIP_FX_EVENT));
+  // The tab it is changed on: an effect's card is on Video, a move's or an animation's on Animation.
+  window.dispatchEvent(new CustomEvent(SHOW_CLIP_FX_EVENT, { detail: { tab: kind === 'effect' ? 'video' : 'fx' } }));
 }

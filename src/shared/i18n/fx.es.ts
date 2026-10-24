@@ -216,7 +216,7 @@ export const fxEs: Record<keyof typeof fxEn, string> = {
   'fxp.brightness': 'Brillo',
   'fxp.remove': 'Quitar',
   'fxp.applied': 'En este clip ({count})',
-  'fxp.nothingApplied': 'Nada todavía. Arrastra un efecto, un movimiento o una animación desde la pestaña Efectos de la biblioteca hasta el clip, o elige uno aquí abajo.',
+  'fxp.nothingApplied': 'Nada todavía. Arrastra un efecto, un movimiento o una animación desde la pestaña Efectos de la biblioteca hasta el clip, o elige aquí abajo un movimiento o una animación.',
   'fxp.kind': 'Cuál',
   'fxp.none': 'Ninguno',
   'fxp.zoom': 'Zoom',

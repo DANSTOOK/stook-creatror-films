@@ -716,7 +716,7 @@ async function main() {
     }, lutPath);
 
     // Looks live in the inspector's Color tab.
-    await window.getByRole('tab', { name: 'Color' }).click();
+    await window.getByRole('tab', { name: 'Adjust' }).click();
     // By its whole name: the Color tab also has a section called LUT.
     await window.getByRole('button', { name: /Load .cube LUT/ }).click();
     // The line that says which look is on THIS clip, by its own test id: the
@@ -742,7 +742,7 @@ async function main() {
 
     // Reopening clears the selection, so the clip has to be picked again.
     await surface.click({ position: { x: 60, y: await video1RowY(window) } });
-    await window.getByRole('tab', { name: 'Color' }).click();
+    await window.getByRole('tab', { name: 'Adjust' }).click();
     const lutSurvived = await window.getByTestId('lut-current').filter({ hasText: 'identity.cube' })
       .isVisible().catch(() => false);
     check('LUT survives saving and reopening the project', lutSurvived);

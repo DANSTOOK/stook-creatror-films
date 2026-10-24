@@ -7,11 +7,135 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1710 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1715 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.83.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.84.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.85.0-beta.1 — El inspector y el texto en el visor, al estilo CapCut (bloques 4b y 4c del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: pestañas como las de CapCut, tarjetas con deslizadores grandes, sin nada seleccionado los ajustes del proyecto, y «Editar en el visor» con barra flotante
+
+### Cambiado
+- **Las pestañas del inspector, como las de CapCut:** Vídeo · Audio ·
+  Velocidad · Animación · Ajustar · Info, en ese orden.
+  - Con seis pestañas la letra baja a 11 px, para que quepan sin cortarse.
+  - Una foto no tiene Audio ni Velocidad.
+  - Un sonido tiene Audio, Velocidad e Info.
+  - Un título tiene Título, Vídeo, Animación e Info.
+- **Vídeo** reúne lo que cambia cómo se ve y dónde está la imagen:
+  transformar, estabilizar, congelar, la máscara, el croma, quitar el fondo,
+  el pixel art y la pila de efectos con «Añadir efecto». Es como el Vídeo de
+  CapCut, que trae ahí la máscara y quitar el fondo.
+- **Animación** (antes «Efectos») tiene lo que hay en el clip de un vistazo,
+  su movimiento y sus animaciones de entrada, salida y bucle. Seguir el
+  movimiento de otro clip también está aquí.
+- **Ajustar** (antes «Color») es la corrección de color, como el Ajustar de
+  CapCut.
+- Un efecto puesto desde la biblioteca trae al frente la pestaña **Vídeo**,
+  donde está su tarjeta. Un movimiento o una animación traen **Animación**.
+- **Los grupos son tarjetas** redondeadas, en lugar de franjas de lado a lado.
+- **Los deslizadores del inspector son más grandes:** pista de 4 px (antes 3)
+  y perilla de 15 px (antes 12).
+- **Las filas con interruptor muestran su nombre entero**, en dos líneas si
+  hace falta, con el interruptor a la derecha. Antes cortaban «Reproducir al…».
+
+### Añadido
+- **Pestaña Velocidad**, para vídeo y sonido:
+  - un deslizador de 0,1× a 10× con 1× en el centro, logarítmico, así que la
+    mitad y el doble quedan a la misma distancia. Cerca de 1× se pega a 1×, y
+    las flechas del teclado salen de ahí;
+  - el campo exacto de la velocidad y la duración, que da la velocidad que la
+    cumple;
+  - las curvas de velocidad, reproducir al revés y «mover lo que sigue en
+    esta pista»;
+  - todo se aplica al momento, y arrastrar el deslizador es un solo paso de
+    deshacer. El diálogo de Velocidad (Ctrl+R) sigue ahí.
+- **Sin nada seleccionado, el inspector muestra los ajustes del proyecto**,
+  como CapCut muestra los del borrador:
+  - la proporción y la resolución (720p, 1080p, 1440p o 4K en la forma
+    actual). Las dos encajan las imágenes en el cuadro nuevo, sin estirarlas,
+    y lo que estaba fuera del centro se aleja en la misma proporción;
+  - los fotogramas por segundo, el fondo transparente y la duración;
+  - un botón «Más ajustes del proyecto…».
+- **Una barra flotante para el texto en el visor** (bloque 4c). Al escribir
+  en un título con doble clic, como ya se podía, aparece junto al título una
+  barra como la del reproductor de CapCut, con:
+  - la fuente, la negrita y el tamaño (− y +);
+  - el color, la alineación izquierda, centrada o derecha, y las mayúsculas;
+  - **«Listo»**.
+
+  Cada cambio se ve al momento y es su propio paso de deshacer.
+  - **La edición no se cierra al usarla:** los botones no quitan el foco al
+    texto, así que se puede seguir escribiendo. La lista de fuentes y el
+    color devuelven el foco al texto al elegir.
+  - La barra se coloca encima de la caja del título, o debajo si no cabe, sin
+    salirse de la imagen.
+  - Escape, «Listo» o un clic en otro sitio terminan la edición, como antes.
+
+### Arreglado
+- **«Modo de fusiÃ³n» y «ExclusiÃ³n»** en el inspector en español: el texto
+  estaba guardado con la codificación equivocada. Ahora dicen «Modo de
+  fusión» y «Exclusión». Una prueba unitaria nueva revisa todas las
+  traducciones para que no vuelva a pasar.
+
+- **El deslizador de velocidad se quedaba atascado en 1× con el teclado.**
+  Cada flecha movía una milésima del recorrido, dentro de la zona que se pega
+  a 1×. Ahora cada flecha mueve un 2 % de velocidad, y la zona de pegado es
+  del 1,5 %. Lo encontró la prueba nueva del inspector.
+
+### Arreglado (en las pruebas)
+- **La mega prueba de rendimiento se saltaba en silencio el deslizador del
+  inspector.** Buscaba la pestaña «Color», que ahora se llama «Ajustar».
+  Ahora encuentra la pestaña con cualquiera de los dos nombres, y si un
+  escenario no puede correr, lo anota como problema en vez de omitirlo.
+- **El recuadro de selección se mide siempre igual:** antes de medir se
+  recupera el zoom y el desplazamiento con que se abrió la línea de tiempo, y
+  el informe dice cuántos clips eligió (12). Lo que medía de más algunas
+  veces dependía de dónde había dejado la vista el zoom anterior.
+- **Un escenario nuevo:** un recuadro sobre todo el montaje, que elige 61
+  clips a la vez.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/inspector-tabs.mjs` (**21/21**):
+  - las pestañas de un vídeo, una foto, un sonido y un título, en el orden
+    de CapCut y sin cortarse;
+  - qué hay en Vídeo y en Animación;
+  - un efecto de la biblioteca trae Vídeo y un movimiento trae Animación;
+  - la Velocidad: el deslizador al máximo da 10× y una décima de la
+    duración; un «deshacer» lo devuelve; arrastrarlo es un solo paso; 6 s
+    escritos en un clip de 12 s dan 2×; la curva y el «al revés»;
+  - sin selección, los ajustes del proyecto: 4K deja la imagen con su escala
+    y su posición al doble, y se pueden cambiar los fotogramas por segundo y
+    abrir el resto;
+  - los grupos son tarjetas;
+  - en español: Vídeo · Audio · Velocidad · Animación · Ajustar · Info, sin
+    texto mal codificado.
+- **Prueba nueva** `tests/ui/title-toolbar.mjs` (**10/10**):
+  - la barra aparece junto al texto, sin taparlo y dentro de la imagen;
+  - más grande, negrita, a la derecha y mayúsculas cambian el título sin
+    cerrar la edición, y lo que se escribe después sigue entrando;
+  - la fuente cambia y se sigue escribiendo;
+  - «Listo» o un clic fuera terminan la edición;
+  - cada cambio es un paso de deshacer.
+- **5 pruebas unitarias nuevas** que buscan texto mal codificado en las
+  cuatro listas de traducciones, y que de verdad lo detectan.
+- Cuatro pruebas esperaban la pestaña «Color» y ahora esperan «Ajustar»:
+  `adjustment` 6/6, `curves` 21/21, `grade` 32/32 y `workspaces` 5/5.
+- Las **66** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+  Tras añadir la barra de texto se repitieron la general, las de títulos
+  (`titles` 33/33, `titles-motion` 30/30, `title-library` 12/12), la de
+  movimiento de la interfaz (18/18), la de tema y contraste (7/7) y
+  `viewer-select` (9/9).
+- 1715 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento, con nada lento en sus 17 escenarios.** Los
+  dos recuadros, de 12 y de 61 clips, no pasan de 7 ms por fotograma. La
+  memoria es de 33 MB al empezar y al terminar.
+- La v1.84 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ---
 

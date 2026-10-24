@@ -43,8 +43,8 @@ export interface SpeedDialogProps {
   onApply(change: { speed: number; reversed: boolean; ripple: boolean; ramp: SpeedRampPreset | null }): void;
 }
 
-const RAMPS = Object.keys(SPEED_RAMPS) as SpeedRampPreset[];
-const RAMP_LABEL: Record<SpeedRampPreset, 'ramp.montage' | 'ramp.hero' | 'ramp.bullet' | 'ramp.jump' | 'ramp.flashIn' | 'ramp.flashOut'> = {
+export const RAMPS = Object.keys(SPEED_RAMPS) as SpeedRampPreset[];
+export const RAMP_LABEL: Record<SpeedRampPreset, 'ramp.montage' | 'ramp.hero' | 'ramp.bullet' | 'ramp.jump' | 'ramp.flashIn' | 'ramp.flashOut'> = {
   montage: 'ramp.montage',
   hero: 'ramp.hero',
   bullet: 'ramp.bullet',
@@ -54,7 +54,7 @@ const RAMP_LABEL: Record<SpeedRampPreset, 'ramp.montage' | 'ramp.hero' | 'ramp.b
 };
 
 /** A ramp drawn: its speed along the clip, the line at 1x dotted. */
-function RampShape({ preset }: { preset: SpeedRampPreset | null }): JSX.Element {
+export function RampShape({ preset }: { preset: SpeedRampPreset | null }): JSX.Element {
   const points = preset ? SPEED_RAMPS[preset] : [1, 1];
   const top = Math.max(...points, 1);
   const path = points.map((value, index) => `${(index / (points.length - 1)) * 56 + 2},${22 - (value / top) * 18}`).join(' ');

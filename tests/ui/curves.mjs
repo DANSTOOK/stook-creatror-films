@@ -107,7 +107,7 @@ async function main() {
     }, [fx, fy]);
 
     console.log('1. the curve editor (English)');
-    await window.getByRole('tab', { name: 'Color' }).click();
+    await window.getByRole('tab', { name: 'Adjust' }).click();
     const master = window.getByTestId('curve-master');
     await master.scrollIntoViewIfNeeded();
     const picks = await window.locator('[data-testid^="curve-pick-"]').evaluateAll((items) => items.map((item) => item.textContent.trim()));
@@ -276,7 +276,7 @@ async function main() {
     await window.getByTestId('language-select').selectOption('es');
     await window.keyboard.press('Escape');
     await sleep(400);
-    await window.getByRole('tab', { name: 'Color' }).click();
+    await window.getByRole('tab', { name: 'Ajustar' }).click();
     const titles = await window.locator('section[data-section="curves"] h3, section[data-section="versusCurves"] h3, section[data-section="vignette"] h3')
       .allInnerTexts();
     const picksEs = await window.locator('[data-testid^="curve-pick-"]').evaluateAll((items) => items.slice(0, 4).map((item) => item.textContent.trim()));

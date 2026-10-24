@@ -224,9 +224,10 @@ export function SliderRow({
 
 export function SwitchRow({ label, checked, onChange, testId }: { label: string; checked: boolean; onChange(value: boolean): void; testId?: string }): JSX.Element {
   return (
-    <label className="grid grid-cols-[76px_1fr] items-center gap-2 text-xs text-slate-300">
-      <span className="field-label truncate">{label}</span>
-      <input type="checkbox" role="switch" data-testid={testId} checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    // The name whole, over two lines if it needs them, and the switch at the end of the row, as CapCut's toggles sit.
+    <label className="flex items-center justify-between gap-2 text-xs text-slate-300">
+      <span className="field-label min-w-0 leading-snug">{label}</span>
+      <input type="checkbox" role="switch" className="shrink-0" data-testid={testId} checked={checked} onChange={(event) => onChange(event.target.checked)} />
     </label>
   );
 }
@@ -256,7 +257,9 @@ export function Section({ id, title, open, onOpenChange, enabled, onEnabledChang
   const t = useT();
   const bodyId = `inspector-section-${id}`;
   return (
-    <section data-section={id} data-state={open ? 'open' : 'closed'} data-flip-key={id} className="border-b border-panel-800">
+    // A card, as CapCut's inspector lays its groups out, rather than a band across the panel.
+    <section data-section={id} data-state={open ? 'open' : 'closed'} data-flip-key={id} className="mx-2 my-1.5 rounded-menu border border-panel-700/70 bg-panel-800/40">
+
       <div className="flex h-9 items-center gap-1 pl-1.5 pr-2">
         <button
           type="button"

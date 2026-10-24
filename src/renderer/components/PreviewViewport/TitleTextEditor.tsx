@@ -5,6 +5,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { fontString } from '@renderer/text/fonts';
 import type { TitleLayout } from '@renderer/text/layout';
 import { TITLE_SAFE } from '@renderer/text/titleStyle';
+import { keepsTitleEdit } from './TitleToolbar';
 
 /**
  * Typing into a title where it is, as Final Cut does on a double-click.
@@ -149,6 +150,13 @@ export function TitleTextEditor({ clip, layout, frame, matrix, onDone }: TitleTe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clip.id]);
 
+  // A size or a font changed from the toolbar: the editable lines take it, so the caret stays on the letters.
+  useEffect(() => {
+    if (rootRef.current) restyle(rootRef.current);
+    // restyle reads the style it is drawn with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [style]);
+
   // The title gone from under the editor (deleted, undone): the edit is over.
   useEffect(() => {
     if (!title) doneRef.current();
@@ -216,7 +224,10 @@ export function TitleTextEditor({ clip, layout, frame, matrix, onDone }: TitleTe
             restyle(root);
             setTitleTextLive(clip.id, readLines(root).join('\n'));
           }}
-          onBlur={() => doneRef.current()}
+          // Into the floating toolbar (TitleToolbar) is still editing; anywhere else finishes.
+          onBlur={(event) => {
+            if (!keepsTitleEdit(event.relatedTarget)) doneRef.current();
+          }}
           style={{
             position: 'absolute',
             left,

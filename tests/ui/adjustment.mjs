@@ -10,7 +10,7 @@ import { _electron as electron } from 'playwright';
  *
  * Eight seconds of red under an adjustment layer added at the playhead (1 s):
  *   1. "+ Adjust" puts it on a track of its own over everything, five seconds
- *      long, selected, as one undo step - and the inspector offers its Color tab;
+ *      long, selected, as one undo step - and the inspector offers its Adjust tab;
  *   2. its saturation taken to nothing turns the red grey in the export's own
  *      picture while it lasts - and only then: red before it and after it;
  *   3. at 50 % opacity it is half way: a red half as strong;
@@ -75,8 +75,8 @@ async function main() {
       const highest = Math.max(...s.project.tracks.filter((t) => t.type === 'video').map((t) => t.order));
       return { id: clip?.id, start: clip?.startFrame, length: clip?.durationFrames, onTop: track?.order === highest, selected: s.ui.selectedClipIds[0] === clip?.id, track: track?.name };
     });
-    const colorTab = await window.locator('[role="tab"]').filter({ hasText: /^Color$/ }).count();
-    check('it goes on a track of its own over everything, 5 s from the playhead, selected; its Color tab is there',
+    const colorTab = await window.locator('[role="tab"]').filter({ hasText: /^Adjust$/ }).count();
+    check('it goes on a track of its own over everything, 5 s from the playhead, selected; its Adjust tab is there',
       added.id && added.start === 30 && added.length === 150 && added.onTop && added.selected && colorTab > 0, JSON.stringify(added));
 
     const sample = (frames) =>

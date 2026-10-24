@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
-import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, SlidersHorizontal, Snowflake, Music2, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, Snowflake, Music2, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -32,6 +32,8 @@ import { LayerRow } from './LayerRow';
 import { BackgroundRemovalRows } from './BackgroundRemovalRows';
 import { EffectStack, addStackEffect, effectMenuItems } from './EffectStack';
 import { ClipFxPanel } from './ClipFxPanel';
+import { SpeedTab } from './SpeedTab';
+import { ProjectPanel } from './ProjectPanel';
 import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
@@ -44,7 +46,6 @@ import { assetHasSound } from '@renderer/components/Timeline/detachAudio';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
-import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
 import { BLEND_MODES, type BlendMode } from '@shared/types';
 import { pairedClip } from '@renderer/components/Timeline/detachAudio';
 import { rejoinSelectionAudio } from '@renderer/hooks/useTransport';
@@ -74,7 +75,7 @@ import { rejoinSelectionAudio } from '@renderer/hooks/useTransport';
  * and the typing are converted; the project stores what it always did.
  */
 
-type Tab = 'title' | 'caption' | 'captionStyle' | 'video' | 'fx' | 'audio' | 'color' | 'info';
+type Tab = 'title' | 'caption' | 'captionStyle' | 'video' | 'fx' | 'audio' | 'speed' | 'color' | 'info';
 type Effect = 'mask' | 'chromaKey' | 'backgroundRemoval' | 'pixelArt';
 
 const TAB_LABELS: Record<Tab, MessageKey> = {
@@ -82,9 +83,11 @@ const TAB_LABELS: Record<Tab, MessageKey> = {
   caption: 'inspector.tabCaption',
   captionStyle: 'inspector.tabCaptionStyle',
   video: 'inspector.tabVideo',
-  fx: 'inspector.tabFx',
+  // CapCut's names: the moves and animations are Animation, the grade is Adjust.
+  fx: 'inspector.tabAnimation',
   audio: 'inspector.tabAudio',
-  color: 'inspector.tabColor',
+  speed: 'inspector.tabSpeed',
+  color: 'inspector.tabAdjust',
   info: 'inspector.tabInfo',
 };
 
@@ -195,7 +198,7 @@ export function Inspector(): JSX.Element {
   const [tab, setTab] = useState<Tab>('video');
   // Something put on a clip from the library brings its Effects tab forward, where it can be seen and changed.
   useEffect(() => {
-    const show = (): void => setTab('fx');
+    const show = (event: Event): void => setTab((event as CustomEvent<{ tab?: Tab } | undefined>).detail?.tab ?? 'fx');
     window.addEventListener(SHOW_CLIP_FX_EVENT, show);
     return () => window.removeEventListener(SHOW_CLIP_FX_EVENT, show);
   }, []);
@@ -356,10 +359,9 @@ export function Inspector(): JSX.Element {
           <span className="min-w-0 flex-1 truncate">{t('inspector.title')}</span>
           <DetachButton panel="inspector" />
         </header>
-        {/* Centred in the whole column, icon and two lines, the same empty
-            state the detached inspector window shows: a single line pinned to
-            the top of a tall panel read as broken. */}
-        <PanelEmptyState icon={SlidersHorizontal} title={t('panel.noneSelected')} hint={t('panel.noneSelectedHint')} />
+        {/* Nothing selected: the project's own settings, as CapCut's
+            inspector shows the draft's (ProjectPanel). */}
+        <ProjectPanel />
       </aside>
     );
   }
@@ -371,11 +373,12 @@ export function Inspector(): JSX.Element {
   // Only the tabs that mean something for this clip. A title has no sound, and
   // its colours are set on the Title tab rather than graded.
   // A caption is its text and its time; how it looks is its track's, on a tab of its own.
+  // In CapCut's order: Video, Audio, Speed, Animation, Adjust. A still has no speed.
   const tabs: Tab[] = clip.caption
     ? ['caption', 'captionStyle', 'info']
     : clip.title
     ? ['title', 'video', 'fx', 'info']
-    : audioOnly ? ['audio', 'info'] : still ? ['video', 'fx', 'color', 'info'] : ['video', 'fx', 'audio', 'color', 'info'];
+    : audioOnly ? ['audio', 'speed', 'info'] : still ? ['video', 'fx', 'color', 'info'] : ['video', 'audio', 'speed', 'fx', 'color', 'info'];
   const current: Tab = tabs.includes(tab) ? tab : tabs[0];
 
   const sectionProps = (id: string): Pick<SectionProps, 'id' | 'open' | 'onOpenChange'> => ({
@@ -551,18 +554,6 @@ export function Inspector(): JSX.Element {
           </button>
         </div>
       )}
-    </>
-  );
-
-  /*
-    Effects tab: everything put on the clip - the move and animations
-    (ClipFxPanel), then keying and shape, then the effect stack, and the one
-    button that adds more. They were at the foot of the Video tab, under the
-    transform, where what was on a clip was hard to find.
-  */
-  const fxTab = (
-    <>
-      <ClipFxPanel clip={clip} />
 
       {shownEffects.some((effect) => effect.id === 'mask') && (
         <Section
@@ -688,6 +679,18 @@ export function Inspector(): JSX.Element {
             {t('inspector.addEffect')}
           </button>
       </div>
+    </>
+  );
+
+  /*
+    Animation tab, CapCut's: what is on the clip at a glance, its move and its
+    in, out and loop animations (ClipFxPanel). The keying and the effect
+    stack are on the Video tab, under the transform, as CapCut's Video tab
+    has its mask and background removal.
+  */
+  const fxTab = (
+    <>
+      <ClipFxPanel clip={clip} />
     </>
   );
 
@@ -1067,9 +1070,10 @@ export function Inspector(): JSX.Element {
             aria-selected={current === id}
             aria-controls="inspector-tabpanel"
             tabIndex={current === id ? 0 : -1}
-            // A quarter each of a docked inspector; in a wide window, as wide
-            // as a name needs and no wider, rather than 400px apiece.
-            className={`relative h-control-dense max-w-36 flex-1 rounded-control text-xs transition-colors ${
+            // As wide as its name, the spare room shared out; never 400px
+            // apiece in a wide window. Six of them (a video: Video, Audio,
+            // Speed, Animation, Adjust, Info) take the smaller type to fit.
+            className={`relative h-control-dense min-w-0 max-w-36 flex-auto whitespace-nowrap rounded-control px-1 ${tabs.length > 4 ? 'text-[11px]' : 'text-xs'} transition-colors ${
               current === id ? 'font-semibold text-slate-100' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
@@ -1118,6 +1122,7 @@ export function Inspector(): JSX.Element {
         {current === 'video' && videoTab}
         {current === 'fx' && fxTab}
         {current === 'audio' && audioTab}
+        {current === 'speed' && <SpeedTab clip={clip} fps={project.fps} sectionProps={sectionProps} />}
         {current === 'color' && colorTab}
         {current === 'info' && <InfoRows clip={clip} asset={asset} fps={project.fps} />}
         </div>

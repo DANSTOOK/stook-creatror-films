@@ -31,3 +31,12 @@ export function frameForAspect(width: number, height: number, id: AspectId): { w
   const aspect = ASPECTS.find((entry) => entry.id === id) ?? ASPECTS[0];
   return reframedSize(width, height, { w: aspect.across, h: aspect.down });
 }
+
+/** The sharpnesses offered for any shape, by the frame's short side: 720p, 1080p, 1440p and 4K. */
+export const SHORT_SIDES = [720, 1080, 1440, 2160] as const;
+
+/** The frame of that shape whose short side is `short`: 1080 makes 1920×1080 in 16:9 and 1080×1920 in 9:16. */
+export const frameAtShortSide = (id: AspectId, short: number): { width: number; height: number } => frameForAspect(short, short, id);
+
+/** What the short side is called: 720p, 1080p, 1440p, 4K. */
+export const sharpnessName = (short: number): string => (short === 2160 ? '4K' : `${short}p`);

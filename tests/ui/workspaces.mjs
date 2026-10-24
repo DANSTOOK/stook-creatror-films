@@ -10,7 +10,7 @@ import { _electron as electron } from 'playwright';
  *
  * With a clip selected:
  *   1. Color puts the library away, opens the scopes beside the picture and
- *      brings the inspector's Color tab forward;
+ *      brings the inspector's Adjust tab forward;
  *   2. Audio opens the mixer, the inspector's Audio tab and the library's
  *      Sounds;
  *   3. Editing brings every panel back, closes the mixer and the scopes, and
@@ -91,7 +91,7 @@ async function main() {
 
     console.log('1. Color');
     const color = await pick('color');
-    check('Color: the library away, the scopes open, the inspector on Color', !color.library && color.scopes && !color.mixer && color.tab === 'Color', JSON.stringify(color));
+    check('Color: the library away, the scopes open, the inspector on Adjust', !color.library && color.scopes && !color.mixer && color.tab === 'Adjust', JSON.stringify(color));
     console.log('2. Audio');
     const audio = await pick('audio');
     check('Audio: the mixer, the inspector on Audio, the library on Sounds', audio.library && audio.mixer && audio.sounds && !audio.scopes && audio.tab === 'Audio', JSON.stringify(audio));

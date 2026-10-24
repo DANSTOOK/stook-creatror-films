@@ -26,6 +26,7 @@ import {
   type Point,
 } from './viewportTransform';
 import { TitleTextEditor } from './TitleTextEditor';
+import { TitleToolbar } from './TitleToolbar';
 import { hasClipFx, legacyBase, placeAnimatedClip } from '@renderer/fx/motion/apply';
 import type { ClipTransform } from '@shared/types';
 
@@ -435,6 +436,23 @@ export function ViewportControls(): JSX.Element | null {
       : null;
 
   const editing = editingTitleId ? visible.find((placed) => placed.clip.id === editingTitleId && placed.clip.title) : undefined;
+  // Title pixels to the picture on screen: the compositor's own sum, then project pixels to CSS pixels.
+  const editMatrix = editing?.layer
+    ? (layerToPixels(editing.transform, frame, editing.layer).map((value) => value / projectPxPerCssPx) as [number, number, number, number, number, number])
+    : null;
+  /** The edited title's box on the picture, in CSS pixels: where its toolbar floats. */
+  const editBox = (() => {
+    if (!editing?.layer || !editMatrix) return null;
+    const [a, b, c, d, e, f] = editMatrix;
+    const { x, y, width, height } = editing.layer.rect;
+    const corners = [[x, y], [x + width, y], [x, y + height], [x + width, y + height]].map(([px, py]) => ({ x: a * px + c * py + e, y: b * px + d * py + f }));
+    return {
+      left: Math.min(...corners.map((corner) => corner.x)),
+      right: Math.max(...corners.map((corner) => corner.x)),
+      top: Math.min(...corners.map((corner) => corner.y)),
+      bottom: Math.max(...corners.map((corner) => corner.y)),
+    };
+  })();
   const safeX = (project.width * (1 - TITLE_SAFE)) / 2;
   const safeY = (project.height * (1 - TITLE_SAFE)) / 2;
 
@@ -626,18 +644,18 @@ export function ViewportControls(): JSX.Element | null {
         )}
       </svg>
 
-      {editing?.clip.title && editing.layer && (
+      {editing?.clip.title && editing.layer && editMatrix && (
         <TitleTextEditor
           key={editing.clip.id}
           clip={editing.clip}
           layout={titleLayout(editing.clip.title, frame)}
           frame={frame}
-          // Title pixels to the picture on screen: the compositor's own sum,
-          // then project pixels to CSS pixels.
-          matrix={layerToPixels(editing.transform, frame, editing.layer).map((value) => value / projectPxPerCssPx) as [number, number, number, number, number, number]}
+          matrix={editMatrix}
           onDone={() => setUi({ editingTitleId: null })}
         />
       )}
+      {/* The text's own toolbar, by the title, as CapCut's player puts one (TitleToolbar). */}
+      {editing?.clip.title && editBox && <TitleToolbar clip={editing.clip} box={editBox} onDone={() => setUi({ editingTitleId: null })} />}
     </>
   );
 }

@@ -1400,8 +1400,14 @@ export const en = {
   /* Inspector: tabs and sections ----------------------------------------- */
   'inspector.tabVideo': 'Video',
   'inspector.tabAudio': 'Audio',
-  'inspector.tabColor': 'Color',
-  'inspector.tabFx': 'Effects',
+  'inspector.tabAdjust': 'Adjust',
+  'inspector.tabAnimation': 'Animation',
+  'inspector.tabSpeed': 'Speed',
+  'inspector.projectHint': 'Nothing is selected, so these are the project’s settings. Click a clip or a transition to see its own.',
+  'inspector.projectSize': 'Resolution',
+  'inspector.projectFps': 'Frame rate',
+  'inspector.projectTransparent': 'Transparent background',
+  'inspector.projectMore': 'More project settings…',
   'inspector.duckMusic': 'Lower the music when someone speaks',
   'inspector.duckMusicHint': 'Auto ducking: the music on this track dips under the voice tracks and comes back after. How far and how fast is in the Mixer, under Ducking, with which tracks are voice.',
   'inspector.duckMusicNoVoice': 'No track is marked as voice yet: mark one in the Mixer, under Ducking, for the music to dip under it.',
@@ -1499,6 +1505,11 @@ export const en = {
 
   /* Titles, phase 2 --------------------------------------------------------- */
   'title.editInViewer': 'Title text',
+  'title.toolbar': 'Text',
+  'title.bold': 'Bold',
+  'title.smaller': 'Smaller',
+  'title.bigger': 'Bigger',
+  'title.doneEditing': 'Done',
   'title.sectionAnimation': 'Animation',
   'title.entrance': 'In',
   'title.exit': 'Out',
