@@ -8,6 +8,7 @@ import { useT, t } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { currentMarker, useSessionStore } from '@renderer/store/useSessionStore';
 import { notify } from '@renderer/notifications/notifications';
+import { errorText } from '@renderer/errorText';
 import { rehydrateDocument } from '@renderer/media/importMedia';
 
 /**
@@ -31,7 +32,7 @@ export async function saveAsTemplate(name: string): Promise<boolean> {
     notify(t('template.saved', { name }), 'success');
     return true;
   } catch (error) {
-    notify(t('template.failed', { detail: error instanceof Error ? error.message : String(error) }), 'error');
+    notify(t('template.failed', { detail: errorText(error) }), 'error');
     return false;
   }
 }
@@ -46,7 +47,7 @@ export async function openTemplate(template: ProjectTemplate): Promise<boolean> 
     notify(t('template.opened', { name: template.name }), 'success');
     return true;
   } catch (error) {
-    notify(t('template.openFailed', { detail: error instanceof Error ? error.message : String(error) }), 'error');
+    notify(t('template.openFailed', { detail: errorText(error) }), 'error');
     return false;
   }
 }

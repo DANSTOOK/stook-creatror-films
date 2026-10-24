@@ -7,11 +7,98 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1682 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1684 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.79.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.80.0-beta.1 — Nuevo aspecto, estilo CapCut (bloques 1 y 2 del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las 34 preguntas de diseño
+
+### Cambiado — bloque 1: colores, letra, botones y avisos
+- **Acento cian**, el de CapCut, en lugar del azul. Va con el texto oscuro
+  encima, porque el blanco sobre cian no se lee: 9:1 de contraste, muy por
+  encima del mínimo de 4,5:1. El azul y los demás colores siguen en
+  Preferencias › Apariencia. Quien tenía el azul por defecto pasa al cian; si
+  alguien lo había elegido a propósito, puede volver a elegirlo.
+- **Botones redondeados y rellenos:**
+  - el botón principal (Exportar, Crear proyecto, Listo…) es un degradado
+    cian con un brillo suave;
+  - los secundarios («Examinar», «Copiar informe», «Añadir a la cola»…) van
+    rellenos en vez de tener solo el contorno;
+  - las esquinas son más redondas (6 px en los controles, 8 en menús y
+    tarjetas, 12 en los paneles) y los iconos un poco más gruesos;
+  - las casillas, los botones de opción y los deslizadores van en el acento.
+- **Letra compacta:** el texto normal pasa a 12 px y los títulos se distinguen
+  por el grosor, no por el tamaño.
+- **Avisos en forma de píldora**, arriba en el centro, sobre el visor. Antes
+  salían abajo a la derecha y tapaban la línea de tiempo. Bajan con un rebote
+  y suben al irse. Los errores tienen el borde rojo.
+
+### Cambiado — bloque 2: barra superior y biblioteca
+- **La barra superior, como la de CapCut:**
+  - a la izquierda, el menú, Inicio, **Deshacer**, **Rehacer** y el historial;
+  - en el centro, **el nombre del proyecto**, que se cambia con un clic.
+    Enter lo guarda y Escape lo deja como estaba. Si el proyecto ya está
+    guardado, se renombra también su archivo en el disco, sus copias de
+    seguridad y su lugar en la pantalla de inicio. No se puede usar un nombre
+    que ya tenga otro proyecto de la misma carpeta;
+  - a la derecha, el espacio de trabajo, los tres botones de distribución, los
+    avisos, el menú **«⋯» Más** y un único botón grande de **Exportar**.
+
+  En el menú Más están: buscar un comando (Ctrl+Mayús+P), el mezclador,
+  Preferencias, los atajos y el recorrido.
+- **El mezclador** pasa a la barra de la línea de tiempo, junto a Voz y al
+  micrófono, que es donde está el sonido. También sigue en el menú Más.
+- **La biblioteca es una barra lateral**, como la de CapCut: Medios, Títulos,
+  Transiciones, Efectos, Stickers, Sonidos, Voz y Subtítulos. Cada sección
+  tiene su icono y su nombre siempre visibles; las flechas del teclado pasan
+  de una a otra. En Medios, los clips van de dos en dos.
+  - *Comprobado:* `tests/ui/titlebar.mjs` **11/11**:
+    - Deshacer sale gris hasta que hay algo que deshacer, y entonces deshace y
+      rehace un paso cada vez;
+    - el menú Más tiene sus cinco opciones; buscar abre la paleta de comandos,
+      el mezclador se abre desde Más y su botón de la línea de tiempo lo
+      muestra y lo cierra, y Preferencias se abre;
+    - las 8 secciones van una debajo de otra con su nombre, y las flechas
+      bajan y suben;
+    - con el proyecto sin guardar, el nombre cambia con un clic y Enter, y
+      Escape lo deja como estaba;
+    - con el proyecto guardado, el archivo pasa de «Viaje a la playa.scf» a
+      «Playa 2026.scf» y la lista de recientes lo muestra con el nuevo nombre;
+    - un nombre que ya existe en la carpeta se rechaza y se avisa.
+
+    Además, 2 pruebas unitarias nuevas: la lista de recientes y las copias de
+    seguridad siguen al proyecto renombrado.
+- `tests/ui/theme.mjs` **7/7**: el cian es el acento por defecto y su texto
+  se lee a 9:1; con violeta y en el tema claro todo sigue en su sitio.
+
+### Arreglado de paso
+- Un clip llevado al centro del visor quedaba en 0,000000000000028 en vez de en
+  0: la posición se redondea ahora a una millonésima de píxel.
+- Los avisos de error que vienen del proceso principal (cambiar el nombre, la
+  voz, las plantillas, la copia en la nube) ya no llevan delante
+  «Error invoking remote method…»: solo la frase que importa.
+
+### Pruebas puestas al día
+- Las pruebas que hacían clic en el nombre del proyecto para quitar el foco de
+  un campo ahora hacen clic en el contador de tiempo del visor: un clic en el
+  nombre, ahora, sirve para cambiarlo.
+- `grade.mjs` baja hasta la rueda de «Luces» antes de arrastrarla, como haría
+  una persona. Con la barra 4 px más alta, en una ventana de 950 px esa rueda
+  queda bajo el pliegue del inspector.
+- El comprobador de contraste lee el color de fondo: el botón principal lleva
+  el cian sólido debajo del degradado.
+
+### Comprobado en conjunto
+- 1684 pruebas unitarias.
+- Las **61** pruebas de interfaz, con la suite general a 127/127, con el
+  registro de errores activo: no anotó nada fuera de lo que las pruebas
+  provocan a propósito.
+- 22/22 de extremo a extremo, 41/41 de proyectos y 26/26 de movimiento.
 
 ---
 

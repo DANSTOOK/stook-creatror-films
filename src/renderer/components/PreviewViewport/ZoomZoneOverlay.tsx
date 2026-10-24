@@ -134,7 +134,7 @@ export function ZoomZoneOverlay(): JSX.Element | null {
           touchAction: 'none',
         }}
       >
-        <span className="pointer-events-none absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-2xs font-semibold text-white shadow">
+        <span className="pointer-events-none absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-2xs font-semibold text-accent-contrast shadow">
           {t('fxp.zoneLabel')} · {Math.round((1 / zone.width) * 100)} %
         </span>
         {handle('nw', '-left-2 -top-2')}

@@ -137,6 +137,17 @@ export function recordRecent(
   return { list: next.slice(0, MAX_RECENT_PROJECTS), dropped: next.slice(MAX_RECENT_PROJECTS) };
 }
 
+/** The entry for `from`, now at `to` and called `name`; the list otherwise as it was. */
+export function renameRecent(
+  list: readonly RecentProjectEntry[],
+  from: string,
+  to: string,
+  name: string,
+  caseInsensitive?: boolean,
+): RecentProjectEntry[] {
+  return list.map((entry) => (samePath(entry.path, from, caseInsensitive) ? { ...entry, path: to, name } : entry));
+}
+
 export function removeRecent(
   list: readonly RecentProjectEntry[],
   path: string,

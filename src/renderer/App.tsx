@@ -34,6 +34,7 @@ import { BeatDialog, useBeatDialog } from './components/Beats/BeatDialog';
 import { ScreenRecordDialog, useScreenRecordDialog } from './capture/ScreenRecordDialog';
 import { showLibraryTab, type LibraryTab } from './components/MediaLibrary/libraryTabs';
 import { copyDiagnostics } from './diagnostics/appLog';
+import { MIXER_TOGGLE_EVENT, useMixerOpen } from './components/Mixer/mixerToggle';
 import { CaptionProgress } from './components/Captions/CaptionProgress';
 import { exportCaptionsToDialog, importCaptionsFromDialog } from './captions/captionFiles';
 import { PreviewViewport } from './components/PreviewViewport';
@@ -156,6 +157,17 @@ export default function App(): JSX.Element {
       return value;
     });
   };
+  // The timeline's Mixer button reads this, and asks for a change with an event.
+  useEffect(() => {
+    useMixerOpen.setState({ open: mixerOpen });
+  }, [mixerOpen]);
+  useEffect(() => {
+    const toggle = (): void => setMixerOpen((open) => !open);
+    window.addEventListener(MIXER_TOGGLE_EVENT, toggle);
+    return () => window.removeEventListener(MIXER_TOGGLE_EVENT, toggle);
+    // setMixerOpen keeps nothing between renders worth listening again for.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);

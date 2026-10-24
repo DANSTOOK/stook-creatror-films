@@ -11,6 +11,7 @@ import { MAX_SPEED, MIN_SPEED, rememberTtsOptions, speakText, ttsOptions } from 
 import { VOICE_CHARACTERS, VOICE_EFFECTS, type VoiceCharacter } from '@renderer/tts/characters';
 import { createId } from '@shared/utils/id';
 import { notify } from '@renderer/notifications/notifications';
+import { errorText } from '@renderer/errorText';
 
 /**
  * The library's Voice tab: text to speech beside Effects and Transitions,
@@ -112,7 +113,7 @@ export function VoicePanel(): JSX.Element {
         await audio.play();
       }
     } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), 'error');
+      notify(errorText(error), 'error');
     } finally {
       setPreviewing(null);
     }
@@ -129,7 +130,7 @@ export function VoicePanel(): JSX.Element {
       const clipId = await speakText(text, start, { language, voice: voice.id, speed, pitch, enhance, captions, effect }, voice.id, setProgress, jobId);
       if (clipId) notify(t('tts.added', { name: voice.name }), 'success');
     } catch (error) {
-      notify(error instanceof Error ? error.message : String(error), 'error');
+      notify(errorText(error), 'error');
     } finally {
       jobRef.current = null;
       setGenerating(false);

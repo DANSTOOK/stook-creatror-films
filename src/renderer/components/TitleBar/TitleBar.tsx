@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Headphones, Home as HomeIcon, PanelBottom, PanelLeft, PanelRight, Search, Settings, Share2 } from 'lucide-react';
+import { ChevronDown, Compass, Headphones, Home as HomeIcon, Keyboard, MoreHorizontal, PanelBottom, PanelLeft, PanelRight, Redo2, Search, Settings, Share2, Undo2 } from 'lucide-react';
 import type { AppMenuEntry } from '@shared/types/ipc';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
 import { tip } from '@renderer/components/Tooltip/Tooltip';
@@ -10,6 +10,9 @@ import { NotificationsButton } from '@renderer/notifications/Toaster';
 import { HistoryButton } from '@renderer/history/HistoryButton';
 import { WorkspacePicker } from '@renderer/workspaces/WorkspacePicker';
 import { DetachedPanelsTray } from '@renderer/components/Layout/DetachedPanelsTray';
+import { useHistoryStore } from '@renderer/store/useHistoryStore';
+import { useProjectStore } from '@renderer/store/useProjectStore';
+import { ProjectNameField } from './ProjectNameField';
 
 /**
  * The window's title bar, with the editor's toolbar in it.
@@ -17,11 +20,12 @@ import { DetachedPanelsTray } from '@renderer/components/Layout/DetachedPanelsTr
  * Windows still draws the minimise, maximise and close buttons (the main
  * process asks for `titleBarOverlay`), so Snap layouts, double-click to
  * maximise and dragging all behave as in any Windows app; everything else in
- * the strip is the page's. It follows Final Cut's toolbar: what you are
- * working on at the left, nothing in the middle, and at the right the buttons
- * that show and hide the browser, the timeline and the inspector, then Share.
- * New, Open, Save, Undo and Redo left the bar: they are in the menu and on
- * the keys every editor uses for them.
+ * the strip is the page's. It is laid out as CapCut's: at the left the menu,
+ * home, Undo, Redo and the history; the project's name in the middle, a
+ * click away from being renamed; at the right the workspace, the buttons
+ * that show and hide the browser, the timeline and the inspector, the
+ * notifications, a "More" menu for the rest (finding a command, the mixer,
+ * Preferences, the shortcuts, the tour) and one big Export.
  *
  * Empty parts of the strip drag the window (`app-drag`), and every control in
  * it opts out (`app-no-drag`) or it could not be clicked. The strip leaves the
@@ -74,7 +78,6 @@ function toItems(entries: AppMenuEntry[]): ContextMenuItem[] {
 export function TitleBar({
   editor,
   logoUrl,
-  projectName,
   projectPath,
   dirty,
   shown,
@@ -159,6 +162,31 @@ export function TitleBar({
     };
   }, [menu, openMenu]);
 
+  const canUndo = useHistoryStore((state) => state.canUndo);
+  const canRedo = useHistoryStore((state) => state.canRedo);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  /** The rest of the bar, in one menu: what is used less often than what stays on it. */
+  const openMore = (): void => {
+    if (menu) {
+      close();
+      return;
+    }
+    const box = moreButton.current?.getBoundingClientRect();
+    const invoke = (id: string) => () => (nativeAvailable ? window.filmora.appMenuInvoke(id) : undefined);
+    open(
+      { preventDefault: () => undefined, clientX: (box?.right ?? 0) - 220, clientY: (box?.bottom ?? 36) + 4 },
+      [
+        { label: t('titlebar.search'), icon: Search, shortcut: acceleratorLabel('CmdOrCtrl+Shift+P'), onSelect: onCommandPalette },
+        { label: t('toolbar.mixer'), icon: Headphones, checked: mixerOpen, onSelect: onMixer },
+        { separator: true },
+        { label: t('titlebar.settings'), icon: Settings, onSelect: onPreferences },
+        { label: t('menu.shortcuts'), icon: Keyboard, shortcut: '?', onSelect: invoke('shortcuts') },
+        { label: t('menu.tour'), icon: Compass, onSelect: invoke('tour') },
+      ],
+      { label: t('titlebar.more') },
+    );
+  };
+
   const panelToggle = (panel: PanelKey, Icon: typeof PanelLeft, shortcut: string): JSX.Element => (
     <button
       type="button"
@@ -176,7 +204,7 @@ export function TitleBar({
     <header
       data-testid="title-bar"
       data-active={active}
-      className="app-drag relative flex h-10 shrink-0 items-center gap-1 bg-panel-950 pl-2"
+      className="app-drag relative flex h-11 shrink-0 items-center gap-1 bg-panel-950 pl-2"
       style={{
         // The caption buttons' room: whatever the overlay leaves to the page.
         paddingRight: 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px)) + 8px)',
@@ -214,60 +242,37 @@ export function TitleBar({
 
           <span aria-hidden className="mx-1 h-4 w-px bg-panel-700" />
 
-          {/*
-            Find a command, and the app's settings. They were on the right of
-            the bar; moved to the left, by the logo and home, where the eye
-            lands first and where editors keep their command search. The field
-            is wider and accent-bordered so it reads as the search bar it is,
-            and the gear is ringed so it is easy to find. The field opens the
-            same palette Ctrl+Shift+P does; the gear the same Preferences
-            dialog. On a narrow window the field's name hides, the icon staying,
-            so the bar still fits and the project name keeps its room.
-          */}
-          <div className="app-no-drag flex shrink-0 items-center gap-1.5">
+          {/* Undo and Redo where CapCut keeps them, by the history they walk. */}
+          <div className="app-no-drag flex items-center gap-0.5">
             <button
               type="button"
-              data-testid="title-search"
-              aria-haspopup="dialog"
-              className="press group flex h-7 min-w-0 items-center gap-2 rounded-control border border-accent/40 bg-panel-900 px-2.5 text-slate-200 transition-colors hover:border-accent/70 hover:bg-panel-800 hover:text-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-hover sm:min-w-[12rem]"
-              onClick={onCommandPalette}
-              {...tip(t('titlebar.search'), { shortcut: 'Ctrl+Shift+P', hint: t('titlebar.searchHint'), named: false })}
+              data-testid="titlebar-undo"
+              className="tool-button w-7 px-0"
+              disabled={!canUndo}
+              onClick={() => useProjectStore.getState().undo()}
+              {...tip(t('titlebar.undo'), { shortcut: 'Ctrl+Z' })}
             >
-              <Search size={14} className="shrink-0 text-accent-hover" />
-              <span className="hidden min-w-0 flex-1 truncate text-left text-xs sm:inline">{t('titlebar.search')}</span>
+              <Undo2 size={15} />
             </button>
-
             <button
               type="button"
-              data-testid="title-settings"
-              className="tool-button w-7 px-0 ring-1 ring-panel-600 transition-colors hover:text-accent-hover hover:ring-accent/60"
-              onClick={onPreferences}
-              {...tip(t('titlebar.settings'), { hint: t('titlebar.settingsHint') })}
+              data-testid="titlebar-redo"
+              className="tool-button w-7 px-0"
+              disabled={!canRedo}
+              onClick={() => useProjectStore.getState().redo()}
+              {...tip(t('titlebar.redo'), { shortcut: 'Ctrl+Y' })}
             >
-              <Settings size={15} />
+              <Redo2 size={15} />
             </button>
+            <HistoryButton />
           </div>
 
-          <span aria-hidden className="mx-1 h-4 w-px bg-panel-700" />
-
-          {/* The open project, and whether it has unsaved changes. Part of
-              the drag area, as a window title is. */}
-          <div className="flex min-w-0 items-center gap-2 px-1" title={projectPath ?? t('toolbar.notSaved')}>
-            <span
-              data-testid="project-name"
-              className={`truncate text-sm font-semibold transition-colors ${active ? 'text-slate-100' : 'text-slate-400'}`}
-            >
-              {projectName}
-            </span>
-            {dirty && (
-              <span
-                data-testid="unsaved-indicator"
-                role="img"
-                aria-label={t('toolbar.unsaved')}
-                className="scf-dirty-dot h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400"
-                title={t('toolbar.unsaved')}
-              />
-            )}
+          {/* The open project, in the middle, renamed with a click. The rest
+              of the strip still drags the window. */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex h-full items-center justify-center">
+            <div className="pointer-events-auto">
+              <ProjectNameField active={active} path={projectPath} dirty={dirty} />
+            </div>
           </div>
 
           <div className="min-w-4 flex-1" />
@@ -280,7 +285,7 @@ export function TitleBar({
             <WorkspacePicker />
           </div>
 
-          <div role="group" aria-label={t('titlebar.panels')} className="flex items-center gap-0.5">
+          <div role="group" aria-label={t('titlebar.panels')} className="toolbar-group app-no-drag">
             {panelToggle('media', PanelLeft, 'Ctrl+1')}
             {panelToggle('timeline', PanelBottom, 'Ctrl+2')}
             {panelToggle('inspector', PanelRight, 'Ctrl+4')}
@@ -288,28 +293,27 @@ export function TitleBar({
 
           <span aria-hidden className="mx-1 h-4 w-px bg-panel-700" />
 
-          <button
-            type="button"
-            aria-pressed={mixerOpen}
-            className={`tool-button app-no-drag w-7 px-0 ${mixerOpen ? 'tool-button-active' : ''}`}
-            onClick={onMixer}
-            {...tip(t('toolbar.mixer'), { hint: t('toolbar.mixerHint') })}
-          >
-            <Headphones size={15} />
-          </button>
-
-          <div className="app-no-drag">
-            <HistoryButton />
-          </div>
-
           <div className="app-no-drag">
             <NotificationsButton />
           </div>
 
           <button
+            ref={moreButton}
+            type="button"
+            data-testid="titlebar-more"
+            aria-haspopup="menu"
+            aria-expanded={menu !== null && menu.label === t('titlebar.more')}
+            className="tool-button app-no-drag w-7 px-0"
+            onClick={openMore}
+            {...tip(t('titlebar.more'), { hint: t('titlebar.moreHint') })}
+          >
+            <MoreHorizontal size={16} />
+          </button>
+
+          <button
             type="button"
             data-testid="titlebar-export"
-            className="button-primary app-no-drag ml-1 h-control"
+            className="button-primary app-no-drag ml-1.5 h-[30px] px-5"
             disabled={!nativeAvailable}
             onClick={onExport}
             {...tip(t('toolbar.export'), {

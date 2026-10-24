@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
+  Headphones,
   AudioLines,
   AudioWaveform,
   Clapperboard,
@@ -112,6 +113,7 @@ import { makeMulticam } from '@renderer/edit/multicamRun';
 import { copyChapters } from '@renderer/edit/chaptersRun';
 import { fillerPlan } from '@renderer/edit/fillers';
 import { OPEN_TTS_EVENT } from '@renderer/tts/events';
+import { toggleMixer, useMixerOpen } from '@renderer/components/Mixer/mixerToggle';
 import { narrateCaptions, readTitleAloud } from '@renderer/tts/speak';
 import { layoutsFor, type SplitLayout } from '@renderer/edit/splitScreen';
 import { useVoiceoverDialog } from '@renderer/voiceover/VoiceoverDialog';
@@ -210,6 +212,7 @@ export interface MarqueeRect {
 export function Timeline(): JSX.Element {
   // Re-renders the toolbar when the language changes; menus read `t` as they open.
   const tr = useT();
+  const mixerOpen = useMixerOpen((state) => state.open);
   const project = useProjectStore((state) => state.project);
   const ui = useProjectStore((state) => state.ui);
   const waveforms = useMediaStore((state) => state.waveforms);
@@ -1893,6 +1896,18 @@ export function Timeline(): JSX.Element {
               <Plus size={13} />
               {tr('adjustment.short')}
             </button>
+            {/* The mixer, by the sound it mixes: it opens beside the timeline (App, Mixer). */}
+            <button
+              type="button"
+              data-testid="timeline-mixer"
+              aria-pressed={mixerOpen}
+              className={`tool-button tool-button-dense w-6 px-0 ${mixerOpen ? 'tool-button-active' : ''}`}
+              aria-label={tr('toolbar.mixer')}
+              onClick={toggleMixer}
+              {...tip(tr('toolbar.mixer'), { hint: tr('toolbar.mixerHint'), named: false })}
+            >
+              <Headphones size={13} />
+            </button>
             {/* A narration recorded onto its own track, at the playhead (voiceover/VoiceoverDialog). */}
             <button
               type="button"
@@ -2159,7 +2174,7 @@ export function Timeline(): JSX.Element {
               <span
                 data-testid="scrub-time"
                 aria-hidden
-                className="timecode pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded bg-accent px-1.5 py-0.5 text-2xs font-semibold leading-none text-white shadow-lg"
+                className="timecode pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded bg-accent px-1.5 py-0.5 text-2xs font-semibold leading-none text-accent-contrast shadow-lg"
                 style={{ left: project.currentFrame * ui.pixelsPerFrame }}
               >
                 {framesToTimecode(project.currentFrame, project.fps)}

@@ -67,7 +67,7 @@ function exitFrames(kind: GhostExit, from: Keyframe): Keyframe[] {
   const to: Record<GhostExit, string> = {
     menu: 'scale(0.97)',
     pop: 'translateY(4px) scale(0.97)',
-    toast: 'translateX(24px)',
+    toast: 'translateY(-12px) scale(0.96)',
     fade: 'translateY(0)',
     'slide-left': 'translateX(-16px)',
     'slide-right': 'translateX(16px)',

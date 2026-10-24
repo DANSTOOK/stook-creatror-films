@@ -722,7 +722,7 @@ async function main() {
           store.setUi({ selectedClipIds: [clip.id], selectedTrackId: clip.trackId });
           return clip.startFrame + clip.durationFrames + 2 * fps;
         }, { clipId: id, fps: FPS });
-        await window.getByTestId('project-name').click();
+        await window.getByTestId('viewer-timecode').click();
         await window.keyboard.press('Control+c');
         await window.evaluate((frame) => window.__scfStore.getState().setCurrentFrame(frame), target);
         const before = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);

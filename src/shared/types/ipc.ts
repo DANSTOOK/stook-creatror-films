@@ -27,6 +27,7 @@ export const IPC = {
   projectsList: 'projects:list',
   projectsOpenRecent: 'projects:open-recent',
   projectsForget: 'projects:forget',
+  projectsRename: 'projects:rename',
   projectsDefaultFolder: 'projects:default-folder',
   projectsChooseFolder: 'projects:choose-folder',
   projectsCreate: 'projects:create',
@@ -688,6 +689,8 @@ export interface FilmoraApi {
   projectsOpenRecent(path: string): Promise<{ path: string; contents: string } | null>;
   /** Take a project off the list. The file itself is left alone. */
   projectsForget(path: string): Promise<void>;
+  /** A saved project renamed where it is: its file, its backups and its place in the recent list. */
+  projectsRename(path: string, name: string): Promise<{ path: string; name: string }>;
   /** Documents\STOOK CREATOR FILMS\Projects, created if needed. */
   projectsDefaultFolder(): Promise<string>;
   projectsChooseFolder(): Promise<string | null>;

@@ -63,7 +63,7 @@ export function MulticamBar(): JSX.Element | null {
             {...tip(t('multicam.angleHint', { name: angle.name }), { shortcut: String(index + 1), named: false })}
           >
             {poster && <img src={poster} alt="" className={`absolute inset-0 h-full w-full object-cover ${active ? '' : 'opacity-70 group-hover:opacity-100'}`} />}
-            <span className={`relative m-1 rounded px-1 text-2xs font-semibold tabular-nums ${active ? 'bg-accent text-white' : 'bg-black/70 text-slate-200'}`}>
+            <span className={`relative m-1 rounded px-1 text-2xs font-semibold tabular-nums ${active ? 'bg-accent text-accent-contrast' : 'bg-black/70 text-slate-200'}`}>
               {index + 1}
             </span>
           </button>

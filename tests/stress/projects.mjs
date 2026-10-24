@@ -436,7 +436,7 @@ async function main() {
         if (menuMotion === null) menuMotion = await menu.evaluate((element) => getComputedStyle(element).transitionDuration);
       }
       if (i % 3 === 0) await window.keyboard.press('Escape');
-      else await window.getByTestId('project-name').click();
+      else await window.getByTestId('viewer-timecode').click();
       await menu.waitFor({ state: 'detached', timeout: 2_000 }).catch(() => undefined);
     }
     const menusLeft = await window.getByRole('menu').count();

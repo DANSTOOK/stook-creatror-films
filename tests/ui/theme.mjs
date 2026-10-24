@@ -7,8 +7,8 @@ import { _electron as electron } from 'playwright';
 /**
  * Appearance, in the running app: `node tests/ui/theme.mjs`
  *
- *   1. Dark by default, with the blue accent: the panels as they have always
- *      been.
+ *   1. Dark by default, with the cyan accent (CapCut's, since v1.80) on
+ *      Export, the text on it dark enough to read (4.5:1 or more).
  *   2. Preferences > Light turns the panels white and the text dark - and
  *      the timeline's canvas with them - at a contrast that reads (4.5:1).
  *   3. Preferences > Violet puts the accent on the Export button and the
@@ -57,11 +57,13 @@ const look = (page) =>
     }
     return {
       theme: document.documentElement.getAttribute('data-theme') ?? 'dark',
-      accent: document.documentElement.getAttribute('data-accent') ?? 'blue',
+      accent: document.documentElement.getAttribute('data-accent') ?? 'cyan',
       background,
       text,
       contrast: contrast(background, text),
-      exportFill: parse(getComputedStyle(exportButton).backgroundColor),
+      // The fill is a gradient now, light to the accent: its last stop is the accent.
+      exportFill: parse([...getComputedStyle(exportButton).backgroundImage.matchAll(/rgba?([^)]*)/g)].pop()?.[0] ?? getComputedStyle(exportButton).backgroundColor),
+      exportText: contrast(parse([...getComputedStyle(exportButton).backgroundImage.matchAll(/rgba?([^)]*)/g)].pop()?.[0] ?? 'rgb(0,0,0)'), parse(getComputedStyle(exportButton).color)),
       canvasPixel,
     };
   });
@@ -91,9 +93,9 @@ async function main() {
   try {
     window.on('pageerror', (error) => issues.push(`pageerror ${error.message}`));
 
-    console.log('1. dark, blue');
+    console.log('1. dark, cyan');
     const dark = await look(window);
-    check('dark by default, the blue accent on Export', dark.theme === 'dark' && dark.accent === 'blue' && dark.background[0] < 40 && dark.exportFill.join(',') === '37,99,235', JSON.stringify(dark));
+    check('dark by default, the cyan accent on Export, its text readable on it', dark.theme === 'dark' && dark.accent === 'cyan' && dark.background[0] < 40 && dark.exportFill.join(',') === '6,196,222' && dark.exportText >= 4.5, JSON.stringify(dark));
 
     console.log('2. light');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('app:menu-command', 'preferences'));

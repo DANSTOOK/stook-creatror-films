@@ -4,6 +4,7 @@ import type { CloudBackupState } from '@shared/types/ipc';
 import { currentLocale, useT } from '@renderer/i18n';
 import { useSessionStore } from '@renderer/store/useSessionStore';
 import { notify } from '@renderer/notifications/notifications';
+import { errorText } from '@renderer/errorText';
 
 /**
  * Preferences > Cloud backup: a copy of every save in OneDrive's, Google
@@ -23,7 +24,7 @@ export function CloudBackup(): JSX.Element | null {
   }, []);
   if (!state) return null;
 
-  const failed = (error: unknown): void => void notify(t('cloud.failed', { detail: error instanceof Error ? error.message : String(error) }), 'error');
+  const failed = (error: unknown): void => void notify(t('cloud.failed', { detail: errorText(error) }), 'error');
   const choose = (value: string): void => {
     const asked = value === CHOOSE ? window.filmora.cloudBackupChoose() : window.filmora.cloudBackupSet(value === OFF ? null : value);
     void asked.then(setState).catch(failed);

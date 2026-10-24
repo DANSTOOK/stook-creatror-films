@@ -7,7 +7,7 @@
 
   :root            the dark theme, as the editor has always been
   [data-theme]     light: white panels on a cool grey, dark text
-  [data-accent]    the accent colour; blue unless another is chosen
+  [data-accent]    the accent colour; cyan unless another is chosen
 
   Set on <html> by theme/theme.ts, and mirrored into detached windows with
   the rest of the root's attributes (Layout/useDetachedWindow).
@@ -32,10 +32,20 @@
   --slate-900: 15 23 42;
   --slate-950: 2 6 23;
 
-  --accent: 37 99 235;
-  --accent-strong: 29 78 216;
-  /* The accent used AS text and icons on the panels: light on dark. */
-  --accent-hover: 96 165 250;
+  /*
+    The accent: CapCut's cyan. Bright, so what is written on it is dark
+    (--accent-contrast, 8.9:1 on the fill) rather than white (2.2:1).
+    --accent-strong is the fill pressed; --accent-hover the accent used AS
+    text and icons on the dark panels (cyan-300, 12:1 on panel-900);
+    --accent-ink the same on the light panels (cyan-700, 5.4:1 on white).
+  */
+  --accent: 6 196 222;
+  --accent-strong: 8 166 190;
+  --accent-hover: 103 232 249;
+  --accent-contrast: 4 18 26;
+  --accent-ink: 14 116 144;
+  /* The two ends of a primary button's fill, light to the accent. */
+  --accent-from: 103 232 249;
 
   /* The timeline's canvas (Timeline/TimelineCanvas). */
   --tl-bg: 14 15 17;
@@ -90,31 +100,54 @@
   color-scheme: light;
 }
 
-/* Accents: the fill, the fill pressed, and the shade that reads as text on the panels. */
+/*
+  The other accents: the fill, the fill pressed, the shade that reads as
+  text on the panels - and white on the fill, which is dark for each of them.
+*/
+:root[data-accent='blue'] {
+  --accent: 37 99 235;
+  --accent-strong: 29 78 216;
+  --accent-hover: 96 165 250;
+  --accent-contrast: 255 255 255;
+  --accent-ink: 29 78 216;
+  --accent-from: 59 130 246;
+}
 :root[data-accent='violet'] {
   --accent: 124 58 237;
   --accent-strong: 109 40 217;
   --accent-hover: 167 139 250;
+  --accent-contrast: 255 255 255;
+  --accent-ink: 109 40 217;
+  --accent-from: 139 92 246;
 }
 :root[data-accent='green'] {
   --accent: 4 120 87;
   --accent-strong: 6 95 70;
   --accent-hover: 52 211 153;
+  --accent-contrast: 255 255 255;
+  --accent-ink: 6 95 70;
+  --accent-from: 5 150 105;
 }
 :root[data-accent='orange'] {
   --accent: 194 65 12;
   --accent-strong: 154 52 18;
   --accent-hover: 251 146 60;
+  --accent-contrast: 255 255 255;
+  --accent-ink: 154 52 18;
+  --accent-from: 234 88 12;
 }
 :root[data-accent='pink'] {
   --accent: 190 24 93;
   --accent-strong: 157 23 77;
   --accent-hover: 244 114 182;
+  --accent-contrast: 255 255 255;
+  --accent-ink: 157 23 77;
+  --accent-from: 219 39 119;
 }
 
-/* On white panels the accent as text has to be the dark shade, not the light one. */
+/* On white panels the accent as text has to be its dark shade, not the light one. */
 :root[data-theme='light'] {
-  --accent-hover: var(--accent-strong);
+  --accent-hover: var(--accent-ink);
 }
 
 /*

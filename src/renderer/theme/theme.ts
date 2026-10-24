@@ -8,11 +8,12 @@ import { create } from 'zustand';
  */
 
 export type ThemeChoice = 'dark' | 'light' | 'system';
-export type AccentChoice = 'blue' | 'violet' | 'green' | 'orange' | 'pink';
+export type AccentChoice = 'cyan' | 'blue' | 'violet' | 'green' | 'orange' | 'pink';
 
 export const THEMES: readonly ThemeChoice[] = ['dark', 'light', 'system'];
 /** Each accent with its swatch colour, for the picker. */
 export const ACCENTS: ReadonlyArray<{ id: AccentChoice; swatch: string }> = [
+  { id: 'cyan', swatch: '#06c4de' },
   { id: 'blue', swatch: '#2563eb' },
   { id: 'violet', swatch: '#7c3aed' },
   { id: 'green', swatch: '#047857' },
@@ -31,19 +32,21 @@ interface ThemeState {
 
 function saved(): { theme: ThemeChoice; accent: AccentChoice } {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(KEY) ?? '{}') as Partial<{ theme: string; accent: string }>;
+    const parsed = JSON.parse(window.localStorage.getItem(KEY) ?? '{}') as Partial<{ theme: string; accent: string; v: number }>;
     return {
       theme: THEMES.includes(parsed.theme as ThemeChoice) ? (parsed.theme as ThemeChoice) : 'dark',
-      accent: ACCENTS.some((accent) => accent.id === parsed.accent) ? (parsed.accent as AccentChoice) : 'blue',
+      // Blue was the default before cyan (v1.80): a blue kept from then was never a choice, so it is cyan now.
+      accent: ACCENTS.some((accent) => accent.id === parsed.accent) && !(parsed.accent === 'blue' && parsed.v !== 2) ? (parsed.accent as AccentChoice) : 'cyan',
     };
   } catch {
-    return { theme: 'dark', accent: 'blue' };
+    return { theme: 'dark', accent: 'cyan' };
   }
 }
 
 function remember(state: { theme: ThemeChoice; accent: AccentChoice }): void {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(state));
+    // v: 2 says the accent kept is one chosen with cyan on offer (see saved).
+    window.localStorage.setItem(KEY, JSON.stringify({ ...state, v: 2 }));
   } catch {
     // Not kept: it still applies for this session.
   }
@@ -65,7 +68,7 @@ function apply(state: { theme: ThemeChoice; accent: AccentChoice }): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   paint(resolvedTheme(state.theme));
-  if (state.accent === 'blue') root.removeAttribute('data-accent');
+  if (state.accent === 'cyan') root.removeAttribute('data-accent');
   else root.setAttribute('data-accent', state.accent);
   // Windows' caption buttons, native scrollbars and menus: the main process paints those.
   // Following the system, the main process answers with Windows' own look:
@@ -76,7 +79,7 @@ function apply(state: { theme: ThemeChoice; accent: AccentChoice }): void {
 }
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  ...(typeof window === 'undefined' ? { theme: 'dark' as const, accent: 'blue' as const } : saved()),
+  ...(typeof window === 'undefined' ? { theme: 'dark' as const, accent: 'cyan' as const } : saved()),
   setTheme(theme) {
     set({ theme });
     remember({ theme, accent: get().accent });

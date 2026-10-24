@@ -22,15 +22,17 @@ const ICON_CLASS: Record<NotificationTone, string> = {
 };
 
 /**
- * The toasts, bottom right, over whatever screen is showing.
+ * The toasts: a pill at the top in the middle, over the viewer, as CapCut
+ * shows them - where the eye already is, and off the timeline, which they
+ * used to cover in the bottom corner.
  *
- * They do not take the pointer: the corner they sit in is the end of the
- * timeline, and a toast that swallowed a click meant for a clip would be
- * worse than no toast. Only the close button is clickable. The container is
- * a polite live region, and a problem is announced at once (role="alert").
+ * They do not take the pointer: a toast that swallowed a click meant for the
+ * picture would be worse than no toast. Only the close button and an action
+ * are clickable. The container is a polite live region, and a problem is
+ * announced at once (role="alert").
  *
- * A toast rises into the corner with the bounce; one that goes slides out to
- * the right, and the others close the gap rather than jumping into it.
+ * A toast drops into place with the bounce; one that goes lifts away, and the
+ * others close the gap rather than jumping into it.
  */
 export function Toaster(): JSX.Element {
   const toasts = useNotifications((state) => state.toasts);
@@ -45,7 +47,7 @@ export function Toaster(): JSX.Element {
       role="status"
       aria-live="polite"
       data-testid="toasts"
-      className="pointer-events-none fixed bottom-4 right-4 z-[90] flex w-[min(380px,calc(100vw-32px))] flex-col items-stretch gap-2"
+      className="pointer-events-none fixed left-1/2 top-[88px] z-[90] flex w-[min(460px,calc(100vw-32px))] -translate-x-1/2 flex-col items-center gap-2"
     >
       {shown.map((toast) => (
         <Toast key={toast.id} toast={toast} />
@@ -65,16 +67,16 @@ function Toast({ toast }: { toast: AppNotification }): JSX.Element {
       role={toast.tone === 'error' ? 'alert' : undefined}
       data-tone={toast.tone}
       data-flip-key={toast.id}
-      className="scf-toast flex items-start gap-2.5 rounded-menu border border-panel-600 bg-panel-800 px-3 py-2.5 shadow-xl shadow-black/50"
+      className="scf-toast flex max-w-full items-center gap-2.5 rounded-full border border-panel-600/80 bg-panel-800/95 py-1.5 pl-3 pr-1.5 shadow-xl shadow-black/50 data-[tone=error]:border-red-400/50"
     >
-      <Icon size={16} className={`mt-px shrink-0 ${ICON_CLASS[toast.tone]}`} aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className="break-words text-sm text-slate-100">{toast.message}</p>
+      <Icon size={16} className={`shrink-0 ${ICON_CLASS[toast.tone]}`} aria-hidden />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
+        <p className="min-w-0 break-words text-xs font-medium text-slate-100">{toast.message}</p>
         {toast.action && (
           // The one clickable thing in a toast besides its close button.
           <button
             type="button"
-            className="tool-button pointer-events-auto -ml-2 mt-1 text-accent-hover"
+            className="tool-button tool-button-dense pointer-events-auto font-semibold text-accent-hover"
             onClick={() => {
               toast.action?.run();
               dismiss(toast.id);
@@ -86,7 +88,7 @@ function Toast({ toast }: { toast: AppNotification }): JSX.Element {
       </div>
       <button
         type="button"
-        className="pointer-events-auto -mr-1 -mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-control text-slate-400 hover:bg-panel-700 hover:text-slate-100"
+        className="pointer-events-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-panel-700 hover:text-slate-100"
         aria-label={t('notify.dismiss')}
         title={t('notify.dismiss')}
         onClick={() => dismiss(toast.id)}

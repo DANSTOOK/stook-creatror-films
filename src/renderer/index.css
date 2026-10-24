@@ -438,6 +438,11 @@
   50% { opacity: 0.45; }
 }
 
+/* Checkboxes, radio buttons and sliders take the accent (Chromium picks the tick's colour against it). */
+:root {
+  accent-color: rgb(var(--accent));
+}
+
 @layer components {
   /*
     The panels share the start screen's surface: a soft border, a rounded
@@ -608,78 +613,20 @@
   }
 
   /*
-    The library's tab row. Docked (~220px) five names will not fit, so only the
-    open tab wears its name and the rest show their icon alone - their name kept
-    as a tooltip and, hidden this way rather than with display:none, still in
-    the accessibility tree and still read aloud. Detached into a wide window
-    there is room, so every tab shows its name. This is the browser-naming of
-    Final Cut and Resolve, not a truncation to "Tra…".
+    The library's rail (MediaLibrary): an icon over its name, the open one lit
+    in the accent by the sliding highlight below. The names are always shown,
+    10px, cut short with an ellipsis rather than wrapped.
   */
-  .library-tabs {
-    container-type: inline-size;
+  .library-rail {
+    scrollbar-width: none;
   }
 
-  .library-tab-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+  .library-tab:hover svg.lucide {
+    transform: scale(1.08);
   }
 
-  /* Pointed at or reached by keyboard, a tab says its name too: the row opens
-     up round it, so the icons never have to be guessed. */
-  .library-tab:hover .library-tab-label,
-  .library-tab:focus-visible .library-tab-label,
-  .library-tab[aria-selected='true'] .library-tab-label {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip: auto;
-  }
-
-  /* Docked, eight icons and the open tab's name do not fit (with Voice, the
-     Captions tab went under the viewer at the default 1600 px): the open one
-     is its icon and the highlight, and only the tab pointed at or focused
-     says its name - tighter round each icon, so that one name still fits. */
-  @container (max-width: 329px) {
-    .library-tabs .library-tab {
-      padding-left: 3px;
-      padding-right: 3px;
-    }
-
-    .library-tab[aria-selected='true']:not(:hover):not(:focus-visible) .library-tab-label {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-    }
-  }
-
-  /* Narrower still, not even that: icons alone, every name in its tooltip. */
-  @container (max-width: 239px) {
-    .library-tab:hover .library-tab-label,
-    .library-tab:focus-visible .library-tab-label,
-    .library-tab[aria-selected='true'] .library-tab-label {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip: rect(0 0 0 0);
-    }
-  }
-
-  @container (min-width: 440px) {
-    .library-tab-label {
-      position: static;
-      width: auto;
-      height: auto;
-      overflow: visible;
-      clip: auto;
-    }
+  .library-tab svg.lucide {
+    transition: transform var(--settle-quick-bounce) var(--spring-quick-bounce);
   }
 
   /*
@@ -719,7 +666,8 @@
 
   .media-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(calc(clamp(104px, 20cqi, 200px) * var(--tile-zoom, 1)), 1fr));
+    /* From 76px: two clips a row beside the library's rail in a docked panel, as CapCut's. */
+    grid-template-columns: repeat(auto-fill, minmax(calc(clamp(76px, 20cqi, 200px) * var(--tile-zoom, 1)), 1fr));
     column-gap: 0.5rem;
     row-gap: 0.625rem;
   }
@@ -778,14 +726,38 @@
   }
 
   /*
-    The one primary action on a surface: Export, a dialog's confirm. Filled
-    with the accent and 32px tall, the only control that size, so there is
-    never a question which button finishes the job.
+    The one primary action on a surface: Export, a dialog's confirm. A
+    gradient of the accent, as CapCut's Export, with dark text on the cyan
+    and a soft glow of its colour under it; 32px tall, the only control that
+    size, so there is never a question which button finishes the job.
   */
   .button-primary {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-control bg-accent px-4 text-xs font-semibold text-white
-           hover:bg-accent-strong disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-menu px-4 text-xs font-semibold text-accent-contrast
+           disabled:pointer-events-none disabled:opacity-50;
     height: var(--control-h-primary);
+    /* The accent under the gradient: what a reader of colours (or a print) takes it to be. */
+    background-color: rgb(var(--accent));
+    background-image: linear-gradient(135deg, rgb(var(--accent-from)), rgb(var(--accent)));
+    box-shadow: 0 4px 14px -6px rgb(var(--accent) / 0.75), inset 0 1px 0 0 rgb(255 255 255 / 0.25);
+  }
+
+  .button-primary:hover {
+    background-image: linear-gradient(135deg, rgb(var(--accent)), rgb(var(--accent-strong)));
+    box-shadow: 0 6px 18px -6px rgb(var(--accent) / 0.9), inset 0 1px 0 0 rgb(255 255 255 / 0.25);
+  }
+
+  /*
+    A secondary action - "Browse", "Copy report", "Add to queue" - written
+    as a tool button with an outline: filled instead, as CapCut's are, a
+    soft panel colour with no line round it.
+  */
+  .tool-button.border:not(.tool-button-active) {
+    @apply border-transparent bg-panel-800 hover:bg-panel-700;
+  }
+
+  /* On the white panels the softest grey is nearly white: the button takes the ground's grey. */
+  :root[data-theme='light'] .tool-button.border:not(.tool-button-active) {
+    @apply bg-panel-950 hover:bg-panel-700;
   }
 
   /* The dense size, for icon buttons in rows that repeat (track headers, lists). */
@@ -815,6 +787,22 @@
 
   .tool-button-active {
     @apply bg-accent/20 text-accent-hover ring-1 ring-accent/40;
+  }
+
+  /*
+    Icons a touch heavier, as CapCut's: lucide draws at 2, here 2.2. The
+    library's tabs keep their own pair (the open one bolder).
+  */
+  svg.lucide {
+    stroke-width: 2.2;
+  }
+
+  .library-tab svg.lucide {
+    stroke-width: 1.9;
+  }
+
+  .library-tab[aria-selected='true'] svg.lucide {
+    stroke-width: 2.4;
   }
 
   /* Header clusters: related commands read as one control. */
@@ -1258,7 +1246,7 @@ html[data-motion='reduced'] button.button-primary:active {
 @starting-style {
   .scf-toast {
     opacity: 0;
-    transform: translateY(var(--shift-md)) scale(var(--scale-enter));
+    transform: translateY(calc(var(--shift-md) * -1)) scale(var(--scale-enter));
   }
 }
 

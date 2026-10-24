@@ -1296,7 +1296,7 @@ async function main() {
     }
 
     // Keys go to the window, so focus something that is not a field first.
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     const markState = () => window.evaluate(() => {
       const { ui, project } = window.__scfStore.getState();
       const clips = Object.values(project.clips);
@@ -1367,7 +1367,7 @@ async function main() {
       exportRange.start === 20 && exportRange.end === 81, JSON.stringify(exportRange));
 
     // Put the timeline back: one undo each, and the marks cleared.
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     await window.keyboard.press('Control+z');
     await window.keyboard.press('Control+z');
     const undone = await markState();
@@ -1480,7 +1480,7 @@ async function main() {
       rippled[2] === `${unit * 2 + step}+${unit - step * 2}@${unit * 2 + step}`, rippled.join('  '));
 
     // Each trim is one step, and so is each piece of the setup: nine in all.
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     for (let undoStep = 0; undoStep < 9; undoStep += 1) await window.keyboard.press('Control+z');
     const afterTrims = await window.evaluate(() => {
       const { project } = window.__scfStore.getState();
@@ -1620,7 +1620,7 @@ async function main() {
 
     // Setup was six steps; linking, the drag, the trim, unlinking and the last
     // drag are five more.
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     for (let undoStep = 0; undoStep < 11; undoStep += 1) await window.keyboard.press('Control+z');
     const afterLinks = await window.evaluate(() => {
       const { project } = window.__scfStore.getState();
@@ -1722,7 +1722,7 @@ async function main() {
 
     // Two drags, two undo steps, and the track goes back.
     // One undo takes back the tail fade, the next takes back the head one.
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     await window.keyboard.press('Control+z');
     await window.waitForTimeout(200);
     const afterOneUndo = await fadesOf();
@@ -2002,7 +2002,7 @@ async function main() {
       JSON.stringify(focusRing));
 
     // "?" brings up the list of keys, and Escape puts it away.
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     await window.keyboard.press('?');
     await window.waitForTimeout(300);
     const shortcutsShown = await window.getByTestId('shortcuts-dialog').count();
@@ -2071,7 +2071,7 @@ async function main() {
       }
     }, { ids: speedSetup, on: visible });
 
-    await window.getByTestId('project-name').click();
+    await window.getByTestId('viewer-timecode').click();
     await window.evaluate((ids) => window.__scfStore.getState().selectClips([ids.first]), speedSetup);
     await window.keyboard.press('Control+r');
     await window.waitForTimeout(400);

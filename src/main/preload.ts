@@ -72,6 +72,7 @@ const api: FilmoraApi = {
   projectsOpenRecent: (path) =>
     ipcRenderer.invoke(IPC.projectsOpenRecent, path) as Promise<{ path: string; contents: string } | null>,
   projectsForget: (path) => ipcRenderer.invoke(IPC.projectsForget, path) as Promise<void>,
+  projectsRename: (path, name) => ipcRenderer.invoke(IPC.projectsRename, path, name) as Promise<{ path: string; name: string }>,
   projectsDefaultFolder: () => ipcRenderer.invoke(IPC.projectsDefaultFolder) as Promise<string>,
   projectsChooseFolder: () => ipcRenderer.invoke(IPC.projectsChooseFolder) as Promise<string | null>,
   projectsCreate: (folder, name, contents) =>

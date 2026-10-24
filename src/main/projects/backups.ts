@@ -115,6 +115,17 @@ export class BackupStore {
     return target;
   }
 
+  /** The copies kept for `from`, kept for `to` from now on (a renamed project). */
+  async move(from: string, to: string): Promise<void> {
+    const source = this.folderFor(from);
+    const target = this.folderFor(to);
+    if (source === target) return;
+    const there = await stat(source).then(() => true, () => false);
+    if (!there) return;
+    await rm(target, { recursive: true, force: true });
+    await renameWithRetry(source, target);
+  }
+
   /** The copies of this project, newest first. */
   async list(path: string): Promise<BackupEntry[]> {
     const folder = this.folderFor(path);

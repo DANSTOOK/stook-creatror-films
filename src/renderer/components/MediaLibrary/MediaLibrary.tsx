@@ -630,19 +630,20 @@ export function MediaLibrary(): JSX.Element {
       </header>
 
       {/*
-        The tabs, as the Inspector's: a segmented row, arrow keys between them.
-        Five names do not fit a docked 220px panel, so rather than cut them to
-        "Tra…" every tab shows its icon and only the open one wears its full
-        name (the rest keep theirs as a tooltip and for a screen reader) - the
-        way Final Cut and Resolve name the browser you are in. Detached into a
-        wide window, there is room and every tab shows its name (index.css,
-        .library-tabs).
+        The panel's parts as a rail down its left side, as CapCut's: an icon
+        and its name, one under the other, every name always there to read -
+        eight of them no longer fit a row across a docked panel. The open one
+        is lit in the accent; arrow keys (up and down, or left and right) move
+        between them. The rail and what it opens sit side by side.
       */}
+      <div className="flex min-h-0 flex-1">
       <div
         ref={tabIndicator.containerRef}
         role="tablist"
+        aria-orientation="vertical"
         aria-label={tr('library.tabs')}
-        className="library-tabs relative flex shrink-0 gap-0.5 border-b border-panel-800 px-2 py-1.5"
+        data-testid="library-rail"
+        className="library-rail relative flex w-[62px] shrink-0 flex-col gap-0.5 overflow-y-auto overflow-x-hidden border-r border-panel-800 p-1"
       >
         {/* The moving highlight is the accent now, not a grey tile: the open
             tab is filled with the app's blue and underlined with it, so which
@@ -665,21 +666,22 @@ export function MediaLibrary(): JSX.Element {
             // because the visible label (or its sr-only copy) is already the
             // accessible name; the tip only adds the one-line description.
             {...tip(tr(LIBRARY_TAB_LABEL[id]), { hint: tr(LIBRARY_TAB_TIP[id]), named: false })}
-            className={`library-tab relative flex h-control-dense min-w-0 max-w-36 shrink-0 items-center justify-center gap-1 rounded-control px-2 text-xs transition-colors ${
-              tab === id ? 'font-semibold text-slate-50' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
+            className={`library-tab press relative flex w-full shrink-0 flex-col items-center justify-center gap-1 rounded-menu px-0.5 py-1.5 transition-colors ${
+              tab === id ? 'font-semibold text-accent-hover' : 'text-slate-400 hover:bg-panel-800 hover:text-slate-200'
             }`}
             onClick={() => setTab(id)}
             onKeyDown={(event) => {
-              if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+              const forward = event.key === 'ArrowDown' || event.key === 'ArrowRight';
+              if (!forward && event.key !== 'ArrowUp' && event.key !== 'ArrowLeft') return;
               event.preventDefault();
               event.stopPropagation();
-              const next = LIBRARY_TABS[(LIBRARY_TABS.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : LIBRARY_TABS.length - 1)) % LIBRARY_TABS.length];
+              const next = LIBRARY_TABS[(LIBRARY_TABS.indexOf(tab) + (forward ? 1 : LIBRARY_TABS.length - 1)) % LIBRARY_TABS.length];
               setTab(next);
               document.getElementById(`library-tab-${next}`)?.focus();
             }}
           >
-            <Icon size={13} aria-hidden className="shrink-0" strokeWidth={tab === id ? 2.2 : 1.8} />
-            <span className="library-tab-label min-w-0 truncate">{tr(LIBRARY_TAB_LABEL[id])}</span>
+            <Icon size={17} aria-hidden className="shrink-0" />
+            <span className="library-tab-label w-full truncate text-center text-[10px] leading-3">{tr(LIBRARY_TAB_LABEL[id])}</span>
           </button>
           );
         })}
@@ -704,7 +706,7 @@ export function MediaLibrary(): JSX.Element {
         id="library-tabpanel"
         role="tabpanel"
         aria-labelledby={`library-tab-${tab}`}
-        className={`scf-tab-enter flex min-h-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
+        className={`scf-tab-enter flex min-h-0 min-w-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
       >
       {tab === 'titles' && <TitlesBrowser />}
       {tab === 'transitions' && <TransitionsBrowser />}
@@ -880,6 +882,7 @@ export function MediaLibrary(): JSX.Element {
       </div>
       </div>
       )}
+      </div>
       </div>
 
       {dragActive && (

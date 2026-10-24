@@ -29,6 +29,8 @@ module.exports = {
           DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
           strong: 'rgb(var(--accent-strong) / <alpha-value>)',
           hover: 'rgb(var(--accent-hover) / <alpha-value>)',
+          // What is written on a fill of the accent: dark on the cyan, white on the others.
+          contrast: 'rgb(var(--accent-contrast) / <alpha-value>)',
         },
         // The Effects panel's two families (MediaLibrary/EffectsBrowser): a
         // shade of each that reads as text on the panels in either theme.
@@ -61,38 +63,38 @@ module.exports = {
         display: ['"Segoe UI Variable Display"', '"Segoe UI Variable"', '"Segoe UI"', 'system-ui', 'sans-serif'],
       },
       /*
-        The type scale. Five sizes and no others:
-          11 labels, 12 controls, 13 panel titles and body, 15 dialog titles,
-          20 the start screen.
-        The Tailwind names the code already used are pointed at the same five,
-        so every existing class lands on the scale (text-2xs was 10.4px, which
-        was on no scale at all), and the semantic names say what a size is for.
+        The type scale, compact as CapCut's: 12px is the body. Four sizes:
+          11 labels, 12 controls, panel titles and body, 14 dialog titles,
+          18 the start screen.
+        The Tailwind names the code already used are pointed at the same four,
+        so every existing class lands on the scale, and the semantic names say
+        what a size is for. Titles stand out by weight, not by size.
       */
       fontSize: {
         '2xs': ['11px', '15px'],
         xs: ['12px', '16px'],
-        sm: ['13px', '18px'],
-        base: ['15px', '20px'],
-        lg: ['20px', '26px'],
+        sm: ['12px', '17px'],
+        base: ['14px', '19px'],
+        lg: ['18px', '24px'],
         label: ['11px', '15px'],
         control: ['12px', '16px'],
-        body: ['13px', '18px'],
-        title: ['15px', '20px'],
-        display: ['20px', '26px'],
+        body: ['12px', '17px'],
+        title: ['14px', '19px'],
+        display: ['18px', '24px'],
       },
       /*
-        Three radii: 4 for controls, 6 for menus and cards, 8 for panels and
-        dialogs. rounded-xl (12px) is folded into 8 so nothing is rounder than
-        a panel.
+        Three radii, round as CapCut's: 6 for controls, 8 for menus and
+        cards, 12 for panels and dialogs. rounded-xl is folded into 12 so
+        nothing is rounder than a panel.
       */
       borderRadius: {
-        DEFAULT: '4px',
-        md: '6px',
-        lg: '8px',
-        xl: '8px',
-        control: '4px',
-        menu: '6px',
-        panel: '8px',
+        DEFAULT: '6px',
+        md: '8px',
+        lg: '12px',
+        xl: '12px',
+        control: '6px',
+        menu: '8px',
+        panel: '12px',
       },
       /* Two control heights - 24 dense, 28 default - and 32 for the one primary action. */
       height: {

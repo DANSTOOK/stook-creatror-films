@@ -60,6 +60,12 @@ import type { ClipTransform } from '@shared/types';
  */
 const HANDLE_CSS_PX = 7;
 const ROTATE_ARM_CSS_PX = 26;
+/**
+ * A position to a millionth of a pixel: what the sums leave past that is
+ * noise, and a picture taken to the centre is at 0, not at 2.8e-14.
+ */
+const tidy = (value: number): number => Math.round(value * 1e6) / 1e6 + 0;
+
 /** How far the pointer travels, on screen, before a press becomes a move. */
 const MOVE_THRESHOLD_CSS_PX = 3;
 /** Shift-rotate lands on multiples of this. */
@@ -268,8 +274,8 @@ export function ViewportControls(): JSX.Element | null {
         // The same distance on the keyframed position, whatever the animation adds.
         setTransformAt(placed.clip.id, currentFrame, {
           position: {
-            x: drag.basePosition.x + (snapped.x - drag.startTransform.position.x),
-            y: drag.basePosition.y + (snapped.y - drag.startTransform.position.y),
+            x: tidy(drag.basePosition.x + (snapped.x - drag.startTransform.position.x)),
+            y: tidy(drag.basePosition.y + (snapped.y - drag.startTransform.position.y)),
           },
         });
         return;

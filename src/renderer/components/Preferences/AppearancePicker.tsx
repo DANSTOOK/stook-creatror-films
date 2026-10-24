@@ -10,7 +10,8 @@ const THEME_LABEL: Record<ThemeChoice, 'prefs.themeDark' | 'prefs.themeLight' | 
   light: 'prefs.themeLight',
   system: 'prefs.themeSystem',
 };
-const ACCENT_LABEL: Record<AccentChoice, 'prefs.accentBlue' | 'prefs.accentViolet' | 'prefs.accentGreen' | 'prefs.accentOrange' | 'prefs.accentPink'> = {
+const ACCENT_LABEL: Record<AccentChoice, 'prefs.accentCyan' | 'prefs.accentBlue' | 'prefs.accentViolet' | 'prefs.accentGreen' | 'prefs.accentOrange' | 'prefs.accentPink'> = {
+  cyan: 'prefs.accentCyan',
   blue: 'prefs.accentBlue',
   violet: 'prefs.accentViolet',
   green: 'prefs.accentGreen',

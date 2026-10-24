@@ -13,7 +13,9 @@ import {
   findRecent,
   recordRecent,
   removeRecent,
+  renameRecent,
   renameWithRetry,
+  samePath,
   thumbnailNameFor,
 } from '../projects/recentProjects';
 import { BackupStore, RecoveryStore } from '../projects/backups';
@@ -728,6 +730,30 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
       const { list: next, removed } = removeRecent(list, path);
       return { list: next, deleteThumbnails: removed?.thumbnail ? [removed.thumbnail] : [] };
     });
+  });
+
+  /**
+   * A saved project renamed where it is, from the title bar: its .scf, the
+   * backups kept for it and its entry on the start screen. Never over
+   * another project: a name already taken in its folder is refused.
+   */
+  ipcMain.handle(IPC.projectsRename, async (_event, path: unknown, name: unknown): Promise<{ path: string; name: string }> => {
+    if (typeof path !== 'string' || typeof name !== 'string') throw new Error(mt('main.renameFailed'));
+    assertAllowed(path);
+    const clean = cleanProjectName(name);
+    if (!clean) throw new Error(mt('main.renameEmpty'));
+    const target = join(dirname(path), `${clean}.scf`);
+    if (target === path) return { path, name: clean };
+    // Only the case of a letter changed: the same file, renamed in place.
+    const taken = !samePath(target, path) && (await stat(target).then(() => true, () => false));
+    if (taken) throw new Error(mt('main.renameTaken', { name: clean }));
+    // A save of it still being written finishes first, under the old name.
+    await (saveQueues.get(path) ?? Promise.resolve()).catch(() => undefined);
+    await renameWithRetry(path, target);
+    allowedPaths.add(target);
+    await backups.move(path, target).catch(() => undefined);
+    await recentProjects.update((list) => ({ list: renameRecent(list, path, target, clean) }));
+    return { path: target, name: clean };
   });
 
   ipcMain.handle(IPC.projectsDefaultFolder, async (): Promise<string> => {

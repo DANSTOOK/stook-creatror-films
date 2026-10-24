@@ -74,6 +74,7 @@ export async function copyDiagnostics(): Promise<void> {
     await window.filmora.clipboardWrite(report);
     notify(t('diag.copied'), 'success');
   } catch (error) {
-    notify(String(error instanceof Error ? error.message : error), 'error');
+    const { errorText } = await import('@renderer/errorText');
+    notify(errorText(error), 'error');
   }
 }

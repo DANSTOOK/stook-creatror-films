@@ -363,6 +363,9 @@ async function main() {
     const tipEs = await window.getByTestId('wheel-lift').locator('.field-label').getAttribute('data-tooltip');
     check('with the English name in the tooltip', /Lift/.test(tipEs ?? ''), tipEs ?? '');
     const gainEs = window.getByTestId('wheel-gain-disc');
+    // The inspector scrolls: the third wheel may sit below its fold, as it does for a person.
+    await gainEs.scrollIntoViewIfNeeded();
+    await sleep(200);
     const gainBox = await gainEs.boundingBox();
     await window.mouse.move(gainBox.x + gainBox.width / 2, gainBox.y + gainBox.height / 2);
     await window.mouse.down();
