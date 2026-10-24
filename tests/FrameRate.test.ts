@@ -210,6 +210,25 @@ describe('adopting settings on first import', () => {
     expect(state().project.durationFrames / state().project.fps).toBeCloseTo(secondsBefore, 3);
   });
 
+  it('leaves a project whose frame was chosen alone: a vertical one stays vertical', () => {
+    state().newProject(1080, 1920, 30, { chosen: true });
+    state().addAssets([
+      { id: 'a', name: 'landscape.mp4', uri: 'blob:a', kind: 'video', durationFrames: 120, width: 1920, height: 1080, hasAlphaChannel: false, sourceFps: 60 },
+    ]);
+    expect([state().project.width, state().project.height, state().project.fps]).toEqual([1080, 1920, 30]);
+    expect(state().adoptedSettingsFrom).toBeNull();
+  });
+
+  it('counts a frame set by hand as chosen, and keeps it through a save', () => {
+    state().setProjectSettings({ width: 1080, height: 1080 });
+    expect(state().project.frameChosen).toBe(true);
+    const reopened = JSON.parse(JSON.stringify(state().toDocument()));
+    state().newProject();
+    expect(state().project.frameChosen).toBeUndefined();
+    state().loadDocument(reopened);
+    expect(state().project.frameChosen).toBe(true);
+  });
+
   it('leaves an established project alone', () => {
     state().addAssets([
       {

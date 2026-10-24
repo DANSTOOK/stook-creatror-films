@@ -11,6 +11,7 @@ import { notify } from '@renderer/notifications/notifications';
 import { currentLocale, t } from '@renderer/i18n';
 import { canRelink, relinkFirstMissing } from '@renderer/media/relink';
 import { errorText } from '@renderer/errorText';
+import { projectContentLength } from '@renderer/components/Timeline/timelineOps';
 
 /**
  * Everything that starts, opens or keeps a project.
@@ -106,7 +107,10 @@ async function recordRecent(path: string, withThumbnail: boolean): Promise<void>
         width: project.width,
         height: project.height,
         fps: project.fps,
-        durationFrames: project.durationFrames,
+        // How long the edit runs - the end of its last clip - not the canvas a
+        // new project gets, which is a minute and only grows: a 12-second edit
+        // read "1:00" on its card, as the viewer once said 00:01:00:00.
+        durationFrames: projectContentLength(project),
         clipCount: Object.keys(project.clips).length,
       },
       thumbnail,
@@ -318,7 +322,8 @@ export function useProjectActions(): ProjectActions {
     async (options: NewProjectOptions): Promise<boolean> => {
       if (!hasNativeBridge() || !(await confirmLeave())) return false;
       await pendingRecord;
-      useProjectStore.getState().newProject(options.width, options.height, options.fps);
+      // Chosen on the start screen: the first clip imported does not replace it.
+      useProjectStore.getState().newProject(options.width, options.height, options.fps, { chosen: true });
       try {
         const folder = options.folder ?? (await window.filmora.projectsDefaultFolder());
         const json = JSON.stringify(useProjectStore.getState().toDocument(), null, 2);

@@ -7,11 +7,84 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1715 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1717 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.84.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.85.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.86.0-beta.1 — La pantalla de inicio al estilo CapCut, y vuelven los botones del visor (bloque 5a del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: «Galería visual» en el inicio; y lo pedido después: «deberías dejar de nuevo los botones del visualizador, los de regresar hasta el principio del track y demás»
+
+### Cambiado
+- **Vuelven todos los botones a la barra del visor**, como pediste:
+  - en el centro, **ir al inicio**, fotograma anterior, el botón grande de
+    reproducir (sigue en el centro exacto), fotograma siguiente e **ir al
+    final**;
+  - a la derecha, el **bucle** y las **zonas seguras**, que la v1.84 había
+    subido a la cabecera, junto a la proporción, la calidad y la pantalla
+    completa.
+- **Una tarjeta grande «Crear proyecto»** encabeza la pantalla de inicio, como
+  en CapCut. Dice lo que va a crear: la forma, el tamaño, los fotogramas por
+  segundo y el nombre elegidos a su izquierda, por ejemplo «9:16 ·
+  1080×1920 · 30 fps · Mi short». A su lado, «Proyecto en blanco» y «Abrir
+  proyecto…».
+- **Las formas del proyecto nuevo se ven más grandes** (34 px en vez de 26).
+- **Las miniaturas de los proyectos recientes son más grandes:** columnas de
+  al menos 260 px, en vez de 220.
+
+### Arreglado
+- **Un proyecto creado en 9:16 se volvía horizontal al importar el primer
+  clip.** La app adoptaba el tamaño y los fotogramas del primer clip aunque
+  hubieras elegido el formato al crear el proyecto. Ahora un formato elegido,
+  en el inicio, en Ajustes del proyecto o en la proporción del visor, se
+  respeta y se guarda con el proyecto. Un proyecto en blanco sigue tomándolo
+  del primer clip, como antes.
+- **La tarjeta de un proyecto reciente decía «1:00» para un montaje de
+  12 s.** Mostraba el lienzo de un minuto con el que nace todo proyecto. Ahora
+  muestra lo que dura de verdad el montaje, hasta el final de su último clip.
+- **Un proyecto nuevo decía «Se tomaron del primer clip importado, X»** con
+  el clip de un proyecto anterior. Ahora la nota se borra al crear o abrir un
+  proyecto.
+- **El editor, detrás de la pantalla de inicio, ya no se pinta.** Seguía
+  dibujado debajo, solo bloqueado. Ahora está oculto hasta que se entra. No se
+  nota en la imagen, y gasta menos mientras miras el inicio.
+  - Lo destapó la batería de pruebas: cuatro pruebas que actuaban al
+    instante sobre el editor recién abierto veían ese editor de debajo, antes
+    de que existiera el proyecto en blanco. Sus cambios se perdían.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/home-gallery.mjs` (**6/6**):
+  - la tarjeta grande es el único botón «Crear proyecto», está encima de los
+    recientes y tiene al lado «Proyecto en blanco» y «Abrir»;
+  - su resumen cambia al elegir 9:16 y escribir el nombre;
+  - crea exactamente un proyecto de 1080×1920 a 30 fps con ese nombre;
+  - un clip horizontal importado lo deja en 9:16;
+  - la tarjeta del reciente dice «0:12» y «1080×1920».
+- `viewer-bar` (**14/14**) comprueba ahora la barra completa:
+  - ir al inicio, fotograma anterior, reproducir, fotograma siguiente e ir al
+    final, en ese orden;
+  - el reproducir sigue en el centro exacto;
+  - el bucle y las zonas seguras están a la derecha, y en la cabecera no
+    queda ninguno.
+- **2 pruebas unitarias nuevas:** un formato elegido no lo cambia el primer
+  clip; un formato puesto a mano cuenta como elegido y sobrevive a guardar y
+  abrir.
+- Las **67** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+  - En la primera batería fallaron `history`, `caption-style`, `sounds` y
+    `screen-record` por la carrera con el editor de debajo. Con el arreglo
+    pasan 6/6, 4/4, 5/5 y 7/7.
+  - `title-library` esperaba justo ese editor de debajo antes de pulsar
+    «Proyecto en blanco». Se corrigió la prueba y pasa 12/12.
+  - Las cuatro pruebas de banco de subtítulos entran ahora desde el inicio.
+- 1717 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento, con nada lento en sus 17 escenarios.** La
+  memoria es de 32 MB al empezar y al terminar.
+- La v1.85 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ---
 

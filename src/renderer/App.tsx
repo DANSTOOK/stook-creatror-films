@@ -736,7 +736,12 @@ export default function App(): JSX.Element {
 
       <div className="relative min-h-0 flex-1">
         {view === 'editor' && <ActivityBar />}
-        <div ref={editorRef} aria-hidden={view !== 'editor'} className="flex h-full flex-col px-1.5 pb-1.5">
+        {/* Behind the start screen it is hidden as well as inert: it paints nothing
+            there, and nothing reads its panels as on screen before the project
+            they are to show exists - the blank project is made inside the
+            switch's view transition, a frame or two after the click. Set in the
+            render, not an effect, so it shows in the same commit as the switch. */}
+        <div ref={editorRef} aria-hidden={view !== 'editor'} className={`flex h-full flex-col px-1.5 pb-1.5 ${view === 'editor' ? '' : 'invisible'}`}>
           <div ref={workspaceRef} className="flex min-h-0 flex-1 flex-col">
             <main
               className={`relative flex min-h-0 ${rowFiller ? (browserRow ? 'shrink-0' : 'flex-1') : ''}`}

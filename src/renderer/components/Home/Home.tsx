@@ -21,6 +21,11 @@ import { LanguageSelect } from '@renderer/components/Preferences/PreferencesDial
  * their search sits beside their title, where the eye already is - it used to
  * be at the far edge of a page capped at 1360px, with a lone card on the left
  * and an empty band on the right.
+ *
+ * As CapCut's home has it, a big Create project card heads that side, saying
+ * what it will make - the shape, the size, the rate and the name chosen in
+ * the column beside it - with a blank project and Open beside it, and the
+ * recent projects under it in large thumbnails.
  */
 
 const LOGO_URL = new URL('../../assets/logo.png', import.meta.url).href;
@@ -173,8 +178,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
               <div role="radiogroup" aria-label={t('home.shape')} className="grid grid-cols-4 gap-1.5">
                 {SHAPES.map((shape) => {
                   const on = shape.id === shapeId;
-                  // The shape itself, drawn: 26 px on its long side.
-                  const scale = 26 / Math.max(shape.w, shape.h);
+                  // The shape itself, drawn: 34 px on its long side.
+                  const scale = 34 / Math.max(shape.w, shape.h);
                   return (
                     <button
                       key={shape.id}
@@ -184,11 +189,11 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
                       data-testid={`home-shape-${shape.id}`}
                       title={shape.where}
                       onClick={() => setShapeId(shape.id)}
-                      className={`press flex flex-col items-center gap-1 rounded-md border px-1 pb-1.5 pt-2 text-center transition-colors ${
+                      className={`press flex flex-col items-center gap-1 rounded-menu border px-1 pb-2 pt-2.5 text-center transition-colors ${
                         on ? 'border-accent/70 bg-accent/15 text-slate-100' : 'border-panel-700 bg-panel-900 text-slate-400 hover:border-panel-600 hover:text-slate-200'
                       }`}
                     >
-                      <span className="flex h-7 items-center justify-center">
+                      <span className="flex h-9 items-center justify-center">
                         <span
                           aria-hidden
                           className={`block rounded-[3px] border-2 transition-colors ${on ? 'border-accent-hover bg-accent/25' : 'border-slate-500'}`}
@@ -251,31 +256,7 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
               </button>
             </div>
 
-            <button
-              type="button"
-              className="button-primary w-full"
-              disabled={!native || creating}
-              onClick={() => void create()}
-            >
-              <Plus size={15} />
-              {creating ? t('home.creating') : t('home.create')}
-            </button>
-          </div>
-
-          <div className="scf-rise grid grid-cols-2 gap-2" style={stagger(2)}>
-            <button type="button" className="scf-surface scf-lift flex h-control items-center justify-center gap-2 rounded-control text-xs text-slate-200" onClick={onBlank}>
-              <Film size={14} />
-              {t('home.blank')}
-            </button>
-            <button
-              type="button"
-              className="scf-surface scf-lift flex h-control items-center justify-center gap-2 rounded-control text-xs text-slate-200"
-              disabled={!native}
-              onClick={onOpenDialog}
-            >
-              <FolderOpen size={14} />
-              {t('home.open')}
-            </button>
+            <p className="text-2xs leading-relaxed text-slate-500">{t('home.createHint')}</p>
           </div>
 
           {native && <MyTemplates onOpen={onOpenTemplate} />}
@@ -290,6 +271,42 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
 
         {/* Carry on */}
         <section className="flex min-w-0 flex-1 flex-col">
+          <div className="scf-rise mb-6 flex gap-3" style={stagger(0)}>
+            <button
+              type="button"
+              data-testid="home-create"
+              className="scf-hero group flex h-[132px] min-w-0 flex-1 items-center gap-5 rounded-panel px-7 text-left text-accent-contrast"
+              disabled={!native || creating}
+              onClick={() => void create()}
+            >
+              <span aria-hidden className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-white/25 shadow-inner transition-transform duration-200 group-hover:scale-110">
+                <Plus size={30} strokeWidth={2.6} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xl font-semibold">{creating ? t('home.creating') : t('home.create')}</span>
+                <span data-testid="home-create-summary" className="mt-1 block truncate text-xs font-medium opacity-80">
+                  {`${chosenShape.w}:${chosenShape.h} · ${frame.width}×${frame.height} · ${fps} fps · ${name.trim() || t('home.untitled')}`}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className="scf-surface scf-lift flex h-[132px] w-40 shrink-0 flex-col items-center justify-center gap-2.5 rounded-panel text-sm text-slate-200"
+              onClick={onBlank}
+            >
+              <Film size={26} className="text-slate-300" />
+              {t('home.blank')}
+            </button>
+            <button
+              type="button"
+              className="scf-surface scf-lift flex h-[132px] w-40 shrink-0 flex-col items-center justify-center gap-2.5 rounded-panel text-sm text-slate-200"
+              disabled={!native}
+              onClick={onOpenDialog}
+            >
+              <FolderOpen size={26} className="text-slate-300" />
+              {t('home.open')}
+            </button>
+          </div>
           {recovery && (
             <div
               data-testid="recovery-card"
@@ -355,8 +372,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
             ) : shown.length === 0 ? (
               <p className="px-1 py-8 text-center text-xs text-slate-400">{t('home.noMatch', { query })}</p>
             ) : (
-              // Columns of at least 220px across the whole width, as many as fit.
-              <ul ref={cardsRef} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4 pb-4">
+              // Columns of at least 260px across the whole width, as many as fit: large thumbnails, as CapCut's.
+              <ul ref={cardsRef} className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 pb-4">
                 {shown.map((project, index) => (
                   <li key={project.path} data-flip-key={project.path} className="scf-rise group relative" style={stagger(index + 2)}>
                     <button

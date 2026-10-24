@@ -429,7 +429,10 @@ function normalizedEffectsOrNone(raw: unknown): Clip['effects'] {
 }
 
 export function normalizeProject(project: ProjectState): ProjectState {
-  return withGlossary(withParkedCaptions(withTransitions(normalizeClipsAndTracks(project), project.transitions), project.parkedCaptions), project.glossary);
+  const normalized = withGlossary(withParkedCaptions(withTransitions(normalizeClipsAndTracks(project), project.transitions), project.parkedCaptions), project.glossary);
+  // Only a true in the file counts: anything else is a frame that was not chosen.
+  const { frameChosen, ...rest } = normalized;
+  return frameChosen === true ? { ...rest, frameChosen: true } : rest;
 }
 
 /** The glossary read from a file (captions/glossary.ts): tidied; none, no field. */

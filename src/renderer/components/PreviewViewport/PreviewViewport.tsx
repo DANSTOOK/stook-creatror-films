@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  ChevronFirst,
+  ChevronLast,
   CircleSlash2,
   Film,
   Frame,
@@ -47,9 +49,10 @@ import { refitForFrame } from '@renderer/edit/frameShape';
  * Laid out like CapCut's player: the header says whose picture this is (the
  * project), how big it is drawn, and holds the looking tools - loop, safe
  * areas, before/after, scopes; the picture takes the rest; under it the time
- * on the left, the transport in the middle - a big round play between the two
- * frame steps, nothing more - and on the right the frame's shape, the
- * playback quality and full screen. The thick slider that used to run under the picture
+ * on the left, the transport in the middle - to the start, a frame back, a big
+ * round play, a frame on, to the end, the play exactly in the middle - and on
+ * the right loop, safe areas, the frame's shape, the playback quality and full
+ * screen. The thick slider that used to run under the picture
  * is gone - the timeline's ruler is where the playhead is dragged, and neither
  * Resolve nor Final Cut repeat it under the viewer. It survives only in the
  * full-screen viewer, where there is no timeline.
@@ -225,9 +228,12 @@ export function PreviewViewport(): JSX.Element {
 
   const zoomLabel = (value: Zoom): string => (value === 'fit' ? t('viewer.fit') : `${value * 100}%`);
 
-  // Centred and few, as CapCut's: a frame back, play, a frame on. Home and End still go to either end.
+  // Centred, the play in the very middle: to the start, a frame back, play, a frame on, to the end.
   const transportButtons = (
     <div className="flex items-center gap-1.5">
+      <button type="button" className="tool-button w-7 px-0" onClick={() => transport.seek(0)} {...tip(t('viewer.toStart'), { shortcut: 'Home' })}>
+        <ChevronFirst size={16} />
+      </button>
       <button type="button" className="tool-button w-7 px-0" onClick={() => transport.step(-1)} {...tip(t('viewer.previousFrame'), { shortcut: '←' })}>
         <SkipBack size={16} />
       </button>
@@ -243,10 +249,13 @@ export function PreviewViewport(): JSX.Element {
       <button type="button" className="tool-button w-7 px-0" onClick={() => transport.step(1)} {...tip(t('viewer.nextFrame'), { shortcut: '→' })}>
         <SkipForward size={16} />
       </button>
+      <button type="button" className="tool-button w-7 px-0" onClick={() => transport.seek(length)} {...tip(t('viewer.toEnd'), { shortcut: 'End' })}>
+        <ChevronLast size={16} />
+      </button>
     </div>
   );
 
-  // Looking tools: loop and safe areas, beside before/after and the scopes.
+  // Loop and safe areas: in the bar under the picture, at the start of its right-hand group.
   const loopButton = (
     <button
       type="button"
@@ -257,6 +266,18 @@ export function PreviewViewport(): JSX.Element {
       {...tip(t('viewer.loop'), { shortcut: 'Ctrl+/', hint: t('viewer.loopHint') })}
     >
       <Repeat size={14} />
+    </button>
+  );
+  const safeAreasButton = (
+    <button
+      type="button"
+      data-testid="toggle-safe-areas"
+      aria-pressed={ui.showSafeAreas}
+      className={`tool-button tool-button-dense w-6 px-0 ${ui.showSafeAreas ? 'tool-button-active' : ''}`}
+      onClick={() => setUi({ showSafeAreas: !ui.showSafeAreas })}
+      {...tip(t('viewer.safeAreas'))}
+    >
+      <Frame size={14} />
     </button>
   );
 
@@ -353,17 +374,6 @@ export function PreviewViewport(): JSX.Element {
                 </option>
               ))}
             </select>
-            {loopButton}
-            <button
-              type="button"
-              data-testid="toggle-safe-areas"
-              aria-pressed={ui.showSafeAreas}
-              className={`tool-button tool-button-dense w-6 px-0 ${ui.showSafeAreas ? 'tool-button-active' : ''}`}
-              onClick={() => setUi({ showSafeAreas: !ui.showSafeAreas })}
-              {...tip(t('viewer.safeAreas'))}
-            >
-              <Frame size={14} />
-            </button>
             {/* Before/after: the grade off, or a curtain across the picture. */}
             <button
               type="button"
@@ -530,6 +540,8 @@ export function PreviewViewport(): JSX.Element {
           <div className="min-w-0">{timecodes}</div>
           {transportButtons}
           <div className="flex min-w-0 items-center justify-end gap-1">
+            {loopButton}
+            {safeAreasButton}
             {aspectSelect}
             {/* Playback resolution, as Resolve and Premiere have it: lighter while playing, never in an export. */}
             <label className="sr-only" htmlFor="viewer-quality">

@@ -128,6 +128,10 @@ async function main() {
   try {
     const window = await app.firstWindow();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000));
+    // The start screen first: the editor behind it is hidden until a project is open.
+    const blank = window.getByRole('button', { name: 'Blank project' });
+    await blank.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => undefined);
+    if (await blank.count()) await blank.click({ force: true });
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
     await app.evaluate(({ session }) => session.defaultSession.enableNetworkEmulation({ offline: true }));
     await window.evaluate(() => window.__scfStore.getState().setProjectSettings({ width: 1920, height: 1080, fps: 30 }));

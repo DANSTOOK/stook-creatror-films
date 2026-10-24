@@ -899,6 +899,16 @@ export interface ProjectState {
   tracks: Track[];
   clips: Record<string, Clip>;
   hasAlphaBackground: boolean; // Transparent Canvas for Godot Sprite Exports
+  /**
+   * The frame and the rate were chosen for this project - on the start
+   * screen, in Project settings, from the viewer's shape menu - rather than
+   * left at the defaults. A project whose frame was not chosen takes it from
+   * the first clip imported (addAssets); one whose frame was keeps it: a
+   * vertical project made for TikTok must not turn landscape because its
+   * first clip was shot that way. Absent in projects saved before this, and
+   * in a blank project, which means not chosen.
+   */
+  frameChosen?: boolean;
   /** Named points on the timeline. Sorted by frame. */
   markers: Marker[];
   /** Master bus and auto-ducking, i.e. everything the mixer owns. */

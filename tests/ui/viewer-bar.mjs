@@ -8,10 +8,10 @@ import { _electron as electron } from 'playwright';
 /**
  * The viewer's bar, the way CapCut's player has it: `node tests/ui/viewer-bar.mjs`
  *
- *   1. under the picture: the time on the left, a big round play in the
- *      middle between the two frame steps, and on the right the frame's shape,
- *      the playback quality and full screen; loop and safe areas are up in the
- *      header, and the buttons to either end are gone (Home and End remain);
+ *   1. under the picture: the time on the left; in the middle to the start, a
+ *      frame back, a big round play - exactly in the middle - a frame on and
+ *      to the end; on the right loop, safe areas, the frame's shape, the
+ *      playback quality and full screen;
  *   2. play plays and pauses;
  *   3. the shape menu says 16:9 for a 1920×1080 edit, and 9:16 makes it
  *      1080×1920 with the 16:9 video whole in it - black above and below, the
@@ -78,7 +78,7 @@ async function main() {
       const play = box(document.querySelector('[data-testid="viewer-play"]'));
       const bar = box(footer);
       const time = box(document.querySelector('[data-testid="viewer-timecode"]'));
-      const right = ['viewer-aspect', 'viewer-quality', 'fullscreen-viewer'].map((id) => {
+      const right = ['viewer-loop', 'toggle-safe-areas', 'viewer-aspect', 'viewer-quality', 'fullscreen-viewer'].map((id) => {
         const element = document.querySelector(`[data-testid="${id}"]`);
         return { id, inFooter: Boolean(element && footer.contains(element)), left: element ? box(element).left : 0 };
       });
@@ -91,15 +91,17 @@ async function main() {
         timeLeft: time ? time.left - bar.left : -1,
         right,
         rightOfPlay: right.every((entry) => entry.left > (play?.right ?? 0)),
-        headerTools: ['viewer-loop', 'toggle-safe-areas'].every((id) => header?.contains(document.querySelector(`[data-testid="${id}"]`))),
-        ends: [...footer.querySelectorAll('button')].filter((button) => /Go to (start|end)/.test(button.getAttribute('aria-label') ?? button.textContent ?? '')).length,
+        headerTools: ['viewer-loop', 'toggle-safe-areas'].some((id) => header?.contains(document.querySelector(`[data-testid="${id}"]`))),
+        transport: [...footer.querySelectorAll('button')].map((button) => button.getAttribute('aria-label') ?? '').filter((name) => /^(Go to start|Previous frame|Play|Pause|Next frame|Go to end)$/.test(name)),
         buttons: footer.querySelectorAll('button').length,
       };
     });
     check('the play is big and round, in the middle of the bar', layout.playRound && Math.abs(layout.playCentre - layout.barCentre) < layout.barWidth * 0.02, `play at ${Math.round(layout.playCentre)}, bar centre ${Math.round(layout.barCentre)}`);
     check('the time is on the left', layout.timeLeft >= 0 && layout.timeLeft < 30, `${Math.round(layout.timeLeft)} px in`);
-    check('the shape, the quality and full screen are on the right', layout.right.every((entry) => entry.inFooter) && layout.rightOfPlay, JSON.stringify(layout.right));
-    check('loop and safe areas are up in the header, and nothing goes to either end', layout.headerTools && layout.ends === 0 && layout.buttons === 4, `${layout.buttons} buttons in the bar`);
+    check('loop, safe areas, the shape, the quality and full screen are on the right', layout.right.every((entry) => entry.inFooter) && layout.rightOfPlay, JSON.stringify(layout.right));
+    check('every transport button is in the bar - to the start, a frame back, play, a frame on, to the end - and none up in the header',
+      layout.transport.join('|') === 'Go to start|Previous frame|Play|Next frame|Go to end' && !layout.headerTools && layout.buttons === 8,
+      `${layout.transport.join(' / ')}; ${layout.buttons} buttons in the bar`);
 
     /* 2. play and pause --------------------------------------------------------- */
     await window.getByTestId('viewer-play').click();

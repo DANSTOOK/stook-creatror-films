@@ -188,7 +188,8 @@ interface ProjectStore {
   adoptedSettingsFrom: string | null;
 
   /* Document ------------------------------------------------------------- */
-  newProject(width?: number, height?: number, fps?: ProjectState['fps']): void;
+  /** `chosen`: the frame and rate were picked for it (the start screen), so the first import does not replace them. */
+  newProject(width?: number, height?: number, fps?: ProjectState['fps'], options?: { chosen?: boolean }): void;
   loadDocument(document: ProjectDocument): void;
   toDocument(): ProjectDocument;
 
@@ -714,10 +715,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   /* Document ------------------------------------------------------------- */
 
-  newProject(width = 1920, height = 1080, fps = 30) {
+  newProject(width = 1920, height = 1080, fps = 30, options = {}) {
     useHistoryStore.getState().clear();
+    const empty = createEmptyProject(width, height, fps);
     set({
-      project: createEmptyProject(width, height, fps),
+      project: options.chosen ? { ...empty, frameChosen: true } : empty,
       assets: [],
       bins: [],
       currentBinId: null,
@@ -725,6 +727,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // project, and fitting depends on it.
       ui: { ...DEFAULT_UI_STATE, viewportWidthPx: get().ui.viewportWidthPx },
       exportSettings: { ...DEFAULT_EXPORT_SETTINGS, width, height, fps },
+      // A new project took nothing from anybody's clip: the note is about the last one.
+      adoptedSettingsFrom: null,
     });
   },
 
@@ -736,6 +740,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     }
     useHistoryStore.getState().clear();
     set({
+      // An opened file's frame was not adopted this session, whatever the last project's was.
+      adoptedSettingsFrom: null,
       // Older files predate the mixer and markers; normalizing on the way in
       // means nothing downstream has to defend against a missing field.
       // Every other path that adds clips grows the project through
@@ -847,7 +853,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           ? retimeProject(project, settings.fps)
           : project;
 
-      return { ...rated, ...settings };
+      const chosen = settings.width !== undefined || settings.height !== undefined || settings.fps !== undefined;
+      return { ...rated, ...settings, ...(chosen ? { frameChosen: true } : {}) };
     });
 
     // The export settings mirror the project, and a stale resolution here is
@@ -886,7 +893,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   setFrameShape(size, transforms, label = 'Aspect ratio') {
     get().transact(label, (project) => {
-      const framed = { ...project, width: size.width, height: size.height };
+      const framed = { ...project, width: size.width, height: size.height, frameChosen: true };
       const clips = { ...project.clips };
       for (const [id, move] of Object.entries(transforms)) {
         const clip = clips[id];
@@ -2737,8 +2744,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
     // "New sequence from clip": an untouched project takes its frame rate and
     // resolution from the first thing imported, so 60 fps footage is not
-    // silently resampled to the 30 fps default.
-    if (!wasEmpty) return;
+    // silently resampled to the 30 fps default. Not one whose frame was
+    // chosen: a 9:16 project made on the start screen stays 9:16.
+    if (!wasEmpty || get().project.frameChosen) return;
 
     const settings = fresh
       .map(settingsFromAsset)

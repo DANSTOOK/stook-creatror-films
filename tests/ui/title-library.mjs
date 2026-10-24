@@ -53,10 +53,12 @@ async function launch(profile) {
   window.on('pageerror', (error) => issues.push(`pageerror ${error.message}`));
   window.on('request', (request) => requests.push(request.url()));
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 1000));
-  await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
-  // From the start screen into a blank project.
+  // The app opens on the start screen; the editor behind it is hidden until a
+  // project is open, so the editor is waited for after the blank project.
   const blank = window.getByRole('button', { name: 'Blank project' });
+  await blank.waitFor({ state: 'visible', timeout: 30_000 }).catch(() => undefined);
   if (await blank.count()) await blank.click({ force: true });
+  await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
   await window.waitForTimeout(400);
   return { app, window, issues, requests };
 }
