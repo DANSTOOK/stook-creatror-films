@@ -7,13 +7,89 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1731 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1735 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.91.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.92.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.93.0-beta.1 — Texto a voz con textos largos, y «Separar audio» siempre a la vista
+2026-10-25 · pre-release para probar · lo pedido: «al usar textos largos … marca error y no lo genera» y «me borraste la opción de separar video y audio»
+
+### Arreglado
+- **Texto a voz con textos largos ya no falla a medias.** El error era
+  «Failed to create …\9.wav»: cada copia de la app, al arrancar, vaciaba la
+  carpeta temporal de las voces, y con ella la del trabajo que otra copia
+  estaba haciendo. Ahora:
+  - al arrancar solo se borra lo que dejó una sesión que se cerró de golpe:
+    carpetas sin tocar desde hace más de una hora. Un trabajo en marcha escribe
+    un trozo cada pocos segundos, así que nunca entra en eso;
+  - la carpeta se vuelve a crear antes de cada trozo. Si un trozo falla, se
+    intenta una vez más: si algo vacía la carpeta temporal mientras tanto (un
+    limpiador, el Sensor de almacenamiento de Windows), se pierde un momento,
+    no el texto;
+  - un párrafo pegado sin un solo punto ya no va entero al motor: se corta por
+    comas, punto y coma o guiones, y si no los hay, entre palabras. Kokoro lee
+    como mucho unos 500 sonidos de una vez.
+- **«Separar audio» ya no desaparece.** En un vídeo sin pista de sonido (los
+  de stock suelen venir así, como los tres 4K de tu último proyecto), el menú
+  del clic derecho escondía la opción, y parecía que se había quitado. Ahora
+  sale siempre, atenuada, con una línea debajo que dice «Este vídeo no tiene
+  sonido». Esa línea se lee con contraste completo, no atenuada.
+
+### Añadido
+- **Botón «Separar audio» en la barra de la línea de tiempo**, junto a
+  cortar y borrar, como en CapCut. Se enciende con un clip de vídeo
+  seleccionado. En uno sin sonido, al pulsarlo dice «Este vídeo no tiene
+  sonido: no hay audio que separar». Ctrl+Alt+S hace lo mismo.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/tts-long.mjs` (**6/6**), con los motores de verdad:
+  - un texto de 1494 caracteres con Kokoro (Dora), y a mitad del trabajo se
+    abre y se cierra otra copia de la app: el clip llega entero (83 s de voz,
+    hecha en 74 s), sin errores;
+  - un párrafo de 3851 caracteres sin ningún punto, con Piper (Claude): llega
+    también, de 234 s, y el motor de subtítulos de la app oye sus primeras
+    palabras (38 de 38);
+  - sin errores en la página ni en el registro.
+  - **Con el código de antes, esta prueba falla con tu mismo error**: el
+    registro anota «Failed to create '…\scf-tts\tts_…'» y el clip no llega.
+- **Prueba nueva** `tests/ui/detach-visible.mjs` (**10/10**), con un vídeo con
+  sonido y otro sin él:
+  - en el clip sin sonido, «Separar audio» atenuado y «Este vídeo no tiene
+    sonido» debajo, con contraste de 6,4:1;
+  - en el clip con sonido, la opción activa, y al elegirla el sonido va a una
+    pista de audio;
+  - el botón de la barra: apagado sin selección y encendido con un vídeo. En el
+    vídeo sin sonido avisa y no añade nada; en el que tiene sonido, lo separa;
+  - Ctrl+Alt+S, después de deshacer, lo vuelve a separar;
+  - sin errores en la página ni en el registro.
+- Pruebas unitarias nuevas: el corte de frases largas (por comas primero,
+  nunca pasándose del límite, sin perder ni una palabra) y la limpieza del
+  arranque (respeta la carpeta de un trabajo en marcha y borra la de una
+  sesión caída).
+
+- `audio-edit` (**47/47**) comprobaba lo de antes: que un vídeo sin sonido
+  no ofreciera «Separar audio» y el aviso antiguo. Ahora comprueba que la
+  opción sale atenuada y explica por qué, y que Ctrl+Alt+S avisa de que el
+  vídeo no tiene sonido.
+- **78 pruebas de interfaz**, la general a 127/127, con el registro de errores
+  activo: solo anotó lo que las pruebas provocan a propósito. El barrido ahora
+  compila una sola vez al principio y todas las pruebas usan esa compilación.
+  - `titles-motion` perdió una vez 3 fotogramas: coincidió con una medición
+    mía de voces con Kokoro a 8 hilos en la misma máquina. Repetida sola, pasó
+    30/30, sin ninguno perdido.
+- 1735 pruebas unitarias.
+- La v1.92 instalada pasa **129/129** sin red, con la suite de su versión, y
+  sin intentar ninguna conexión.
+
+- 22/22 de extremo a extremo, 41/41 de proyectos y 26/26 de movimiento.
+- La mega prueba de rendimiento: lento solo «arrastrar el cabezal», el
+  escenario que a veces sale lento según cómo esté el decodificador 4K.
+  Repetido dos veces, sale bien las dos. Esta versión no toca esa parte. La
+  memoria es de 30 MB al empezar y al terminar.
 
 ## v1.92.0-beta.1 — Las miniaturas de los efectos, sobre tu propio clip (bloque 8a)
 2026-10-25 · pre-release para probar · lo pedido: «miniaturas con tu clip»

@@ -33,7 +33,8 @@ import { _electron as electron } from 'playwright';
  *   4. the timeline in a window of its own: the loop bar is drawn there, its
  *      key works there, and the loop goes round while it is out;
  *   5. a video with no sound (.bench-media/screencast95.mp4, or
- *      AUDIO_EDIT_SILENT=path): nothing to detach, and it says so; and, when
+ *      AUDIO_EDIT_SILENT=path): Detach audio dimmed in its menu, saying why,
+ *      nothing detached, and it says so; and, when
  *      AUDIO_EDIT_REAL names one, real footage with sound: detached, the mix is
  *      the same samples, in step with the file, and plays where it did;
  *   6. in Spanish: the menus and the message.
@@ -967,17 +968,19 @@ async function main() {
       await window.mouse.click(point.x, point.y, { button: 'right' });
       await window.getByRole('menuitem').first().waitFor({ state: 'visible', timeout: 5000 });
       const items = await window.getByRole('menuitem').allInnerTexts();
+      const detachItem = await window.getByRole('menuitem', { name: /Detach audio/ }).first().evaluate((element) => ({ disabled: element.disabled, text: element.textContent ?? '' })).catch(() => null);
       await window.keyboard.press('Escape');
-      check('its right-click menu does not offer Detach audio', items.length > 3 && !items.some((text) => /Detach audio/.test(text)), `${items.length} items`);
+      // Since v1.93 the item stays, dimmed, saying why: hidden, it read as an option taken away.
+      check('its right-click menu offers Detach audio dimmed, saying the video has no sound', items.length > 3 && detachItem?.disabled === true && /no sound/.test(detachItem.text), `${items.length} items; ${JSON.stringify(detachItem)}`);
       await store((id) => window.__scfStore.getState().selectClips([id]), silentClip);
       // The message from part 2 is long gone; it has to come up again, for this clip.
-      const shownBefore = await window.getByText('Select a video clip with sound', { exact: false }).count();
+      const shownBefore = await window.getByText('This video has no sound in it', { exact: false }).count();
       await surface.focus().catch(() => undefined);
       await window.keyboard.press('Control+Alt+s');
       await sleep(300);
       const detachedSilent = await store(() => Object.values(window.__scfStore.getState().project.clips).filter((clip) => clip.audioOnly || clip.audioDetached).length);
-      check('and Ctrl+Alt+S on it detaches nothing, and says it needs a clip with sound',
-        shownBefore === 0 && detachedSilent === 0 && (await window.getByText('Select a video clip with sound', { exact: false }).first().isVisible({ timeout: 3000 }).catch(() => false)), `${detachedSilent} clips changed, ${shownBefore} messages up before the key`);
+      check('and Ctrl+Alt+S on it detaches nothing, and says the video has no sound',
+        shownBefore === 0 && detachedSilent === 0 && (await window.getByText('This video has no sound in it', { exact: false }).first().isVisible({ timeout: 3000 }).catch(() => false)), `${detachedSilent} clips changed, ${shownBefore} messages up before the key`);
     } else {
       console.log(`5. a video with no sound: skipped, ${silentFootage} is not there`);
     }
