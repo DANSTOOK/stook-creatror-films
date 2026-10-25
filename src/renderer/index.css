@@ -242,6 +242,20 @@
     background: theme('colors.panel.700');
   }
 
+  /*
+    The Voice tab's script box and the copy of its text behind it, where the
+    pause marks are chips (TextToSpeech/VoicePanel ScriptBox): the same font,
+    padding, wrapping and scrollbar gutter, so the two wrap alike line by line.
+  */
+  .scf-script-box {
+    padding: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    scrollbar-gutter: stable;
+  }
+
   /* A visible keyboard focus everywhere, never for mouse clicks. */
   :focus-visible {
     outline: 2px solid theme('colors.accent.hover');

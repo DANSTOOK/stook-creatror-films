@@ -56,6 +56,36 @@ export async function readWav(path: string): Promise<WavData> {
 /** A silence of `seconds` at `sampleRate`, as samples. */
 export const silence = (seconds: number, sampleRate: number): Int16Array => new Int16Array(Math.max(0, Math.round(seconds * sampleRate)));
 
+/** Quieter than this is silence: -48 dBFS, under the breath an engine leaves between words. */
+const SILENT = Math.round(32768 * 10 ** (-48 / 20));
+
+/**
+ * One piece's own silence at its ends cut away, so the gap between pieces -
+ * and a pause written into the script - is exactly what is asked: the
+ * engines leave a tenth of a second or more before the first word and after
+ * the last, and it changed from piece to piece. A little is kept around the
+ * speech (`lead` before, `trail` after, so a final consonant's decay is not
+ * clipped), and the new ends fade over a few milliseconds so the cut cannot
+ * click. A piece with no sound at all comes back empty.
+ */
+export function trimSilence(samples: Int16Array, sampleRate: number, options: { lead?: number; trail?: number; fade?: number } = {}): Int16Array {
+  let first = 0;
+  while (first < samples.length && Math.abs(samples[first]) <= SILENT) first += 1;
+  if (first === samples.length) return new Int16Array(0);
+  let last = samples.length - 1;
+  while (last > first && Math.abs(samples[last]) <= SILENT) last -= 1;
+  const start = Math.max(0, first - Math.round((options.lead ?? 0.02) * sampleRate));
+  const end = Math.min(samples.length, last + 1 + Math.round((options.trail ?? 0.06) * sampleRate));
+  const kept = samples.slice(start, end);
+  const fade = Math.min(Math.floor(kept.length / 2), Math.round((options.fade ?? 0.004) * sampleRate));
+  for (let i = 0; i < fade; i += 1) {
+    const gain = i / fade;
+    kept[i] = Math.round(kept[i] * gain);
+    kept[kept.length - 1 - i] = Math.round(kept[kept.length - 1 - i] * gain);
+  }
+  return kept;
+}
+
 /** Write one mono 16-bit WAV from joined chunks. Returns the duration in seconds. */
 export async function writeWav(path: string, sampleRate: number, parts: readonly Int16Array[]): Promise<number> {
   const total = parts.reduce((sum, part) => sum + part.length, 0);

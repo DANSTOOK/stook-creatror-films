@@ -7,6 +7,7 @@ import { buildAsset } from '@renderer/media/importMedia';
 import { dismissNotification, notify } from '@renderer/notifications/notifications';
 import { DEFAULT_CAPTION_SETTINGS } from '@renderer/captions/captionClips';
 import { createId } from '@shared/utils/id';
+import { scriptWords } from '@shared/tts/script';
 
 /**
  * Text to speech onto the timeline, from wherever it is asked for: the Text
@@ -131,9 +132,10 @@ async function generate(text: string, options: TtsOptions, voice: string, onProg
     if (!result || result.cancelled || !result.path) return null;
     const uri = await window.filmora.mediaUrl(result.path);
     const fps = useProjectStore.getState().project.fps;
-    const words = text.trim().split(/\s+/).slice(0, 5).join(' ');
-    const asset = await buildAsset({ name: `${t('tts.track')} · ${words}${text.trim().split(/\s+/).length > 5 ? '…' : ''}.wav`, uri, sourcePath: result.path, hasAudio: true }, fps);
-    return { asset, seconds: result.durationSeconds || asset.durationSeconds || 0, jobId };
+    // Named by what is said: the pause marks are not words.
+    const said = scriptWords(text).split(/\s+/).filter(Boolean);
+    const asset = await buildAsset({ name: `${t('tts.track')} · ${said.slice(0, 5).join(' ')}${said.length > 5 ? '…' : ''}.wav`, uri, sourcePath: result.path, hasAudio: true }, fps);
+    return { asset, seconds: result.durationSeconds || asset.durationSeconds || 0, jobId, segments: result.segments ?? [] };
   } finally {
     stop?.();
   }
@@ -157,7 +159,13 @@ export async function speakText(text: string, startFrame: number, options: TtsOp
   const clipId = useProjectStore.getState().addAssetToTimeline(asset, trackId, startFrame);
   if (options.captions) {
     const start = startFrame / fps;
-    const subtitles = captionLines(text, made.seconds).map((line) => ({ startMs: Math.round((start + line.start) * 1000), endMs: Math.round((start + line.end) * 1000), text: line.text }));
+    // Timed by where each piece of speech really is in the voice - so a pause
+    // is a gap between captions, and a long text does not drift - else spread
+    // over the clip by length, as an answer without pieces must be.
+    const lines = made.segments.length > 0
+      ? made.segments.flatMap((segment) => captionLines(segment.text, segment.end - segment.start).map((line) => ({ ...line, start: segment.start + line.start, end: segment.start + line.end })))
+      : captionLines(scriptWords(text), made.seconds);
+    const subtitles = lines.map((line) => ({ startMs: Math.round((start + line.start) * 1000), endMs: Math.round((start + line.end) * 1000), text: line.text }));
     if (subtitles.length > 0) useProjectStore.getState().addCaptionTrack({ subtitles }, { ...DEFAULT_CAPTION_SETTINGS, language: options.language });
   }
   useHistoryStore.getState().squash(mark, 'Text to speech');

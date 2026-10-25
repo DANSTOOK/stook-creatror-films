@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Check, Loader2, Play, Sparkles, Square, Wand2 } from 'lucide-react';
+import { AudioLines, Check, Loader2, Play, Sparkles, Square, Timer, Wand2 } from 'lucide-react';
 import type { TtsEffect, TtsEngineStatus, TtsVoiceStatus } from '@shared/types/ipc';
 import type { MessageKey } from '@shared/i18n';
 import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
@@ -10,6 +10,7 @@ import { hasNativeBridge } from '@renderer/media/importMedia';
 import { MAX_SPEED, MIN_SPEED, rememberTtsOptions, speakText, ttsOptions } from '@renderer/tts/speak';
 import { VOICE_CHARACTERS, VOICE_EFFECTS, type VoiceCharacter } from '@renderer/tts/characters';
 import { createId } from '@shared/utils/id';
+import { insertMark, PAUSE_CHOICES, pauseLabel, pauseMark, pauseMarks, pauseSeconds, scriptWords } from '@shared/tts/script';
 import { notify } from '@renderer/notifications/notifications';
 import { errorText } from '@renderer/errorText';
 import { VoiceAvatar } from './VoiceAvatar';
@@ -43,6 +44,57 @@ function Chip({ active, onClick, children, testId, hint }: { active: boolean; on
   );
 }
 
+/**
+ * The script box: a textarea over a copy of its text in which every pause
+ * mark is a cyan chip, so a pause reads as a pause and not as words. The copy
+ * wraps exactly as the box does - the same font, padding and scrollbar gutter
+ * (index.css .scf-script-box) - and scrolls with it.
+ */
+function ScriptBox({ value, onChange, placeholder, boxRef }: { value: string; onChange(value: string): void; placeholder: string; boxRef: React.RefObject<HTMLTextAreaElement> }): JSX.Element {
+  const mirrorRef = useRef<HTMLDivElement | null>(null);
+  const pieces = useMemo(() => {
+    const out: Array<{ text: string; mark: boolean }> = [];
+    let at = 0;
+    for (const mark of pauseMarks(value)) {
+      if (mark.start > at) out.push({ text: value.slice(at, mark.start), mark: false });
+      out.push({ text: value.slice(mark.start, mark.end), mark: true });
+      at = mark.end;
+    }
+    if (at < value.length) out.push({ text: value.slice(at), mark: false });
+    return out;
+  }, [value]);
+  return (
+    <div className="relative rounded-control border border-panel-700 bg-panel-950 focus-within:border-accent">
+      <div ref={mirrorRef} aria-hidden data-testid="tts-text-marks" className="scf-script-box pointer-events-none absolute inset-0 overflow-hidden text-transparent">
+        {pieces.map((piece, index) =>
+          piece.mark ? (
+            // eslint-disable-next-line react/no-array-index-key
+            <mark key={index} className="rounded-sm bg-accent/25 text-transparent ring-1 ring-accent/60">
+              {piece.text}
+            </mark>
+          ) : (
+            // eslint-disable-next-line react/no-array-index-key
+            <span key={index}>{piece.text}</span>
+          ),
+        )}
+        {/* A last empty line still has a height, as the box's does. */}
+        {'\u200b'}
+      </div>
+      <textarea
+        ref={boxRef}
+        className="scf-script-box relative block h-28 w-full resize-y overflow-y-auto bg-transparent text-slate-100 outline-none placeholder:text-slate-500"
+        placeholder={placeholder}
+        value={value}
+        data-testid="tts-text"
+        onChange={(event) => onChange(event.target.value)}
+        onScroll={(event) => {
+          if (mirrorRef.current) mirrorRef.current.scrollTop = event.currentTarget.scrollTop;
+        }}
+      />
+    </div>
+  );
+}
+
 export function VoicePanel(): JSX.Element {
   const t = useT();
   const uiLanguage = useLanguageStore((state) => state.language);
@@ -62,6 +114,20 @@ export function VoicePanel(): JSX.Element {
   const [progress, setProgress] = useState(0);
   const jobRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const textRef = useRef<HTMLTextAreaElement | null>(null);
+  const spoken = useMemo(() => scriptWords(text), [text]);
+  const pauses = useMemo(() => ({ count: pauseMarks(text).length, seconds: pauseSeconds(text) }), [text]);
+
+  /** A pause written where the caret is (over the selection), the caret put after it and the box kept in focus. */
+  const insertPause = (seconds: number): void => {
+    const box = textRef.current;
+    const next = insertMark(text, box?.selectionStart ?? text.length, box?.selectionEnd ?? text.length, pauseMark(seconds, language));
+    setText(next.text);
+    window.requestAnimationFrame(() => {
+      textRef.current?.focus();
+      textRef.current?.setSelectionRange(next.caret, next.caret);
+    });
+  };
 
   useEffect(() => {
     void window.filmora?.ttsStatus?.().then((next) => next && setStatus(next));
@@ -82,9 +148,11 @@ export function VoicePanel(): JSX.Element {
     rememberTtsOptions({ language, voice: voice?.id ?? voiceId, speed, pitch, enhance, captions, effect });
   }, [language, voice, voiceId, speed, pitch, enhance, captions, effect]);
 
+  /** The voice a character speaks with in the script's language: its English one for English. */
+  const characterVoice = (chosen: VoiceCharacter): string => (language === 'en' && chosen.voiceEn ? chosen.voiceEn : chosen.voice);
   /** A character: its voice (or the closest here), pace, pitch and style. */
   const pick = (chosen: VoiceCharacter): void => {
-    const wanted = voices.find((candidate) => candidate.id === chosen.voice) ?? voices.find((candidate) => candidate.language === 'es');
+    const wanted = voices.find((candidate) => candidate.id === characterVoice(chosen)) ?? voices.find((candidate) => candidate.language === language);
     if (wanted) {
       setLanguage(wanted.language);
       setVoiceId(wanted.id);
@@ -96,7 +164,7 @@ export function VoicePanel(): JSX.Element {
   };
   /** What a character sets, for its card's tooltip: the voice, the pace and the style. */
   const characterHint = (chosen: VoiceCharacter): string => {
-    const name = voices.find((candidate) => candidate.id === chosen.voice)?.name;
+    const name = voices.find((candidate) => candidate.id === characterVoice(chosen))?.name;
     const style = VOICE_EFFECTS.find((entry) => entry.id === chosen.effect)?.label ?? 'tts.effect.none';
     return [name, `${chosen.speed.toFixed(2)}×`, t(style)].filter(Boolean).join(' · ');
   };
@@ -127,7 +195,7 @@ export function VoicePanel(): JSX.Element {
   };
 
   const generate = async (): Promise<void> => {
-    if (!voice || generating || !text.trim()) return;
+    if (!voice || generating || !spoken.trim()) return;
     setGenerating(true);
     setProgress(0);
     const jobId = createId('tts');
@@ -159,19 +227,49 @@ export function VoicePanel(): JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="tts-dialog">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
-        <label className="block space-y-1">
-          <span className="field-label flex items-center justify-between">
-            {t('tts.text')}
-            <span className="tabular-nums text-slate-500">{text.length}</span>
-          </span>
-          <textarea
-            className="input-field h-28 w-full resize-y p-2 text-sm"
-            placeholder={t('tts.textPlaceholder')}
-            value={text}
-            data-testid="tts-text"
-            onChange={(event) => setText(event.target.value)}
-          />
-        </label>
+        <div className="space-y-1">
+          <label className="block space-y-1">
+            <span className="field-label flex items-center justify-between">
+              {t('tts.text')}
+              {/* What is said: the pause marks are not counted as words. */}
+              <span className="tabular-nums text-slate-500" data-testid="tts-text-count">
+                {spoken.length}
+              </span>
+            </span>
+            <ScriptBox value={text} onChange={setText} placeholder={t('tts.textPlaceholder')} boxRef={textRef} />
+          </label>
+          {/*
+            Pauses, as a voice-over script marks them: one click writes
+            [pausa 1s] where the caret is, and the voice is silent there for
+            exactly that long (shared/tts/script).
+          */}
+          <div className="flex flex-wrap items-center gap-1" data-testid="tts-pauses">
+            <span className="field-label mr-0.5 flex items-center gap-1" {...tip(t('tts.pause'), { hint: t('tts.pauseHint'), named: false })}>
+              <Timer size={12} aria-hidden />
+              {t('tts.pause')}
+            </span>
+            {PAUSE_CHOICES.map((seconds) => (
+              <button
+                key={seconds}
+                type="button"
+                data-testid={`tts-pause-${seconds}`}
+                className="tool-button tool-button-dense h-6 border border-panel-700 px-1.5 text-2xs tabular-nums"
+                aria-label={t('tts.pauseAdd', { seconds: pauseLabel(seconds, uiLanguage) })}
+                // The box keeps the focus, and with it the caret the pause goes at.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => insertPause(seconds)}
+                {...tip(t('tts.pauseAdd', { seconds: pauseLabel(seconds, uiLanguage) }), { hint: t('tts.pauseHint'), named: false })}
+              >
+                {pauseLabel(seconds, uiLanguage)} s
+              </button>
+            ))}
+            {pauses.count > 0 && (
+              <span className="ml-auto text-2xs tabular-nums text-accent-hover" data-testid="tts-pause-total">
+                {t(pauses.count === 1 ? 'tts.pauseOne' : 'tts.pausesMany', { count: pauses.count, seconds: pauseLabel(pauses.seconds, uiLanguage) })}
+              </span>
+            )}
+          </div>
+        </div>
 
         <section className="space-y-1.5">
           <h3 className="field-label flex items-center gap-1.5">
@@ -328,7 +426,7 @@ export function VoicePanel(): JSX.Element {
             {t('tts.cancel')} {progress > 0 ? `· ${Math.round(progress * 100)}%` : ''}
           </button>
         ) : (
-          <button type="button" className="button-primary h-control px-4" data-testid="tts-generate" disabled={!voice || !text.trim() || previewing !== null} onClick={() => void generate()}>
+          <button type="button" className="button-primary h-control px-4" data-testid="tts-generate" disabled={!voice || !spoken.trim() || previewing !== null} onClick={() => void generate()}>
             <AudioLines size={14} aria-hidden />
             {t('tts.generate')}
           </button>

@@ -14,7 +14,10 @@ import type { TtsVoiceId } from '@shared/types/ipc';
  *   one 82M-parameter model holding many voices, more natural in its
  *   phrasing; slower (about real time on a laptop CPU). Its Spanish voices
  *   are read with espeak-ng's Latin American rules (`es-419`: "s" for "c"
- *   and "z"), so they speak as Latin America does.
+ *   and "z"), so they speak as Latin America does; its English ones with
+ *   espeak-ng's American (`en-us`) or British (`en`) rules, as each voice
+ *   was trained. Every voice is in the one model file already shipped, so
+ *   the English ones cost nothing to add.
  *
  * Both phonemise with espeak-ng (GPL-3.0), which ships as data beside Piper's
  * own executable and is never linked into the app; Kokoro reads the same data
@@ -74,7 +77,8 @@ const kokoro = (voice: Omit<TtsVoice, 'engine' | 'onnx' | 'json' | 'sampleRate' 
   ...voice,
   engine: 'kokoro',
   file: 'kokoro',
-  phonemes: voice.language === 'es' ? 'es-419' : 'en-us',
+  // espeak-ng names British English plain "en" ("en-gb" is refused by the one shipped).
+  phonemes: voice.language === 'es' ? 'es-419' : voice.region === 'en-GB' ? 'en' : 'en-us',
   sampleRate: 24000,
   licence: KOKORO_LICENCE,
   onnx: null,
@@ -96,6 +100,13 @@ export const BUNDLED_VOICES: readonly TtsVoice[] = [
   piper({ id: 'es-ES-davefx', name: 'David', persona: 'david', language: 'es', region: 'es-ES', sex: 'male', speakerId: 0, file: 'es_ES-davefx-medium', licence: 'CC0 (public domain) - OHF voice-datasets' }),
   // The model holds two speakers (M=0, F=1); the female is the one offered.
   piper({ id: 'es-ES-sharvard', name: 'Sara', persona: 'sara', language: 'es', region: 'es-ES', sex: 'female', speakerId: 1, file: 'es_ES-sharvard-medium', licence: 'CC BY 3.0 - University of Edinburgh (Sharvard)' }),
+  // Kokoro's English voices (speaker ids of kokoro-multi-lang-v1_0), the most natural first: af_heart, af_bella, am_michael, am_fenrir, bf_emma, bm_george.
+  kokoro({ id: 'en-US-heart', name: 'Heart', persona: 'heart', language: 'en', region: 'en-US', sex: 'female', speakerId: 3 }),
+  kokoro({ id: 'en-US-bella', name: 'Bella', persona: 'bella', language: 'en', region: 'en-US', sex: 'female', speakerId: 2 }),
+  kokoro({ id: 'en-US-michael', name: 'Michael', persona: 'michael', language: 'en', region: 'en-US', sex: 'male', speakerId: 16 }),
+  kokoro({ id: 'en-US-fenrir', name: 'Fenrir', persona: 'fenrir', language: 'en', region: 'en-US', sex: 'male', speakerId: 14 }),
+  kokoro({ id: 'en-GB-emma', name: 'Emma', persona: 'emma', language: 'en', region: 'en-GB', sex: 'female', speakerId: 21 }),
+  kokoro({ id: 'en-GB-george', name: 'George', persona: 'george', language: 'en', region: 'en-GB', sex: 'male', speakerId: 26 }),
   piper({ id: 'en-US-kristin', name: 'Kristin', persona: 'kristin', language: 'en', region: 'en-US', sex: 'female', speakerId: 0, file: 'en_US-kristin-medium', licence: 'Public domain (LibriVox) - Bryce Beattie' }),
   piper({ id: 'en-US-norman', name: 'Norman', persona: 'norman', language: 'en', region: 'en-US', sex: 'male', speakerId: 0, file: 'en_US-norman-medium', licence: 'Public domain (LibriVox) - Bryce Beattie' }),
 ];

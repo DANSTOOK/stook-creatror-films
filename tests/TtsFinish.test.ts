@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { readWav } from '../src/main/tts/wav';
 import { finishFilter, TTS_EFFECTS } from '../src/main/tts/finish';
 
 const ffmpeg = createRequire(import.meta.url)('ffmpeg-static') as string;
@@ -53,10 +57,29 @@ describe('captions of what a voice says', () => {
 });
 
 describe('characters for a generated voice', () => {
-  it('cuts the silence before the first word and after the last, before anything else', () => {
+  it('leaves the ends alone - synth cut the silence piece by piece, and a pause written first must stay - and softens the s in clear voice', () => {
     const filter = finishFilter(0, 24000, true);
-    expect(filter.startsWith('silenceremove=start_periods=1')).toBe(true);
-    expect(filter.match(/areverse/g)?.length).toBe(2);
+    expect(filter).not.toContain('silenceremove');
+    expect(filter).not.toContain('areverse');
+    expect(filter).toContain('deesser');
+    expect(finishFilter(0, 24000, false)).not.toContain('deesser');
+  });
+
+  it('a second of silence before the voice is still a second after the finish, levelling and all', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'scf-tts-finish-'));
+    try {
+      const out = join(dir, 'out.wav');
+      // One second of nothing, then a tone - the shape "[pausa 1s] Hola" leaves.
+      const run = spawnSync(ffmpeg, ['-hide_banner', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono:d=1', '-f', 'lavfi', '-i', 'sine=f=300:d=1:sample_rate=24000',
+        '-filter_complex', `[0][1]concat=n=2:v=0:a=1,${finishFilter(0, 24000, true)}`, '-ar', '48000', '-c:a', 'pcm_s16le', out], { encoding: 'utf8' });
+      expect(run.status).toBe(0);
+      const wav = await readWav(out);
+      const first = wav.samples.findIndex((sample) => Math.abs(sample) > 300);
+      expect(Math.abs(first / wav.sampleRate - 1)).toBeLessThan(0.03);
+      expect(Math.abs(wav.samples.length / wav.sampleRate - 2)).toBeLessThan(0.05);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('puts the style after the pitch and before the levelling', () => {

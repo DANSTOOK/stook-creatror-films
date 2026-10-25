@@ -151,7 +151,7 @@ async function main() {
   const en = { language: 'en', text: 'Hello, this is a test of the English voice. The result should be clear.', ref: 'hello this is a test of the english voice the result should be clear' };
   const cases = [
     ...['es-419-dora', 'es-419-alex', 'es-MX-ald', 'es-MX-claude', 'es-AR-daniela', 'es-419-santa', 'es-ES-davefx', 'es-ES-sharvard'].map((voice) => ({ ...es, voice })),
-    ...['en-US-kristin', 'en-US-norman'].map((voice) => ({ ...en, voice })),
+    ...['en-US-heart', 'en-US-bella', 'en-US-michael', 'en-US-fenrir', 'en-GB-emma', 'en-GB-george', 'en-US-kristin', 'en-US-norman'].map((voice) => ({ ...en, voice })),
   ];
 
   for (const c of cases) {

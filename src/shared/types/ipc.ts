@@ -375,6 +375,8 @@ export interface TtsResult {
   /** The WAV written, ready to import; null when cancelled. */
   path: string | null;
   durationSeconds: number;
+  /** Where each piece of the speech is in it, seconds, and what it says: captions are timed by these. */
+  segments?: Array<{ start: number; end: number; text: string }>;
 }
 
 export interface TtsProgressEvent {

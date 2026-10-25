@@ -15,6 +15,7 @@ import { allowPath } from '../ipc/fileSystem';
 import { mt } from '../language';
 import { ChecksumError } from '../subtitles/models';
 import { ALL_VOICES, BUNDLED_VOICES, VOICE_SOURCE, voiceById, type TtsVoice } from './catalog';
+import { previewScript } from '@shared/tts/script';
 import { findEngine, findKokoroEngine, kokoroEngineIn, type PiperEngine } from './engine';
 import { TTS_EFFECTS } from './finish';
 import { Synthesizer, SynthError } from './synth';
@@ -174,8 +175,8 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
     const jobId = `preview-${randomUUID()}`;
     const out = join(app.getPath('temp'), `scf-tts-preview-${randomUUID()}.wav`);
     try {
-      // A short line, so the preview is quick whatever the box holds.
-      const text = (typeof request.text === 'string' ? request.text : '').trim().slice(0, 200) || mt('tts.previewFallback');
+      // A short line, so the preview is quick whatever the box holds - cut between words, its pauses kept.
+      const text = previewScript(typeof request.text === 'string' ? request.text : '', 200) || mt('tts.previewFallback');
       const outcome = await synth.synth(jobId, { text, engine: voice.engine, phonemes: voice.phonemes, model, speakerId: voice.speakerId, speed: request.speed, sentenceSilence: 0.2 }, out);
       if (!outcome.path) throw new Error(mt('tts.errorEngine', { detail: 'cancelled' }));
       // Heard as it will be: the same pitch and the same clear voice as the clip.
@@ -207,7 +208,7 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
         raw,
         (fraction) => send(IPC.ttsProgress, { jobId, fraction: fraction * 0.9 } satisfies TtsProgressEvent),
       );
-      if (!outcome.path) return { cancelled: outcome.cancelled, path: null, durationSeconds: 0 };
+      if (!outcome.path) return { cancelled: outcome.cancelled, path: null, durationSeconds: 0, segments: [] };
       await mkdir(folder, { recursive: true });
       const kept = join(folder, `voice-${randomUUID()}.wav`);
       await finishVoice(resolveFfmpegPath(), outcome.path, kept, { pitch: request.pitch ?? 0, enhance: request.enhance !== false, sampleRate: voice.sampleRate, effect: effectOf(request.effect) });
@@ -216,7 +217,7 @@ export function registerTtsHandlers(getWindow: () => BrowserWindow | null): Synt
       // The length of what is kept: the silence at its ends is gone, so captions of it end with its last word.
       const finished = await readWav(kept).catch(() => null);
       const durationSeconds = finished ? finished.samples.length / finished.sampleRate : outcome.durationSeconds;
-      return { cancelled: false, path: kept, durationSeconds };
+      return { cancelled: false, path: kept, durationSeconds, segments: outcome.segments };
     } catch (error) {
       if (error instanceof SynthError) throw new Error(mt('tts.errorEngine', { detail: error.detail }));
       throw error;

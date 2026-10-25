@@ -3,11 +3,11 @@ import { promisify } from 'node:util';
 import type { TtsEffect } from '@shared/types/ipc';
 
 /**
- * A generated voice made ready for a video, by ffmpeg, after the engine:
+ * A generated voice made ready for a video, by ffmpeg, after the engine (the
+ * silence the engine leaves around each piece is already gone - synth cuts it
+ * piece by piece, so a pause written into the script, even one before the
+ * first word, is kept to its length):
  *
- *   - the silence the engine leaves before the first word and after the last
- *     cut away, so the clip holds what was asked for and nothing else, and
- *     starts on its first word where it is dropped;
  *   - its pitch, when asked, moved by `pitch` semitones without changing its
  *     pace (the rate raised or lowered, then the tempo put back) - neither
  *     engine has a pitch of its own;
@@ -15,8 +15,9 @@ import type { TtsEffect } from '@shared/types/ipc';
  *     narrator, a radio host's compression, a phone line, a robot, a
  *     whisper, a cave, a stadium announcer's hall - the "voice changer"
  *     CapCut and Filmora put beside their voices;
- *   - "clear voice": rumble under 70 Hz cut, a little presence at 3.5 kHz, a
- *     gentle compressor so every word carries, and the level brought to
+ *   - "clear voice": rumble under 70 Hz cut, a little presence at 3.5 kHz,
+ *     the hiss of an "s" softened (which that lift would otherwise sharpen),
+ *     a gentle compressor so every word carries, and the level brought to
  *     -16 LUFS, the loudness online video aims for, its true peak held at
  *     -1.5 dB. The engines' own output peaked at full scale - clipped - which
  *     the levelling also cures;
@@ -52,24 +53,16 @@ export const EFFECT_FILTERS: Record<TtsEffect, string[]> = {
 
 export const TTS_EFFECTS = Object.keys(EFFECT_FILTERS) as TtsEffect[];
 
-/** The silence before the first word and after the last, cut away: quieter than -50 dB counts as silence. */
-const TRIM = [
-  'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.04',
-  'areverse',
-  'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08',
-  'areverse',
-];
-
 export function finishFilter(pitch: number, sampleRate: number, enhance: boolean, effect: TtsEffect = 'none'): string {
   const steps = Math.max(-PITCH_RANGE, Math.min(PITCH_RANGE, Math.round(pitch * 2) / 2));
-  const parts: string[] = [...TRIM];
+  const parts: string[] = [];
   if (steps !== 0) {
     const ratio = 2 ** (steps / 12);
     parts.push(`asetrate=${Math.round(sampleRate * ratio)}`, `aresample=${sampleRate}`, `atempo=${(1 / ratio).toFixed(5)}`);
   }
   parts.push(...(EFFECT_FILTERS[effect] ?? []));
   if (enhance) {
-    parts.push('highpass=f=70', 'equalizer=f=3500:t=q:w=1.2:g=2.5', 'acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=1', 'loudnorm=I=-16:TP=-1.5:LRA=11');
+    parts.push('highpass=f=70', 'equalizer=f=3500:t=q:w=1.2:g=2.5', 'deesser=i=0.4:m=0.5:f=0.5:s=o', 'acompressor=threshold=-20dB:ratio=2.5:attack=5:release=80:makeup=1', 'loudnorm=I=-16:TP=-1.5:LRA=11');
   } else {
     // Unprocessed, still kept off full scale.
     parts.push('alimiter=limit=0.89');
