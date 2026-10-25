@@ -11,9 +11,69 @@ Cifras de referencia al día de hoy: **1731 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.90.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.91.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.92.0-beta.1 — Las miniaturas de los efectos, sobre tu propio clip (bloque 8a)
+2026-10-25 · pre-release para probar · lo pedido: «miniaturas con tu clip»
+
+### Añadido
+- **Las miniaturas del panel Efectos muestran tu clip**, como CapCut: cada
+  efecto se ve aplicado a un fotograma del clip al que iría, y no a la imagen
+  de muestra.
+  - El clip es el seleccionado o, si no hay ninguno, el de más arriba bajo el
+    cabezal: el mismo al que caería el efecto.
+  - El fotograma es el del cabezal cuando el cabezal está sobre el clip; si
+    no, el del centro del clip.
+  - Se toma el clip solo, sin los títulos ni los stickers de otras pistas
+    encima. En una capa de ajuste se toma el cuadro entero, que es lo que
+    ella cambiaría.
+  - Al mover el cabezal o cambiar de clip, las miniaturas se rehacen medio
+    segundo después de que todo se queda quieto. Nunca mientras se reproduce
+    o se exporta: primero va la imagen del visor.
+- Encima de las miniaturas, **«Vista previa en: Tu clip · Muestra»**, con un
+  texto que dice qué se ve («Sobre «viaje.mp4» en 0:05»). La elección se
+  recuerda. Sin clip bajo el cabezal se ve la muestra, y el texto lo dice.
+- También las miniaturas animadas (glitch, VHS, sacudida de cámara…) se ven
+  sobre tu clip.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/effects-on-clip.mjs` (**11/11**), con dos vídeos
+  distintos y la ventana en silencio:
+  - sin clips, la muestra, y el texto lo dice;
+  - con un clip, su fotograma del cabezal (a los 0:02) y, al mover el
+    cabezal, otro (0:06), comparando los píxeles de la miniatura;
+  - con el cabezal fuera del clip, el centro del clip (0:04);
+  - otro clip seleccionado, el otro; sin selección, el de más arriba;
+  - «Muestra» vuelve a la imagen de siempre, idéntica píxel a píxel, se
+    recuerda al cambiar de pestaña, y «Tu clip» la devuelve;
+  - nada se toma mientras se reproduce, y al parar sí;
+  - sin errores en la página ni en el registro.
+- Las pruebas de efectos de antes siguen igual: `effects` 11/11,
+  `effects-edit` 9/9, `effects-families` 8/8 y `fx` 101/101.
+- **76 pruebas de interfaz**, la general a 127/127, con el registro de errores
+  activo: solo anotó lo que las pruebas provocan a propósito.
+  - La de texto a voz falló una vez: la voz «Santa» tardó más de 120 s. En ese
+    momento la app instalada estaba generando un texto largo, y las dos se
+    repartían la CPU. Repetida sola, pasó entera (81/81).
+- 1731 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- La mega prueba de rendimiento, en sus 16 escenarios: nada lento. Hojear las
+  miniaturas de efectos da p95 de 5,7 ms con la pantalla a 179 Hz, y la
+  memoria es de 30 MB al empezar y al terminar.
+- La v1.91 instalada pasa **129/129** sin red, con la suite de su versión.
+
+### Problemas conocidos
+- **Texto a voz con textos largos** (lo avisaste tú): podía fallar con «Failed
+  to create … 9.wav». La causa es que cada copia de la app, al arrancar,
+  vaciaba la carpeta temporal de las voces, incluida la de un trabajo que otra
+  copia todavía estaba haciendo. Aquí fue una de mis pruebas, que arrancó
+  mientras generabas. Se arregla en la siguiente versión.
+- **«Separar audio» no aparecía en tu último proyecto** (lo avisaste tú): sus
+  tres vídeos 4K de stock no tienen pista de sonido, y el menú escondía la
+  opción en vez de mostrarla desactivada. No se borró. En la siguiente versión
+  aparece siempre, y dice por qué cuando no se puede usar.
 
 ## v1.91.0-beta.1 — 13 pistas de música: reguetón, trap, house, synthwave, piano, épica, funk y acústica (bloque 7c)
 2026-10-24 · pre-release para probar · lo pedido: «y más sound tracks, música»

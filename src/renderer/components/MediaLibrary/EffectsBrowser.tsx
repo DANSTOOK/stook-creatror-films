@@ -17,9 +17,9 @@ import {
   Waves,
   ZoomIn,
   ZoomOut,
+  Eye,
   type LucideProps,
 } from 'lucide-react';
-import type { Clip, ProjectState } from '@shared/types';
 import type { MessageKey } from '@shared/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { notify } from '@renderer/notifications/notifications';
@@ -30,7 +30,9 @@ import { EFFECT_CATEGORIES, EFFECTS, effectCategoryLabel, effectFamily, effectLa
 import { MOTION_PRESETS, motionPresetHint, motionPresetLabel, motionPreview, type MotionPresetId } from '@renderer/fx/motion/presets';
 import { applyLibraryItem, type LibraryEffectItem } from '@renderer/fx/applyLibraryItem';
 import { animationLabel, animationPreview, animationsOf, type AnimationPose, type ClipAnimationId, type ClipAnimationPhase } from '@renderer/fx/motion/animations';
-import { drawEffectCompare, drawEffectFrame, drawEffectSample, drawEffectThumb, effectMoves, effectThumbCached, effectThumbReady } from './effectThumbs';
+import { drawEffectCompare, drawEffectFrame, drawEffectSample, drawEffectThumb, effectMoves, effectSource, effectThumbCached, effectThumbReady, useEffectSource } from './effectThumbs';
+import { targetClip, useEffectPreview } from './effectPreview';
+import { formatClock } from '@renderer/components/ExportDialog/exportProgress';
 import { useOnScreen } from './onScreen';
 import { EFFECT_DRAG_TYPE, useLibraryDragStore } from './libraryDrag';
 import { THUMB_HEIGHT, THUMB_WIDTH } from './LibraryBrowsers';
@@ -94,40 +96,8 @@ const MOTION_ICON: Record<MotionPresetId, ComponentType<LucideProps>> = {
   panDown: Move,
 };
 
-/**
- * The clip an effect lands on: the selected one, or failing that the clip
- * under the playhead on the topmost visual track - the one the viewer draws.
- */
-function targetClip(state: { project: ProjectState; ui: { selectedClipIds: string[] } }): Clip | null {
-  const { project, ui } = state;
-  if (ui.selectedClipIds.length === 1) return project.clips[ui.selectedClipIds[0]] ?? null;
-  const order = new Map(project.tracks.map((track) => [track.id, track]));
-  const visual = (clip: Clip): boolean => {
-    const type = order.get(clip.trackId)?.type;
-    return type !== undefined && type !== 'audio' && type !== 'captions';
-  };
-  const under = Object.values(project.clips).filter(
-    (clip) => visual(clip) && project.currentFrame >= clip.startFrame && project.currentFrame < clip.startFrame + clip.durationFrames,
-  );
-  if (under.length === 0) return null;
-  // Topmost: the track drawn last sits on top (Compositor sorts by order).
-  return under.sort((a, b) => (order.get(b.trackId)?.order ?? 0) - (order.get(a.trackId)?.order ?? 0))[0];
-}
-
-/* The sample scene, drawn once and reused, so a tile is cheap -------------- */
-
-let sampleCanvas: HTMLCanvasElement | null = null;
-function sample(): HTMLCanvasElement {
-  if (sampleCanvas) return sampleCanvas;
-  const canvas = document.createElement('canvas');
-  canvas.width = THUMB_WIDTH;
-  canvas.height = THUMB_HEIGHT;
-  const context = canvas.getContext('2d');
-  // The same scene the effect tiles show, so the panel reads as one.
-  if (context) drawEffectSample(context, THUMB_WIDTH, THUMB_HEIGHT);
-  sampleCanvas = canvas;
-  return canvas;
-}
+/* The picture the moves and animations play on: the effect tiles' own (effectThumbs), so the panel reads as one. */
+const sample = (): HTMLCanvasElement => effectSource();
 
 /** Draw the sample, zoomed by `factor` and drifted by `offset`, as the move would. */
 function drawMotion(context: CanvasRenderingContext2D, width: number, height: number, factor: number, offsetX: number, offsetY: number): void {
@@ -160,6 +130,7 @@ const STILL_AT: Record<ClipAnimationPhase, number> = { in: 0.22, out: 0.62, loop
 
 function AnimationThumb({ id, phase, playing }: { id: ClipAnimationId; phase: ClipAnimationPhase; playing: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const version = useEffectSource((state) => state.version);
   useEffect(() => {
     const context = canvasRef.current?.getContext('2d');
     if (!context) return undefined;
@@ -182,7 +153,7 @@ function AnimationThumb({ id, phase, playing }: { id: ClipAnimationId; phase: Cl
       cancelFrame(frame);
       still();
     };
-  }, [id, phase, playing]);
+  }, [id, phase, playing, version]);
   return <canvas ref={canvasRef} width={THUMB_WIDTH} height={THUMB_HEIGHT} aria-hidden className="block aspect-video w-full rounded-control bg-panel-950" />;
 }
 
@@ -192,6 +163,7 @@ const PHASE_ICON: Record<ClipAnimationPhase, ComponentType<LucideProps>> = { in:
 
 function MotionThumb({ preset, playing }: { preset: MotionPresetId; playing: boolean }): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const version = useEffectSource((state) => state.version);
   useEffect(() => {
     const context = canvasRef.current?.getContext('2d');
     if (!context) return undefined;
@@ -214,7 +186,7 @@ function MotionThumb({ preset, playing }: { preset: MotionPresetId; playing: boo
     };
     frame = requestFrame(tick);
     return () => cancelFrame(frame);
-  }, [preset, playing]);
+  }, [preset, playing, version]);
   return <canvas ref={canvasRef} width={THUMB_WIDTH} height={THUMB_HEIGHT} aria-hidden className="block aspect-video w-full rounded-control bg-panel-950" />;
 }
 
@@ -328,6 +300,11 @@ function EffectThumb({ type, playing }: { type: string; playing: boolean }): JSX
   // pictures are made one a frame (effectThumbs), the plain scene meanwhile.
   const onScreen = useOnScreen(canvasRef);
   const [ready, setReady] = useState(() => effectThumbCached(type));
+  // A new picture under the effects (effectPreview): this one is made again.
+  const version = useEffectSource((state) => state.version);
+  useEffect(() => {
+    setReady(effectThumbCached(type));
+  }, [type, version]);
   useEffect(() => {
     if (!onScreen || ready) return undefined;
     let alive = true;
@@ -369,7 +346,7 @@ function EffectThumb({ type, playing }: { type: string; playing: boolean }): JSX
       cancelFrame(frame);
       still();
     };
-  }, [type, playing, onScreen, ready]);
+  }, [type, playing, onScreen, ready, version]);
   return <canvas ref={canvasRef} width={THUMB_WIDTH} height={THUMB_HEIGHT} aria-hidden className="block aspect-video w-full rounded-control bg-panel-950" />;
 }
 
@@ -402,6 +379,8 @@ export function EffectsBrowser(): JSX.Element {
   const hintId = useId();
   const [filter, setFilter] = useState<EffectFilter>('all');
   const [query, setQuery] = useState('');
+  // The tiles on a frame of the clip an effect would land on, or on the sample.
+  const preview = useEffectPreview();
   const needle = query.trim().toLocaleLowerCase();
 
   /**
@@ -499,6 +478,30 @@ export function EffectsBrowser(): JSX.Element {
         hintId={hintId}
         categoriesLabel={t('library.categories')}
       />
+
+      {/* What the tiles show the effects on: your clip, as CapCut previews on one's own footage, or the sample. */}
+      <div className="mb-2 flex flex-wrap items-center gap-1 px-0.5" data-testid="effects-preview" role="group" aria-label={t('fx.previewOn')} title={t('fx.previewOn')}>
+        <Eye size={12} aria-hidden className="mr-0.5 shrink-0 text-slate-400" />
+        {(['clip', 'sample'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            data-testid={`effects-preview-${value}`}
+            aria-pressed={preview.mode === value}
+            className={`tool-button tool-button-dense h-6 shrink-0 rounded-full px-2.5 text-2xs ${preview.mode === value ? 'tool-button-active ring-1 ring-accent' : 'border border-panel-700'}`}
+            onClick={() => preview.setMode(value)}
+          >
+            {t(value === 'clip' ? 'fx.previewClip' : 'fx.previewSample')}
+          </button>
+        ))}
+        <span data-testid="effects-preview-caption" data-key={preview.key} className="w-full truncate text-2xs text-slate-500">
+          {preview.mode === 'sample'
+            ? t('fx.previewSampleHint')
+            : preview.shown
+              ? t('fx.previewOnClip', { name: preview.shown.name, time: formatClock(preview.shown.seconds) })
+              : t('fx.previewNoClip')}
+        </span>
+      </div>
 
       {nothing && <p className="px-1 text-2xs text-slate-400">{t('fx.noMatch', { query })}</p>}
 

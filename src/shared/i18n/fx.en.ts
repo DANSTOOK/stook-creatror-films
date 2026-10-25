@@ -21,6 +21,12 @@ export const fxEn = {
 
   /* Effects ---------------------------------------------------------------- */
   'fx.searchEffects': 'Search effects',
+  'fx.previewOn': 'Preview on',
+  'fx.previewClip': 'Your clip',
+  'fx.previewSample': 'Sample',
+  'fx.previewOnClip': 'On “{name}” at {time}',
+  'fx.previewNoClip': 'No clip under the playhead: the sample picture',
+  'fx.previewSampleHint': 'The same sample picture for every effect',
   'fx.effectCategory.camera': 'Camera effects',
   'fx.effectCategory.glitch': 'Glitch',
   'fx.family.camera': 'Camera and movement',

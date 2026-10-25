@@ -19,6 +19,12 @@ export const fxEs: Record<keyof typeof fxEn, string> = {
 
   /* Efectos ------------------------------------------------------------------- */
   'fx.searchEffects': 'Buscar efectos',
+  'fx.previewOn': 'Vista previa en',
+  'fx.previewClip': 'Tu clip',
+  'fx.previewSample': 'Muestra',
+  'fx.previewOnClip': 'Sobre «{name}» en {time}',
+  'fx.previewNoClip': 'Sin clip bajo el cabezal: imagen de muestra',
+  'fx.previewSampleHint': 'La misma imagen de muestra para todos los efectos',
   'fx.effectCategory.camera': 'Efectos de cámara',
   'fx.effectCategory.glitch': 'Glitch',
   'fx.family.camera': 'Cámara y movimiento',

@@ -1,3 +1,4 @@
+import { create } from 'zustand';
 import { FULLSCREEN_MATRIX, GLProgram, PendingProgram, RenderTarget } from '@renderer/engine/GLProgram';
 import { requestFrame } from '@renderer/timing/animationFrame';
 import { createEffect, effectDef } from '@renderer/fx/effects/catalog';
@@ -7,8 +8,9 @@ import baseVertexSource from '@renderer/engine/shaders/BaseVertex.glsl?raw';
 
 /**
  * The Effects panel's pictures: each effect's real passes, at its defaults,
- * run on one sample scene - so a tile shows what the effect does rather than
- * the same picture twenty times.
+ * run on one picture - a frame of the clip the effect would land on
+ * (effectPreview), or the sample scene - so a tile shows what the effect does
+ * rather than the same picture twenty times.
  *
  * As the transition thumbnails (shaderThumbs), on a small WebGL2 canvas of
  * its own, never the compositor's. Each picture is drawn once, kept as a
@@ -24,9 +26,68 @@ const WIDTH = 320;
 const HEIGHT = 180;
 const VIRTUAL = { width: 960, height: 540 };
 
-/** The scene effects are shown on: the lake at sunset, with its figure on the shore (samplePictures). */
+/*
+  The picture effects are shown on: the lake at sunset with its figure on
+  the shore (samplePictures), until a frame of the user's own clip takes its
+  place (setEffectSource).
+*/
+let sourceCanvas: HTMLCanvasElement | null = null;
+let sourceKey = 'sample';
+
+function currentPicture(): HTMLCanvasElement {
+  if (!sourceCanvas) {
+    sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = WIDTH;
+    sourceCanvas.height = HEIGHT;
+    sourceCanvas.getContext('2d')?.drawImage(samplePicture('sunset', WIDTH, HEIGHT), 0, 0, WIDTH, HEIGHT);
+  }
+  return sourceCanvas;
+}
+
+/** The picture the tiles show the effects on now: the sample, or a frame of the user's clip. */
+export const effectSource = (): HTMLCanvasElement => currentPicture();
+
+/** The picture effects are shown on, as it is: before the effect, in a tile's before-and-after. */
 export function drawEffectSample(context: CanvasRenderingContext2D, width: number, height: number): void {
-  context.drawImage(samplePicture('sunset', width, height), 0, 0, width, height);
+  context.drawImage(currentPicture(), 0, 0, width, height);
+}
+
+/** Which picture the tiles show, and a count that moves on with each change: they draw again when it does. */
+export const useEffectSource = create<{ key: string; version: number }>(() => ({ key: 'sample', version: 0 }));
+
+function upload(gl: WebGL2RenderingContext, texture: WebGLTexture, picture: HTMLCanvasElement): void {
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  // Texture space has v up, as the compositor's buffers do.
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, picture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
+/**
+ * Show the effects on `picture` (`width` x `height`, cropped to fill, as a
+ * tile shows it) from now on, or on the sample again (null). `key` names it:
+ * the same key again changes nothing. Every picture made so far goes, and the
+ * tiles ask again, one a frame, as they first did.
+ */
+export function setEffectSource(picture: CanvasImageSource | null, width: number, height: number, key: string): void {
+  if (key === sourceKey) return;
+  sourceKey = key;
+  const context = currentPicture().getContext('2d');
+  if (context) {
+    context.clearRect(0, 0, WIDTH, HEIGHT);
+    if (picture && width > 0 && height > 0) {
+      const scale = Math.max(WIDTH / width, HEIGHT / height);
+      const cropWidth = WIDTH / scale;
+      const cropHeight = HEIGHT / scale;
+      context.drawImage(picture, (width - cropWidth) / 2, (height - cropHeight) / 2, cropWidth, cropHeight, 0, 0, WIDTH, HEIGHT);
+    } else {
+      context.drawImage(samplePicture('sunset', WIDTH, HEIGHT), 0, 0, WIDTH, HEIGHT);
+    }
+  }
+  if (state) upload(state.gl, state.source, currentPicture());
+  pictures.clear();
+  useEffectSource.setState((now) => ({ key, version: now.version + 1 }));
 }
 
 interface State {
@@ -65,23 +126,15 @@ function setUp(): State | null {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1]), gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
-    const picture = document.createElement('canvas');
-    picture.width = WIDTH;
-    picture.height = HEIGHT;
-    const context = picture.getContext('2d');
-    if (context) drawEffectSample(context, WIDTH, HEIGHT);
     const source = gl.createTexture();
     if (!source) throw new Error('Failed to allocate the sample texture');
     gl.bindTexture(gl.TEXTURE_2D, source);
-    // Texture space has v up, as the compositor's buffers do.
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, picture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.bindTexture(gl.TEXTURE_2D, null);
+    upload(gl, source, currentPicture());
 
     state = {
       gl,
