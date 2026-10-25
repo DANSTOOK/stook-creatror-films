@@ -462,6 +462,7 @@ export type MenuCommand =
   | 'fullscreenViewer'
   | 'resetLayout'
   | 'mixer'
+  | 'keyframes'
   | 'shortcuts'
   | 'tour'
   | 'openLog'

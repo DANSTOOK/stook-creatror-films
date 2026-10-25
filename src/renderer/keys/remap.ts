@@ -45,6 +45,7 @@ export const REMAPPABLE: readonly RemappableAction[] = [
   { id: 'transition', combo: 'Ctrl+T', label: 'remap.transition' },
   { id: 'speed', combo: 'Ctrl+R', label: 'remap.speed' },
   { id: 'detach', combo: 'Ctrl+Alt+S', label: 'remap.detach' },
+  { id: 'keyframes', combo: 'Shift+K', label: 'remap.keyframes' },
   { id: 'title', combo: 'Ctrl+Alt+T', label: 'remap.title' },
   { id: 'fullscreen', combo: 'Shift+F', label: 'remap.fullscreen' },
   { id: 'loop', combo: 'R', label: 'remap.loop' },

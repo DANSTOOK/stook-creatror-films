@@ -1,4 +1,5 @@
 import type { ClipEffect, Keyframe } from '@shared/types';
+import { isEasing } from '@renderer/keyframes/easing';
 import type { MessageKey } from '@shared/i18n';
 import { createId } from '@shared/utils/id';
 import { evaluateNumber } from '@renderer/engine/KeyframeEvaluator';
@@ -384,7 +385,8 @@ export function normalizeEffects(raw: unknown): ClipEffect[] {
           id: typeof key.id === 'string' && key.id ? key.id : createId('kf'),
           frame: Math.round(key.frame),
           value: clampParam(param, key.value),
-          easing: key.easing === 'easeIn' || key.easing === 'easeOut' || key.easing === 'bezier' ? key.easing : ('linear' as const),
+          // Every shape the keyframe editor offers is kept (a hold, a bounce...), anything else read as linear.
+          easing: isEasing(key.easing) ? key.easing : ('linear' as const),
           ...(key.easing === 'bezier' && key.bezierParams ? { bezierParams: key.bezierParams } : {}),
         }))
         .sort((a, b) => a.frame - b.frame);

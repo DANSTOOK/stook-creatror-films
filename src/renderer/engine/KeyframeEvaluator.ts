@@ -8,6 +8,7 @@ import type {
   Vector2D,
 } from '@shared/types';
 import { clamp01, isVector2D, lerp, lerpVec2 } from '@shared/utils/math';
+import { easeProgress } from '@renderer/keyframes/easing';
 
 /**
  * Keyframe interpolation.
@@ -16,12 +17,6 @@ import { clamp01, isVector2D, lerp, lerpVec2 } from '@shared/utils/math';
  * by every NLE: the curve authored on keyframe N shapes the segment N -> N+1.
  */
 
-/** Presets expressed as CSS-style cubic-beziers with P0 = (0,0), P3 = (1,1). */
-const EASING_PRESETS: Record<Exclude<Easing, 'bezier'>, BezierCurve | null> = {
-  linear: null,
-  easeIn: { cp1: { x: 0.42, y: 0 }, cp2: { x: 1, y: 1 } },
-  easeOut: { cp1: { x: 0, y: 0 }, cp2: { x: 0.58, y: 1 } },
-};
 
 const bezierAxis = (t: number, p1: number, p2: number): number => {
   const u = 1 - t;
@@ -80,18 +75,18 @@ export function cubicBezierEase(t: number, curve: BezierCurve): number {
   return bezierAxis(solvedT, curve.cp1.y, curve.cp2.y);
 }
 
-/** Apply the easing declared on a keyframe to normalized segment progress. */
+/**
+ * Apply the easing declared on a keyframe to normalized segment progress:
+ * the shapes of renderer/keyframes/easing - the beziers, a hold, and the
+ * springy ones the keyframe editor offers - the same for the viewer and
+ * every export.
+ */
 export function applyEasing(
   t: number,
   easing: Easing,
   bezierParams?: BezierCurve,
 ): number {
-  const progress = clamp01(t);
-  if (easing === 'bezier') {
-    return bezierParams ? cubicBezierEase(progress, bezierParams) : progress;
-  }
-  const preset = EASING_PRESETS[easing];
-  return preset ? cubicBezierEase(progress, preset) : progress;
+  return easeProgress(clamp01(t), easing, bezierParams);
 }
 
 const isSorted = <T extends KeyframeValue>(keyframes: Keyframe<T>[]): boolean => {

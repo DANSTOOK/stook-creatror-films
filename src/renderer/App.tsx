@@ -9,6 +9,7 @@ import { Inspector } from './components/Inspector';
 import { Splitter } from './components/Layout/Splitter';
 import { PanelSlot, markEditorShown } from './components/Layout/PanelSlot';
 import { PanelWindow, focusPanelWindow } from './components/Layout/PanelWindow';
+import { KeyframeWindow, useKeyframeWindow } from './components/Keyframes/KeyframeWindow';
 import { PanelEmptyState } from './components/Layout/PanelEmptyState';
 import { DetachButton } from './components/Layout/DetachButton';
 import { PictureInPicture2, SlidersHorizontal } from 'lucide-react';
@@ -597,6 +598,9 @@ export default function App(): JSX.Element {
       case 'mixer':
         setMixerOpen((open) => !open);
         return;
+      case 'keyframes':
+        useKeyframeWindow.getState().toggle();
+        return;
       case 'shortcuts':
         setShortcutsOpen(true);
         return;
@@ -871,6 +875,8 @@ export default function App(): JSX.Element {
             the same React tree and the same store - the window is opened
             by the page, so it shares this process (Layout/PanelWindow).
           */}
+          {/* The keyframe editor, a window of its own while it is open (components/Keyframes). */}
+          {view === 'editor' && <KeyframeWindow />}
           {view === 'editor' && detached.viewer && (
             <PanelWindow panel="viewer" onClose={() => setDetached('viewer', false)} width={1100} height={720}>
               <PreviewViewport />

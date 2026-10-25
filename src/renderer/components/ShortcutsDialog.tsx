@@ -59,6 +59,7 @@ export const SHORTCUT_GROUPS: Group[] = [
       { keys: 'keys.redoKeys', what: 'keys.redo' },
       { keys: 'keys.linkKeys', what: 'keys.link' },
       { keys: 'keys.detachKeys', what: 'keys.detach' },
+      { keys: 'keys.keyframesKeys', what: 'keys.keyframes' },
       { keys: 'keys.gradeKeys', what: 'keys.grade' },
       { keys: 'keys.bypassKeys', what: 'keys.bypass' },
       { keys: 'keys.curtainKeys', what: 'keys.curtain' },

@@ -25,7 +25,13 @@ export interface BezierCurve {
 /** Values a keyframe track is allowed to animate. */
 export type KeyframeValue = Vector2D | number;
 
-export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'bezier';
+/**
+ * How a stretch between two keyframes moves (renderer/keyframes/easing): the
+ * beziers - eased in, out, both, or a curve of one's own - a hold, and the
+ * springy ones the keyframe editor offers. A project from before them uses
+ * only the first ones, and reads the same.
+ */
+export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'hold' | 'back' | 'elastic' | 'bounce' | 'bezier';
 
 export interface Keyframe<T extends KeyframeValue = number> {
   id: string;

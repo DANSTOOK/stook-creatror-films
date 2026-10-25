@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftRight,
+  Diamond,
   Headphones,
   AudioLines,
   AudioWaveform,
@@ -47,6 +48,7 @@ import {
 } from 'lucide-react';
 import type { Clip, Marker, MediaAsset, Track } from '@shared/types';
 import { ContextMenu, useContextMenu, type ContextMenuItem } from '@renderer/components/ContextMenu';
+import { useKeyframeWindow } from '@renderer/components/Keyframes/KeyframeWindow';
 import { useMediaStore } from '@renderer/store/useMediaStore';
 import { CUT_EVENT, useProjectStore } from '@renderer/store/useProjectStore';
 import { framesToTimecode } from '@shared/utils/timecode';
@@ -217,6 +219,7 @@ export function Timeline(): JSX.Element {
   // Re-renders the toolbar when the language changes; menus read `t` as they open.
   const tr = useT();
   const mixerOpen = useMixerOpen((state) => state.open);
+  const keyframesOpen = useKeyframeWindow((state) => state.open);
   const project = useProjectStore((state) => state.project);
   const ui = useProjectStore((state) => state.ui);
   const waveforms = useMediaStore((state) => state.waveforms);
@@ -1949,6 +1952,18 @@ export function Timeline(): JSX.Element {
             >
               <Plus size={13} />
               {tr('adjustment.short')}
+            </button>
+            {/* The keyframe editor: the selected clip's animation in a window of its own (components/Keyframes). */}
+            <button
+              type="button"
+              data-testid="timeline-keyframes"
+              aria-pressed={keyframesOpen}
+              className={`tool-button tool-button-dense w-6 px-0 ${keyframesOpen ? 'tool-button-active' : ''}`}
+              aria-label={tr('kf.open')}
+              onClick={() => useKeyframeWindow.getState().toggle()}
+              {...tip(tr('kf.open'), { shortcut: keyLabel('Shift+K'), hint: tr('kf.openHint'), named: false })}
+            >
+              <Diamond size={13} />
             </button>
             {/* The mixer, by the sound it mixes: it opens beside the timeline (App, Mixer). */}
             <button

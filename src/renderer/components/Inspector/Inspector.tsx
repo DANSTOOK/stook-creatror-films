@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useKeyframeWindow } from '@renderer/components/Keyframes/KeyframeWindow';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
 import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, Snowflake, Music2, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
@@ -514,6 +515,17 @@ export function Inspector(): JSX.Element {
         </label>
         <div className="flex items-center justify-between gap-2">
           <p className="text-2xs text-slate-400">{t('inspector.keyframeHint', { frame })}</p>
+          {/* Every keyframe of the clip in time, and the shape of each move: the keyframe editor. */}
+          <button
+            type="button"
+            data-testid="inspector-open-keyframes"
+            className="tool-button tool-button-dense shrink-0 gap-1 text-2xs"
+            onClick={() => useKeyframeWindow.getState().show()}
+            {...tip(t('kf.open'), { shortcut: 'Shift+K', hint: t('kf.openHint'), named: false })}
+          >
+            <Diamond size={11} />
+            {t('kf.openShort')}
+          </button>
           {keyframeCount > 0 && (
             <button
               type="button"

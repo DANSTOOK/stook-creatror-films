@@ -10,6 +10,7 @@ import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { heldClockFrom } from '@renderer/timing/playbackHold';
 import { spaceFromSlider } from './spaceFromSlider';
 import { smoothZoom } from '@renderer/components/Timeline/smoothZoom';
+import { useKeyframeWindow } from '@renderer/components/Keyframes/KeyframeWindow';
 
 /**
  * Playback transport.
@@ -586,6 +587,11 @@ export function useEditorShortcuts(): void {
           store.setPlaybackRate(shuttleRate(store.ui.isPlaying ? store.ui.playbackRate : 0, -1));
           return;
         case 'k':
+          // Shift+K: the keyframe editor, in a window of its own; K alone stops the shuttle.
+          if (event.shiftKey) {
+            useKeyframeWindow.getState().toggle();
+            return;
+          }
           store.setPlaybackRate(0);
           return;
         case ',':

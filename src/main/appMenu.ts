@@ -184,6 +184,7 @@ export function buildMenuTemplate(
     label: t('menu.window'),
     submenu: [
       command('menu.mixer', 'mixer', { enabled: inEditor }),
+      command('menu.keyframes', 'keyframes', { accelerator: 'Shift+K', enabled: inEditor }),
       { type: 'separator' },
       // Plain clicks rather than roles: the roles bring keys of their own
       // (Ctrl+M, Ctrl+W) that nobody asked for and that are one slip away.
