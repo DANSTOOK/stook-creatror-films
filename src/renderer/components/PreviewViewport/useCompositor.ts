@@ -160,9 +160,10 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
       // its next frame, and a draw for each drew every frame twice. A move of
       // the playhead alone waits for the frame, for most of a frame's time at
       // most - then it is drawn all the same (a still, a title, a decoder
-      // running late). Up to 60 fps only: measured at 120, the element then
-      // presented 102 frames a second instead of 112 - drawn on every change
-      // it keeps up better.
+      // running late). Up to 60 fps only: at 120 the element presented 102-105
+      // frames a second this way against 112-114 drawn on every change -
+      // though at that rate one run differs from the next by as much
+      // (tests/perf/viewer-rates).
       const playheadOnly =
         drawn !== null &&
         seen.project !== drawn.project &&
