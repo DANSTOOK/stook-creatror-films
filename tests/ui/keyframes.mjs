@@ -19,7 +19,8 @@ import { _electron as electron } from 'playwright';
  *      handle dragged in the curve box makes a curve of one's own;
  *   5. Curves draws the values; a point dragged up changes the value;
  *   6. Delete removes the picked keyframes; Close closes the window;
- *   7. nothing in the page's errors or the app's log.
+ *   7. the Licenses dialog credits the model and the equations;
+ *   8. nothing in the page's errors or the app's log.
  *
  * Writes only into its own work folder. Needs a build (npm run build). The windows are never shown.
  */
@@ -217,6 +218,14 @@ async function main() {
     await sleep(800);
     const closed = app.windows().every((page) => page === window || page.isClosed());
     check('Close closes the window', closed);
+
+    /* 7. the credits ---------------------------------------------------------------------------------- */
+    await window.getByTestId('app-menu-button').click();
+    await window.getByRole('menuitem', { name: 'Help', exact: true }).click();
+    await window.getByRole('menuitem', { name: /Font licenses and credits/ }).click();
+    const credits = await window.getByTestId('licenses-keyframes').textContent({ timeout: 10_000 }).catch(() => '');
+    check('the Licenses dialog credits Theatre.js’s model and Penner’s equations, with their BSD text', /Theatre\.js/.test(credits) && /Apache-2\.0/.test(credits) && /Robert Penner/.test(credits) && /BSD License/.test(credits), credits.slice(0, 120));
+    await window.keyboard.press('Escape');
 
     check('no errors on the page', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {

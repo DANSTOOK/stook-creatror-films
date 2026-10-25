@@ -1,5 +1,5 @@
 import { useT } from '@renderer/i18n';
-import { EFFECT_CREDITS, GLFX_MIT, GL_TRANSITIONS_MIT, PAGE_CURL_BSD, TRANSITION_CREDITS } from '@renderer/fx/licenses';
+import { EFFECT_CREDITS, GLFX_MIT, GL_TRANSITIONS_MIT, PAGE_CURL_BSD, PENNER_BSD, TRANSITION_CREDITS } from '@renderer/fx/licenses';
 import { shaderTransitionLabel } from '@renderer/fx/transitions/catalog';
 import { effectLabel } from '@renderer/fx/effects/catalog';
 
@@ -45,6 +45,11 @@ export function ThirdPartyLicenses(): JSX.Element {
           ))}
         </ul>
         <pre tabIndex={0} aria-label="glfx.js MIT" className={PRE}>{GLFX_MIT}</pre>
+      </section>
+      <section className="space-y-1.5" data-testid="licenses-keyframes">
+        <h3 className="section-title">{t('fx.licenses.keyframes')}</h3>
+        <p className="text-xs leading-relaxed text-slate-300">{t('fx.licenses.keyframesIntro')}</p>
+        <pre tabIndex={0} aria-label="Easing equations BSD" className={PRE}>{PENNER_BSD}</pre>
       </section>
     </div>
   );

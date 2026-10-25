@@ -102,6 +102,8 @@ export const fxEn = {
   'fx.licenses.effects': 'Effects',
   'fx.licenses.transitionsIntro': 'The shader transitions are GL Transitions, each by the author named beside it, used under the license its file states. Videos you make with them are yours, with no conditions attached.',
   'fx.licenses.effectsIntro': 'Effects marked glfx.js are adapted from glfx.js by Evan Wallace. The others are this app’s own.',
+  'fx.licenses.keyframes': 'Keyframes',
+  'fx.licenses.keyframesIntro': 'The keyframe editor follows the model of Theatre.js (theatre-js/theatre, @theatre/core, Apache-2.0): each move between two keyframes is a bezier curve in time, or a hold. Overshoot, Elastic and Bounce are Robert Penner’s easing equations (BSD).',
   'fx.licenses.ownWork': 'This app’s own',
   'fx.licenses.text': 'License text',
 
