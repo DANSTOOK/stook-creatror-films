@@ -7,13 +7,123 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1717 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1723 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.86.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.87.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.88.0-beta.1 — La biblioteca se mueve al pasar el ratón, el arrastre enseña dónde cae y las voces tienen cara (bloques 6a, 6b y 6c del rediseño)
+2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: al pasar el ratón por un clip de la biblioteca, que se reproduzca en bucle y sin sonido; al arrastrarlo, un fantasma con su miniatura, el sitio donde cae resaltado y un pequeño rebote al soltarlo; en la pestaña Voz, tarjetas de personaje con avatares ilustrados
+
+### Añadido
+- **Un vídeo de la biblioteca se reproduce al dejar el ratón encima**, sin
+  sonido y en bucle, como en CapCut: un plano se reconoce por su movimiento
+  tanto como por su primer fotograma.
+  - Empieza tras un cuarto de segundo con el ratón quieto encima: pasar de
+    largo no reproduce nada.
+  - Aparece con un fundido sobre la miniatura, sin destello negro, y una
+    línea cian en el borde inferior dice por dónde va el clip.
+  - Usa el proxy cuando lo hay, que pesa menos.
+  - Solo uno a la vez, y nunca una imagen ni un sonido.
+  - Se para al salir el ratón, al arrastrar el clip, al reproducir el visor o
+    al ocultar la ventana. No se reproduce mientras se exporta ni si Windows
+    pide menos movimiento.
+  - Solo en la vista de miniaturas; la lista sigue igual.
+- **Al arrastrar un clip de la biblioteca, lo sigue una tarjeta suya**: su
+  imagen, su duración y su nombre, con el borde en el color de acento. Antes
+  era una copia transparente de toda la miniatura, botones incluidos.
+- **Sobre la línea de tiempo se dibuja el clip donde va a caer**, en el color
+  de acento y con su nombre, antes de soltarlo. Es el sitio de verdad, no
+  solo el puntero: si lo sueltas en la primera mitad de un clip, cae delante
+  de él y lo empuja; en la segunda mitad, detrás. Con el imán, en la pista
+  principal, cae pegado al último clip. Al sacar el ratón de la línea de
+  tiempo, el dibujo desaparece.
+- **Al soltarlo, el clip cae con un pequeño rebote**: baja desde un poco más
+  arriba y se asienta en medio segundo. Sin rebote si Windows pide menos
+  movimiento o mientras se reproduce.
+- Mientras llevas un clip, el aviso de la línea de tiempo vacía se aparta.
+- **Los personajes de la pestaña Voz son tarjetas con una cara ilustrada
+  cada uno**, como en CapCut: el narrador con barba y gafas, la locutora con
+  cascos, el youtuber con gorra, el abuelo, el niño, el monstruo, el robot…
+  Se distinguen antes de leer el nombre.
+  - Al pasar el ratón, la cara crece un poco con un pequeño rebote (nada si
+    Windows pide menos movimiento), y la tarjeta dice qué pone: la voz, la
+    velocidad y el estilo, por ejemplo «Claude · 1.00× · Robot».
+  - La elegida lleva una marca en el color de acento sobre la cara.
+  - Las caras están dibujadas en la propia app: se ven nítidas a cualquier
+    tamaño y no hay archivos que cargar.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/media-hover.mjs` (**13/13**):
+  - con el ratón quieto encima, el vídeo se reproduce en su tarjeta, sin
+    sonido, en bucle y desde su archivo; avanza y aparece con el fundido;
+  - la línea del borde sigue el avance del clip;
+  - se va al salir el ratón, y pasar de largo no reproduce nada;
+  - uno a la vez: el siguiente vídeo toma el relevo; una imagen y un sonido
+    no se reproducen;
+  - con proxy, se reproduce el proxy;
+  - reproducir el visor lo para, y mientras el visor reproduce no empieza
+    ninguno; con menos movimiento, tampoco;
+  - arrastrar el clip lo para;
+  - sin errores en la página ni en el registro de la app.
+  - La primera versión volvía a arrancar sola después de arrastrar: al quitar
+    el vídeo de debajo del puntero, React lo tomaba como si el ratón entrara
+    de nuevo en la tarjeta. Ahora el vídeo no recibe el puntero, y esa
+    comprobación lo vigila.
+- **Prueba nueva** `tests/ui/drop-ghost.mjs` (**11/11**):
+  - lo que sigue al puntero es una tarjeta propia, del tamaño justo, que
+    está en la página en ese instante y desaparece después, con la imagen del
+    clip, la franja del nombre y el borde de acento;
+  - sobre la primera mitad de un clip se dibuja encima de ese clip, que es
+    donde cae, y al soltarlo cae justo ahí, con el otro clip empujado detrás;
+  - sobre una pista vacía se dibuja desde el fotograma del puntero, y no
+    antes;
+  - salir de la línea de tiempo borra el dibujo;
+  - el aviso de la línea de tiempo vacía se aparta y vuelve;
+  - cae con rebote, que dura medio segundo, y sin él con menos movimiento;
+  - sin errores en la página ni en el registro.
+- **6 pruebas unitarias nuevas** de dónde se dibuja la caída: en una
+  pista vacía, delante o detrás de un clip según la mitad, contra el último
+  clip con el imán, en una pista nueva si ninguna sirve, y que coincide con
+  donde el almacén coloca el clip.
+- **Prueba nueva** `tests/ui/voice-cards.mjs` (**13/13**):
+  - doce tarjetas, cada una con su cara, y no hay dos caras iguales;
+  - cada una dice su nombre, que es también el que oye un lector de pantalla;
+  - al señalarla, dice la voz, la velocidad y el estilo;
+  - la cara crece al pasar el ratón, y no con menos movimiento;
+  - elegida, es la única marcada, con su marca, y pone su velocidad, su tono
+    y su estilo (el robot; el niño, agudo y sin efecto); mover un control a
+    mano la desmarca;
+  - caben en el panel, en filas de dos o más, y el teclado pasa de una a otra
+    y elige con Intro;
+  - sin errores en la página ni en el registro.
+  - La primera versión ponía las tarjetas en una sola columna: el panel
+    acoplado deja 170 px y no cabían dos de 84. Ahora el mínimo es de 72 px
+    y salen dos.
+- Las **71** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+  - En una batería intermedia, `tts` dio 80/81: la voz de Daniela, leída de
+    vuelta con los subtítulos, sacó un 27 % de palabras mal, con el límite en
+    el 25 %. Piper genera cada vez con algo de ruido aleatorio, así que la
+    lectura varía. Repetida dio un 7 %, y en la batería final 81/81. No viene
+    de este cambio; queda apuntado hacer esa comprobación más estable.
+- 1723 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento: 15 de sus 16 escenarios, sin nada lento.**
+  La memoria es de 30 MB al empezar y al terminar.
+  - «Arrastrar el cabezal» salió lento en la secuencia completa: el peor
+    fotograma, entre 150 y 228 ms. No lo causan estos cambios. La v1.87 sin
+    ellos, compilada y medida justo antes en la misma máquina, da lo mismo
+    (150,5 ms y 17,5 % de fotogramas perdidos, contra 149,9 ms y 17,5 %).
+    Solo, ese escenario sale bien tres de tres veces (50 a 56 ms). Los
+    fotogramas largos llegan antes del pintado y sin scripts: es el
+    decodificador con el 4K tras horas de pruebas, no la página.
+  - «25 deshacer y 25 rehacer» rozó el límite una vez (21 % de fotogramas
+    perdidos); en la comparación dio 14 % sin los cambios y 14,8 % con ellos.
+- La v1.87 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ## v1.87.0-beta.1 — Exportar al estilo CapCut: una imagen grande y lo justo al lado (bloque 5b del rediseño)
 2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: exportar sencillo, con una miniatura grande y lo avanzado plegado en «Más ajustes»; mientras exporta, la vista previa del render y el porcentaje; al terminar, una animación de éxito y abrir o compartir

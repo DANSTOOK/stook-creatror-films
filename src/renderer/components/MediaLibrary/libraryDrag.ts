@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 
 /**
- * What is being dragged out of the Titles or Transitions panel, while it is.
+ * What is being dragged out of the library, while it is: a title, a
+ * transition or an effect - or a clip out of the media panel (`asset`).
  *
  * A drag's data cannot be read until the drop, and the timeline hears
  * nothing until the pointer reaches it - but it should show where a
@@ -20,12 +21,19 @@ export const EFFECT_DRAG_TYPE = 'application/x-scf-effect';
 interface LibraryDragState {
   dragging: LibraryDragKind | null;
   setDragging(kind: LibraryDragKind | null): void;
+  /** A clip being dragged out of the media panel: its asset's id. */
+  asset: string | null;
+  setAsset(assetId: string | null): void;
 }
 
 export const useLibraryDragStore = create<LibraryDragState>((set) => ({
   dragging: null,
   setDragging(dragging) {
     set({ dragging });
+  },
+  asset: null,
+  setAsset(asset) {
+    set({ asset });
   },
 }));
 

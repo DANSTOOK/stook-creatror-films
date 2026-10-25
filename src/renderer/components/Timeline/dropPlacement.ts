@@ -1,4 +1,5 @@
 import { assetLengthFrames } from '@renderer/media/assetLength';
+import { clipsOnTrackExcept, insertIntoTrack } from './trackPacking';
 import type { MediaKind, ProjectState, Track } from '@shared/types';
 
 /**
@@ -92,6 +93,35 @@ export function planDrop(
     cursor.set(key, startFrame + length);
 
     return { assetId: asset.id, trackId: track?.id ?? null, trackType, startFrame, durationFrames: length };
+  });
+}
+
+/** Where a drop is shown landing before it is made. */
+export interface DropLanding {
+  /** The track it lands on, or null for a new one. */
+  trackId: string | null;
+  start: number;
+  end: number;
+}
+
+/**
+ * Where a dropped asset will really land: planDrop's track and frame, moved
+ * to the near edge of a clip it would cut into, as placeAssets inserts it.
+ * So the timeline can draw it there while the drag is still over it. One
+ * asset at a time, which is what the media panel drags.
+ */
+export function dropLandings(
+  project: ProjectState,
+  assets: readonly DroppedAsset[],
+  targetTrackId: string | null,
+  frame: number,
+  options: { magnet?: boolean } = {},
+): DropLanding[] {
+  return planDrop(project, assets, targetTrackId, frame, options).map((placement) => {
+    const start = placement.trackId
+      ? insertIntoTrack(clipsOnTrackExcept(project.clips, placement.trackId, new Set()), placement.startFrame, placement.durationFrames).startFrame
+      : placement.startFrame;
+    return { trackId: placement.trackId, start, end: start + placement.durationFrames };
   });
 }
 

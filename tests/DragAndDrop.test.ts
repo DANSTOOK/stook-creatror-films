@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { MediaAsset, ProjectState } from '@shared/types';
-import { planDrop, trackTypeFor, type DroppedAsset } from '@renderer/components/Timeline/dropPlacement';
+import { dropLandings, planDrop, trackTypeFor, type DroppedAsset } from '@renderer/components/Timeline/dropPlacement';
 import { createClip, createEmptyProject } from '@renderer/store/types';
 import { useHistoryStore } from '@renderer/store/useHistoryStore';
 import { useProjectStore } from '@renderer/store/useProjectStore';
@@ -136,6 +136,37 @@ describe('the main track, with the magnet', () => {
   });
 });
 
+describe('where a drop is drawn landing (dropLandings)', () => {
+  it('is where planDrop puts it on an empty track', () => {
+    const p = project();
+    expect(dropLandings(p, [video('a', 60)], p.v2, 90)).toEqual([{ trackId: p.v2, start: 90, end: 150 }]);
+  });
+
+  it('is before a clip whose first half it is dropped into, as the insertion puts it', () => {
+    const p = project();
+    const occupied = withClip(p, p.v1, 50, 100); // frames 50-150
+    expect(dropLandings(occupied, [video('a', 30)], p.v1, 80)).toEqual([{ trackId: p.v1, start: 50, end: 80 }]);
+  });
+
+  it('and after it, dropped into its second half', () => {
+    const p = project();
+    const occupied = withClip(p, p.v1, 50, 100);
+    expect(dropLandings(occupied, [video('a', 30)], p.v1, 120)).toEqual([{ trackId: p.v1, start: 150, end: 180 }]);
+  });
+
+  it('is against the main track\'s last clip with the magnet, past its end', () => {
+    const p = project();
+    const occupied = withClip(p, p.v1, 0, 90);
+    expect(dropLandings(occupied, [video('a', 60)], p.v1, 300, { magnet: true })).toEqual([{ trackId: p.v1, start: 90, end: 150 }]);
+  });
+
+  it('says a new track when no track can take it', () => {
+    const p = project();
+    const noAudio = { ...p, tracks: p.tracks.filter((track) => track.type !== 'audio') };
+    expect(dropLandings(noAudio, [audio('s', 30)], p.v1, 10)).toEqual([{ trackId: null, start: 10, end: 40 }]);
+  });
+});
+
 describe('placing dropped media through the store', () => {
   const asset = (id: string, kind: MediaAsset['kind'] = 'video', durationFrames = 60): MediaAsset => ({
     id,
@@ -161,6 +192,17 @@ describe('placing dropped media through the store', () => {
 
     state().undo();
     expect(Object.keys(state().project.clips)).toHaveLength(0);
+  });
+
+  it('lands where the timeline drew it landing (dropLandings)', () => {
+    const v1 = state().project.tracks[0].id;
+    const first = asset('a', 'video', 100);
+    state().placeAssets([first], planDrop(state().project, [first], v1, 0));
+    const dropped = asset('b', 'video', 40);
+    const drawn = dropLandings(state().project, [dropped], v1, 30, { magnet: true });
+    const [id] = state().placeAssets([dropped], planDrop(state().project, [dropped], v1, 30, { magnet: true }));
+    expect(drawn).toEqual([{ trackId: v1, start: 0, end: 40 }]);
+    expect(state().project.clips[id].startFrame).toBe(drawn[0].start);
   });
 
   it('selects what was just dropped', () => {

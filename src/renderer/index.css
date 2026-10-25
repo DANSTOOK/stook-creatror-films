@@ -1419,6 +1419,20 @@ section[data-section] > [id^='inspector-section-'],
   }
 }
 
+/* A voice character's face lifts a little under the pointer, with the bounce. */
+.scf-voice-avatar {
+  transition: transform var(--settle-quick-bounce) var(--spring-quick-bounce);
+}
+
+.scf-voice-card:hover .scf-voice-avatar {
+  transform: scale(1.08);
+}
+
+:root[data-motion='reduced'] .scf-voice-avatar {
+  transition: none;
+  transform: none;
+}
+
 /* The export's picture, finished: it dims, and the tick grows in over it with the bounce. */
 .scf-export-done {
   transition: opacity var(--settle-quick) var(--spring-quick);

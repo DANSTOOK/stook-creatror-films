@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AudioLines, Loader2, Play, Sparkles, Square, Wand2 } from 'lucide-react';
+import { AudioLines, Check, Loader2, Play, Sparkles, Square, Wand2 } from 'lucide-react';
 import type { TtsEffect, TtsEngineStatus, TtsVoiceStatus } from '@shared/types/ipc';
 import type { MessageKey } from '@shared/i18n';
 import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
@@ -12,6 +12,7 @@ import { VOICE_CHARACTERS, VOICE_EFFECTS, type VoiceCharacter } from '@renderer/
 import { createId } from '@shared/utils/id';
 import { notify } from '@renderer/notifications/notifications';
 import { errorText } from '@renderer/errorText';
+import { VoiceAvatar } from './VoiceAvatar';
 
 /**
  * The library's Voice tab: text to speech beside Effects and Transitions,
@@ -93,6 +94,12 @@ export function VoicePanel(): JSX.Element {
     setEffect(chosen.effect);
     setCharacter(chosen.id);
   };
+  /** What a character sets, for its card's tooltip: the voice, the pace and the style. */
+  const characterHint = (chosen: VoiceCharacter): string => {
+    const name = voices.find((candidate) => candidate.id === chosen.voice)?.name;
+    const style = VOICE_EFFECTS.find((entry) => entry.id === chosen.effect)?.label ?? 'tts.effect.none';
+    return [name, `${chosen.speed.toFixed(2)}×`, t(style)].filter(Boolean).join(' · ');
+  };
   /** Anything changed by hand: no character is chosen any more. */
   const own = <T,>(set: (value: T) => void) => (value: T): void => {
     set(value);
@@ -171,12 +178,34 @@ export function VoicePanel(): JSX.Element {
             <Sparkles size={12} aria-hidden />
             {t('tts.characters')}
           </h3>
-          <div className="grid grid-cols-2 gap-1">
-            {VOICE_CHARACTERS.map((item) => (
-              <Chip key={item.id} testId={`tts-character-${item.id}`} active={character === item.id} onClick={() => pick(item)}>
-                {t(item.label)}
-              </Chip>
-            ))}
+          {/* Cards with a face each, as CapCut's voice characters: the face tells them apart before the name is read. */}
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5" data-testid="tts-characters">
+            {VOICE_CHARACTERS.map((item) => {
+              const active = character === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  data-testid={`tts-character-${item.id}`}
+                  aria-pressed={active}
+                  className={`scf-voice-card flex min-w-0 flex-col items-center gap-1 rounded-lg px-1 pb-1.5 pt-2 text-center ring-1 transition-colors ${
+                    active ? 'bg-accent/15 ring-accent' : 'bg-panel-900 ring-panel-700 hover:bg-panel-800 hover:ring-panel-600'
+                  }`}
+                  onClick={() => pick(item)}
+                  {...tip(t(item.label), { hint: characterHint(item), named: false })}
+                >
+                  <span className="relative">
+                    <VoiceAvatar character={item.id} className="scf-voice-avatar block h-11 w-11" />
+                    {active && (
+                      <span aria-hidden className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full bg-accent text-accent-contrast ring-2 ring-panel-900">
+                        <Check size={10} strokeWidth={3} />
+                      </span>
+                    )}
+                  </span>
+                  <span className="line-clamp-2 w-full break-words text-2xs leading-tight text-slate-200">{t(item.label)}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
 

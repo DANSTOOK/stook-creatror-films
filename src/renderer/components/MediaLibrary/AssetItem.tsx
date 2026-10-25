@@ -1,4 +1,4 @@
-import { memo, useMemo, type MouseEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { FileVideo, Image as ImageIcon, Link2, Music, Plus, Trash2 } from 'lucide-react';
 import type { MediaAsset, MediaKind } from '@shared/types';
 import type { WaveformPeaks } from '@renderer/audio/WaveformExtractor';
@@ -6,7 +6,11 @@ import { tip } from '@renderer/components/Tooltip/Tooltip';
 import { ASSET_DRAG_TYPE } from '@renderer/components/Timeline/dropPlacement';
 import { assetLengthSeconds } from '@renderer/media/assetLength';
 import { useT } from '@renderer/i18n';
+import { motionQuiet, motionReduced } from '@renderer/motion/environment';
 import { useMediaStore } from '@renderer/store/useMediaStore';
+import { useProjectStore } from '@renderer/store/useProjectStore';
+import { setClipDragImage } from './dragGhost';
+import { useLibraryDragStore } from './libraryDrag';
 
 /**
  * One clip in the media panel, as a thumbnail or as a row.
@@ -104,6 +108,88 @@ function MiniWave({ peaks }: { peaks: WaveformPeaks }): JSX.Element {
   );
 }
 
+/** How long the pointer rests on a video's thumbnail before it plays: one passing over plays nothing. */
+export const HOVER_PLAY_MS = 250;
+
+/** The thumbnail playing, stopped when another starts: one decoder for this, never a row of them. */
+let stopPlaying: (() => void) | null = null;
+
+/**
+ * A video's thumbnail under the pointer plays, muted and on a loop, as
+ * CapCut's media panel does: a shot is told by its movement as much as by
+ * its first frame. The proxy when there is one, lighter to decode. It fades
+ * in once its first frame is up - over the poster, so nothing flashes black -
+ * and goes the moment the preview plays or the window is hidden.
+ *
+ * It takes no pointer events: what is under the pointer stays the poster, so
+ * the video coming and going is no move at all. Otherwise its removal reached
+ * React as the pointer entering the tile afresh, and it started again.
+ */
+function TilePlayback({ uri, onStop }: { uri: string; onStop(): void }): JSX.Element {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const barRef = useRef<HTMLSpanElement>(null);
+  const [shown, setShown] = useState(false);
+  const previewPlaying = useProjectStore((state) => state.ui.isPlaying);
+
+  useEffect(() => {
+    if (previewPlaying) onStop();
+  }, [previewPlaying, onStop]);
+
+  useEffect(() => {
+    stopPlaying?.();
+    stopPlaying = onStop;
+    const video = videoRef.current;
+    // The window it is in: a detached media panel is a window of its own.
+    const page = video?.ownerDocument ?? document;
+    const hidden = (): void => {
+      if (page.visibilityState === 'hidden') onStop();
+    };
+    page.addEventListener('visibilitychange', hidden);
+    if (video) {
+      video.muted = true;
+      // Interrupted when the pointer leaves first: nothing to report.
+      video.play().catch(() => undefined);
+    }
+    return () => {
+      page.removeEventListener('visibilitychange', hidden);
+      if (stopPlaying === onStop) stopPlaying = null;
+      // The decoder goes now, not whenever the element is collected.
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
+    };
+  }, [onStop]);
+
+  return (
+    <>
+      <video
+        ref={videoRef}
+        data-testid="tile-playback"
+        src={uri}
+        muted
+        loop
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${shown ? 'opacity-100' : 'opacity-0'}`}
+        onPlaying={() => setShown(true)}
+        onTimeUpdate={(event) => {
+          const { currentTime, duration } = event.currentTarget;
+          if (barRef.current && duration > 0) barRef.current.style.transform = `scaleX(${currentTime / duration})`;
+        }}
+        onError={onStop}
+      />
+      {/* How far through the clip it is, along the bottom edge. */}
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-white/15">
+        <span ref={barRef} className="block h-full origin-left bg-accent transition-transform duration-200 ease-linear" style={{ transform: 'scaleX(0)' }} />
+      </span>
+    </>
+  );
+}
+
 export interface AssetItemProps {
   asset: MediaAsset;
   view: MediaView;
@@ -136,6 +222,16 @@ export const AssetItem = memo(function AssetItem({
   const seconds = assetLengthSeconds(asset, fps);
   const grid = view === 'grid';
   const analysing = useMediaStore((state) => state.analysing.includes(asset.uri));
+  // A video's thumbnail plays while the pointer rests on it (TilePlayback) -
+  // not with less motion asked for, nor while the preview plays or a render runs.
+  const playable = grid && asset.kind === 'video' && !asset.missing;
+  const [playing, setPlaying] = useState(false);
+  const hoverTimer = useRef(0);
+  const stopPlayback = useCallback((): void => {
+    window.clearTimeout(hoverTimer.current);
+    setPlaying(false);
+  }, []);
+  useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
 
   // The picture: the poster frame, a sound's waveform, or its kind's icon.
   const picture = asset.thumbnailUri ? (
@@ -230,12 +326,30 @@ export const AssetItem = memo(function AssetItem({
       tabIndex={0}
       aria-selected={selected}
       draggable={!asset.missing}
+      onPointerEnter={
+        playable
+          ? () => {
+              window.clearTimeout(hoverTimer.current);
+              hoverTimer.current = window.setTimeout(() => {
+                if (!motionReduced() && !motionQuiet()) setPlaying(true);
+              }, HOVER_PLAY_MS);
+            }
+          : undefined
+      }
+      onPointerLeave={stopPlayback}
       onDragStart={(event) => {
+        stopPlayback();
         event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.id);
         // Copy onto the timeline, move onto a bin.
         event.dataTransfer.effectAllowed = 'copyMove';
+        // The card that follows the pointer, and the timeline told what is coming.
+        setClipDragImage(event, asset.kind, asset.name, asset.kind !== 'image' && seconds > 0 ? durationBadge(seconds) : '');
+        useLibraryDragStore.getState().setAsset(asset.id);
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={() => {
+        useLibraryDragStore.getState().setAsset(null);
+        onDragEnd();
+      }}
       onClick={onSelect}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -252,6 +366,7 @@ export const AssetItem = memo(function AssetItem({
         <>
           <span className="relative block aspect-video w-full overflow-hidden rounded-control bg-panel-950">
             {picture}
+            {playing && playable && <TilePlayback uri={asset.proxyUri ?? asset.uri} onStop={stopPlayback} />}
             {asset.kind !== 'image' && seconds > 0 && (
               <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1 text-2xs tabular-nums text-slate-100">
                 {durationBadge(seconds)}

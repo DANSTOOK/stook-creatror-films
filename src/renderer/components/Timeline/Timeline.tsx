@@ -64,7 +64,7 @@ import { detachSelectionAudio, rejoinSelectionAudio } from '@renderer/hooks/useT
 import { currentLoopRange } from '@renderer/timing/loopRange';
 import { SpeedDialog } from './SpeedDialog';
 import { collectSnapTargets, pixelToFrame, snapClipMove, snapFrame, type SnapTarget } from './snapping';
-import { ASSET_DRAG_TYPE, mainTrackOf, planDrop } from './dropPlacement';
+import { ASSET_DRAG_TYPE, dropLandings, mainTrackOf, planDrop } from './dropPlacement';
 import { clipsInMarquee } from './marquee';
 import { importDroppedFiles } from '@renderer/media/importMedia';
 import { emitScrub } from '@renderer/audio/scrubAudio';
@@ -273,6 +273,14 @@ export function Timeline(): JSX.Element {
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
   // A title, transition or effect being dragged from the library, and where it would land.
   const libraryDragging = useLibraryDragStore((state) => state.dragging);
+  // A clip being dragged from the media panel, and the frame and track it is over.
+  const draggedAsset = useLibraryDragStore((state) => state.asset);
+  const [assetTarget, setAssetTarget] = useState<{ frame: number; trackId: string | null } | null>(null);
+  useEffect(() => {
+    if (!draggedAsset) setAssetTarget(null);
+  }, [draggedAsset]);
+  // The clips a drop has just put down: they land with a small bounce (TimelineCanvas).
+  const [landing, setLanding] = useState<{ ids: readonly string[]; at: number } | null>(null);
   const [, setScrubEnded] = useState(0);
   // Razor cuts just made, each flashed for a moment on its tracks.
   const [cutFlashes, setCutFlashes] = useState<Array<{ id: number; frame: number; trackIds: string[] }>>([]);
@@ -1541,7 +1549,14 @@ export function Timeline(): JSX.Element {
       if (!acceptsDrag(event)) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'copy';
-      setActiveSnap(dropTargetAt(event).snap);
+      const target = dropTargetAt(event);
+      setActiveSnap(target.snap);
+      // A clip from the media panel is drawn where it will land.
+      if (event.dataTransfer.types.includes(ASSET_DRAG_TYPE)) {
+        setAssetTarget((previous) =>
+          previous?.frame === target.frame && previous.trackId === target.trackId ? previous : { frame: target.frame, trackId: target.trackId },
+        );
+      }
     },
     [dropTargetAt, libraryTargetAt],
   );
@@ -1551,6 +1566,7 @@ export function Timeline(): JSX.Element {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
       setActiveSnap(null);
       setLibraryTarget(null);
+      setAssetTarget(null);
     }
   }, []);
 
@@ -1580,6 +1596,8 @@ export function Timeline(): JSX.Element {
       if (!acceptsDrag(event)) return;
       event.preventDefault();
       setActiveSnap(null);
+      setAssetTarget(null);
+      useLibraryDragStore.getState().setAsset(null);
 
       const { frame, trackId } = dropTargetAt(event);
       const assetId = event.dataTransfer.getData(ASSET_DRAG_TYPE);
@@ -1615,13 +1633,21 @@ export function Timeline(): JSX.Element {
       if (assets.length === 0) return;
 
       const current = store.getState();
-      current.placeAssets(assets, planDrop(current.project, assets, trackId, frame, { magnet: current.ui.rippleEnabled }));
+      const created = current.placeAssets(assets, planDrop(current.project, assets, trackId, frame, { magnet: current.ui.rippleEnabled }));
+      if (created.length > 0) setLanding({ ids: created, at: performance.now() });
     },
     [dropTargetAt, libraryTargetAt, store],
   );
 
   /** What the canvas marks while a library item is dragged. */
   const libraryHint = useMemo((): LibraryDropHint | null => {
+    // A clip from the media panel: drawn where the drop will put it.
+    if (draggedAsset && assetTarget) {
+      const asset = store.getState().assets.find((candidate) => candidate.id === draggedAsset);
+      if (!asset) return null;
+      const clips = dropLandings(project, [asset], assetTarget.trackId, assetTarget.frame, { magnet: ui.rippleEnabled }).map((spot) => ({ ...spot, name: asset.name }));
+      return { cuts: [], title: null, transition: null, clips };
+    }
     if (!libraryDragging) return null;
     if (libraryDragging === 'title') {
       return { cuts: [], title: libraryTarget?.kind === 'title' ? libraryTarget : null, transition: null };
@@ -1647,7 +1673,7 @@ export function Timeline(): JSX.Element {
       }
     }
     return { cuts, title: null, transition };
-  }, [libraryDragging, libraryTarget, project]);
+  }, [libraryDragging, libraryTarget, project, draggedAsset, assetTarget, ui.rippleEnabled, store]);
 
   const onPointerUp = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -2140,6 +2166,7 @@ export function Timeline(): JSX.Element {
                 tracks={tracks}
                 activeSnap={activeSnap}
                 libraryDrop={libraryHint}
+                landing={landing}
                 marquee={marquee}
                 hover={hover}
                 activeTrim={activeTrim}
@@ -2164,7 +2191,7 @@ export function Timeline(): JSX.Element {
                 loopRange={loopRange}
               />
               {/* An empty timeline says what goes here, over the tracks, out of the pointer's way. */}
-              {Object.keys(project.clips).length === 0 && !libraryDragging && (
+              {Object.keys(project.clips).length === 0 && !libraryDragging && !draggedAsset && (
                 <div
                   data-testid="timeline-empty"
                   className="scf-rise pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center p-3"

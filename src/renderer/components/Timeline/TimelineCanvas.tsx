@@ -131,6 +131,8 @@ export interface LibraryDropHint {
   title: { trackId: string | null; start: number; end: number } | null;
   /** The clip an effect would be dropped on. */
   clip?: { trackId: string; start: number; end: number } | null;
+  /** A clip from the media panel, where the drop would put it (dropLandings). */
+  clips?: ReadonlyArray<{ trackId: string | null; start: number; end: number; name: string }>;
 }
 
 export interface TimelineCanvasProps {
@@ -139,6 +141,8 @@ export interface TimelineCanvasProps {
   tracks: Track[];
   /** Live snap indicator drawn during a drag. */
   activeSnap: SnapTarget | null;
+  /** Clips a drop has just put down, and when: they land with a small bounce. */
+  landing?: { ids: readonly string[]; at: number } | null;
   /** A library drag's targets. */
   libraryDrop?: LibraryDropHint | null;
   /** Decoded peaks per source URI, for audio-bearing clips. */
@@ -202,6 +206,22 @@ interface Slide {
 }
 
 const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+
+/** A dropped clip lands for this long: from LAND_LIFT px above its row, down past it a little, settled. */
+const LAND_MS = 450;
+const LAND_LIFT = 12;
+
+/** How far from its row a landing clip is drawn, `elapsed` ms after the drop: a damped spring. */
+function landOffset(elapsed: number): number {
+  if (elapsed >= LAND_MS) return 0;
+  const t = Math.max(0, elapsed) / 1000;
+  return -LAND_LIFT * Math.exp(-t * 8) * Math.cos(t * 15);
+}
+
+/** `rgb(r g b)` with an alpha; anything else is the accent's cyan at that alpha. */
+function translucent(colour: string, alpha: number): string {
+  return colour.startsWith('rgb(') ? colour.replace(')', ` / ${alpha})`) : `rgba(6, 196, 222, ${alpha})`;
+}
 
 function slideOffset(slide: Slide | undefined, now: number): number {
   if (!slide) return 0;
@@ -803,6 +823,23 @@ function drawLibraryDrop(
     const row = rowOf(hint.clip.trackId);
     if (row >= 0) ghost(row, hint.clip.start, hint.clip.end, 'rgba(37, 99, 235, 0.32)');
   }
+  // A clip from the media panel: where it will land, in the accent, with its name.
+  for (const clip of hint.clips ?? []) {
+    const row = rowOf(clip.trackId);
+    ghost(row, clip.start, clip.end, translucent(surfaceOf(context).accent, 0.32));
+    const left = Math.round(x(clip.start));
+    const right = Math.round(x(clip.end));
+    if (row < 0 || right - left < 30) continue;
+    context.save();
+    context.beginPath();
+    context.rect(left + 4, trackRowTop(row), right - left - 8, trackRowHeight(row));
+    context.clip();
+    context.font = LABEL_FONT;
+    context.textBaseline = 'middle';
+    context.fillStyle = CLIP_NAME;
+    context.fillText(clip.name, Math.max(left, 0) + 8, trackRowTop(row) + trackRowHeight(row) / 2);
+    context.restore();
+  }
   // The cuts over the ghost, so the one it lands on still shows.
   for (const cut of hint.cuts) {
     const row = rowOf(cut.trackId);
@@ -1324,6 +1361,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
   const look = useThemeStore((state) => `${resolvedTheme(state.theme)}|${state.accent}`);
   const { project, ui: storeUi, tracks, activeSnap, waveforms, width, height } = props;
   const libraryDrop = props.libraryDrop ?? null;
+  const landing = props.landing ?? null;
   const filmstrips = props.filmstrips;
   const offlineUris = props.offlineUris;
   const transitionShortfalls = props.transitionShortfalls;
@@ -1444,6 +1482,12 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     context.fillRect(0, 0, width, height);
 
     const selected = new Set(ui.selectedClipIds);
+    // Clips just dropped come down onto their row with a small bounce. Not
+    // with less motion asked for, nor while the preview plays.
+    const landingFor = landing && !motionReduced() && !motionQuiet() && now - landing.at < LAND_MS ? new Set(landing.ids) : null;
+    // For the tests (drop-ghost.mjs): whether a landing is being drawn.
+    const landingState = landingFor ? 'on' : 'off';
+    if (canvas.dataset.landing !== landingState) canvas.dataset.landing = landingState;
 
     tracks.forEach((track, index) => {
       const top = trackRowTop(index);
@@ -1467,6 +1511,11 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
         const endX = frameToPixel(clipEndFrame(clip), ui.pixelsPerFrame, ui.scrollLeftPx);
         if (endX < 0 || startX > width) continue;
 
+        const lift = landingFor?.has(clip.id) && landing ? landOffset(now - landing.at) : 0;
+        if (lift !== 0) {
+          context.save();
+          context.translate(0, lift);
+        }
         drawClip(
           context,
           clip,
@@ -1509,6 +1558,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
             chosen,
           );
         }
+        if (lift !== 0) context.restore();
       }
     });
 
@@ -1584,7 +1634,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
 
     // Keep painting only while something is still on its way; a still
     // timeline costs nothing.
-    if ((handleProgress > 0 && handleProgress < 1) || zoom.moving || sliding || flashing) {
+    if ((handleProgress > 0 && handleProgress < 1) || zoom.moving || sliding || flashing || landingFor) {
       animationFrame.current = requestFrame(paint);
     } else {
       lastPaintAt.current = 0;
@@ -1592,7 +1642,7 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     // contentVersion is not read in the paint: it changes when a filmstrip
     // frame has been decoded, and that is exactly when to paint again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, storeUi, tracks, activeSnap, libraryDrop, waveforms, filmstrips, offlineUris, transitionShortfalls, syncMarks, loopRange, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey, look]);
+  }, [project, storeUi, tracks, activeSnap, libraryDrop, landing, waveforms, filmstrips, offlineUris, transitionShortfalls, syncMarks, loopRange, appearance, contentVersion, labels, width, height, marquee, hover, activeTrim, hoverKey, look]);
 
   useEffect(() => {
     if (animationFrame.current !== null) cancelFrame(animationFrame.current);
