@@ -1,88 +1,17 @@
 import type { Sound } from './catalog';
+import { playMoreEffect } from './effects';
+import { chord, hat, hiss, kick, midi, snare, tone, type Graph } from './primitives';
 
 /**
  * The sound library's sounds, made: each one played into an offline audio
  * graph - oscillators, filtered noise and envelopes, as a synthesiser makes
- * them - and written out as a 16-bit stereo WAV. The music is a few bars of
- * drums, bass and chords that loop seamlessly (their length is a whole number
- * of bars), so a clip of it can be stretched under any edit.
+ * them (sounds/primitives) - and written out as a 16-bit stereo WAV. The
+ * music is a few bars of drums, bass and chords that loop seamlessly (their
+ * length is a whole number of bars), so a clip of it can be stretched under
+ * any edit.
  */
 
 export const SOUND_RATE = 44100;
-
-type Graph = OfflineAudioContext;
-
-/** White noise, `seconds` long, as a buffer to play. */
-function noise(context: Graph, seconds: number): AudioBuffer {
-  const buffer = context.createBuffer(1, Math.max(1, Math.round(seconds * context.sampleRate)), context.sampleRate);
-  const data = buffer.getChannelData(0);
-  let seed = 12345;
-  for (let i = 0; i < data.length; i += 1) {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    data[i] = (seed / 2147483648) * 2 - 1;
-  }
-  return buffer;
-}
-
-/** A gain that rises over `attack` then falls away over `release` from `at`. */
-function envelope(context: Graph, at: number, peak: number, attack: number, release: number, to: AudioNode): GainNode {
-  const gain = context.createGain();
-  gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), at + attack);
-  gain.gain.exponentialRampToValueAtTime(0.0001, at + attack + release);
-  gain.connect(to);
-  return gain;
-}
-
-function tone(context: Graph, to: AudioNode, at: number, frequency: number, options: { type?: OscillatorType; peak?: number; attack?: number; release?: number; glideTo?: number; detune?: number } = {}): void {
-  const oscillator = context.createOscillator();
-  oscillator.type = options.type ?? 'sine';
-  oscillator.frequency.setValueAtTime(frequency, at);
-  if (options.detune) oscillator.detune.value = options.detune;
-  const release = options.release ?? 0.4;
-  if (options.glideTo) oscillator.frequency.exponentialRampToValueAtTime(options.glideTo, at + (options.attack ?? 0.005) + release);
-  oscillator.connect(envelope(context, at, options.peak ?? 0.5, options.attack ?? 0.005, release, to));
-  oscillator.start(at);
-  oscillator.stop(at + (options.attack ?? 0.005) + release + 0.05);
-}
-
-/** A burst of filtered noise. */
-function hiss(context: Graph, to: AudioNode, at: number, length: number, options: { type?: BiquadFilterType; from: number; toFrequency?: number; q?: number; peak?: number; attack?: number }): void {
-  const source = context.createBufferSource();
-  source.buffer = noise(context, length + 0.1);
-  const filter = context.createBiquadFilter();
-  filter.type = options.type ?? 'bandpass';
-  filter.Q.value = options.q ?? 1;
-  filter.frequency.setValueAtTime(options.from, at);
-  if (options.toFrequency) filter.frequency.exponentialRampToValueAtTime(options.toFrequency, at + length);
-  source.connect(filter);
-  filter.connect(envelope(context, at, options.peak ?? 0.5, options.attack ?? 0.01, Math.max(0.02, length - (options.attack ?? 0.01)), to));
-  source.start(at);
-  source.stop(at + length + 0.1);
-}
-
-const midi = (note: number): number => 440 * 2 ** ((note - 69) / 12);
-
-/** The drum kit of the music: kick, snare and hat, each a moment of synthesis. */
-const kick = (context: Graph, to: AudioNode, at: number, peak = 0.9): void => tone(context, to, at, 150, { glideTo: 45, peak, release: 0.35 });
-const snare = (context: Graph, to: AudioNode, at: number, peak = 0.35): void => {
-  hiss(context, to, at, 0.18, { type: 'highpass', from: 1500, peak });
-  tone(context, to, at, 190, { peak: peak * 0.6, release: 0.1 });
-};
-const hat = (context: Graph, to: AudioNode, at: number, peak = 0.12): void => hiss(context, to, at, 0.05, { type: 'highpass', from: 7000, peak });
-
-/** A chord of saws through a low-pass: a pad or a stab. */
-function chord(context: Graph, to: AudioNode, at: number, notes: number[], length: number, options: { peak?: number; attack?: number; cutoff?: number; type?: OscillatorType } = {}): void {
-  const filter = context.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = options.cutoff ?? 1600;
-  filter.connect(to);
-  for (const note of notes) {
-    for (const detune of [-7, 7]) {
-      tone(context, filter, at, midi(note), { type: options.type ?? 'sawtooth', peak: (options.peak ?? 0.12) / notes.length, attack: options.attack ?? 0.02, release: length, detune });
-    }
-  }
-}
 
 interface Song {
   bpm: number;
@@ -199,6 +128,8 @@ function playEffect(context: Graph, to: AudioNode, id: string): void {
       for (const at of [0, 0.25, 1, 1.25]) tone(context, to, at, 70, { glideTo: 45, peak: at % 1 === 0 ? 0.9 : 0.6, release: 0.2 });
       break;
     default:
+      // The rest of the effects, block 7b's (sounds/effects).
+      playMoreEffect(context, to, id);
       break;
   }
 }

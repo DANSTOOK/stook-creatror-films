@@ -7,13 +7,70 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1727 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1731 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.88.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.89.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.90.0-beta.1 — 46 efectos de sonido en seis grupos (bloque 7b)
+2026-10-24 · pre-release para probar · lo pedido: «y efectos de sonido»
+
+### Añadido
+- **32 efectos de sonido nuevos: de 14 a 46**, hechos en la propia app como
+  los de antes (nada descargado ni licencias que leer), en seis grupos:
+  - Transiciones: deslizar, platillo al revés, impacto y caída grave (con el
+    whoosh, el barrido, el boom y la subida de antes).
+  - Interfaz y avisos: notificación, burbuja, moneda, cuenta atrás y alarma.
+  - Dibujos y juegos: boing, silbato de émbolo, power-up, game over, salto,
+    destello mágico y trombón triste.
+  - Percusión y fiesta: redoble de tambor, platillo, ba-dum-tss, rayado de
+    disco, fanfarria, aplausos y glitch.
+  - Cotidianos: caja registradora, toc toc, tictac de reloj, teléfono
+    sonando y sirena.
+  - Naturaleza: trueno, viento, lluvia y gota de agua.
+- **El sonido de la app tiene ahora sala, estéreo y vibrato:** reverberación
+  para que un golpe o una fanfarria suenen en un sitio, aplausos y lluvia
+  repartidos de izquierda a derecha, y notas que tiemblan, como el trombón o
+  la sirena. Los sonidos de antes suenan igual que siempre.
+- **Un buscador y una fila de grupos en el panel de sonidos**, como en el de
+  stickers: un grupo cada vez o todos, y la búsqueda por nombre sin mirar
+  mayúsculas ni tildes («trombon» encuentra «Trombón triste»).
+
+### Comprobado
+- **Prueba nueva** `tests/ui/sounds-more.mjs` (**9/9**), con la ventana en
+  silencio para no oír 32 efectos seguidos:
+  - el panel lista los 46 efectos en sus seis grupos, y luego la música;
+  - la fila muestra un grupo cada vez (Naturaleza: trueno, viento, lluvia y
+    gota), y el buscador encuentra «TROMBON» y avisa cuando nada se llama
+    así;
+  - cada efecto nuevo se hace: un WAV estéreo a 44,1 kHz, al nivel de la
+    biblioteca (-3 dBFS), no mudo, tan largo como dice la lista, y no hay dos
+    iguales;
+  - uno nuevo va a la línea de tiempo como los de antes: en una pista de
+    efectos, entero;
+  - sin errores en la página ni en el registro.
+- Como no puedo escucharlos, revisé el espectrograma de los 32 (sale en las
+  capturas): los aplausos son golpes repartidos, el trueno un chasquido y un
+  retumbo que se apaga, la sirena una línea que sube y baja, el power-up
+  escalones hacia arriba y el game over hacia abajo.
+- **4 pruebas unitarias nuevas** del catálogo de sonidos: 46 efectos con
+  nombre propio (también como archivo), cada uno en su grupo, cuatro o más
+  por grupo, nombres en los dos idiomas y duraciones de clip corto.
+- `sounds` (**5/5**) espera ahora los 51 de la lista.
+- Las **74** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+- 1731 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento: 15 de sus 16 escenarios, sin nada lento.**
+  La memoria es de 28 MB al empezar y al terminar. «Arrastrar el cabezal»
+  volvió a salir lento en la secuencia completa (241 ms): es el caso
+  intermitente de la v1.88, que da lo mismo con y sin cambios y viene del
+  decodificador con el 4K. Solo, salió bien dos de dos veces (61 y 72 ms), y
+  esta versión no toca la línea de tiempo.
+- La v1.89 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ## v1.89.0-beta.1 — 66 stickers en ocho grupos, y el mapa de atajos en Ctrl+/ (bloques 7a y 6d)
 2026-10-24 · pre-release para probar · lo pedido: «añade más stickers considerablemente»; y la última respuesta pendiente de las preguntas de diseño, el mapa de atajos en Ctrl+/, con el bucle en R, como elegiste
