@@ -165,7 +165,9 @@ export function SoundsBrowser(): JSX.Element {
                     className="flex min-w-0 flex-1 items-center gap-2 py-0.5 text-left"
                     onClick={() => void add(sound)}
                   >
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-200">{t(sound.label)}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-200" title={t(sound.label)}>
+                      {t(sound.label)}
+                    </span>
                     <span className="shrink-0 text-2xs tabular-nums text-slate-500">{clock(soundSeconds(sound))}</span>
                     <Plus size={12} className="shrink-0 text-slate-500 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
                   </button>

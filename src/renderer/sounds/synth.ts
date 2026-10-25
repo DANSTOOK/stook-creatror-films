@@ -1,5 +1,6 @@
 import type { Sound } from './catalog';
 import { playMoreEffect } from './effects';
+import { hasTrack, playTrack, trackSeconds } from './music';
 import { chord, hat, hiss, kick, midi, snare, tone, type Graph } from './primitives';
 
 /**
@@ -38,7 +39,17 @@ function barsOf(song: Song, seconds: number): number {
 /** How long a sound really is: a song is a whole number of bars. */
 export function soundSeconds(sound: Sound): number {
   const song = sound.category === 'music' ? SONGS[sound.id] : undefined;
-  return song ? barsOf(song, sound.seconds) * (60 / song.bpm) * 4 : sound.seconds;
+  if (song) return barsOf(song, sound.seconds) * (60 / song.bpm) * 4;
+  return (sound.category === 'music' ? trackSeconds(sound.id, sound.seconds) : null) ?? sound.seconds;
+}
+
+/** The last `frames` of a buffer, as a buffer of its own: a track's second pass. */
+function secondPass(buffer: AudioBuffer, frames: number): AudioBuffer {
+  const pass = new AudioBuffer({ length: frames, numberOfChannels: buffer.numberOfChannels, sampleRate: buffer.sampleRate });
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    pass.getChannelData(channel).set(buffer.getChannelData(channel).subarray(buffer.length - frames));
+  }
+  return pass;
 }
 
 /** Whole bars of a song filling about `seconds`: a loop that ends where it began. */
@@ -136,7 +147,12 @@ function playEffect(context: Graph, to: AudioNode, id: string): void {
 
 /** A sound rendered: its samples, stereo at SOUND_RATE. */
 export async function renderSound(sound: Sound): Promise<AudioBuffer> {
-  const context = new OfflineAudioContext(2, Math.round(soundSeconds(sound) * SOUND_RATE), SOUND_RATE);
+  const seconds = soundSeconds(sound);
+  // A track of sounds/music is played twice over and its second pass kept:
+  // its loop, with the room's ring from its end carried into its start.
+  const twice = sound.category === 'music' && hasTrack(sound.id);
+  const frames = Math.round(seconds * SOUND_RATE);
+  const context = new OfflineAudioContext(2, twice ? frames * 2 : frames, SOUND_RATE);
   const master = context.createGain();
   // A little headroom, and a gentle limiter so nothing clips.
   master.gain.value = sound.category === 'music' ? 0.7 : 0.85;
@@ -148,10 +164,12 @@ export async function renderSound(sound: Sound): Promise<AudioBuffer> {
   if (sound.category === 'music') {
     const song = SONGS[sound.id];
     if (song) playSong(context, master, song, sound.seconds);
+    else playTrack(context, master, sound.id, seconds);
   } else {
     playEffect(context, master, sound.id);
   }
-  const rendered = await context.startRendering();
+  const whole = await context.startRendering();
+  const rendered = twice ? secondPass(whole, frames) : whole;
   // Every sound to the same peak, -3 dBFS: a laser and a boom side by side in the list should be as loud.
   let peak = 0;
   for (let channel = 0; channel < rendered.numberOfChannels; channel += 1) {

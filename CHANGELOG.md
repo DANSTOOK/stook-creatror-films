@@ -11,9 +11,71 @@ Cifras de referencia al día de hoy: **1731 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.89.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.90.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.91.0-beta.1 — 13 pistas de música: reguetón, trap, house, synthwave, piano, épica, funk y acústica (bloque 7c)
+2026-10-24 · pre-release para probar · lo pedido: «y más sound tracks, música»
+
+### Añadido
+- **8 pistas de música nuevas: de 5 a 13**, hechas en la propia app y
+  libres de usar, como las de antes:
+  - Reguetón (95 BPM): el dembow, un bajo de 808 y una melodía punteada.
+  - Trap (140 BPM): bombos espaciados, charles con redobles, un 808 que se
+    desliza y campanas.
+  - House (124 BPM): bombo en cada tiempo, palmas, charles abierto a
+    contratiempo y acordes de piano.
+  - Synthwave ochentera (100 BPM): bajo en corcheas, caja grande y una
+    melodía de sintetizador.
+  - Piano ambiental (70 BPM): arpegios lentos y mucho espacio, sin batería.
+  - Tráiler épico (80 BPM): taikos, cuerdas graves y metales.
+  - Funk (105 BPM): bajo slap, clavinet y charles en semicorcheas.
+  - Acústica alegre (115 BPM): rasgueos, palmas, shaker y una melodía
+    silbada.
+- **Las pistas nuevas tienen melodía, estéreo y reverberación**, y su bucle
+  no se nota: se tocan dos veces y se guarda la segunda pasada, así que el
+  eco del final ya suena cuando vuelve a empezar.
+- Duran frases enteras de cuatro compases, para que el bucle cuadre con el
+  ritmo.
+- En el panel de sonidos, el nombre completo aparece al pasar el ratón
+  cuando no cabe.
+- Las cinco pistas de antes suenan igual que siempre.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/music-more.mjs` (**8/8**), con la ventana en
+  silencio:
+  - el estante de Música lista las trece;
+  - cada pista nueva se hace: un WAV estéreo a 44,1 kHz, al nivel de la
+    biblioteca y no muda;
+  - cada una dura frases enteras de cuatro compases, lo que dice la lista
+    (el reguetón 20,2 s, el trap 27,4 s…);
+  - cada una es un bucle: el salto del final al principio (0,000 a 0,007) es
+    menor que un paso normal entre muestras, y el principio ya suena;
+  - no hay dos iguales, y una nueva va a una pista de música, entera;
+  - sin errores en la página ni en el registro.
+- Revisé el espectrograma de los primeros 8 s de cada una (sale en las
+  capturas): se ve el dembow del reguetón, el bombo en cada tiempo del
+  house, los arpegios del piano y los taikos del tráiler.
+- La prueba unitaria del catálogo espera ahora 13 pistas; `sounds` (**5/5**)
+  los 59 sonidos de la lista y `sounds-more` (**9/9**) sigue igual.
+- Las **75** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+  - Una primera batería se cortó al reiniciarse la sesión: sus dos primeras
+    pruebas fallaron porque la ventana de la app no llegó a abrirse en 30 s.
+    Repetida entera desde el principio, pasaron todas.
+- 1731 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento, esta vez con un juego abierto en la misma
+  máquina** (un proceso Java, que usaba la CPU y la GPU a la vez): salieron
+  lentos 7 de sus 16 escenarios, y todos los valores normales subieron un
+  20 %. Para saber si era el cambio, comparé tres de ellos seguidos y en las
+  mismas condiciones con y sin la música nueva: cambiar de pestaña en la
+  biblioteca, 110 ms sin ella y 128 ms con ella; 25 deshacer y 25 rehacer,
+  26,9 % y 28,9 % de fotogramas perdidos; la ráfaga de avisos, 0,3 % y 0,3 %.
+  Sale lo mismo: es la máquina compartida, no la música. La memoria es de
+  28 MB al empezar y al terminar.
+- La v1.90 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ## v1.90.0-beta.1 — 46 efectos de sonido en seis grupos (bloque 7b)
 2026-10-24 · pre-release para probar · lo pedido: «y efectos de sonido»

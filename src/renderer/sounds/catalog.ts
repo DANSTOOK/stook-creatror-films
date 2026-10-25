@@ -2,10 +2,11 @@ import type { MessageKey } from '@shared/i18n';
 
 /**
  * The sound library: effects and music made in the editor itself, by
- * synthesis (sounds/synth.ts, sounds/effects.ts) - so every one is free to
- * use anywhere, with nothing downloaded and no licence to read. Each is
- * rendered once, on first use, and kept as a WAV in the app's folder: an id
- * is a sound for good, so a sound is changed by giving it a new id.
+ * synthesis (sounds/synth.ts, sounds/effects.ts, sounds/music.ts) - so every
+ * one is free to use anywhere, with nothing downloaded and no licence to
+ * read. Each is rendered once, on first use, and kept as a WAV in the app's
+ * folder: an id is a sound for good, so a sound is changed by giving it a
+ * new id.
  */
 
 export type SoundCategory = 'effects' | 'music';
@@ -78,6 +79,15 @@ export const SOUNDS: readonly Sound[] = [
   { id: 'cinematic', category: 'music', label: 'sound.cinematic', seconds: 24 },
   { id: 'corporate', category: 'music', label: 'sound.corporate', seconds: 24 },
   { id: 'chill', category: 'music', label: 'sound.chill', seconds: 24 },
+  // Block 7c (sounds/music).
+  { id: 'reggaeton', category: 'music', label: 'sound.reggaeton', seconds: 24 },
+  { id: 'trap', category: 'music', label: 'sound.trap', seconds: 24 },
+  { id: 'house', category: 'music', label: 'sound.house', seconds: 24 },
+  { id: 'synthwave', category: 'music', label: 'sound.synthwave', seconds: 24 },
+  { id: 'piano', category: 'music', label: 'sound.piano', seconds: 24 },
+  { id: 'epic', category: 'music', label: 'sound.epic', seconds: 24 },
+  { id: 'funk', category: 'music', label: 'sound.funk', seconds: 24 },
+  { id: 'acoustic', category: 'music', label: 'sound.acoustic', seconds: 24 },
 ];
 
 /** The effects' groups, in the order the panel shows them. */
