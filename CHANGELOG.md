@@ -7,13 +7,96 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1735 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1752 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.92.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.93.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.94.0-beta.1 — Pausas en el texto a voz, voces que suenan mejor y seis voces naturales en inglés
+2026-10-25 · pre-release para probar · lo pedido: «añade que pueda tener pausa de ciertos segundos como en Clipchamp … las voces se deben escuchar mejor»
+
+### Añadido
+- **Pausas de los segundos que quieras.** Debajo del texto, en la pestaña Voz,
+  hay una fila «Pausa: 0,5 s · 1 s · 1,5 s · 2 s · 3 s · 5 s». Un clic escribe
+  `[pausa 2s]` donde está el cursor, y la voz se calla ahí exactamente ese
+  tiempo.
+  - La marca se ve en el propio texto como una etiqueta cian, y al lado sale
+    el total («2 pausas · 3,5 s»). El contador de caracteres no la cuenta.
+  - También puedes escribirla a mano: `[pausa 1,5s]`, `[pause 2s]`,
+    `[pausa 500ms]`. Si pegas un guion de otra herramienta, se respeta
+    `<break time="2s"/>`. Cada pausa va de 0,1 a 10 s.
+  - Una pausa al principio deja ese silencio al inicio del clip.
+- **Seis voces naturales en inglés, de Kokoro**: Heart, Bella, Michael y
+  Fenrir (EE. UU.), y Emma y George (Reino Unido). Ya venían dentro del modelo
+  instalado, así que no pesan nada más. Salen primero, antes que Kristin y
+  Norman.
+- **Los personajes hablan en inglés cuando el guion está en inglés**: el
+  narrador usa a Michael, la locutora a Heart, el noticiero a Emma…
+
+### Mejorado
+- **Las voces suenan mejor:**
+  - se suaviza el siseo de las «s», que el realce de presencia de «Voz clara»
+    marcaba de más;
+  - cada trozo pierde el silencio que el motor dejaba en sus extremos, que
+    cambiaba de un trozo a otro. Ahora el hueco entre frases es siempre el
+    mismo y no hay chasquidos en los cortes.
+- **Los subtítulos de una voz siguen a la voz**: se colocan según dónde cae de
+  verdad cada trozo del audio, y no repartidos a lo largo del clip. Una pausa
+  es un hueco entre subtítulos, y un texto largo ya no se desfasa.
+- **Los textos largos se generan antes**: en un equipo con núcleos de sobra,
+  varios trozos se hacen a la vez.
+- La vista previa de una voz corta el texto entre palabras y respeta sus pausas
+  (cada una de 2 s como mucho).
+
+### Comprobado
+- **Prueba nueva** `tests/ui/tts-pauses.mjs` (**14/14**), con los motores de
+  verdad:
+  - el botón «2 s» escribe `[pausa 2s]` donde está el cursor, con un espacio a
+    cada lado, deja el cursor después y el foco en el texto;
+  - la marca se dibuja como etiqueta, en una copia del texto con la misma
+    letra, el mismo margen y el mismo ancho, que se desplaza con el cuadro
+    (probado con 14 pausas en un guion largo);
+  - generado con Dora, **el silencio medido en el audio es de 2,06 s**; una
+    pausa al principio deja 1,02 s de silencio inicial, y un
+    `<break time="1.5s"/>` pegado, 1,56 s;
+  - con subtítulos, el primero termina antes de la pausa y el segundo empieza
+    después (0,00–0,97 y 2,97–4,13), sin la marca en el texto, y el clip se
+    llama por sus palabras;
+  - las seis voces inglesas aparecen; Heart dice su frase y el motor de
+    subtítulos la transcribe entera; con el guion en inglés, el narrador pasa
+    a Michael;
+  - sin errores en la página ni en el registro.
+- `tts` (**129/129**) prueba ahora las **16 voces** (antes 10): cada una se
+  genera, cae en el cabezal y el motor de subtítulos la lee. `tts-long`
+  (6/6) tardó **58 s en vez de 117 s**, `tts-plus` 12/12 y `voice-cards`
+  13/13.
+- **Medido antes de decidir**:
+  - Kokoro con 108 s de voz tardó 70,8 s en un proceso de 8 hilos, 53,6 s en
+    dos, 38,7 s en cuatro de 5 hilos y **23,7 s en seis de 2 hilos**. Por eso
+    se usan hasta seis, según los núcleos;
+  - cada proceso ocupa unos 420 MB, así que también se limitan por la memoria
+    libre, dejando 2 GB sin tocar;
+  - las voces inglesas, leídas por el motor de subtítulos con una frase de 27
+    palabras: Heart, Michael y Fenrir sin un error, Bella con uno («It's» por
+    «Its»), y Emma bien en otra frase; George pasa la lectura de `tts` como
+    las demás. Con la lista de palabras de Kokoro salía igual, así que no se
+    añade (serían 6 MB más);
+  - las británicas necesitan el inglés «en» de espeak: con «en-gb» el motor no
+    arrancaba.
+- 1752 pruebas unitarias, entre ellas las nuevas de las pausas, de cómo se
+  juntan los trozos, de los recortes de silencio y del reparto entre procesos.
+  Una pausa de 1 s antes de la voz sigue midiendo 1 s después del acabado.
+- **79 pruebas de interfaz**, todas a la primera, la general a 127/127, con el
+  registro de errores activo: solo anotó lo que las pruebas provocan a
+  propósito.
+- La v1.93 instalada pasa **129/129** sin red, con la suite de su versión, y
+  sin intentar ninguna conexión.
+- 22/22 de extremo a extremo, 41/41 de proyectos y 26/26 de movimiento.
+- La mega prueba de rendimiento, en sus 16 escenarios: nada lento. La memoria
+  es de 33 MB al empezar y al terminar.
 
 ## v1.93.0-beta.1 — Texto a voz con textos largos, y «Separar audio» siempre a la vista
 2026-10-25 · pre-release para probar · lo pedido: «al usar textos largos … marca error y no lo genera» y «me borraste la opción de separar video y audio»
