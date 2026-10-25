@@ -4,7 +4,7 @@ import {
   setActiveFrameRenderer,
 } from '@renderer/engine/FrameRenderer';
 import { useProjectStore } from '@renderer/store/useProjectStore';
-import { tickScopes } from '@renderer/scopes/scopeFeed';
+import { scopesWanted, tickScopes } from '@renderer/scopes/scopeFeed';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { useZoneEditStore } from '@renderer/fx/motion/zoneEdit';
 import { withClipAtRest } from '@renderer/fx/motion/apply';
@@ -13,9 +13,27 @@ import { usePreviewQuality } from './previewQuality';
 /**
  * Wires the WebGL compositor to the store.
  *
- * The draw happens once per animation frame off the store snapshot, so a burst
- * of updates during a drag still costs exactly one composite.
+ * The draw happens at most once per animation frame off the store snapshot,
+ * so a burst of updates during a drag still costs exactly one composite - and
+ * only when there is something new to show (see SETTLE_MS).
  */
+
+/**
+ * When the viewer draws. It drew on every refresh of the screen: 179 times a
+ * second on a 179 Hz laptop panel, paused or playing a 30 fps clip - and a
+ * paused 4K edit is drawn at every one of its pixels - so the GPU spent
+ * itself on copies of one picture (measured: 180 draws a second for every
+ * format; a 4K 120 fps file had 293 of its frames dropped by the element in
+ * five seconds). Now a frame is drawn when something it shows has changed:
+ * the project (the playhead with it), the viewer's state, the zone being
+ * aimed, the scopes opened or closed, or the picture itself
+ * (FrameRenderer.pictureRevision: a video's new frame, a seek landed, an
+ * image, a matte or a font loaded). Paused, every refresh for SETTLE_MS after
+ * a change catches what lands soon after it, and a draw every KEEP_ALIVE_MS
+ * is the net under anything that lands without a word.
+ */
+const SETTLE_MS = 400;
+const KEEP_ALIVE_MS = 250;
 
 export interface CompositorHandle {
   renderer: FrameRenderer | null;
@@ -110,6 +128,12 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
   // The render loop.
   useEffect(() => {
     let cancelled = false;
+    // What the last draw was of, and when.
+    let drawn: { project: unknown; ui: unknown; assets: unknown; zone: unknown; picture: number; scopes: boolean } | null = null;
+    let drawnAt = -Infinity;
+    let changedAt = -Infinity;
+    // Since when a move of the playhead has waited for the video's frame (see below).
+    let waitingSince: number | null = null;
 
     const draw = (now: number): void => {
       if (cancelled) return;
@@ -119,8 +143,44 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
       if (!renderer) return;
 
       const { project: edit, ui, assets: media } = useProjectStore.getState();
+      const zone = useZoneEditStore.getState();
+      const seen = { project: edit, ui, assets: media, zone, picture: renderer.pictureRevision, scopes: scopesWanted() };
+      const changed =
+        drawn === null ||
+        seen.project !== drawn.project ||
+        seen.ui !== drawn.ui ||
+        seen.assets !== drawn.assets ||
+        seen.zone !== drawn.zone ||
+        seen.picture !== drawn.picture ||
+        seen.scopes !== drawn.scopes;
+      if (changed) changedAt = now;
+      const settling = !ui.isPlaying && now - changedAt < SETTLE_MS;
+      if (!changed && !settling && now - drawnAt < KEEP_ALIVE_MS) return;
+      // Playing a video, the playhead moves a moment before the video presents
+      // its next frame, and a draw for each drew every frame twice. A move of
+      // the playhead alone waits for the frame, for most of a frame's time at
+      // most - then it is drawn all the same (a still, a title, a decoder
+      // running late). Up to 60 fps only: measured at 120, the element then
+      // presented 102 frames a second instead of 112 - drawn on every change
+      // it keeps up better.
+      const playheadOnly =
+        drawn !== null &&
+        seen.project !== drawn.project &&
+        seen.picture === drawn.picture &&
+        seen.ui === drawn.ui &&
+        seen.assets === drawn.assets &&
+        seen.zone === drawn.zone &&
+        seen.scopes === drawn.scopes;
+      if (ui.isPlaying && playheadOnly && edit.fps <= 60 && renderer.media.anyPlaying) {
+        waitingSince ??= now;
+        if (now - waitingSince < 750 / Math.max(1, edit.fps)) return;
+      }
+      waitingSince = null;
+      drawn = seen;
+      drawnAt = now;
+
       // A zoom being aimed is drawn at rest, so its zone is drawn over the picture as it is.
-      const aiming = useZoneEditStore.getState().clipId;
+      const aiming = zone.clipId;
       const project = aiming ? withClipAtRest(edit, media, aiming) : edit;
 
       try {

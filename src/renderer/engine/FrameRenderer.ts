@@ -61,6 +61,27 @@ export class FrameRenderer {
 
   endExclusive(): void {
     this.exclusiveHolds = Math.max(0, this.exclusiveHolds - 1);
+    // The canvas holds the export's last frame (or a thumbnail's): the viewer's own goes back.
+    this.invalidate();
+  }
+
+  /** Changes to what the viewer shows that come from here, not from the project (see pictureRevision). */
+  private changes = 0;
+
+  /** Something the viewer shows has changed apart from the project: it is drawn again. */
+  invalidate(): void {
+    this.changes += 1;
+  }
+
+  /**
+   * A number that moves whenever the picture the viewer would draw has
+   * something new in it without the project having changed: a frame a video
+   * presented or a seek landed, an image or a matte loaded, a font arrived, a
+   * scrub decoded the frame asked for, the canvas resized or handed back by
+   * an export. The viewer draws when this or the project moves (useCompositor).
+   */
+  get pictureRevision(): number {
+    return this.changes + this.media.pictureChanges;
   }
 
   get isExclusive(): boolean {
@@ -87,6 +108,9 @@ export class FrameRenderer {
     this.textures = new TextureManager(this.compositor.context);
     this.titles = new TitleLayers(this.textures);
     this.mattes = new MatteTextures(this.compositor.context);
+    this.mattes.onLoaded = () => this.invalidate();
+    // A title drawn before its font arrived is drawn again with it.
+    document.fonts?.addEventListener?.('loadingdone', () => this.invalidate());
     // Mattes deleted or made again come with a new URL, and an analysis that
     // ends takes its partial one away: let the old go.
     this.stopRetainingMattes = useMattes.subscribe((state) => {
@@ -136,6 +160,7 @@ export class FrameRenderer {
 
   set options(options: CompositorOptions) {
     this.compositor.options = options;
+    this.invalidate();
   }
 
   /** The project's frame: what exports and a paused viewer draw, pixel for pixel. */
@@ -147,13 +172,33 @@ export class FrameRenderer {
    * of every effect), or a set fraction - Resolve's and Premiere's playback
    * resolution. Paused, and in every export, it is the whole frame.
    */
-  previewQuality: PreviewQuality = 'auto';
+  get previewQuality(): PreviewQuality {
+    return this.quality;
+  }
+
+  set previewQuality(quality: PreviewQuality) {
+    this.quality = quality;
+    this.invalidate();
+  }
+
+  private quality: PreviewQuality = 'auto';
+
   /** The viewer's size on screen in device pixels, measured by useCompositor. */
-  displaySize: { width: number; height: number } | null = null;
+  get displaySize(): { width: number; height: number } | null {
+    return this.display;
+  }
+
+  set displaySize(size: { width: number; height: number } | null) {
+    this.display = size;
+    this.invalidate();
+  }
+
+  private display: { width: number; height: number } | null = null;
 
   resize(width: number, height: number): void {
     this.frame = { width: Math.max(1, Math.floor(width)), height: Math.max(1, Math.floor(height)) };
     this.drawAt(this.frame.width, this.frame.height);
+    this.invalidate();
   }
 
   /** Draw `width` x `height` pixels of the frame, the canvas with them. */
@@ -353,7 +398,8 @@ export class FrameRenderer {
     const key = FrameRenderer.scrubKey(clip, uri);
     let scrubber = this.scrubbers.get(key);
     if (!scrubber) {
-      scrubber = new ScrubDecoder(uri, fps, () => undefined);
+      // The frame asked for, decoded after the draw that asked: the viewer draws it.
+      scrubber = new ScrubDecoder(uri, fps, () => this.invalidate());
       this.scrubbers.set(key, scrubber);
     }
 

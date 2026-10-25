@@ -45,6 +45,22 @@ export class MediaSourceRegistry {
   /** What each URL showed when its element was made: the file, or the file stabilized. */
   private readonly looks = new Map<string, string>();
 
+  /**
+   * How many times an element has had something new to show: a frame
+   * presented (while playing, or a seek landed), a first frame, an image
+   * loaded. The viewer draws when this moves rather than on every refresh of
+   * the screen (useCompositor); nothing else reads it.
+   */
+  private changes = 0;
+
+  get pictureChanges(): number {
+    return this.changes;
+  }
+
+  private readonly changed = (): void => {
+    this.changes += 1;
+  };
+
   register(asset: MediaAsset): MediaElement | undefined {
     // The same URL pointed at another file (stabilized, or back): its element starts again.
     const look = asset.stabilize ?? '';
@@ -94,7 +110,14 @@ export class MediaSourceRegistry {
       const image = new Image();
       image.crossOrigin = 'anonymous';
       image.decoding = 'async';
-      image.addEventListener('load', () => this.ready.add(asset.uri), { once: true });
+      image.addEventListener(
+        'load',
+        () => {
+          this.ready.add(asset.uri);
+          this.changed();
+        },
+        { once: true },
+      );
       image.src = asset.uri;
       this.elements.set(asset.uri, image);
       return image;
@@ -112,6 +135,19 @@ export class MediaSourceRegistry {
     video.muted = true; // Audio is played by AudioEngine, not by the element.
     video.playsInline = true;
     video.addEventListener('loadeddata', () => this.ready.add(uri), { once: true });
+    video.addEventListener('loadeddata', this.changed);
+    video.addEventListener('seeked', this.changed);
+    // Every frame the element presents - each one while it plays, the one a
+    // seek lands on - is something new to draw. The callback asks again for
+    // the next, so it runs for as long as the element lives, at no cost while
+    // nothing is presented.
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      const presented = (): void => {
+        this.changes += 1;
+        video.requestVideoFrameCallback(presented);
+      };
+      video.requestVideoFrameCallback(presented);
+    }
     video.load();
 
     this.kinds.set(uri, 'video');
@@ -310,6 +346,14 @@ export class MediaSourceRegistry {
   durationOf(uri: string): number {
     const element = this.elements.get(uri);
     return element instanceof HTMLVideoElement && Number.isFinite(element.duration) ? element.duration : Infinity;
+  }
+
+  /** Whether any video is playing now - presenting frames of its own, which the viewer waits for. */
+  get anyPlaying(): boolean {
+    for (const element of this.elements.values()) {
+      if (element instanceof HTMLVideoElement && !element.paused && !element.ended && element.readyState >= 2) return true;
+    }
+    return false;
   }
 
   /** Pause every video, e.g. when the transport stops. */

@@ -84,6 +84,9 @@ export class MatteTextures {
     private readonly describePartial: DescribePartial = describeOverIpc,
   ) {}
 
+  /** Called when a file opens or a block of frames is decoded: a matte asked for and not there is now. */
+  onLoaded: () => void = () => undefined;
+
   private open(url: string): Promise<OpenMatte | null> {
     let file = this.files.get(url);
     if (!file) {
@@ -104,7 +107,10 @@ export class MatteTextures {
         const times = readMatteTimes(await read(header.timesOffset, header.frames * 8), header.frames);
         return times ? { header, offsets, times, read, partial: null } : null;
       })().catch(() => null);
-      void file.then((open) => this.opened.set(url, open));
+      void file.then((open) => {
+        this.opened.set(url, open);
+        this.onLoaded();
+      });
       this.files.set(url, file);
     }
     return file;
@@ -173,7 +179,10 @@ export class MatteTextures {
           // A frame that does not decode is left out: drawn whole, never with a wrong matte.
           if (decodeMatteFrame(coded, pixels)) this.remember(`${url}#${frame}`, pixels);
         }
-      })().finally(() => this.loading.delete(key));
+      })().finally(() => {
+        this.loading.delete(key);
+        this.onLoaded();
+      });
       this.loading.set(key, pending);
     }
     return pending;
