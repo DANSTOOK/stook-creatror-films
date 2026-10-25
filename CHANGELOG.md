@@ -11,9 +11,89 @@ Cifras de referencia al día de hoy: **1752 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.93.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.94.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.95.0-beta.1 — El visor a 4K 60 y 120 fps, medido, y sin redibujar lo que no cambia
+2026-10-25 · pre-release para probar · lo pedido: «haz una prueba con 4K 60 fps / 120 … si no, busca cómo mejorar el motor que usamos para visualizar»
+
+### Medido
+- **Prueba nueva** `tests/perf/viewer-rates.mjs`: un clip de cada formato
+  (1080p y 4K, a 30, 60 y 120 fps, H.264 High como los de cámara y stock), en
+  un proyecto de su tamaño y su velocidad, reproducido cinco segundos y medido
+  desde dentro de la app: cuántas veces puede pintar la pantalla, cuántos
+  fotogramas del archivo presenta el vídeo, cuántas veces dibuja el visor y
+  cuántos fotogramas distintos llegan a verse, y si el cabezal va a tiempo
+  real. En una RTX 4060 Laptop con la pantalla a 179 Hz:
+
+  | Formato | Fotogramas que se ven | Antes: dibujos/s | Ahora: dibujos/s |
+  |---|---|---|---|
+  | 1080p 30 fps | 30 de 30 | 180 | 30 |
+  | 1080p 60 fps | 60 de 60 | 180 | 60 |
+  | 1080p 120 fps | de 106 a 114 de 120 | 180 | 166-175 |
+  | 4K 30 fps | 30 de 30 | 180 | 30 |
+  | 4K 60 fps | 60 de 60 | 180 | 60 |
+  | 4K 120 fps | de 99 a 115 de 120 | 180 | 126-175 |
+  | En pausa | — | 180 | 4 |
+
+  - **4K a 60 fps se reproduce entero**: los 60 fotogramas de cada segundo,
+    sin saltos y con el cabezal a tiempo real, también antes de este cambio.
+  - **A 120 fps se ven de 106 a 115 de cada 120**, y cambia de una tanda a
+    otra. Medido tres veces con el visor anterior y cuatro con el nuevo, en las
+    mismas condiciones: 107-115 antes, 99-115 ahora, con una tanda suelta en
+    89. El cambio no los empeora. Los que faltan los salta el propio
+    reproductor de vídeo de Chromium al presentarlos en una pantalla de 179 Hz.
+    Para mostrar los 120 siempre habría que decodificar la reproducción con
+    WebCodecs, como ya se hace al exportar. Queda apuntado como siguiente paso
+    posible.
+
+### Mejorado
+- **El visor solo dibuja cuando hay algo nuevo que mostrar.** Antes dibujaba en
+  cada refresco de la pantalla: 180 veces por segundo en tu pantalla de 179 Hz,
+  aunque estuviera en pausa o el vídeo fuera de 30 fps. En pausa y en 4K,
+  cada uno de esos dibujos era el cuadro entero, píxel a píxel. Ahora dibuja
+  cuando cambia:
+  - el proyecto (el cabezal incluido);
+  - lo que muestra el visor (comparar, zonas de zoom, scopes);
+  - la propia imagen: un fotograma nuevo del vídeo, una búsqueda que termina,
+    una imagen, una máscara o una letra que acaba de cargar, el arrastre que
+    decodifica su fotograma, el visor que cambia de tamaño o vuelve de una
+    exportación.
+
+  Después de cada cambio sigue dibujando en cada refresco durante un momento,
+  para recoger lo que llega justo detrás. En reposo se redibuja 4 veces por
+  segundo como red de seguridad.
+- **Reproduciendo hasta 60 fps, un fotograma se dibuja una sola vez**: el
+  avance del cabezal espera al fotograma del vídeo, que llega unos
+  milisegundos después, en vez de dibujar los dos por separado. A 120 fps no
+  se hace: en la medición salió peor (102-105 fotogramas por segundo frente a
+  112-114), aunque a 120 fps los resultados varían bastante de una tanda a
+  otra.
+
+### Comprobado
+- **79 pruebas de interfaz** con el visor nuevo: 78 a la primera. **La de los
+  scopes encontró un fallo de este cambio**: con los scopes abiertos durante
+  una reproducción 4K daban 0,2 lecturas por segundo en vez de 10 a 15. Recogen
+  su lectura uno o dos refrescos después de pedirla y deciden si un fotograma
+  llega tarde por el hueco entre refrescos. Llamados solo al dibujar, todos les
+  parecían tardíos. Ahora se atienden en cada refresco, aunque no se dibuje
+  (leen la última imagen, que se conserva), y pasan **16/16**: 12,2 lecturas
+  por segundo, sin cambiar el ritmo de la reproducción (29,8 imágenes/s con y
+  sin ellos).
+- Con el arreglo, otra vez las pruebas que más tocan el visor: la general
+  **127/127** (con el arrastre del cabezal, que muestra el fotograma bajo él),
+  `viewer-bar` 14/14, `viewer-select` 9/9, `playback-quality` 7/7,
+  `titles-motion` 30/30, `grade` 32/32, `curves` 21/21, `effects-on-clip`
+  11/11, `split-screen` 8/8, `reframe` 7/7, `playhead-layers` 20/20 y
+  `detached-fill` 6/6. El registro de errores solo anotó lo que las pruebas
+  provocan a propósito.
+- 1752 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- La mega prueba de rendimiento, en sus 16 escenarios: nada lento. La memoria
+  es de 28 MB al empezar y al terminar.
+- La v1.94 instalada pasa **129/129** sin red, con la suite de su versión, y
+  sin intentar ninguna conexión.
 
 ## v1.94.0-beta.1 — Pausas en el texto a voz, voces que suenan mejor y seis voces naturales en inglés
 2026-10-25 · pre-release para probar · lo pedido: «añade que pueda tener pausa de ciertos segundos como en Clipchamp … las voces se deben escuchar mejor»
