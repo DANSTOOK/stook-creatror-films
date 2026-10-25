@@ -155,7 +155,7 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
         seen.scopes !== drawn.scopes;
       if (changed) changedAt = now;
       const settling = !ui.isPlaying && now - changedAt < SETTLE_MS;
-      if (!changed && !settling && now - drawnAt < KEEP_ALIVE_MS) return;
+      let due = changed || settling || now - drawnAt >= KEEP_ALIVE_MS;
       // Playing a video, the playhead moves a moment before the video presents
       // its next frame, and a draw for each drew every frame twice. A move of
       // the playhead alone waits for the frame, for most of a frame's time at
@@ -171,27 +171,36 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
         seen.assets === drawn.assets &&
         seen.zone === drawn.zone &&
         seen.scopes === drawn.scopes;
-      if (ui.isPlaying && playheadOnly && edit.fps <= 60 && renderer.media.anyPlaying) {
+      if (due && ui.isPlaying && playheadOnly && edit.fps <= 60 && renderer.media.anyPlaying) {
         waitingSince ??= now;
-        if (now - waitingSince < 750 / Math.max(1, edit.fps)) return;
+        if (now - waitingSince < 750 / Math.max(1, edit.fps)) due = false;
       }
-      waitingSince = null;
-      drawn = seen;
-      drawnAt = now;
+      if (due) {
+        waitingSince = null;
+        drawn = seen;
+        drawnAt = now;
+      }
 
       // A zoom being aimed is drawn at rest, so its zone is drawn over the picture as it is.
       const aiming = zone.clipId;
       const project = aiming ? withClipAtRest(edit, media, aiming) : edit;
 
       try {
-        renderer.drawViewport(
-          project,
-          ui.isPlaying,
-          ui.pixelArtViewport,
-          { bypass: ui.gradeBypass, split: ui.compareSplit },
-          ui.editingTitleId,
-        );
-        // The video scopes read what was just drawn, when they are open.
+        if (due) {
+          renderer.drawViewport(
+            project,
+            ui.isPlaying,
+            ui.pixelArtViewport,
+            { bypass: ui.gradeBypass, split: ui.compareSplit },
+            ui.editingTitleId,
+          );
+        }
+        // The video scopes read the last picture drawn, when they are open - on
+        // every refresh, drawn or not: a reading is collected a frame or two
+        // after it is asked for (Compositor.takeScopeCapture), and they judge
+        // a late frame by the gap between refreshes. Called only on a draw,
+        // every draw looked late to them and 4K playback gave 0.2 readings a
+        // second instead of 10 to 15.
         tickScopes(renderer, project, ui.isPlaying, now);
       } catch (renderError) {
         cancelled = true;
