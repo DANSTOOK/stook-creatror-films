@@ -180,7 +180,7 @@ export function TitleBar({
         { label: t('toolbar.mixer'), icon: Headphones, checked: mixerOpen, onSelect: onMixer },
         { separator: true },
         { label: t('titlebar.settings'), icon: Settings, onSelect: onPreferences },
-        { label: t('menu.shortcuts'), icon: Keyboard, shortcut: '?', onSelect: invoke('shortcuts') },
+        { label: t('menu.shortcuts'), icon: Keyboard, shortcut: 'Ctrl+/', onSelect: invoke('shortcuts') },
         { label: t('menu.tour'), icon: Compass, onSelect: invoke('tour') },
       ],
       { label: t('titlebar.more') },

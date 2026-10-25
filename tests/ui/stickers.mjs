@@ -20,6 +20,8 @@ import { _electron as electron } from 'playwright';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'stickers');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+/** How many the catalog has: the first eighteen and the forty-eight of block 7a (stickers/sets). */
+const STICKER_COUNT = 66;
 
 const checks = [];
 const check = (name, passed, detail = '') => {
@@ -66,7 +68,7 @@ async function main() {
       });
       return { count: canvases.length, distinct: new Set(hashes.map((h) => h.hash)).size, empty: hashes.filter((h) => h.lit === 0).length };
     });
-    check('every sticker is shown, each its own picture', tiles.count === 18 && tiles.distinct === 18 && tiles.empty === 0, JSON.stringify(tiles));
+    check('every sticker is shown, each its own picture', tiles.count === STICKER_COUNT && tiles.distinct === STICKER_COUNT && tiles.empty === 0, JSON.stringify(tiles));
 
     console.log('2. one onto the picture');
     await window.getByTestId('library-sticker-heart').click();

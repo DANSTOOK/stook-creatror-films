@@ -24,7 +24,7 @@ import { _electron as electron } from 'playwright';
  *   2. drift: a sound moved 6 frames is measured 6 frames late in the mix and
  *      while playing (so the measures above cannot pass by accident), the red
  *      mark's menu puts it back, Edit > Rejoin audio, and Ctrl+Alt+S;
- *   3. loops: Ctrl+/, the bar on the ruler, the playhead sampled over time
+ *   3. loops: R, the bar on the ruler, the playhead sampled over time
  *      going round and round inside the loop, and the sound at the joins
  *      recorded off the master - no gap, no click, each time round exactly one
  *      loop after the last - for a whole buffer round the whole edit and a
@@ -813,9 +813,9 @@ async function main() {
     await sleep(200);
     const [beforeBar] = await rulerAt(window, [40], await viewOf());
     await surface.focus().catch(() => undefined);
-    await window.keyboard.press('Control+/');
+    await window.keyboard.press('r');
     await sleep(300);
-    check('Ctrl+/ turns loop playback on, and the View menu ticks it',
+    check('R turns loop playback on, and the View menu ticks it',
       (await store(() => window.__scfStore.getState().ui.loopPlayback)) && (await app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('loopPlayback')?.checked)) === true);
     const [onBar] = await rulerAt(window, [40], await viewOf());
     check('the ruler shows the loop only while it is on', !emerald(beforeBar) && emerald(onBar), JSON.stringify({ beforeBar, onBar }));
@@ -886,13 +886,13 @@ async function main() {
     check('the loop bar is drawn on the detached timeline too: In to Out, not beyond', emerald(panelBar[0]) && !emerald(panelBar[1]), JSON.stringify(panelBar));
     if (shotsDir) await panel.screenshot({ path: join(shotsDir, 'loop-ruler-panel-en.png') });
     await panel.locator('[data-testid="timeline-canvas"]').focus().catch(() => undefined);
-    await panel.keyboard.press('Control+/');
+    await panel.keyboard.press('r');
     await sleep(300);
     const offFromPanel = await store(() => window.__scfStore.getState().ui.loopPlayback);
     const [panelOff] = await rulerAt(panel, [50], await viewOf());
-    await panel.keyboard.press('Control+/');
+    await panel.keyboard.press('r');
     await sleep(300);
-    check('Ctrl+/ pressed in the timeline\'s window turns the loop off and on, and its bar with it',
+    check('R pressed in the timeline\'s window turns the loop off and on, and its bar with it',
       offFromPanel === false && !emerald(panelOff) && (await store(() => window.__scfStore.getState().ui.loopPlayback)) === true, JSON.stringify({ offFromPanel, panelOff }));
     const panelLoop = await measure('D. In to Out with the timeline out', 440, 4.2, 0);
     check('with the timeline out, playback still goes round In to Out every 1.5 s',

@@ -423,13 +423,6 @@ export function useEditorShortcuts(): void {
             event.preventDefault();
             store.linkSelection();
             return;
-          case '/':
-            // Loop playback on or off: Ctrl+/, Resolve's Loop/Unloop. (On a
-            // Spanish keyboard / is Shift+7, and Ctrl+Shift+7 arrives here.)
-            // Final Cut's Command-L is Link here, as in Premiere.
-            event.preventDefault();
-            store.setLoopPlayback(!store.ui.loopPlayback);
-            return;
           case 't':
           case 'd':
             // The default transition: Ctrl+T as in Final Cut and Resolve,
@@ -557,6 +550,12 @@ export function useEditorShortcuts(): void {
           return;
         case 's':
           store.setUi({ snappingEnabled: !store.ui.snappingEnabled });
+          return;
+        case 'r':
+          // Loop playback on or off: R, for repeat. Ctrl+/ is the keyboard
+          // map's (App.tsx); Final Cut's Command-L is Link here, as in Premiere.
+          if (modifier || event.altKey) return;
+          store.setLoopPlayback(!store.ui.loopPlayback);
           return;
         case 'n':
           // The magnet: close gaps left by deleting, moving or trimming.

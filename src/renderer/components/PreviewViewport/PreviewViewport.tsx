@@ -263,7 +263,7 @@ export function PreviewViewport(): JSX.Element {
       aria-pressed={ui.loopPlayback}
       className={`tool-button tool-button-dense w-6 px-0 ${ui.loopPlayback ? 'tool-button-active' : ''}`}
       onClick={() => setUi({ loopPlayback: !ui.loopPlayback })}
-      {...tip(t('viewer.loop'), { shortcut: 'Ctrl+/', hint: t('viewer.loopHint') })}
+      {...tip(t('viewer.loop'), { shortcut: 'R', hint: t('viewer.loopHint') })}
     >
       <Repeat size={14} />
     </button>

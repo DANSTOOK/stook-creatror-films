@@ -415,15 +415,19 @@ export default function App(): JSX.Element {
   }, []);
 
   /**
-   * "?" opens the list of keys, as it does in Resolve and in most things built
-   * for the keyboard. Not while typing: a question mark belongs in the field.
+   * Ctrl+/ opens the list of keys, as in most things built for the keyboard -
+   * typing or not, since it types nothing. (On a Spanish keyboard / is
+   * Shift+7: Ctrl+Shift+7 arrives as Ctrl+/.) "?" does too, as in Resolve,
+   * but not while typing: a question mark belongs in the field.
    */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== '?' || event.ctrlKey || event.metaKey || event.altKey) return;
+      const chord = event.key === '/' && (event.ctrlKey || event.metaKey) && !event.altKey;
+      const question = event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey;
+      if (!chord && !question) return;
       const target = event.target as HTMLElement | null;
       const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
-      if (typing || useSessionStore.getState().unsavedPrompt) return;
+      if ((question && typing) || useSessionStore.getState().unsavedPrompt) return;
       event.preventDefault();
       setShortcutsOpen((open) => !open);
     };

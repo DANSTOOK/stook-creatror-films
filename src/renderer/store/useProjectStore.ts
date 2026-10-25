@@ -288,7 +288,7 @@ interface ProjectStore {
   rejoinAudio(clipIds?: string[]): { joined: number; apart: number };
   /** Move or slip one part of a drifted picture-and-sound pair back in step with the other. */
   bringIntoSync(clipId: string, mode: 'move' | 'slip'): boolean;
-  /** Loop playback on or off (Ctrl+/); turned on while playing, it goes round from where it is. */
+  /** Loop playback on or off (R); turned on while playing, it goes round from where it is. */
   setLoopPlayback(loop: boolean): void;
   /**
    * Zoom by `factor` around `anchorPx` (a position in the viewport); without an

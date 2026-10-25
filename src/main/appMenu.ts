@@ -155,11 +155,12 @@ export function buildMenuTemplate(
         accelerator: 'Shift+F',
         enabled: inEditor,
       }),
-      // Final Cut keeps Loop Playback under View > Playback; Ctrl+/ is Resolve's key.
+      // Final Cut keeps Loop Playback under View > Playback. R, for repeat:
+      // Ctrl+/ is the keyboard map's, as in most things built for the keyboard.
       command('menu.loopPlayback', 'loopPlayback', {
         type: 'checkbox',
         checked: state.loopPlayback === true,
-        accelerator: 'CmdOrCtrl+/',
+        accelerator: 'R',
         enabled: inEditor,
       }),
       { type: 'separator' },
@@ -201,7 +202,7 @@ export function buildMenuTemplate(
     label: t('menu.help'),
     submenu: [
       command('menu.commandPalette', 'commandPalette', { accelerator: 'CmdOrCtrl+Shift+P', enabled: inEditor }),
-      command('menu.shortcuts', 'shortcuts', { accelerator: 'Shift+/', enabled: inEditor }),
+      command('menu.shortcuts', 'shortcuts', { accelerator: 'CmdOrCtrl+/', enabled: inEditor }),
       command('menu.tour', 'tour', { enabled: inEditor }),
       { type: 'separator' },
       command('menu.openLog', 'openLog'),

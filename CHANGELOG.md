@@ -7,13 +7,82 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1723 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1727 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.87.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.88.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.89.0-beta.1 — 66 stickers en ocho grupos, y el mapa de atajos en Ctrl+/ (bloques 7a y 6d)
+2026-10-24 · pre-release para probar · lo pedido: «añade más stickers considerablemente»; y la última respuesta pendiente de las preguntas de diseño, el mapa de atajos en Ctrl+/, con el bucle en R, como elegiste
+
+### Añadido
+- **48 stickers nuevos: de 18 a 66**, en ocho grupos y todos con el mismo
+  acabado (sombra suave, contorno blanco grueso y color vivo):
+  - Reacciones: risa, enamorado, gafas de sol, sorpresa, guiño, triste,
+    enfado y cara de fiesta.
+  - Redes: me gusta, campana de avisos, compartir, comentario, seguir, EN
+    VIVO, botón de reproducir, verificado y hashtag.
+  - Fiesta: confeti, cañón de fiesta, globo, regalo, trofeo, medalla y
+    explosión.
+  - Naturaleza: sol, nube, lluvia, copo de nieve, arcoíris, flor, hoja y
+    luna.
+  - Señales: flecha abajo, flecha con bucle, mano que señala, clic,
+    subrayado, bocadillo y pensamiento.
+  - Palabras: ¡OMG!, JAJAJA, OFERTA, TENDENCIA, GRATIS, ¡BUM!, TOP, SÍGUENOS
+    y LINK EN LA BIO. Se dibujan en el idioma de la interfaz.
+- **Un buscador y una fila de grupos en el panel de stickers**, como en
+  CapCut:
+  - la fila muestra un grupo cada vez, o todos, y se mueve con la rueda del
+    ratón;
+  - el buscador encuentra por el nombre sin mirar mayúsculas ni tildes
+    («corazon» encuentra «Corazón»).
+- Las miniaturas son algo más pequeñas: en el panel acoplado caben tres por
+  fila, no dos.
+
+### Cambiado
+- **Ctrl+/ abre el mapa de atajos**, como pediste. En un teclado español es
+  Ctrl+Mayús+7, y el mapa lo dice así. Funciona aunque estés escribiendo en
+  un campo, porque no escribe nada; «?» lo sigue abriendo fuera de los
+  campos.
+- **El bucle de reproducción pasa a la tecla R** (de «repetir»), como
+  elegiste. Lo dicen el botón del visor, el menú Ver y el mapa. Ctrl+R sigue
+  abriendo la velocidad y nunca activa el bucle.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/stickers-more.mjs` (**9/9**):
+  - el panel se abre con los 66, grupo por grupo;
+  - la fila muestra un grupo cada vez («Redes» enseña sus 9), «Todos»
+    devuelve el resto, y la rueda del ratón la desplaza de lado;
+  - un sticker nuevo se pone sobre la imagen como los de antes: una imagen
+    con transparencia en una pista de vídeo;
+  - los que llevan letras se dibujan en el idioma de la interfaz, y los demás
+    igual en los dos;
+  - el buscador encuentra «CORAZON» y «fiesta», y avisa cuando nada se llama
+    así;
+  - sin errores en la página ni en el registro.
+- **Prueba nueva** `tests/ui/keyboard-map.mjs` (**12/12**):
+  - Ctrl+/ abre y cierra el mapa, y Ctrl+Mayús+7 también;
+  - se abre desde un campo de texto, donde un «?» escrito se queda en el
+    campo; fuera de un campo, «?» lo abre;
+  - R activa y quita el bucle, con la marca en el menú Ver; una R escrita en
+    un campo se queda en el campo, y Ctrl+R no es el bucle;
+  - el botón del bucle, las filas del mapa y los menús dicen las teclas
+    nuevas, también en español;
+  - sin errores en la página ni en el registro.
+- `stickers` (**6/6**) espera ahora los 66, cada uno distinto, y
+  `audio-edit` (**47/47**) activa el bucle con R.
+- **4 pruebas unitarias nuevas** del catálogo: 66 stickers con nombre propio,
+  cinco o más en cada grupo, y los nombres y las palabras en los dos idiomas.
+- Las **73** pruebas de interfaz pasan, la general a 127/127, con el registro
+  de errores activo: solo anotó lo que las pruebas provocan a propósito.
+- 1727 pruebas unitarias, 22/22 de extremo a extremo, 41/41 de proyectos y
+  26/26 de movimiento.
+- **La mega prueba de rendimiento, con nada lento en sus 16 escenarios.** La
+  memoria es de 30 MB al empezar y al terminar.
+- La v1.88 instalada pasa **129/129** sin red, con la suite de su versión.
 
 ## v1.88.0-beta.1 — La biblioteca se mueve al pasar el ratón, el arrastre enseña dónde cae y las voces tienen cara (bloques 6a, 6b y 6c del rediseño)
 2026-10-24 · pre-release para probar · lo pedido en las preguntas de diseño: al pasar el ratón por un clip de la biblioteca, que se reproduzca en bucle y sin sonido; al arrastrarlo, un fantasma con su miniatura, el sitio donde cae resaltado y un pequeño rebote al soltarlo; en la pestaña Voz, tarjetas de personaje con avatares ilustrados

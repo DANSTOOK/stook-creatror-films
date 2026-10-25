@@ -47,7 +47,7 @@ export const REMAPPABLE: readonly RemappableAction[] = [
   { id: 'detach', combo: 'Ctrl+Alt+S', label: 'remap.detach' },
   { id: 'title', combo: 'Ctrl+Alt+T', label: 'remap.title' },
   { id: 'fullscreen', combo: 'Shift+F', label: 'remap.fullscreen' },
-  { id: 'loop', combo: 'Ctrl+/', label: 'remap.loop' },
+  { id: 'loop', combo: 'R', label: 'remap.loop' },
   { id: 'save', combo: 'Ctrl+S', label: 'remap.save' },
   { id: 'import', combo: 'Ctrl+I', label: 'remap.import' },
   { id: 'export', combo: 'Ctrl+E', label: 'remap.export' },

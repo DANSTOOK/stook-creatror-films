@@ -1,21 +1,23 @@
 import type { MessageKey } from '@shared/i18n';
 import type { ClipAnimationId } from '@renderer/fx/motion/animations';
+import { circle, finish, heartPath, lettering, line, starPath, vertical } from './draw';
+import { MORE_WORDS, NATURE, PARTY, POINTERS, REACTIONS, SOCIAL } from './sets';
 
 /**
  * Stickers: small pictures to put over the video - a heart, a star, an
  * arrow pointing at something, a "Subscribe" button - the stickers panel of
  * CapCut and Filmora.
  *
- * Every one is drawn here, on a canvas, in the same hand: a bold fill, a
- * thick white outline and a soft shadow, so any two sit together and each
- * reads over any picture. Nothing is downloaded and no one else's artwork is
+ * Every one is drawn on a canvas, in the same hand (stickers/draw): a bold
+ * fill, a thick white outline and a soft shadow, so any two sit together and
+ * each reads over any picture. Nothing is downloaded and no one else's artwork is
  * shipped. A sticker becomes a transparent PNG (stickers/addSticker), then an
  * ordinary still on its own track: moved, scaled, animated and exported as
  * any picture is. Each comes on with a pop and keeps moving with a loop of
  * its own (fx/motion/animations).
  */
 
-export type StickerCategory = 'shapes' | 'icons' | 'words';
+export type StickerCategory = 'reactions' | 'shapes' | 'icons' | 'social' | 'party' | 'nature' | 'pointers' | 'words';
 
 export interface Sticker {
   id: string;
@@ -27,110 +29,10 @@ export interface Sticker {
   draw(context: CanvasRenderingContext2D, size: number, words: (key: MessageKey) => string): void;
 }
 
-/* Drawing ------------------------------------------------------------------------- */
-
-const OUTLINE = '#ffffff';
-
-/** Fill `path` with the house finish: a shadow under it, a thick white outline, then the colour. */
-function finish(context: CanvasRenderingContext2D, size: number, path: Path2D, fill: string | CanvasGradient, outline = true): void {
-  context.save();
-  context.lineJoin = 'round';
-  context.lineCap = 'round';
-  context.shadowColor = 'rgba(0, 0, 0, 0.35)';
-  context.shadowBlur = size * 0.04;
-  context.shadowOffsetY = size * 0.02;
-  if (outline) {
-    context.strokeStyle = OUTLINE;
-    context.lineWidth = size * 0.07;
-    context.stroke(path);
-    context.shadowColor = 'transparent';
-  }
-  context.fillStyle = fill;
-  context.fill(path);
-  context.restore();
-}
-
-/** The same, for a line drawn rather than a shape filled (an arrow's shaft, a ring). */
-function line(context: CanvasRenderingContext2D, size: number, path: Path2D, colour: string, width: number): void {
-  context.save();
-  context.lineJoin = 'round';
-  context.lineCap = 'round';
-  context.shadowColor = 'rgba(0, 0, 0, 0.35)';
-  context.shadowBlur = size * 0.04;
-  context.shadowOffsetY = size * 0.02;
-  context.strokeStyle = OUTLINE;
-  context.lineWidth = width + size * 0.07;
-  context.stroke(path);
-  context.shadowColor = 'transparent';
-  context.strokeStyle = colour;
-  context.lineWidth = width;
-  context.stroke(path);
-  context.restore();
-}
-
-const vertical = (context: CanvasRenderingContext2D, size: number, top: string, bottom: string): CanvasGradient => {
-  const gradient = context.createLinearGradient(0, size * 0.1, 0, size * 0.9);
-  gradient.addColorStop(0, top);
-  gradient.addColorStop(1, bottom);
-  return gradient;
-};
-
-function starPath(cx: number, cy: number, outer: number, inner: number, points: number, turn = -Math.PI / 2): Path2D {
-  const path = new Path2D();
-  for (let i = 0; i < points * 2; i += 1) {
-    const r = i % 2 === 0 ? outer : inner;
-    const a = turn + (i * Math.PI) / points;
-    const x = cx + Math.cos(a) * r;
-    const y = cy + Math.sin(a) * r;
-    if (i === 0) path.moveTo(x, y);
-    else path.lineTo(x, y);
-  }
-  path.closePath();
-  return path;
-}
-
-function heartPath(s: number): Path2D {
-  const path = new Path2D();
-  path.moveTo(s * 0.5, s * 0.84);
-  path.bezierCurveTo(s * 0.12, s * 0.58, s * 0.08, s * 0.32, s * 0.27, s * 0.22);
-  path.bezierCurveTo(s * 0.4, s * 0.15, s * 0.48, s * 0.24, s * 0.5, s * 0.32);
-  path.bezierCurveTo(s * 0.52, s * 0.24, s * 0.6, s * 0.15, s * 0.73, s * 0.22);
-  path.bezierCurveTo(s * 0.92, s * 0.32, s * 0.88, s * 0.58, s * 0.5, s * 0.84);
-  path.closePath();
-  return path;
-}
-
-function circle(cx: number, cy: number, r: number): Path2D {
-  const path = new Path2D();
-  path.arc(cx, cy, r, 0, Math.PI * 2);
-  return path;
-}
-
-/** Bold lettering, centred at (x, y), fitted to `width`, with the house outline. */
-function lettering(context: CanvasRenderingContext2D, size: number, text: string, x: number, y: number, width: number, fill: string, height: number): void {
-  context.save();
-  let px = height;
-  context.font = `900 ${px}px Outfit, "Arial Black", sans-serif`;
-  const measured = context.measureText(text).width;
-  if (measured > width) {
-    px = Math.floor((px * width) / measured);
-    context.font = `900 ${px}px Outfit, "Arial Black", sans-serif`;
-  }
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  context.lineJoin = 'round';
-  context.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-  context.lineWidth = px * 0.16;
-  context.strokeText(text, x, y);
-  context.fillStyle = fill;
-  context.fillText(text, x, y);
-  context.restore();
-  void size;
-}
-
 /* The set ---------------------------------------------------------------------------- */
 
-export const STICKERS: readonly Sticker[] = [
+/** The first eighteen; the rest are in stickers/sets. */
+const FIRST: readonly Sticker[] = [
   {
     id: 'heart',
     category: 'shapes',
@@ -418,5 +320,8 @@ export const STICKERS: readonly Sticker[] = [
   },
 ];
 
-export const STICKER_CATEGORIES: readonly StickerCategory[] = ['shapes', 'icons', 'words'];
+export const STICKERS: readonly Sticker[] = [...FIRST, ...REACTIONS, ...SOCIAL, ...PARTY, ...NATURE, ...POINTERS, ...MORE_WORDS];
+
+/** The groups, in the order the panel shows them: the faces first, as CapCut's opens on its emoji. */
+export const STICKER_CATEGORIES: readonly StickerCategory[] = ['reactions', 'shapes', 'icons', 'social', 'party', 'nature', 'pointers', 'words'];
 export const stickerById = (id: string): Sticker | undefined => STICKERS.find((sticker) => sticker.id === id);
