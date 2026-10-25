@@ -584,6 +584,11 @@ export function Timeline(): JSX.Element {
           icon: AudioLines,
           onSelect: () => rejoinSelectionAudio(selected.includes(clip.id) ? [...selected] : [clip.id]),
         });
+      } else if (canDetachAudio(clip, trackOf(clip.id), kindOf)) {
+        // A video with no sound in it (a stock or screen clip): the item stays,
+        // dimmed, and says why. Hidden, it read as an option that had been
+        // taken away.
+        items.push({ label: t('timeline.detachAudio'), icon: AudioLines, shortcut: keyLabel('Ctrl+Alt+S'), disabled: true, note: t('timeline.detachNoSound') });
       }
       // Jump cuts: the quiet stretches out of a clip with sound, or of a picture whose sound was detached.
       const hasSound = clip.audioOnly || Boolean(sound) || assetHasSound(assets.find((asset) => asset.uri === clip.sourceUri));
@@ -1778,10 +1783,11 @@ export function Timeline(): JSX.Element {
     label: string,
     Icon: typeof MousePointer2,
     onClick: () => void,
-    options: { shortcut?: string; hint?: string; pressed?: boolean; disabled?: boolean; danger?: boolean } = {},
+    options: { shortcut?: string; hint?: string; pressed?: boolean; disabled?: boolean; danger?: boolean; testId?: string } = {},
   ): JSX.Element => (
     <button
       type="button"
+      data-testid={options.testId}
       aria-pressed={options.pressed}
       disabled={options.disabled}
       className={`tool-button tool-button-dense w-7 px-0 ${options.pressed ? 'tool-button-active' : ''} ${options.danger ? 'hover:text-red-400' : ''}`}
@@ -1829,6 +1835,19 @@ export function Timeline(): JSX.Element {
               shortcut: keyLabel('Del'),
               disabled: ui.selectedClipIds.length === 0,
               danger: true,
+            })}
+            {/*
+              Detach audio in sight, as CapCut has it beside split: kept only
+              in the right-click menu it was missed. Lit for a selected video
+              clip still carrying its sound; one with none says so when pressed.
+            */}
+            {iconButton(tr('timeline.detachAudio'), AudioLines, () => void detachSelectionAudio(), {
+              shortcut: keyLabel('Ctrl+Alt+S'),
+              hint: tr('timeline.detachAudioHint'),
+              disabled: !ui.selectedClipIds.some((id) =>
+                canDetachAudio(project.clips[id], project.tracks.find((track) => track.id === project.clips[id]?.trackId), (uri) => assets.find((asset) => asset.uri === uri)?.kind),
+              ),
+              testId: 'timeline-detach-audio',
             })}
           </div>
 

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cpus } from 'node:os';
 import { kokoroCommand, piperCommand, splitText, windowsCodePage, type PiperEngine } from './engine';
@@ -49,6 +49,13 @@ export interface SynthOutcome {
 const tail = (text: string, lines = 4): string =>
   text.trim().split(/\r?\n/).filter((line) => line.trim()).slice(-lines).join(' / ').slice(-500);
 
+/**
+ * A job's folder untouched this long is a crashed session's leftovers. A job
+ * that is running writes a piece into its folder every few seconds - a piece
+ * is at most a few hundred characters - so an hour is far beyond any of them.
+ */
+export const STALE_JOB_MS = 60 * 60 * 1000;
+
 interface Job {
   dir: string;
   child: ChildProcess | null;
@@ -67,9 +74,23 @@ export class Synthesizer {
     },
   ) {}
 
-  /** Whatever a crashed session left behind under the temp root. */
-  async sweep(): Promise<void> {
-    await rm(this.options.tempRoot, { recursive: true, force: true }).catch(() => undefined);
+  /**
+   * Whatever a crashed session left behind under the temp root - and only
+   * that. The root is shared by every copy of the app on this account (a
+   * second window, a test run), so a job folder another copy is still filling
+   * is left alone: emptying the whole root, as this did, deleted a long text's
+   * folder halfway through and its next piece could not be written ("Failed
+   * to create ...\9.wav").
+   */
+  async sweep(now = Date.now()): Promise<void> {
+    const entries = await readdir(this.options.tempRoot).catch(() => [] as string[]);
+    await Promise.all(
+      entries.map(async (name) => {
+        const path = join(this.options.tempRoot, name);
+        const info = await stat(path).catch(() => null);
+        if (info && now - info.mtimeMs > STALE_JOB_MS) await rm(path, { recursive: true, force: true }).catch(() => undefined);
+      }),
+    );
   }
 
   cancel(jobId: string): void {
@@ -102,8 +123,22 @@ export class Synthesizer {
       for (let index = 0; index < pieces.length; index += 1) {
         if (job.cancelled) return { cancelled: true, path: null, durationSeconds: 0 };
         const pieceWav = join(dir, `${index}.wav`);
-        if (kokoro) await this.runKokoroPiece(job, kokoro.engine, kokoro.espeakData, request, pieces[index], pieceWav);
-        else await this.runPiece(job, engine, request, pieces[index], pieceWav);
+        const run = (): Promise<void> =>
+          kokoro
+            ? this.runKokoroPiece(job, kokoro.engine, kokoro.espeakData, request, pieces[index], pieceWav)
+            : this.runPiece(job, engine, request, pieces[index], pieceWav);
+        // The folder is made again before each piece, and a piece that fails
+        // is tried once more: whatever empties temp meanwhile (a cleaner,
+        // Storage Sense) costs a moment, not the text. The pieces made so far
+        // are held here, not on disk.
+        await mkdir(dir, { recursive: true });
+        try {
+          await run();
+        } catch {
+          if (job.cancelled) return { cancelled: true, path: null, durationSeconds: 0 };
+          await mkdir(dir, { recursive: true });
+          await run();
+        }
         if (job.cancelled) return { cancelled: true, path: null, durationSeconds: 0 };
         const wav = await readWav(pieceWav);
         sampleRate = wav.sampleRate;

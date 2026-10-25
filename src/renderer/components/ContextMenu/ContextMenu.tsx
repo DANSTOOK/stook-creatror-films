@@ -30,6 +30,8 @@ export interface ContextMenuItem {
   /** Right-aligned hint, e.g. a keyboard shortcut. */
   shortcut?: string;
   disabled?: boolean;
+  /** A short line under the label - why a disabled item cannot be used now, say. Read at full contrast. */
+  note?: string;
   /** Renders in red - deletions and other destructive actions. */
   danger?: boolean;
   /** A tick beside it: the item is an on/off setting and this is its state. */
@@ -335,8 +337,8 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
                     }
                   }}
                   onClick={() => (item.submenu ? openSubmenu(depth, index, true) : run(item))}
-                  className={`group flex h-control w-full items-center gap-2.5 rounded-control px-2.5 text-left text-xs transition-colors duration-100
-                    disabled:pointer-events-none disabled:opacity-40
+                  className={`group flex w-full items-center gap-2.5 rounded-control px-2.5 text-left text-xs transition-colors duration-100
+                    disabled:pointer-events-none ${item.note ? 'min-h-control py-1' : 'h-control disabled:opacity-40'}
                     ${item.danger ? 'text-red-300' : 'text-slate-200'}
                     ${level.active === index ? (item.danger ? 'bg-red-500/15 text-red-200' : 'bg-accent/15 text-white') : ''}`}
                 >
@@ -345,16 +347,29 @@ export function ContextMenu({ x, y, items, keyboard = false, label, onClose }: C
                   ) : item.icon ? (
                     <item.icon
                       size={14}
-                      className={`shrink-0 transition-colors duration-100 ${
+                      className={`shrink-0 transition-colors duration-100 ${item.note && item.disabled ? 'opacity-40' : ''} ${
                         level.active === index ? (item.danger ? 'text-red-300' : 'text-accent-hover') : 'text-slate-400'
                       }`}
                     />
                   ) : (
                     <span className="w-[14px] shrink-0" />
                   )}
-                  <span className="flex-1 truncate">{item.label}</span>
+                  {item.note ? (
+                    // The label dims with the item; the reason under it stays legible.
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className={`truncate ${item.disabled ? 'opacity-40' : ''}`}>{item.label}</span>
+                      <span className="truncate text-2xs text-slate-400" data-menu-note>
+                        {item.note}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="flex-1 truncate">{item.label}</span>
+                  )}
                   {item.shortcut && (
-                    <kbd aria-hidden className="shrink-0 rounded border border-panel-600 bg-panel-900 px-1.5 py-px font-sans text-2xs text-slate-400">
+                    <kbd
+                      aria-hidden
+                      className={`shrink-0 rounded border border-panel-600 bg-panel-900 px-1.5 py-px font-sans text-2xs text-slate-400 ${item.note && item.disabled ? 'opacity-40' : ''}`}
+                    >
                       {item.shortcut}
                     </kbd>
                   )}

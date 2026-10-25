@@ -330,7 +330,8 @@ async function main() {
   console.log('1. preparing media and building the app');
   await prepare();
 
-  if (!packagedExe) {
+  // SKIP_BUILD=1 uses the build already there, as audio-edit does: a sweep builds once and runs every test on it.
+  if (!packagedExe && process.env.SKIP_BUILD !== '1') {
     await run(process.execPath, [
       join(projectRoot, 'node_modules/vite/bin/vite.js'), 'build',
     ]);

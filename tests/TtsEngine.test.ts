@@ -1,8 +1,9 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { clampSpeed, commandLineText, engineIn, findEngine, kokoroCommand, MAX_SPEED, MIN_SPEED, piperCommand, splitText } from '@main/tts/engine';
+import { clampSpeed, commandLineText, engineIn, findEngine, kokoroCommand, MAX_SPEED, MIN_SPEED, piperCommand, splitLongSentence, splitText } from '@main/tts/engine';
+import { STALE_JOB_MS, Synthesizer } from '@main/tts/synth';
 import { readWav, silence, writeWav } from '@main/tts/wav';
 import { ALL_VOICES, BUNDLED_VOICES, DOWNLOADABLE_VOICES, voiceById } from '@main/tts/catalog';
 
@@ -44,13 +45,58 @@ describe('splitText', () => {
     expect(splitText('   \n  ')).toEqual([]);
   });
 
-  it('packs short sentences together but keeps a very long one on its own', () => {
+  it('packs short sentences together, and cuts a very long one between words, never past the budget', () => {
     const chunks = splitText('Uno. Dos. Tres.', 100);
     expect(chunks).toEqual(['Uno. Dos. Tres.']);
     const long = `${'palabra '.repeat(80)}.`.trim();
     const mixed = splitText(`Corta. ${long} Otra.`, 120);
-    expect(mixed.some((c) => c.length > 120)).toBe(true);
-    expect(mixed).toContain('Corta.');
+    // A run of 640 characters with no full stop went to the engine whole.
+    expect(mixed.every((c) => c.length <= 120)).toBe(true);
+    expect(mixed.join(' ').split(' ').filter((word) => word.startsWith('palabra')).length).toBe(80);
+    expect(mixed[0].startsWith('Corta.')).toBe(true);
+  });
+
+  it('cuts a long sentence at its commas, semicolons and dashes first', () => {
+    const sentence = 'La primera parte habla del viaje, la segunda de la llegada; la tercera - la más larga - del regreso a casa';
+    const pieces = splitLongSentence(sentence, 40);
+    expect(pieces.every((piece) => piece.length <= 40)).toBe(true);
+    expect(pieces[0]).toBe('La primera parte habla del viaje,');
+    expect(pieces.join(' ')).toBe(sentence);
+  });
+
+  it('a pasted paragraph of thousands of characters with no punctuation, and a giant "word", stay within the budget', () => {
+    const words = Array.from({ length: 900 }, (_, index) => `palabra${index}`);
+    const pieces = splitText(words.join(' '), 400);
+    expect(pieces.length).toBeGreaterThan(20);
+    expect(pieces.every((piece) => piece.length <= 400)).toBe(true);
+    expect(pieces.join(' ').split(' ')).toEqual(words);
+    const url = `https://example.com/${'x'.repeat(1000)}`;
+    expect(splitText(`Mira ${url} ahora.`, 400).every((piece) => piece.length <= 400)).toBe(true);
+  });
+});
+
+describe('the temp folder of the jobs', () => {
+  let dir = '';
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'scf-tts-sweep-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('a new session sweeps only leftovers: a job another copy of the app is running keeps its folder', async () => {
+    // A long text being spoken by another window: its folder was written to a moment ago.
+    await mkdir(join(dir, 'tts_running'), { recursive: true });
+    // A crashed session's job, untouched for longer than any piece takes.
+    await mkdir(join(dir, 'tts_crashed'), { recursive: true });
+    const old = (Date.now() - STALE_JOB_MS - 60_000) / 1000;
+    await utimes(join(dir, 'tts_crashed'), old, old);
+    await new Synthesizer({ tempRoot: dir, engine: () => null }).sweep();
+    expect(await readdir(dir)).toEqual(['tts_running']);
+  });
+
+  it('a temp root that is not there yet is no trouble', async () => {
+    await expect(new Synthesizer({ tempRoot: join(dir, 'missing'), engine: () => null }).sweep()).resolves.toBeUndefined();
   });
 });
 

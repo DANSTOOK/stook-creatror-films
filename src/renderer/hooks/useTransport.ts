@@ -310,7 +310,14 @@ export async function detachSelectionAudio(clipIds?: string[]): Promise<void> {
   }
 
   const made = useProjectStore.getState().detachAudio(ids);
-  if (made.length === 0) notify(t('detach.nothing'), 'warning');
+  if (made.length > 0) return;
+  // Video clips were chosen, but their files have no sound in them: say that, not "choose a video".
+  const silent = ids.some((id) => {
+    const clip = store.project.clips[id];
+    const asset = clip ? assetByUri.get(clip.sourceUri) : undefined;
+    return asset?.kind === 'video' && asset.hasAudio === false && !clip?.audioDetached && !clip?.audioOnly;
+  });
+  notify(t(silent ? 'detach.silent' : 'detach.nothing'), 'warning');
 }
 
 /** Rejoin, with a word when some sound had been moved apart and was left alone. */

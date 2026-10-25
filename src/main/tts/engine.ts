@@ -211,19 +211,11 @@ export function splitText(text: string, maxChars = 400): string[] {
   const sentences = clean
     .split(/(?<=[.!?…。])\s+|\n{2,}/)
     .map((s) => s.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .flatMap((sentence) => (sentence.length > maxChars ? splitLongSentence(sentence, maxChars) : [sentence]));
   const chunks: string[] = [];
   let current = '';
   for (const sentence of sentences) {
-    // A single sentence longer than the budget still goes on its own.
-    if (sentence.length > maxChars) {
-      if (current) {
-        chunks.push(current);
-        current = '';
-      }
-      chunks.push(sentence);
-      continue;
-    }
     if (current.length + sentence.length + 1 <= maxChars) {
       current = current ? `${current} ${sentence}` : sentence;
     } else {
@@ -233,4 +225,35 @@ export function splitText(text: string, maxChars = 400): string[] {
   }
   if (current) chunks.push(current);
   return chunks;
+}
+
+/**
+ * A sentence longer than `maxChars` - a pasted paragraph with no full stop,
+ * a list run together - in pieces no longer than that: at a comma, semicolon,
+ * colon or dash where there is one, else between words. Kokoro reads at most
+ * about 500 sounds at once and a single run of thousands of characters went
+ * to the engine whole; Piper's prosody drifts on one that long.
+ */
+export function splitLongSentence(sentence: string, maxChars: number): string[] {
+  const pieces: string[] = [];
+  let current = '';
+  const add = (part: string): void => {
+    if (current && current.length + part.length + 1 > maxChars) {
+      pieces.push(current);
+      current = '';
+    }
+    current = current ? `${current} ${part}` : part;
+  };
+  for (const clause of sentence.split(/(?<=[,;:])\s+|\s+(?=[—–-]\s)/)) {
+    if (clause.length <= maxChars) {
+      add(clause);
+      continue;
+    }
+    for (const word of clause.split(' ')) {
+      // A "word" longer than the budget (a URL, a run of symbols) is cut where it must be.
+      for (let at = 0; at < word.length; at += maxChars) add(word.slice(at, at + maxChars));
+    }
+  }
+  if (current) pieces.push(current);
+  return pieces;
 }
