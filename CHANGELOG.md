@@ -7,13 +7,117 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1752 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1766 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
-y sin red: **129/129** con la v1.94.0-beta.1 (ninguna petición a la red).
+y sin red: **129/129** con la v1.95.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.96.0-beta.1 — Editor de fotogramas clave, la línea de tiempo se desplaza con muchas pistas, y tarjetas con fotos de verdad
+2026-10-29 · pre-release para probar · lo pedido: «crea una ventana para un sistema de animación por keyframes, implementalo de algún motor opensource», «usa algún aplicativo externo online para mejorar las cards» y «al agregar más canales de audio o vídeo no permite hacer scroll»
+
+### Arreglado
+- **La línea de tiempo ya se desplaza hacia arriba y abajo** (lo avisaste tú).
+  Al pasar de unas pocas pistas, las de abajo quedaban fuera y no había manera
+  de llegar a ellas: ni con la rueda, ni con una barra, ni arrastrando. Medido
+  con 17 pistas en una línea de tiempo acoplada: la cabecera de la última
+  quedaba en el píxel 1683 de una caja de 298 de alto.
+  - La causa: la columna de los clips recortaba su contenido en vertical, así
+    que el cuerpo de la línea de tiempo creía que no había nada que desplazar.
+  - Ahora el lienzo es del tamaño de la vista y las filas se mueven por
+    debajo, igual que ya se hacía a lo ancho. Hay barra de desplazamiento
+    vertical, la rueda funciona **sobre los clips y sobre las cabeceras**, y
+    las cabeceras van siempre a la altura de su fila.
+  - **La regla de tiempo se queda fija arriba** mientras las pistas pasan por
+    debajo, como en Premiere o Resolve, así que nunca se pierde de vista la
+    hora.
+
+### Añadido
+- **Editor de fotogramas clave, en una ventana propia**: se abre con
+  **Mayús+K**, desde el menú Ventana, desde el botón de la barra de la línea de
+  tiempo o desde el inspector. Muestra la animación del clip seleccionado:
+  - a la izquierda, cada cosa que se puede animar —posición, escala, rotación,
+    opacidad y **todos los ajustes de cada efecto** del clip—, con su
+    cronómetro (animar o dejar de animar) y su rombo (fotograma clave en el
+    cabezal);
+  - **Hoja**: los fotogramas clave como rombos sobre el clip. Se eligen con
+    clic, Mayús+clic o un recuadro, se arrastran en el tiempo todos a la vez
+    (un solo paso de deshacer), se borran con Supr, y el menú del clic derecho
+    da la forma del movimiento;
+  - **Curvas**: el valor dibujado a lo largo del clip, pasado por el mismo
+    motor que usa el visor, con sus puntos para arrastrar (Mayús mantiene el
+    tiempo);
+  - abajo, la forma del movimiento con su curva: **Lineal, Suave, Entrada
+    suave, Salida suave, Mantener, Pasarse y volver, Elástico y Rebote**, o una
+    **curva propia** arrastrando sus dos tiradores.
+  - Las formas nuevas valen para cualquier fotograma clave, también los de los
+    efectos, y se ven igual en el visor y en la exportación. Un proyecto
+    guardado con ellas las conserva al abrirlo.
+  - El modelo es el de **Theatre.js** (`@theatre/core`, Apache-2.0): cada
+    tramo entre dos fotogramas clave es una curva bezier en el tiempo, o un
+    mantener. Pasarse y volver, Elástico y Rebote son las ecuaciones de
+    Robert Penner (BSD). Ambos créditos están en la ventana de licencias.
+- **Las tarjetas de efectos y transiciones muestran fotografías**, no dibujos:
+  una escena de calle al atardecer y una playa tropical, hechas con la IA de
+  Canva y guardadas dentro de la app (640×360, unos 30 kB cada una). Un efecto
+  se ve ahora sobre piel, cielo y agua, que es donde se nota; una transición
+  va de una foto a la otra. Los dibujos de antes siguen ahí como respaldo: son
+  lo que se ve hasta que las fotos cargan, y lo único que se vería si fallaran.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/timeline-scroll.mjs` (**9/9**), con 17 pistas en una
+  línea de tiempo acoplada:
+  - sabe que tiene más filas que sitio (1004 px de filas en 252 de alto);
+  - la rueda la desplaza, sobre los clips y sobre las cabeceras;
+  - abajo del todo, la cabecera de la última pista («Audio 9») está en
+    pantalla, y el lienzo dibuja su fila justo a su lado (952 frente a 954);
+  - un clip de esa zona se puede seleccionar con un clic;
+  - la regla no se mueve mientras las filas pasan por debajo;
+  - sin errores en la página ni en el registro.
+  - **Con el código de antes, esta misma prueba da 4/9**: la caja dice que no
+    tiene nada que desplazar (1004 px de filas, pero `scrollHeight` 298 igual
+    que su alto, porque la columna los recortaba), la rueda no hace nada y la
+    última cabecera queda en el píxel 1683.
+- **Prueba nueva** `tests/ui/keyframes.mjs` (**15/15**):
+  - Mayús+K abre la ventana; sin clip seleccionado dice que elijas uno;
+  - salen las filas del clip: posición, escala, rotación, opacidad y el radio
+    del desenfoque que tiene puesto;
+  - el cronómetro y el rombo ponen fotogramas clave en el cabezal, y ◀ ▶ van de
+    uno a otro;
+  - un rombo arrastrado 30 fotogramas cae donde se suelta, **como un solo paso
+    de deshacer**, y un recuadro elige los dos;
+  - **la forma del movimiento cambia la imagen que exporta la app**, medida a
+    un cuarto del camino: lineal da 0,800 de brillo y Suave 0,895; Mantener
+    deja 1,000 hasta el final y salta a 0,200;
+  - un tirador arrastrado deja una curva propia; en Curvas, un punto arrastrado
+    sube su valor y con Mayús no cambia de tiempo;
+  - Supr borra los elegidos y la ventana se cierra;
+  - la ventana de licencias acredita a Theatre.js y a Penner, con su texto BSD;
+  - sin errores en la página ni en el registro.
+- **81 pruebas de interfaz**: 80 a la primera, la general a **127/127**, con el
+  registro de errores activo: solo anotó lo que las pruebas provocan a
+  propósito.
+  - `voiceover` falló una vez en la medición del nivel del micrófono (pico
+    0,000): no había señal en ese momento. Repetida sola, pasa **6/6** con pico
+    1,130.
+- 1766 pruebas unitarias, entre ellas las nuevas de las curvas de movimiento
+  (contrastadas con los valores que da un navegador para las mismas curvas CSS)
+  y de las filas del editor.
+- 22/22 de extremo a extremo, 41/41 de proyectos y 26/26 de movimiento.
+- La mega prueba de rendimiento, en sus 16 escenarios: bien todos menos
+  «25 deshacer y 25 rehacer», que salió lento tres veces seguidas. Lo medí
+  **intercalado** contra la versión anterior de la línea de tiempo, una tanda
+  de cada una por turnos: la de antes perdió el 54,4 %, 54,2 % y 38,4 % de los
+  fotogramas, y la nueva el 47,6 %, 25,8 % y 30 %. O sea, ese escenario está
+  lento ahora **en las dos**, y el cambio no es la causa: es la máquina, que
+  ese rato estaba cargada. La memoria es de 30 MB al empezar y al terminar.
+  - La misma prueba, por cierto, encontró un fallo de verdad en el camino:
+    «selección por arrastre» se caía porque buscaba el contenedor de la línea
+    de tiempo por una clase que el arreglo cambió. Corregida.
+- La v1.95 instalada pasa **129/129** sin red, con la suite de su versión, y
+  sin intentar ninguna conexión.
 
 ## v1.95.0-beta.1 — El visor a 4K 60 y 120 fps, medido, y sin redibujar lo que no cambia
 2026-10-25 · pre-release para probar · lo pedido: «haz una prueba con 4K 60 fps / 120 … si no, busca cómo mejorar el motor que usamos para visualizar»
