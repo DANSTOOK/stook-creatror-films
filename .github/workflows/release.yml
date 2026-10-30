@@ -292,11 +292,27 @@ jobs:
       - name: Stage Kokoro
         shell: pwsh
         run: |
+          # GitHub's own release downloads fail now and then on the runner, and a
+          # whole release was lost to one (v1.96.0-beta.1). Three tries, with the
+          # checksum decided after the last byte, so a half-written file is retried
+          # rather than mistaken for a bad asset.
+          function Get-Checked([string]$Url, [string]$Path, [string]$Expected, [string]$What) {
+            for ($try = 1; $try -le 3; $try++) {
+              Remove-Item $Path -Force -ErrorAction SilentlyContinue
+              curl.exe -fL --retry 3 --retry-all-errors --connect-timeout 30 -o $Path $Url
+              if ($LASTEXITCODE -eq 0) {
+                $hash = (Get-FileHash $Path -Algorithm SHA256).Hash.ToLower()
+                if ($hash -eq $Expected) { return }
+                Write-Host "$What came down with checksum $hash, not $Expected (try $try)"
+              } else {
+                Write-Host "$What could not be downloaded (try $try)"
+              }
+              Start-Sleep -Seconds (10 * $try)
+            }
+            throw "$What could not be downloaded in three tries"
+          }
           $sherpa = Join-Path $env:RUNNER_TEMP 'sherpa.tar.bz2'
-          curl.exe -fL -o $sherpa "https://github.com/k2-fsa/sherpa-onnx/releases/download/$env:SHERPA_VERSION/sherpa-onnx-$env:SHERPA_VERSION-win-x64-shared-MD-Release.tar.bz2"
-          if ($LASTEXITCODE -ne 0) { throw 'sherpa-onnx could not be downloaded' }
-          $hash = (Get-FileHash $sherpa -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne $env:SHERPA_SHA256) { throw "sherpa-onnx's checksum is $hash, not $env:SHERPA_SHA256" }
+          Get-Checked "https://github.com/k2-fsa/sherpa-onnx/releases/download/$env:SHERPA_VERSION/sherpa-onnx-$env:SHERPA_VERSION-win-x64-shared-MD-Release.tar.bz2" $sherpa $env:SHERPA_SHA256 'sherpa-onnx'
           tar -xjf $sherpa -C $env:RUNNER_TEMP
           $bin = "$env:RUNNER_TEMP/sherpa-onnx-$env:SHERPA_VERSION-win-x64-shared-MD-Release/bin"
           New-Item -ItemType Directory -Force build/sherpa-onnx | Out-Null
@@ -307,10 +323,7 @@ jobs:
           onnxruntime is MIT licensed: https://github.com/microsoft/onnxruntime
           "@ | Out-File -FilePath build/sherpa-onnx/LICENSE-sherpa-onnx.txt -Encoding utf8
           $model = Join-Path $env:RUNNER_TEMP 'kokoro.tar.bz2'
-          curl.exe -fL -o $model 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2'
-          if ($LASTEXITCODE -ne 0) { throw 'Kokoro could not be downloaded' }
-          $hash = (Get-FileHash $model -Algorithm SHA256).Hash.ToLower()
-          if ($hash -ne $env:KOKORO_SHA256) { throw "Kokoro's checksum is $hash, not $env:KOKORO_SHA256" }
+          Get-Checked 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2' $model $env:KOKORO_SHA256 'Kokoro'
           tar -xjf $model -C $env:RUNNER_TEMP
           $src = "$env:RUNNER_TEMP/kokoro-int8-multi-lang-v1_0"
           New-Item -ItemType Directory -Force build/tts-voices/kokoro | Out-Null

@@ -15,6 +15,24 @@ y sin red: **129/129** con la v1.95.0-beta.1 (ninguna petición a la red).
 
 ---
 
+## v1.96.0-beta.2 — La misma v1.96, compilada otra vez
+2026-10-29 · pre-release para probar
+
+### Arreglado
+- **La compilación de la v1.96.0-beta.1 se perdió por una descarga fallida.**
+  El paso que trae el motor de voz y su modelo (unos 320 MB desde las
+  descargas de GitHub) falló una vez y se rindió, así que esa versión no llegó
+  a tener instalador. Comprobé que los dos archivos siguen donde deben y
+  responden: fue un fallo puntual del servidor de compilación.
+- Ahora ese paso **lo intenta tres veces**, esperando cada vez un poco más, y
+  decide la suma de control al final de cada intento: un archivo que llega a
+  medias se vuelve a pedir en vez de darse por malo. Las sumas de control se
+  siguen comprobando igual que antes, así que esto no relaja ninguna
+  verificación.
+
+El contenido de la aplicación es **exactamente el de la v1.96.0-beta.1**, que
+se detalla debajo.
+
 ## v1.96.0-beta.1 — Editor de fotogramas clave, la línea de tiempo se desplaza con muchas pistas, y tarjetas con fotos de verdad
 2026-10-29 · pre-release para probar · lo pedido: «crea una ventana para un sistema de animación por keyframes, implementalo de algún motor opensource», «usa algún aplicativo externo online para mejorar las cards» y «al agregar más canales de audio o vídeo no permite hacer scroll»
 
