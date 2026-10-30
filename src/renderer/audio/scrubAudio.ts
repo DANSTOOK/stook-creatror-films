@@ -1,5 +1,6 @@
 import type { ProjectState } from '@shared/types';
 import { hasSoloedTrack, isTrackAudible } from './mixRouting';
+import { clipPanAt, clipVolumeAt } from './audioEnvelope';
 
 /**
  * Audio while the playhead is dragged.
@@ -26,6 +27,13 @@ export interface ScrubGrain {
   /** Where in the source the grain starts, seconds. */
   offsetSeconds: number;
   durationSeconds: number;
+  /**
+   * The clip's gain and stereo position at the scrubbed frame, which on an
+   * animated clip is not the same as its fader (audioEnvelope). Worked out
+   * here, where the frame is known.
+   */
+  volume: number;
+  pan: number;
 }
 
 /**
@@ -61,6 +69,8 @@ export function planScrubGrains(
       sourceUri: clip.sourceUri,
       offsetSeconds: clip.sourceOffsetFrames / fps + intoClipSeconds,
       durationSeconds: Math.min(GRAIN_SECONDS, remainingSeconds),
+      volume: clipVolumeAt(clip, frame),
+      pan: clipPanAt(clip, frame),
     });
   }
 

@@ -182,6 +182,10 @@ export function shiftClipKeyframes(clip: Clip, delta: number): Clip {
     },
     // An effect's keyframes are in timeline frames too, and go with the clip.
     ...(clip.effects ? { effects: shiftEffectKeyframes(clip.effects, delta) } : {}),
+    // So are the gain and pan curves, or a clip moved would play the sound of
+    // where it used to be.
+    ...(clip.volumeKeyframes ? { volumeKeyframes: shift(clip.volumeKeyframes) } : {}),
+    ...(clip.panKeyframes ? { panKeyframes: shift(clip.panKeyframes) } : {}),
   };
 }
 

@@ -4,6 +4,7 @@ import { encodeWavFloat32 } from '@shared/utils/wav';
 import { clipGain, clipSounds, hasSoloedTrack, isTrackAudible, panPosition, trackGain } from './mixRouting';
 import { speedOf } from '@renderer/timing/clipSpeed';
 import { applyFadeEnvelope } from './fadeEnvelope';
+import { panPoints, scheduleEnvelope } from './audioEnvelope';
 import { withAudioCrossfades } from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 
@@ -240,7 +241,11 @@ async function renderClips(
     high.gain.value = clip.eq.high;
 
     const panner = context.createStereoPanner();
-    panner.pan.value = panPosition(clip.pan);
+    // The gain's curve went on with the fades above; pan has nothing riding
+    // on it, so it is written here - and what is exported is what was heard.
+    const pan = panPoints(clip);
+    if (pan) scheduleEnvelope(panner.pan, pan, when, skippedSeconds, fps / rate);
+    else panner.pan.value = panPosition(clip.pan);
 
     source.connect(gain);
     gain.connect(low);

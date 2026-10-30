@@ -2,6 +2,7 @@ import type { BezierCurve, Clip, ClipEffect, ClipTransform, Keyframe, Vector2D }
 import type { MessageKey } from '@shared/i18n';
 import { createId } from '@shared/utils/id';
 import { evaluateNumber, evaluateVector } from '@renderer/engine/KeyframeEvaluator';
+import { PAN_RANGE, VOLUME_RANGE, clipPanAt, clipVolumeAt } from '@renderer/audio/audioEnvelope';
 import { effectDef, effectLabel, effectValuesAt } from '@renderer/fx/effects/catalog';
 import type { Easing } from './easing';
 
@@ -9,10 +10,11 @@ import type { Easing } from './easing';
  * What the keyframe editor shows of a clip, and the edits it makes.
  *
  * A row is one thing that animates: the transform's position, scale,
- * rotation and opacity, and every setting of every effect on the clip that
- * can move (switches cannot). Its keyframes are the diamonds on the row; its
- * channels are the curves the graph draws - two for a position or a scale
- * (X and Y share each keyframe, as in After Effects), one for anything else.
+ * rotation and opacity, the gain and stereo position of a clip that has
+ * sound, and every setting of every effect on the clip that can move
+ * (switches cannot). Its keyframes are the diamonds on the row; its channels
+ * are the curves the graph draws - two for a position or a scale (X and Y
+ * share each keyframe, as in After Effects), one for anything else.
  *
  * Every edit here is pure: it takes the clip and returns the patch for
  * updateClip, so a drag in the editor is one undo step (one merge key) and
@@ -42,7 +44,7 @@ export interface Row {
   id: RowId;
   /** What the editor calls it, and the group it sits under. */
   label: MessageKey;
-  group: 'transform' | 'effect';
+  group: 'transform' | 'audio' | 'effect';
   /** The effect's name for an effect setting's group. */
   groupLabel?: MessageKey;
   keyframes: RowKeyframe[];
@@ -59,6 +61,18 @@ const TRANSFORM_ROWS: ReadonlyArray<{ property: TransformRow; label: MessageKey;
 
 const FALLBACK: Record<TransformRow, Vector2D | number> = { position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, rotation: 0, opacity: 1 };
 
+type AudioRow = 'volume' | 'pan';
+/**
+ * The sound rows, shown only for a clip that has any (see `rowsOf`): a title
+ * with a volume curve would be a lie, and an empty row to drop keyframes on
+ * is worse than no row.
+ */
+const AUDIO_ROWS: ReadonlyArray<{ property: AudioRow; label: MessageKey; range: [number, number] }> = [
+  { property: 'volume', label: 'inspector.volume', range: [VOLUME_RANGE[0], VOLUME_RANGE[1]] },
+  { property: 'pan', label: 'inspector.pan', range: [PAN_RANGE[0], PAN_RANGE[1]] },
+];
+const AUDIO_TRACK: Record<AudioRow, 'volumeKeyframes' | 'panKeyframes'> = { volume: 'volumeKeyframes', pan: 'panKeyframes' };
+
 const asRowKeyframe = (key: Keyframe<number> | Keyframe<Vector2D>): RowKeyframe => ({
   id: key.id,
   frame: key.frame,
@@ -68,10 +82,18 @@ const asRowKeyframe = (key: Keyframe<number> | Keyframe<Vector2D>): RowKeyframe 
 
 /** A transform row's id, or an effect setting's. */
 export const transformRowId = (property: TransformRow): RowId => `transform:${property}`;
+export const audioRowId = (property: AudioRow): RowId => `audio:${property}`;
 export const effectRowId = (effectId: string, param: string): RowId => `effect:${effectId}:${param}`;
 
-/** Every row of `clip`, the transform's first, then each effect's settings in stack order. */
-export function rowsOf(clip: Clip): Row[] {
+/**
+ * Every row of `clip`: the transform's first, then the sound's, then each
+ * effect's settings in stack order.
+ *
+ * `sound` says whether this clip has any sound to animate - the project knows
+ * that from the asset, this module does not - and when it does not, the gain
+ * and pan rows are left out entirely.
+ */
+export function rowsOf(clip: Clip, sound = false): Row[] {
   const rows: Row[] = TRANSFORM_ROWS.map(({ property, label, vector, range }) => {
     const track = clip.transform[property] as Array<Keyframe<number> | Keyframe<Vector2D>>;
     const channels: Channel[] = vector
@@ -84,6 +106,26 @@ export function rowsOf(clip: Clip): Row[] {
       : [{ id: 'value', tone: 'value', at: (frame: number) => evaluateNumber(clip.transform[property] as Keyframe<number>[], frame, FALLBACK[property] as number), range }];
     return { id: transformRowId(property), label, group: 'transform', keyframes: track.map(asRowKeyframe), channels };
   });
+  if (sound) {
+    for (const { property, label, range } of AUDIO_ROWS) {
+      const keyframes = clip[AUDIO_TRACK[property]] ?? [];
+      rows.push({
+        id: audioRowId(property),
+        label,
+        group: 'audio',
+        groupLabel: 'workspace.audio',
+        keyframes: keyframes.map(asRowKeyframe),
+        channels: [
+          {
+            id: 'value',
+            tone: 'value',
+            at: (frame: number) => (property === 'volume' ? clipVolumeAt(clip, frame) : clipPanAt(clip, frame)),
+            range,
+          },
+        ],
+      });
+    }
+  }
   for (const effect of clip.effects ?? []) {
     const def = effectDef(effect.type);
     if (!def) continue;
@@ -114,6 +156,7 @@ type Track = Array<Keyframe<number> | Keyframe<Vector2D>>;
 function trackOf(clip: Clip, row: RowId): Track | null {
   const [kind, a, b] = row.split(':');
   if (kind === 'transform') return (clip.transform[a as TransformRow] as Track | undefined) ?? null;
+  if (kind === 'audio') return clip[AUDIO_TRACK[a as AudioRow]] ?? [];
   const effect = (clip.effects ?? []).find((candidate) => candidate.id === a);
   return effect ? (effect.keyframes?.[b] ?? []) : null;
 }
@@ -122,6 +165,7 @@ function trackOf(clip: Clip, row: RowId): Track | null {
 function patchTracks(clip: Clip, rows: Iterable<RowId>, edit: (row: RowId, track: Track) => Track): Partial<Clip> {
   let transform: ClipTransform | null = null;
   let effects: ClipEffect[] | null = null;
+  const audio: { volumeKeyframes?: Keyframe<number>[]; panKeyframes?: Keyframe<number>[] } = {};
   for (const row of new Set(rows)) {
     const track = trackOf(clip, row);
     if (!track) continue;
@@ -129,13 +173,15 @@ function patchTracks(clip: Clip, rows: Iterable<RowId>, edit: (row: RowId, track
     const [kind, a, b] = row.split(':');
     if (kind === 'transform') {
       transform = { ...(transform ?? clip.transform), [a]: next };
+    } else if (kind === 'audio') {
+      audio[AUDIO_TRACK[a as AudioRow]] = next as Keyframe<number>[];
     } else {
       effects = (effects ?? clip.effects ?? []).map((effect) =>
         effect.id === a ? { ...effect, keyframes: { ...(effect.keyframes ?? {}), [b]: next as Keyframe<number>[] } } : effect,
       );
     }
   }
-  return { ...(transform ? { transform } : {}), ...(effects ? { effects } : {}) };
+  return { ...(transform ? { transform } : {}), ...(effects ? { effects } : {}), ...audio };
 }
 
 const byRow = (picked: readonly Picked[]): Map<RowId, Set<string>> => {
@@ -227,6 +273,7 @@ function valueOf(clip: Clip, row: RowId, frame: number): number | Vector2D | nul
       ? evaluateVector(track as Keyframe<Vector2D>[], frame, FALLBACK[property] as Vector2D)
       : evaluateNumber(track as Keyframe<number>[], frame, FALLBACK[property] as number);
   }
+  if (kind === 'audio') return a === 'volume' ? clipVolumeAt(clip, frame) : clipPanAt(clip, frame);
   const effect = (clip.effects ?? []).find((candidate) => candidate.id === a);
   return effect ? effectValuesAt(effect, frame)[b] ?? null : null;
 }
@@ -235,7 +282,10 @@ function valueOf(clip: Clip, row: RowId, frame: number): number | Vector2D | nul
  * After keyframes are removed: a transform row with none left keeps one, at
  * the clip's start, holding the value it had at `frame` (the transform always
  * has a value to draw); an effect setting with none left holds that value as
- * its plain setting, as the inspector's diamond leaves it.
+ * its plain setting, as the inspector's diamond leaves it. A gain or pan row
+ * emptied does the same: the fader takes the value the curve had at `frame`,
+ * so deleting the last keyframe does not jump the sound back to whatever the
+ * fader was before the curve was drawn.
  */
 function holdEmptied(clip: Clip, patch: Partial<Clip>, frame: number): Partial<Clip> {
   const next = { ...clip, ...patch };
@@ -245,6 +295,14 @@ function holdEmptied(clip: Clip, patch: Partial<Clip>, frame: number): Partial<C
     const value = valueOf(clip, transformRowId(property), frame);
     if (value === null) continue;
     transform = { ...(transform ?? next.transform), [property]: [{ id: createId('kf'), frame: clip.startFrame, value, easing: 'linear' }] };
+  }
+  const audio: { volume?: number; pan?: number } = {};
+  for (const { property, range } of AUDIO_ROWS) {
+    const key = AUDIO_TRACK[property];
+    if (patch[key] === undefined || (patch[key] ?? []).length > 0) continue;
+    const held = valueOf(clip, audioRowId(property), frame);
+    if (typeof held !== 'number') continue;
+    audio[property] = Math.min(range[1], Math.max(range[0], held));
   }
   let effects = patch.effects;
   if (patch.effects) {
@@ -263,7 +321,7 @@ function holdEmptied(clip: Clip, patch: Partial<Clip>, frame: number): Partial<C
       };
     });
   }
-  return { ...patch, ...(transform ? { transform } : {}), ...(effects ? { effects } : {}) };
+  return { ...patch, ...(transform ? { transform } : {}), ...(effects ? { effects } : {}), ...audio };
 }
 
 /** The keyframe before or after `frame` on any of `rows` (all rows when none given): where ◀ and ▶ go. */

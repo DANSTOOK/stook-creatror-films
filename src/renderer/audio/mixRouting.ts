@@ -1,6 +1,7 @@
 import type { Clip, ProjectState, Track } from '@shared/types';
 import { clamp } from '@shared/utils/math';
 import { audioFollowsSpeed } from '@renderer/timing/clipSpeed';
+import { envelopeSignature } from './audioEnvelope';
 
 /**
  * Pure mixing rules.
@@ -71,7 +72,7 @@ export function mixSignature(project: ProjectState): string {
     .sort((a, b) => a.id.localeCompare(b.id))
     // Whether a clip sounds at all is part of the mix: separating a clip's
     // sound has to silence it at once, not at the next seek.
-    .map((c) => `${c.id}:${c.volume}:${c.pan}:${c.eq.low}/${c.eq.mid}/${c.eq.high}${c.audioDetached ? ':d' : ''}`)
+    .map((c) => `${c.id}:${c.volume}:${c.pan}:${c.eq.low}/${c.eq.mid}/${c.eq.high}${c.audioDetached ? ':d' : ''}:${envelopeSignature(c)}`)
     .join(',');
 
   return [

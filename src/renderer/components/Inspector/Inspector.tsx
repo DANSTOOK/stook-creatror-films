@@ -44,6 +44,7 @@ import { StabilizeRow } from './StabilizeRow';
 import { EasingCard } from './EasingCard';
 import { useBeatDialog } from '@renderer/components/Beats/BeatDialog';
 import { assetHasSound } from '@renderer/components/Timeline/detachAudio';
+import { clipPanAt, clipVolumeAt, faderPatch } from '@renderer/audio/audioEnvelope';
 import { SHOW_CLIP_FX_EVENT } from '@renderer/fx/motion/zoneEdit';
 import { setBackgroundRemoval } from '@renderer/matting/mattes';
 import { DetachButton } from '@renderer/components/Layout/DetachButton';
@@ -458,8 +459,26 @@ export function Inspector(): JSX.Element {
 
   const levelRows = (
     <>
-      <SliderRow label={t('inspector.volume')} value={clip.volume} max={2} format={dbLabel} onChange={(volume) => updateClip(clip.id, { volume }, `volume:${clip.id}`)} />
-      <SliderRow label={t('inspector.pan')} value={clip.pan} min={-1} max={1} format={panLabel} onChange={(pan) => updateClip(clip.id, { pan }, `pan:${clip.id}`)} />
+      {/*
+        The number under the fader is what the clip is doing HERE, which on an
+        animated clip is not its plain setting; dragging it moves the whole
+        curve (audioEnvelope.faderPatch).
+      */}
+      <SliderRow
+        label={t('inspector.volume')}
+        value={clipVolumeAt(clip, frame)}
+        max={2}
+        format={dbLabel}
+        onChange={(volume) => updateClip(clip.id, faderPatch(clip, 'volume', volume, frame), `volume:${clip.id}`)}
+      />
+      <SliderRow
+        label={t('inspector.pan')}
+        value={clipPanAt(clip, frame)}
+        min={-1}
+        max={1}
+        format={panLabel}
+        onChange={(pan) => updateClip(clip.id, faderPatch(clip, 'pan', pan, frame), `pan:${clip.id}`)}
+      />
     </>
   );
 
@@ -738,7 +757,8 @@ export function Inspector(): JSX.Element {
       <Section
         {...sectionProps('level')}
         title={t('inspector.level')}
-        onReset={() => updateClip(clip.id, { volume: 1, pan: 0 })}
+        /* Back to plain: the curves go too, or the reset would not be heard. */
+        onReset={() => updateClip(clip.id, { volume: 1, pan: 0, volumeKeyframes: [], panKeyframes: [] })}
       >
         {levelRows}
       </Section>

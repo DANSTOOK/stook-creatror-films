@@ -3,6 +3,7 @@ import { clamp } from '@shared/utils/math';
 import { clipGain, clipSounds, hasSoloedTrack, panPosition, trackGain } from './mixRouting';
 import { speedOf } from '@renderer/timing/clipSpeed';
 import { applyFadeEnvelope } from './fadeEnvelope';
+import { envelopeSignature, hasPanEnvelope, hasVolumeEnvelope, panPoints, scheduleEnvelope } from './audioEnvelope';
 import { withAudioCrossfades } from '@renderer/timing/transitions';
 import type { ScrubGrain } from './scrubAudio';
 import type { AudioStream } from './AudioStream';
@@ -173,6 +174,12 @@ interface ClipStrip {
    * by `stop` alone.
    */
   pass?: number;
+  /**
+   * The animated gain and pan written onto this strip (envelopeSignature).
+   * Ramps already scheduled cannot be bent, so when an edit changes this the
+   * schedule is rebuilt rather than nudged.
+   */
+  envelope?: string;
 }
 
 interface TrackStrip {
@@ -647,6 +654,7 @@ export class AudioEngine {
         Math.max(0, now - clipStartsAt),
         project.fps / span.rate,
       );
+      this.schedulePan(strip, clip, Math.max(now, clipStartsAt), Math.max(0, now - clipStartsAt), project.fps / span.rate);
       if (loop) {
         // Sounding at the loop's start after a join: in from silence.
         if (pass > 0 && clipStart <= loop.start + 1e-6) this.declickIn(strip, this.contextTimeOf(loop.start + offset));
@@ -929,6 +937,7 @@ export class AudioEngine {
         Math.max(0, startSeconds - clipStart),
         fps / rate,
       );
+      this.schedulePan(strip, clip, at + whenSeconds, Math.max(0, startSeconds - clipStart), fps / rate);
       // Joined part-way through: in from silence rather than on whatever sample is there.
       if (clipStart < startSeconds - 1e-6) {
         // Silent from now, ahead of the start (see declickIn).
@@ -1049,8 +1058,13 @@ export class AudioEngine {
     for (const strip of this.strips.values()) {
       const clip = project.clips[strip.clipId];
       if (!clip) continue;
-      strip.gain.gain.setTargetAtTime(clipSounds(clip) ? clipGain(clip) : 0, now, 0.01);
-      strip.panner.pan.setTargetAtTime(panPosition(clip.pan), now, 0.01);
+      // An animated gain or pan is already written ahead of the playhead;
+      // writing a single value over it would straighten the curve. Only
+      // silencing it is still a live change, and an edit to the curve itself
+      // comes back through needsRebuild.
+      if (!clipSounds(clip)) strip.gain.gain.setTargetAtTime(0, now, 0.01);
+      else if (!hasVolumeEnvelope(clip)) strip.gain.gain.setTargetAtTime(clipGain(clip), now, 0.01);
+      if (!hasPanEnvelope(clip)) strip.panner.pan.setTargetAtTime(panPosition(clip.pan), now, 0.01);
       strip.low.gain.setTargetAtTime(clip.eq.low, now, 0.01);
       strip.mid.gain.setTargetAtTime(clip.eq.mid, now, 0.01);
       strip.high.gain.setTargetAtTime(clip.eq.high, now, 0.01);
@@ -1061,10 +1075,35 @@ export class AudioEngine {
    * rebuild rather than a parameter update.
    */
   needsRebuild(project: ProjectState): boolean {
-    return project.tracks.some((track) => {
-      const strip = this.trackStrips.get(track.id);
-      return strip !== undefined && strip.bus !== track.bus;
-    });
+    if (
+      project.tracks.some((track) => {
+        const strip = this.trackStrips.get(track.id);
+        return strip !== undefined && strip.bus !== track.bus;
+      })
+    ) {
+      return true;
+    }
+    // A gain or pan curve that was redrawn: see ClipStrip.envelope.
+    for (const strip of this.strips.values()) {
+      const clip = project.clips[strip.clipId];
+      if (!clip || strip.envelope === undefined) continue;
+      if (strip.envelope !== envelopeSignature(clip)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The clip's stereo position over time, written onto its strip.
+   *
+   * The gain's curve goes on through applyFadeEnvelope, which has the fades to
+   * combine with; pan has nothing riding on it, so it is written here. Both
+   * leave their signature on the strip so an edit can be noticed.
+   */
+  private schedulePan(strip: ClipStrip, clip: Clip, when: number, offsetSeconds: number, framesPerSecond: number): void {
+    strip.envelope = envelopeSignature(clip);
+    const points = panPoints(clip);
+    if (!points) return;
+    scheduleEnvelope(strip.panner.pan, points, when, offsetSeconds, framesPerSecond);
   }
 
   /** Grains still sounding from the last scrub, faded out by the next one. */
@@ -1115,12 +1154,14 @@ export class AudioEngine {
 
       const trackStrip = this.ensureTrackStrip(track, anySolo);
       const strip = this.createStrip(trackStrip.gain, track.id, clip.id, buffer);
-      strip.panner.pan.value = panPosition(clip.pan);
+      // The grain's own frame, not the fader: on a clip whose sound is
+      // animated those differ, and a scrub has to be heard as it will play.
+      strip.panner.pan.value = panPosition(grain.pan);
       strip.low.gain.value = clip.eq.low;
       strip.mid.gain.value = clip.eq.mid;
       strip.high.gain.value = clip.eq.high;
 
-      const level = clipGain(clip);
+      const level = clamp(grain.volume, 0, 2);
       const end = now + grain.durationSeconds;
       strip.gain.gain.setValueAtTime(0, now);
       strip.gain.gain.linearRampToValueAtTime(level, now + FADE);
@@ -1175,12 +1216,12 @@ export class AudioEngine {
     const fade = 0.006;
     const trackStrip = this.ensureTrackStrip(track, anySolo);
     const strip = this.createStrip(trackStrip.gain, track.id, clip.id, buffer);
-    strip.panner.pan.value = panPosition(clip.pan);
+    strip.panner.pan.value = panPosition(grain.pan);
     strip.low.gain.value = clip.eq.low;
     strip.mid.gain.value = clip.eq.mid;
     strip.high.gain.value = clip.eq.high;
 
-    const level = clipGain(clip);
+    const level = clamp(grain.volume, 0, 2);
     const end = now + grain.durationSeconds;
     strip.gain.gain.setValueAtTime(0, now);
     strip.gain.gain.linearRampToValueAtTime(level, now + fade);

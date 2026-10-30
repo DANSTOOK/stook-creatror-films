@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Clip, Keyframe, Vector2D } from '@shared/types';
 import { createClip } from '@renderer/store/types';
 import { createEffect } from '@renderer/fx/effects/catalog';
-import { clipSpan, effectRowId, neighbourKeyframe, removeKeyframes, retime, rowsOf, setEasing, setKeyframeValue, toggleKeyframeAt, transformRowId } from '@renderer/keyframes/rows';
+import { audioRowId, clipSpan, effectRowId, neighbourKeyframe, removeKeyframes, retime, rowsOf, setEasing, setKeyframeValue, toggleKeyframeAt, transformRowId } from '@renderer/keyframes/rows';
 
 /**
  * What the keyframe editor shows of a clip and the edits it makes
@@ -102,5 +102,82 @@ describe('the other edits', () => {
     expect(neighbourKeyframe(rows, 125, 1)).toBe(140);
     expect(neighbourKeyframe(rows, 125, -1)).toBe(120);
     expect(neighbourKeyframe(rows, 199, 1)).toBeNull();
+  });
+});
+
+/**
+ * The sound rows (audio keyframes): shown only for a clip that has sound, and
+ * edited through exactly the same machinery as the transform's, so a move, a
+ * curve and a delete behave the same way on a volume row as on a position one.
+ */
+describe('the sound rows', () => {
+  it('are left out for a clip with no sound, and added for one that has', () => {
+    expect(rowsOf(fixture()).some((row) => row.group === 'audio')).toBe(false);
+    const rows = rowsOf(fixture(), true);
+    expect(rows.filter((row) => row.group === 'audio').map((row) => row.id)).toEqual([audioRowId('volume'), audioRowId('pan')]);
+    // Between the transform and the effects, where the inspector puts them.
+    expect(rows.map((row) => row.group)).toEqual(['transform', 'transform', 'transform', 'transform', 'audio', 'audio', 'effect']);
+  });
+
+  it('read the fader while there is no curve, and the curve once there is', () => {
+    const clip = { ...fixture(), volume: 0.5 };
+    const [volume] = rowsOf(clip, true).filter((row) => row.group === 'audio');
+    expect(volume.keyframes).toEqual([]);
+    expect(volume.channels[0].at(150)).toBeCloseTo(0.5, 6);
+    expect(volume.channels[0].range).toEqual([0, 2]);
+
+    const curved = apply(clip, toggleKeyframeAt(clip, audioRowId('volume'), 120));
+    expect(curved.volumeKeyframes?.map((k) => k.frame)).toEqual([120]);
+    // The diamond takes the value the row had there, so nothing jumps.
+    expect(curved.volumeKeyframes?.[0].value).toBeCloseTo(0.5, 6);
+  });
+
+  it('move, ease and hold like any other row', () => {
+    let clip = { ...fixture(), volume: 1 };
+    clip = apply(clip, toggleKeyframeAt(clip, audioRowId('volume'), 110));
+    clip = apply(clip, toggleKeyframeAt(clip, audioRowId('volume'), 170));
+    const [first, second] = clip.volumeKeyframes ?? [];
+    clip = apply(clip, setKeyframeValue(clip, audioRowId('volume'), second.id, 'value', 0));
+    const row = rowsOf(clip, true).find((candidate) => candidate.id === audioRowId('volume'));
+    // Half way between 1 at frame 110 and 0 at frame 170.
+    expect(row?.channels[0].at(140)).toBeCloseTo(0.5, 6);
+
+    clip = apply(clip, retime(clip, [{ row: audioRowId('volume'), id: second.id }], -20));
+    expect(clip.volumeKeyframes?.map((k) => k.frame)).toEqual([110, 150]);
+    clip = apply(clip, setEasing(clip, [{ row: audioRowId('volume'), id: first.id }], 'hold'));
+    expect(clip.volumeKeyframes?.[0].easing).toBe('hold');
+    // Held: still full gain just before the second keyframe.
+    const held = rowsOf(clip, true).find((candidate) => candidate.id === audioRowId('volume'));
+    expect(held?.channels[0].at(149)).toBeCloseTo(1, 6);
+  });
+
+  it('a keyframe cannot be moved out of the clip', () => {
+    let clip = { ...fixture(), volume: 1 };
+    clip = apply(clip, toggleKeyframeAt(clip, audioRowId('volume'), 110));
+    const [only] = clip.volumeKeyframes ?? [];
+    clip = apply(clip, retime(clip, [{ row: audioRowId('volume'), id: only.id }], -500));
+    expect(clip.volumeKeyframes?.[0].frame).toBe(clipSpan(clip)[0]);
+  });
+
+  it('deleting the last keyframe leaves the fader where the curve had got to', () => {
+    let clip = { ...fixture(), volume: 1 };
+    clip = apply(clip, toggleKeyframeAt(clip, audioRowId('volume'), 110));
+    const [only] = clip.volumeKeyframes ?? [];
+    clip = apply(clip, setKeyframeValue(clip, audioRowId('volume'), only.id, 'value', 0.25));
+    const after = apply(clip, removeKeyframes(clip, [{ row: audioRowId('volume'), id: only.id }], 150));
+    expect(after.volumeKeyframes).toEqual([]);
+    // Not back to 1, which is what the fader said before the curve was drawn.
+    expect(after.volume).toBeCloseTo(0.25, 6);
+  });
+
+  it('the pan row keeps to its own range', () => {
+    let clip = { ...fixture(), pan: 0 };
+    clip = apply(clip, toggleKeyframeAt(clip, audioRowId('pan'), 110));
+    const [only] = clip.panKeyframes ?? [];
+    clip = apply(clip, setKeyframeValue(clip, audioRowId('pan'), only.id, 'value', -3));
+    const row = rowsOf(clip, true).find((candidate) => candidate.id === audioRowId('pan'));
+    expect(row?.channels[0].range).toEqual([-1, 1]);
+    // Stored as asked, but never heard beyond hard left.
+    expect(row?.channels[0].at(110)).toBe(-1);
   });
 });

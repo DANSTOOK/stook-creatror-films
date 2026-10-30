@@ -1,6 +1,7 @@
 import type { Clip } from '@shared/types';
 import { fadeGainAt, fadeLengths } from '@renderer/timing/clipFades';
 import { crossfadeIn, crossfadeOut } from '@renderer/timing/transitions';
+import { envelopeValueAt, scheduleEnvelope, volumePoints, withBreakpoints } from './audioEnvelope';
 
 /**
  * A clip's fades, written onto its gain.
@@ -23,6 +24,11 @@ const CURVE_POINTS_PER_SECOND = 200;
  *                  join a clip in the middle, and so can an export range.
  * @param framesPerSecond Frames of the clip per second of sound. A retimed
  *                  clip spends its fade faster, so this is fps / speed.
+ *
+ * A clip whose gain is animated brings its own curve (audioEnvelope), and that
+ * curve takes the place of `base` - they are one parameter, not two. The fades
+ * still ride on top of it, which is what a mixer does: an envelope drawn at
+ * half gain under a fade-out still ends at silence.
  */
 export function applyFadeEnvelope(
   gain: GainParam,
@@ -32,11 +38,19 @@ export function applyFadeEnvelope(
   offsetSeconds: number,
   framesPerSecond: number,
 ): void {
+  const curve = volumePoints(clip);
   if ((clip.crossfadeInFrames ?? 0) > 0 || (clip.crossfadeOutFrames ?? 0) > 0) {
-    applyCrossfadeEnvelope(gain, clip, base, when, offsetSeconds, framesPerSecond);
+    // The crossfade writes its own sampled curve, 200 points a second, so the
+    // animated gain only has to be readable at any frame for it to pick up.
+    applyCrossfadeEnvelope(gain, clip, curve ? (frame) => envelopeValueAt(curve, frame) : base, when, offsetSeconds, framesPerSecond);
     return;
   }
   const { fadeIn, fadeOut } = fadeLengths(clip);
+  if (curve) {
+    const breaks = [fadeIn, Math.max(0, clip.durationFrames - fadeOut), clip.durationFrames].filter((frame) => frame > 0);
+    scheduleEnvelope(gain, withBreakpoints(curve, breaks), when, offsetSeconds, framesPerSecond, (frame) => fadeGainAt(clip, frame));
+    return;
+  }
   if (fadeIn === 0 && fadeOut === 0) {
     gain.value = base;
     return;
@@ -70,11 +84,12 @@ export function applyFadeEnvelope(
 function applyCrossfadeEnvelope(
   gain: GainParam,
   clip: Clip,
-  base: number,
+  base: number | ((clipFrame: number) => number),
   when: number,
   offsetSeconds: number,
   framesPerSecond: number,
 ): void {
+  const baseAt = typeof base === 'function' ? base : (): number => base;
   const fps = framesPerSecond > 0 ? framesPerSecond : 30;
   const duration = Math.max(1, clip.durationFrames);
   const started = Math.max(0, offsetSeconds) * fps;
@@ -88,7 +103,7 @@ function applyCrossfadeEnvelope(
     const fromEnd = duration - frame;
     return outFrames > 0 ? crossfadeOut(1 - fromEnd / outFrames) : fadeOut > 0 ? Math.min(1, Math.max(0, fromEnd) / fadeOut) : 1;
   };
-  const level = (frame: number): number => base * inShape(frame) * outShape(frame);
+  const level = (frame: number): number => baseAt(frame) * inShape(frame) * outShape(frame);
   const inEnd = inFrames > 0 ? inFrames : fadeIn;
   const outStart = duration - (outFrames > 0 ? outFrames : fadeOut);
 

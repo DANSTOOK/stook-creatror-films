@@ -719,8 +719,19 @@ export interface Clip {
   tracking?: ClipTracking;
   /** Linear gain for audio-bearing clips, 0.0 to 2.0. */
   volume: number;
+  /**
+   * The gain over time, when it was animated: timeline frames, like every
+   * other keyframe track here, so it moves with the clip. Absent or empty
+   * means the gain is just `volume`, which is how every project saved before
+   * this reads. When the curve IS there it is the gain, and `volume` steps
+   * aside: these are one parameter, as in any mixer, not two multiplied. The
+   * fader stays useful because moving it shifts the whole curve.
+   */
+  volumeKeyframes?: Keyframe<number>[];
   /** Stereo position, -1 hard left to +1 hard right. */
   pan: number;
+  /** The stereo position over time; absent means it is just `pan`. */
+  panKeyframes?: Keyframe<number>[];
   /** Per-clip corrective EQ, applied before the track strip. */
   eq: EqSettings;
   /**

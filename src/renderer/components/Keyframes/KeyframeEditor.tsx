@@ -10,6 +10,7 @@ import { PanelEmptyState } from '@renderer/components/Layout/PanelEmptyState';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { createId } from '@shared/utils/id';
 import { curveOf, easeProgress, type Easing } from '@renderer/keyframes/easing';
+import { assetHasSound } from '@renderer/components/Timeline/detachAudio';
 import {
   clipSpan,
   neighbourKeyframe,
@@ -133,7 +134,19 @@ export function KeyframeEditor({ onClose }: { onClose?(): void }): JSX.Element {
   const [marquee, setMarquee] = useState<{ x0: number; x1: number; y0: number; y1: number } | null>(null);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
   const [areaRef, width, areaHeight] = useSize();
-  const rows = useMemo(() => (clip ? rowsOf(clip) : []), [clip]);
+  /**
+   * Whether this clip has sound to animate, by the same rule detach audio
+   * uses: an audio clip, or a video whose file was found to carry a track. A
+   * clip whose sound was separated leaves it to the sound clip, which is the
+   * one with the rows.
+   */
+  const sound = useProjectStore((state) => {
+    const picked = state.ui.selectedClipIds.length === 1 ? state.project.clips[state.ui.selectedClipIds[0]] : undefined;
+    if (!picked || picked.audioDetached) return false;
+    const asset = state.assets.find((candidate) => candidate.uri === picked.sourceUri);
+    return picked.audioOnly === true || asset?.kind === 'audio' || assetHasSound(asset);
+  });
+  const rows = useMemo(() => (clip ? rowsOf(clip, sound) : []), [clip, sound]);
 
   // Picks of keyframes that are gone (deleted, the clip changed) are let go.
   useEffect(() => {
@@ -602,8 +615,9 @@ function CurveGraph({
     const startFrame = frameAt(event.clientX - box.left);
     const startY = event.clientY - box.top;
     onPick([{ row: row.id, id: keyId }]);
-    // The keyframe's value as the drag began, on the channel grabbed.
-    const startRow = rowsOf(base).find((candidate) => candidate.id === row.id);
+    // The keyframe's value as the drag began, on the channel grabbed. The row
+    // handed in was built from this same clip, so it IS that row.
+    const startRow = row;
     const startKey = startRow?.keyframes.find((candidate) => candidate.id === keyId);
     const from = startKey ? (startRow?.channels.find((candidate) => candidate.id === channel)?.at(startKey.frame) ?? 0) : 0;
     const move = (moveEvent: PointerEvent): void => {
