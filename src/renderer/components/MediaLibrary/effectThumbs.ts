@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { FULLSCREEN_MATRIX, GLProgram, PendingProgram, RenderTarget } from '@renderer/engine/GLProgram';
 import { requestFrame } from '@renderer/timing/animationFrame';
 import { createEffect, effectDef } from '@renderer/fx/effects/catalog';
-import { samplePicture } from './samplePictures';
+import { onSamplesReady, samplePicture } from './samplePictures';
 import { EFFECT_PASSES } from '@renderer/fx/effects/shaders';
 import baseVertexSource from '@renderer/engine/shaders/BaseVertex.glsl?raw';
 
@@ -89,6 +89,22 @@ export function setEffectSource(picture: CanvasImageSource | null, width: number
   pictures.clear();
   useEffectSource.setState((now) => ({ key, version: now.version + 1 }));
 }
+
+/**
+ * The sample photograph arrived after the tiles were first drawn: the source
+ * picture is made again from it, and the tiles with it. Only while the sample
+ * is what they show - a frame of the user's own clip is not touched.
+ */
+onSamplesReady(() => {
+  if (sourceKey !== 'sample') return;
+  const context = currentPicture().getContext('2d');
+  if (!context) return;
+  context.clearRect(0, 0, WIDTH, HEIGHT);
+  context.drawImage(samplePicture('sunset', WIDTH, HEIGHT), 0, 0, WIDTH, HEIGHT);
+  if (state) upload(state.gl, state.source, currentPicture());
+  pictures.clear();
+  useEffectSource.setState((now) => ({ ...now, version: now.version + 1 }));
+});
 
 interface State {
   gl: WebGL2RenderingContext;

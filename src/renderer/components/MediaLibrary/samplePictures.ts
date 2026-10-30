@@ -7,9 +7,17 @@
  * they differ in lightness as well as hue, so they stay apart for someone
  * who does not see the colours.
  *
- * Drawn here, from shapes and gradients, rather than shipped as photographs:
- * nothing to license or download, any size sharp. Each is drawn at twice
- * the size asked and scaled down, then kept.
+ * Each is a photograph that ships with the app (assets/sample-*.jpg, 640x360,
+ * about 30 kB each): a tile of a real shot reads at a glance as footage, which
+ * is what the tiles are standing in for, and an effect's colour and blur show
+ * on skin, sky and water as they will on the user's own clip. The drawn scenes
+ * below are the fallback - they are what is shown until the files decode, and
+ * all that is shown if they ever fail - so the panel never waits and never
+ * shows a hole. Each picture is made at twice the size asked and scaled down,
+ * then kept.
+ *
+ * A photograph arrives after the first tiles are drawn, so `onSamplesReady`
+ * tells the panels to draw again (LibraryBrowsers, effectThumbs).
  */
 
 export type SampleScene = 'sunset' | 'city';
@@ -231,24 +239,86 @@ function drawCity(context: CanvasRenderingContext2D, w: number, h: number): void
 
 const kept = new Map<string, HTMLCanvasElement>();
 
-/** Scene `scene` at `width` x `height`, drawn once at twice the size and kept. */
+/** Scene `scene` at `width` x `height`, made once and kept: the photograph when it is in, else the drawn scene. */
 export function samplePicture(scene: SampleScene, width: number, height: number): HTMLCanvasElement {
   const key = `${scene}:${width}x${height}`;
   const known = kept.get(key);
   if (known) return known;
-  const large = document.createElement('canvas');
-  large.width = width * 2;
-  large.height = height * 2;
-  const big = large.getContext('2d');
-  if (big) (scene === 'sunset' ? drawSunset : drawCity)(big, large.width, large.height);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (context) {
-    context.imageSmoothingQuality = 'high';
-    context.drawImage(large, 0, 0, width, height);
-  }
+  paint(scene, canvas);
   kept.set(key, canvas);
   return canvas;
+}
+
+/* The photographs ---------------------------------------------------------- */
+
+const PHOTOS: Record<SampleScene, string> = {
+  sunset: new URL('../../assets/sample-sunset.jpg', import.meta.url).href,
+  city: new URL('../../assets/sample-city.jpg', import.meta.url).href,
+};
+
+const photos = new Map<SampleScene, HTMLImageElement>();
+const listeners = new Set<() => void>();
+
+/** Called when a photograph has arrived and the kept pictures have been redrawn with it. */
+export function onSamplesReady(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** `photo` over the whole of `width` x `height`, cropped from the middle rather than squashed. */
+function drawCover(context: CanvasRenderingContext2D, photo: HTMLImageElement, width: number, height: number): void {
+  const scale = Math.max(width / photo.naturalWidth, height / photo.naturalHeight);
+  const cropWidth = width / scale;
+  const cropHeight = height / scale;
+  context.drawImage(
+    photo,
+    (photo.naturalWidth - cropWidth) / 2,
+    (photo.naturalHeight - cropHeight) / 2,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    width,
+    height,
+  );
+}
+
+function paint(scene: SampleScene, canvas: HTMLCanvasElement): void {
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  const photo = photos.get(scene);
+  if (photo) {
+    drawCover(context, photo, canvas.width, canvas.height);
+    return;
+  }
+  const large = document.createElement('canvas');
+  large.width = canvas.width * 2;
+  large.height = canvas.height * 2;
+  const big = large.getContext('2d');
+  if (big) (scene === 'sunset' ? drawSunset : drawCity)(big, large.width, large.height);
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(large, 0, 0, canvas.width, canvas.height);
+}
+
+if (typeof window !== 'undefined' && typeof Image !== 'undefined') {
+  for (const scene of ['sunset', 'city'] as SampleScene[]) {
+    const image = new Image();
+    image.decoding = 'async';
+    image.addEventListener(
+      'load',
+      () => {
+        if (!(image.naturalWidth > 0)) return;
+        photos.set(scene, image);
+        // Whatever was drawn with the fallback is drawn again, in place: the
+        // panels hold these very canvases.
+        for (const [key, canvas] of kept) if (key.startsWith(`${scene}:`)) paint(scene, canvas);
+        for (const listener of [...listeners]) listener();
+      },
+      { once: true },
+    );
+    image.src = PHOTOS[scene];
+  }
 }

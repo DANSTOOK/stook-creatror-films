@@ -139,6 +139,7 @@ import TimelineCanvas, {
   trackIndexAtY,
   trackRowHeight,
   trackRowTop,
+  setRowScroll,
 } from './TimelineCanvas';
 
 /** Width of the grab zone at each end of a clip, in pixels. */
@@ -271,6 +272,10 @@ export function Timeline(): JSX.Element {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // The track headers, kept level with the rows: the clips' box owns the scroll.
+  const headerListRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const [bodyHeight, setBodyHeight] = useState(0);
   const dragRef = useRef<DragMode>({ kind: 'none' });
   const [activeSnap, setActiveSnap] = useState<SnapTarget | null>(null);
@@ -349,7 +354,10 @@ export function Timeline(): JSX.Element {
   // laid out before anything below places one.
   setTrackHeight(fitTrackHeight(bodyHeight, tracks));
   setRowLayout(tracks);
-  const canvasHeight = trackRowTop(tracks.length) + 8;
+  // How tall the whole stack is, and how far down it we are: the canvas paints
+  // and every hit test measures through this (TimelineCanvas.setRowScroll).
+  const contentHeight = trackRowTop(tracks.length) + 8;
+  setRowScroll(scrollTop);
   const mainTrackId = mainTrackOf(project.tracks)?.id ?? null;
 
   // The height the rows have to fill.
@@ -365,10 +373,13 @@ export function Timeline(): JSX.Element {
     const element = scrollRef.current;
     if (!element) return;
 
-    const observer = new ResizeObserver(([entry]) => {
-      setViewportWidth(entry.contentRect.width);
+    // clientWidth and clientHeight, not the content box: they leave out the
+    // scrollbars, and the canvas must not be drawn underneath one.
+    const observer = new ResizeObserver(() => {
+      setViewportWidth(element.clientWidth);
+      setViewportHeight(element.clientHeight);
       // The store fits and reveals content, so it needs the width too.
-      store.getState().setUi({ viewportWidthPx: entry.contentRect.width });
+      store.getState().setUi({ viewportWidthPx: element.clientWidth });
     });
     observer.observe(element);
     return () => observer.disconnect();
@@ -1001,11 +1012,21 @@ export function Timeline(): JSX.Element {
     [store, transitionChoices],
   );
 
+  /**
+   * A pointer event on the canvas, in the coordinates the rest of the timeline
+   * works in: the ruler is pinned, so its band is the view's own; below it the
+   * rows have been scrolled, so their y carries the scroll.
+   */
+  const canvasY = (clientY: number, boundsTop: number): number => {
+    const viewY = clientY - boundsTop;
+    return viewY < RULER_HEIGHT ? viewY : viewY + scrollTop;
+  };
+
   const onCanvasContextMenu = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
-      const y = event.clientY - bounds.top;
+      const y = canvasY(event.clientY, bounds.top);
 
       // A transition: its kind, and deleting it.
       const onTransition = y >= RULER_HEIGHT
@@ -1077,7 +1098,7 @@ export function Timeline(): JSX.Element {
       const on = transitionAt(
         transitionBoxes(store.getState().project, tracks, ui, { rowTop: trackRowTop, rowHeight: trackRowHeight }),
         event.clientX - bounds.left,
-        event.clientY - bounds.top,
+        canvasY(event.clientY, bounds.top),
       );
       if (!on) return;
       store.getState().selectTransition(on.box.transition.id);
@@ -1095,7 +1116,7 @@ export function Timeline(): JSX.Element {
 
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
-      const y = event.clientY - bounds.top;
+      const y = canvasY(event.clientY, bounds.top);
       event.currentTarget.setPointerCapture(event.pointerId);
 
       const state = store.getState();
@@ -1307,7 +1328,7 @@ export function Timeline(): JSX.Element {
       const drag = dragRef.current;
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
-      const y = event.clientY - bounds.top;
+      const y = canvasY(event.clientY, bounds.top);
 
       if (drag.kind === 'none') {
         // Not dragging: track what is under the pointer, so the trim handles
@@ -2036,12 +2057,21 @@ export function Timeline(): JSX.Element {
 
       {/* Scrolls vertically as one, headers and tracks together, so a timeline
           dragged shorter than its tracks still reaches every row. */}
-      <div ref={bodyRef} className="flex min-h-0 flex-1 overflow-y-auto">
+      <div ref={bodyRef} className="flex min-h-0 flex-1 overflow-hidden">
         <div
           className="shrink-0 overflow-hidden border-r border-panel-700 bg-panel-900"
           style={{ width: HEADER_WIDTH }}
+          // The headers are not a scrolling box of their own - they follow the
+          // clips - so the wheel over them is handed to the box that scrolls.
+          onWheel={(event) => {
+            const element = scrollRef.current;
+            if (element && !event.ctrlKey && !event.metaKey) element.scrollTop += event.deltaY;
+          }}
         >
           <div style={{ height: RULER_HEIGHT }} className="border-b border-panel-700" />
+          {/* The headers move with the rows: the clips' box has the scrollbars
+              and hands its scrollTop over here, so the two never drift apart. */}
+          <div ref={headerListRef} className="overflow-hidden" style={{ height: Math.max(0, viewportHeight - RULER_HEIGHT) }}>
           {tracks.map((track, index) => {
             // A low row - sound, titles, captions - has room for one line: its name and its buttons side by side.
             const low = trackRowHeight(index) < LOW_HEADER_PX;
@@ -2174,14 +2204,25 @@ export function Timeline(): JSX.Element {
             </div>
             );
           })}
+          {/* The same tail the rows have, so both reach the bottom together. */}
+          <div style={{ height: 8 }} />
+          </div>
         </div>
 
-        <div ref={scrollRef} className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden">
+        <div
+          ref={scrollRef}
+          className="min-w-0 flex-1 overflow-auto"
+          onScroll={(event) => {
+            const top = event.currentTarget.scrollTop;
+            setScrollTop(top);
+            if (headerListRef.current) headerListRef.current.scrollTop = top;
+          }}
+        >
           {/* Positioned in CONTENT space, so the rename field rides the scroll
               with its marker instead of needing scroll arithmetic. */}
           <div
             className="relative"
-            style={{ width: contentWidth }}
+            style={{ width: contentWidth, height: contentHeight }}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
             onDrop={(event) => void onDrop(event)}
@@ -2193,7 +2234,7 @@ export function Timeline(): JSX.Element {
                 footage, past what a canvas can be - and it scrolled physically
                 while also subtracting the scroll when painting, so everything
                 moved at twice the scrollbar's speed. */}
-            <div className="sticky left-0" style={{ width: viewportWidth }}>
+            <div className="sticky left-0 top-0" style={{ width: viewportWidth }}>
               <TimelineCanvas
                 project={project}
                 ui={ui}
@@ -2214,7 +2255,7 @@ export function Timeline(): JSX.Element {
                 contentVersion={contentVersion}
                 labels={canvasLabels}
                 width={viewportWidth}
-                height={Math.max(canvasHeight, trackRowTop(tracks.length))}
+                height={viewportHeight}
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
@@ -2261,8 +2302,8 @@ export function Timeline(): JSX.Element {
               <span
                 data-testid="scrub-time"
                 aria-hidden
-                className="timecode pointer-events-none absolute top-[26px] z-10 ml-3 rounded-full bg-[rgb(var(--tl-playhead))] px-2 py-0.5 text-2xs font-semibold leading-none text-[rgb(var(--tl-playhead-ink))] shadow-lg"
-                style={{ left: project.currentFrame * ui.pixelsPerFrame }}
+                className="timecode pointer-events-none absolute z-10 ml-3 rounded-full bg-[rgb(var(--tl-playhead))] px-2 py-0.5 text-2xs font-semibold leading-none text-[rgb(var(--tl-playhead-ink))] shadow-lg"
+                style={{ left: project.currentFrame * ui.pixelsPerFrame, top: scrollTop + 26 }}
               >
                 {framesToTimecode(project.currentFrame, project.fps)}
               </span>

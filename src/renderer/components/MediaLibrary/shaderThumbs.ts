@@ -3,6 +3,7 @@ import { shaderTransition } from '@renderer/fx/transitions/catalog';
 import { FULLSCREEN_MATRIX, type GLProgram } from '@renderer/engine/GLProgram';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { drawTransitionThumb } from './libraryThumbs';
+import { onSamplesReady } from './samplePictures';
 import baseVertexSource from '@renderer/engine/shaders/BaseVertex.glsl?raw';
 
 /**
@@ -35,6 +36,20 @@ interface Thumbs {
 }
 
 let thumbs: Thumbs | null | undefined;
+
+/**
+ * The sample photographs arrived after the two sides were made into textures
+ * (samplePictures): they are made again from the pictures as they are now, and
+ * the tiles draw from them at their next frame.
+ */
+onSamplesReady(() => {
+  const state = thumbs;
+  if (!state) return;
+  state.gl.deleteTexture(state.from);
+  state.gl.deleteTexture(state.to);
+  state.from = sideTexture(state.gl, 0);
+  state.to = sideTexture(state.gl, 1);
+});
 
 /** A side's picture, as the built-in thumbnails draw it: A at progress 0 of a dissolve, B at 1. */
 function sideTexture(gl: WebGL2RenderingContext, progress: 0 | 1): WebGLTexture {

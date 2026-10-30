@@ -81,10 +81,26 @@ export function trackRowHeight(index: number): number {
   return rowHeights[index] ?? TRACK_HEIGHT;
 }
 
+/**
+ * How far the rows have been scrolled up, in pixels.
+ *
+ * The canvas is the size of the VIEW, in both axes, and the rows move under
+ * it - as they already did sideways. So a row's place in the painting, and in
+ * everything measured against the canvas, is its place in the stack less this.
+ * The ruler, the playhead and the marker lines are drawn without it: they
+ * belong to the view, and the ruler stays readable however far down the tracks
+ * go (Timeline lays this out).
+ */
+let rowScroll = 0;
+
+export function setRowScroll(value: number): void {
+  rowScroll = Math.max(0, value);
+}
+
 /** Where a track's row is on the canvas - by its id, or by its row - from the live layout: the interface tests ask this rather than count. */
 export function timelineRowOf(track: string | number): { index: number; top: number; height: number } | null {
   const index = typeof track === 'number' ? track : rowIds.indexOf(track);
-  return index < 0 || index >= rowIds.length ? null : { index, top: trackRowTop(index), height: trackRowHeight(index) };
+  return index < 0 || index >= rowIds.length ? null : { index, top: trackRowTop(index) - rowScroll, height: trackRowHeight(index) };
 }
 
 /**
@@ -1489,10 +1505,16 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
     const landingState = landingFor ? 'on' : 'off';
     if (canvas.dataset.landing !== landingState) canvas.dataset.landing = landingState;
 
+    // The rows, and everything that sits on them, through the scroll: a row's
+    // own coordinates are its place in the stack, as every hit test gives them.
+    context.save();
+    context.translate(0, -rowScroll);
+
     tracks.forEach((track, index) => {
       const top = trackRowTop(index);
-      if (top > height) return;
       const rowHeight = trackRowHeight(index);
+      // Off the top or past the bottom of the view: nothing to paint.
+      if (top - rowScroll > height || top + rowHeight - rowScroll < 0) return;
 
       context.fillStyle = index % 2 === 0 ? surface.trackA : surface.trackB;
       context.fillRect(0, top, width, rowHeight);
@@ -1582,6 +1604,8 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       context.lineWidth = 1;
       context.strokeRect(Math.round(left) + 0.5, Math.round(topY) + 0.5, Math.round(boxWidth), Math.round(boxHeight));
     }
+
+    context.restore();
 
     for (const marker of project.markers) {
       const x = Math.round(frameToPixel(marker.frame, ui.pixelsPerFrame, ui.scrollLeftPx)) + 0.5;

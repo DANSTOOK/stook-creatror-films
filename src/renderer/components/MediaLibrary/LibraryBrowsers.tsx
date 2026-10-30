@@ -13,6 +13,7 @@ import { TITLE_DRAG_TYPE, TRANSITION_DRAG_TYPE, useLibraryDragStore, type Librar
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { LibraryFinder } from './LibraryFinder';
 import { useOnScreen } from './onScreen';
+import { onSamplesReady } from './samplePictures';
 
 /**
  * The Titles and Transitions tabs of the library panel: templates to drag
@@ -48,6 +49,9 @@ function Thumb({ draw, playing, ready }: { draw: Draw; playing: boolean; ready: 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Its canvas drawn once it comes on screen: not sixty of them as the panel opens (onScreen.ts).
   const onScreen = useOnScreen(canvasRef);
+  // The sample photographs arrive after the first tiles are drawn (samplePictures).
+  const [samples, setSamples] = useState(0);
+  useEffect(() => onSamplesReady(() => setSamples((count) => count + 1)), []);
   useEffect(() => {
     if (!onScreen) return undefined;
     const context = canvasRef.current?.getContext('2d');
@@ -70,7 +74,7 @@ function Thumb({ draw, playing, ready }: { draw: Draw; playing: boolean; ready: 
       cancelFrame(frame);
       draw(context, null);
     };
-  }, [draw, playing, ready, onScreen]);
+  }, [draw, playing, ready, onScreen, samples]);
   return (
     <canvas
       ref={canvasRef}
