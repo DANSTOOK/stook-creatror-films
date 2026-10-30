@@ -274,6 +274,10 @@ export function Timeline(): JSX.Element {
   const bodyRef = useRef<HTMLDivElement>(null);
   // The track headers, kept level with the rows: the clips' box owns the scroll.
   const headerListRef = useRef<HTMLDivElement>(null);
+  // Kept twice on purpose: the state lays the rows out, and the ref is what the
+  // pointer handlers read - they are made once with their own dependencies, and
+  // a scroll must not leave them working from where the rows used to be.
+  const scrollTopRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [bodyHeight, setBodyHeight] = useState(0);
@@ -1017,10 +1021,10 @@ export function Timeline(): JSX.Element {
    * works in: the ruler is pinned, so its band is the view's own; below it the
    * rows have been scrolled, so their y carries the scroll.
    */
-  const canvasY = (clientY: number, boundsTop: number): number => {
+  const canvasY = useCallback((clientY: number, boundsTop: number): number => {
     const viewY = clientY - boundsTop;
-    return viewY < RULER_HEIGHT ? viewY : viewY + scrollTop;
-  };
+    return viewY < RULER_HEIGHT ? viewY : viewY + scrollTopRef.current;
+  }, []);
 
   const onCanvasContextMenu = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -2214,6 +2218,7 @@ export function Timeline(): JSX.Element {
           className="min-w-0 flex-1 overflow-auto"
           onScroll={(event) => {
             const top = event.currentTarget.scrollTop;
+            scrollTopRef.current = top;
             setScrollTop(top);
             if (headerListRef.current) headerListRef.current.scrollTop = top;
           }}

@@ -305,16 +305,15 @@ async function main() {
     });
     await window.keyboard.press('Control+z');
     /**
-     * A band from the bottom right of the rows in view to near the top left:
-     * the canvas is as tall as all the rows, most of them scrolled out of
-     * sight, so it is placed by the part of the timeline on screen. How many
-     * clips it chose goes in the report - the same band over more clips is
-     * more work, and a run that chose more is not comparable.
+     * A band from the bottom right of the rows in view to near the top left.
+     * The canvas is the size of the view - the rows scroll under it - so its
+     * own box is the part of the timeline on screen. How many clips it chose
+     * goes in the report: the same band over more clips is more work, and a
+     * run that chose more is not comparable.
      */
     const band = async (name) => {
       const view = await window.evaluate(() => {
-        const body = document.querySelector('[data-testid="timeline-canvas"]').closest('.overflow-y-auto');
-        const box = body.getBoundingClientRect();
+        const box = document.querySelector('[data-testid="timeline-canvas"]').getBoundingClientRect();
         return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
       });
       // Above the horizontal scrollbar, which takes the last few pixels.
