@@ -356,6 +356,17 @@ export class MediaSourceRegistry {
     return false;
   }
 
+  /**
+   * Stop one video decoding, because something else is making the picture of
+   * it - the playback decoder above 60 fps (engine/PlaybackDecoder). Left
+   * playing, the element would hold a second hardware decoder on the same
+   * file and take frames from the one being drawn.
+   */
+  hold(uri: string): void {
+    const element = this.elements.get(uri);
+    if (element instanceof HTMLVideoElement && !element.paused) element.pause();
+  }
+
   /** Pause every video, e.g. when the transport stops. */
   pauseAll(): void {
     for (const element of this.elements.values()) {

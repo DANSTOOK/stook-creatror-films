@@ -7,11 +7,124 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1784 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1796 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.98.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v1.99.0-beta.1 — La curva en el clip, y 120 fps que de verdad llegan al ojo
+2026-10-30 · pre-release para probar · lo pedido: «pulido de la línea de tiempo» y «reproducción a 120 fps con WebCodecs»
+
+### Añadido
+- **La curva de volumen se dibuja sobre el clip**, en la línea de tiempo, sin
+  abrir nada. Línea blanca de 2 px sobre una línea oscura de 4 px, con un
+  cuadradito en cada fotograma clave, la ganancia unidad justo en el medio de
+  la banda del sonido y el techo en 2. Un clip sin curva no dibuja nada, y solo
+  se recorre el tramo que está en pantalla.
+  - La línea oscura de debajo no es decoración: medido, el blanco sobre los
+    cinco colores de la onda da **de 1,16:1 a 1,41:1** — por debajo del 3:1 que
+    pide un gráfico, o sea un fantasma en un pasaje fuerte. Sobre la línea
+    oscura da **18,5:1**.
+- **Un clip seleccionado fuera de vista trae su pista a la pantalla**, moviendo
+  la vista lo mínimo: si está por arriba se asoma justo debajo de la regla, si
+  está por abajo justo encima del borde. Un clip que ya se ve no mueve nada, y
+  un clic en la propia línea de tiempo tampoco (si no, el suelo se movía bajo la
+  mano).
+- **Reproducción a más de 60 fps con WebCodecs.** Por encima de 60 fps la
+  imagen del visor ya no es «lo que el elemento `<video>` esté mostrando»: un
+  lector WebCodecs recorre el archivo hacia adelante y **mantiene seis
+  fotogramas descodificados por delante del cursor**, así que el dibujo que
+  quiere el fotograma N lo encuentra ya hecho en vez de esperarlo. El cursor
+  sigue siendo el reloj — la imagen sigue a la línea de tiempo, no a la idea del
+  tiempo que tenga el elemento, que es también lo que la mantiene con el sonido.
+  - **A 60 fps y por debajo no cambia nada**: ahí el elemento llega de sobra y
+    no cuesta un descodificador de hardware propio. Un montaje a 30 fps no paga
+    nada por esto.
+  - **Se rinde solo** cuando no puede: si pasa medio segundo sin poner un
+    fotograma por delante, o se queda veinte dibujos seguidos sin nada listo,
+    cierra el lector, suelta el hardware y le devuelve el archivo al elemento
+    para siempre. Sin eso el visor se quedaba congelado en la última imagen
+    descodificada, que es muchísimo peor que al elemento le falten unos
+    fotogramas.
+- **100 y 120 fps son ritmos que se pueden elegir** en los ajustes del proyecto,
+  y 120 también al crear uno en la sala principal. Antes solo se llegaba a esos
+  ritmos escribiendo el número a mano.
+
+### Arreglado
+- **Una pista de subtítulos o de música nacía detrás de la regla.** Se inserta
+  arriba de todas, así que con la línea de tiempo desplazada aparecía tapada:
+  existía, tenía sus clips y no se podía pinchar. Era un fallo anterior a este
+  cambio, que el nuevo «traer a la vista» dejó al descubierto porque rompió
+  `tests/ui/tts-plus.mjs` (11/12). Medido: `scrollTop 40`, la pista en
+  `top: -16` bajo una regla de 24 px, el clic aterrizaba en la regla. Ahora la
+  pista recién elegida también se revela, y se dibuja en el píxel 24, justo
+  debajo de la regla. `tts-plus` vuelve a 12/12.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/high-rate.mjs` (**13/13**), en la aplicación real
+  con un fichero 1080p a 120 fps hecho para la ocasión:
+  - reproduciendo a 120 fps, **565 fotogramas descodificados por delante** y
+    solo **7 dibujos sin nada listo**;
+  - el elemento `<video>` está en pausa en **el 0 % de los refrescos** mientras
+    eso pasa, o sea que no se sostienen dos descodificadores sobre el mismo
+    archivo;
+  - lo que llega al ojo son **120,3 fotogramas distintos por segundo**, y el
+    cursor mantiene el tiempo real (**x1,003**);
+  - el mismo proyecto a 30 fps **no abre ningún descodificador** (0 por
+    delante) y se reproduce en el elemento (100 % de los refrescos);
+  - apagado a mano, el elemento reproduce el 120 fps igual que antes
+    (**120,4 fotogramas distintos/s**), que es el camino de reserva;
+  - **lo exportado de un proyecto a 120 fps es 120 fps**: 240 fotogramas en
+    1,99 s, `120 tbr` en el contenedor, leído del archivo con ffmpeg.
+- **A/B intercalado, tres rondas**, midiendo *fotogramas distintos del archivo
+  que llegan al ojo* (no los que presenta el elemento):
+
+  | | descodificador apagado | encendido |
+  |---|---|---|
+  | 1080p120 | 117,5 / 120,2 / 114,5 | 120,1 / 120,1 / 119,9 |
+  | 4K120 | 119,8 / 119,9 / 120,1 | 118,6 / 119,6 / 119,7 |
+
+  Dicho sin adornos: **lo que gana no es un salto de ritmo, es constancia.** El
+  camino nuevo da 119,9–120,1 en cada ronda; el del elemento va de 114,5 a
+  120,2 según la ronda, y el propio elemento contaba **de 27 a 151 fotogramas
+  descartados** por tanda donde el nuevo no descarta ninguno.
+- **8 pruebas unitarias** sobre la decisión del lector. Una encontró un fallo de
+  verdad antes de que llegara a la app: al leer por delante, el fotograma más
+  nuevo está **delante** del cursor, así que comparar «¿el cursor va por detrás
+  del último descodificado?» tomaba **cada dibujo normal** por un salto hacia
+  atrás y reiniciaba el descodificador en cada fotograma. Ahora se mide contra
+  el fotograma más viejo que aún se guarda.
+- **4 pruebas unitarias** sobre la curva dibujada: el contraste del blanco sobre
+  la onda y sobre la línea oscura, la opacidad de la línea oscura y la unidad en
+  el medio de la banda.
+- `tests/ui/timeline-scroll.mjs` pasa de 9 a **12/12** con lo de traer a la
+  vista; `tests/perf/viewer-rates.mjs` mide ahora los dos caminos con la misma
+  vara (`VIEWER_NO_DECODER=1` reproduce en el elemento) y cuenta además cuántos
+  fotogramas se descodificaron por delante y cuántos dibujos llegaron tarde.
+
+### Problemas conocidos
+- **El 4K a 120 fps queda en empate, y depende de la ronda.** En dos de las tres
+  rondas el lector adelantó bien (996–1002 fotogramas por delante); en la
+  primera no llegó a adelantar ni uno y se rindió al elemento, como está
+  previsto. El resultado para el ojo es el mismo en los dos casos (118,6 contra
+  119,8), así que ahí esto no aporta nada: aporta en 1080p.
+- **El deshacer en ráfaga sigue igual de lento.** A/B intercalado en tres
+  rondas: p99 de 39,7 / 38,7 / 34,5 ms después contra 62,3 / 38,9 / 39,0 antes;
+  fotogramas largos 0 / 0 / 1 contra 3 / 1 / 1; descartados 25,1 / 23,4 / 26,8 %
+  contra 33,9 / 20,6 / 19,0 %. La dispersión es más ancha que la diferencia, o
+  sea **no hay arreglo**. El desglose dice que el tiempo no está en los scripts
+  ni en el pintado, sino *antes del render*, y eso pide instrumentación más fina
+  que la del arnés actual. Queda abierto.
+
+### Otros
+- `tests/ui/interface-motion.mjs` exigía que el cabezal no se desviara más de
+  1,5 px en un zoom con easing, y bajo la batería completa midió 1,52 (0,47 y
+  0,48 al repetirlo suelto). Con desplazamiento en píxeles enteros y el cabezal
+  en subpíxel, un redondeo a cada lado es esperable, así que el margen pasa a
+  2 px. **Es ensanchar el margen, no arreglar nada.**
 
 ---
 

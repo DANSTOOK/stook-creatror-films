@@ -896,8 +896,17 @@ export interface Transition {
   params?: Record<string, TransitionParamValue>;
 }
 
-/** Frame rates offered in the project settings UI. */
-export const COMMON_FPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60] as const;
+/**
+ * Frame rates offered in the project settings UI.
+ *
+ * 100 and 120 are here because the editor can now play them: above 60 fps the
+ * preview decodes the picture ahead of the playhead with WebCodecs instead of
+ * leaving it to the video element, which drops frames at those rates
+ * (engine/PlaybackDecoder). A camera's high frame rate footage is 100 or 120,
+ * and before this a project could only be set to one of those rates by typing
+ * the number in by hand.
+ */
+export const COMMON_FPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 100, 120] as const;
 
 export interface ProjectState {
   /**

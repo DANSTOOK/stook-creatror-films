@@ -22,7 +22,10 @@ import { _electron as electron } from 'playwright';
  *   - the playhead: whether it kept to real time;
  *   - paused, with nothing changing: how often the viewer draws all the same.
  *
- * VIEWER_FORMATS=1080p60,4k120 picks some; VIEWER_SECONDS sets the length
+ * VIEWER_FORMATS=1080p60,4k120 picks some; VIEWER_SECONDS sets the length,
+ * VIEWER_NO_DECODER=1 plays on the video element instead of the playback
+ * decoder (engine/PlaybackDecoder), which is what the rates above 60 fps are
+ * compared against
  * played (5). Writes only into its own work folder; the window is never shown.
  */
 
@@ -98,6 +101,9 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
     await window.getByRole('button', { name: 'Blank project' }).click({ force: true, timeout: 30_000 });
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
+    // VIEWER_NO_DECODER=1 plays on the video element as the editor did before
+    // the playback decoder, so the two paths can be compared on one machine.
+    if (process.env.VIEWER_NO_DECODER === '1') await window.evaluate(() => { window.__scfNoPlaybackDecoder = true; });
     const gpu = await window.evaluate(() => window.filmora.gpuReport?.().catch(() => null));
     console.log(`GPU: ${gpu?.devices?.find((device) => device.active)?.name ?? '?'}`);
     await app.evaluate(({ dialog }, list) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: list }); }, files.map((format) => format.file));
@@ -137,7 +143,8 @@ async function main() {
       const playGpu = new Promise((done) => setTimeout(() => sampleGpu(Math.max(1000, seconds * 1000 - 600)).then(done), 1000));
       const measured = await window.evaluate(async ([assetUri, playSeconds, fps, onlyNew]) => {
         const renderer = window.__scfRenderer();
-        const video = renderer.media.get(renderer.media.previewUriFor(assetUri));
+        const previewUri = renderer.media.previewUriFor(assetUri);
+        const video = renderer.media.get(previewUri);
         if (!(video instanceof HTMLVideoElement)) return { error: 'no video element' };
         const fileFps = fps;
         let lastMediaTime = null;
@@ -160,7 +167,7 @@ async function main() {
           drawnFrame = frame;
           const started = performance.now();
           const result = original.apply(this, args);
-          draws.push({ ms: performance.now() - started, shows: lastMediaTime });
+          draws.push({ ms: performance.now() - started, shows: lastMediaTime, drew: renderer.shownRevision(previewUri) });
           return result;
         };
         const intervals = [];
@@ -194,7 +201,12 @@ async function main() {
         window.__scfStore.getState().setPlaying(false);
         const gaps = presented.slice(1).map((time, index) => time - presented[index]);
         const skipped = gaps.reduce((sum, gap) => sum + Math.max(0, Math.round(gap * fileFps) - 1), 0);
-        const shown = new Set(draws.map((draw) => draw.shows).filter((time) => time !== null));
+        // What reached the eye, counted the same way on both paths: which
+        // frame of the file the picture drawn was. The element's own presented
+        // frames are reported beside it, and are 0 while the decoder plays
+        // (engine/PlaybackDecoder pauses the element it has taken over).
+        const shown = new Set(draws.map((draw) => draw.drew).filter((revision) => revision !== undefined && revision !== null));
+        const playback = renderer.playbackCounts();
         return {
           elapsed,
           refreshMs: intervals,
@@ -208,6 +220,8 @@ async function main() {
           playheadSpeed: (frame1 - frame0) / fileFps / elapsed,
           seeks,
           drawn: renderer.drawnSize,
+          ready: playback.ready,
+          late: playback.late,
         };
       }, [uri, seconds, format.fps, process.env.VIEWER_ONLY_NEW === '1']);
       if (measured.error) {
@@ -229,13 +243,15 @@ async function main() {
         longFrames: long,
         speed: Number(measured.playheadSpeed.toFixed(3)),
         seeks: measured.seeks,
+        decodedAhead: measured.ready,
+        lateDraws: measured.late,
         drawnAt: `${measured.drawn.width}x${measured.drawn.height}`,
         idleDraws: idle,
         gpuPaused: idleLoad,
         gpuPlaying: await playGpu,
       };
       rows.push(row);
-      console.log(`${row.format.padEnd(9)} screen ${row.hz} Hz | decoder ${row.decoderFps} fps (${row.skipped} skipped, ${row.dropped} dropped) | viewer ${row.draws} draws/s, p50 ${row.drawP50} p95 ${row.drawP95} ms, shows ${row.shownFps} different frames/s at ${row.drawnAt} | ${row.longFrames} long frames | playhead x${row.speed} | ${row.seeks} seeks | paused: ${row.idleDraws} draws/s | GPU paused ${row.gpuPaused ? `${row.gpuPaused.load}% ${row.gpuPaused.watts} W` : '?'}, playing ${row.gpuPlaying ? `${row.gpuPlaying.load}% ${row.gpuPlaying.watts} W` : '?'}`);
+      console.log(`${row.format.padEnd(9)} screen ${row.hz} Hz | decoder ${row.decoderFps} fps (${row.skipped} skipped, ${row.dropped} dropped) | viewer ${row.draws} draws/s, p50 ${row.drawP50} p95 ${row.drawP95} ms, shows ${row.shownFps} different frames/s at ${row.drawnAt} (${row.decodedAhead} decoded ahead, ${row.lateDraws} late) | ${row.longFrames} long frames | playhead x${row.speed} | ${row.seeks} seeks | paused: ${row.idleDraws} draws/s | GPU paused ${row.gpuPaused ? `${row.gpuPaused.load}% ${row.gpuPaused.watts} W` : '?'}, playing ${row.gpuPlaying ? `${row.gpuPlaying.load}% ${row.gpuPlaying.watts} W` : '?'}`);
     }
   } finally {
     await app.close().catch(() => undefined);

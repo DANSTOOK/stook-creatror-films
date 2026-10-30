@@ -52,7 +52,7 @@ export function frameFor(shape: { w: number; h: number }, short: number): { widt
   const long = Math.round((short * Math.max(shape.w, shape.h)) / Math.min(shape.w, shape.h) / 2) * 2;
   return shape.w >= shape.h ? { width: long, height: short } : { width: short, height: long };
 }
-const RATES = [24, 25, 30, 50, 60];
+const RATES = [24, 25, 30, 50, 60, 120];
 
 /** Entrance stagger: 30 ms a step, six steps at most, so a long list does not keep arriving. */
 const stagger = (index: number): CSSProperties => ({ ['--delay' as string]: `${Math.min(index, 6) * 30}ms` });

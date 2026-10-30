@@ -3,6 +3,7 @@ import { Compositor, type ClipSource, type CompositorOptions, type ViewerCompare
 import { LUTLoader } from './LUTLoader';
 import { MediaSourceRegistry } from './MediaSourceRegistry';
 import { ScrubDecoder } from './ScrubDecoder';
+import { PlaybackDecoder } from './PlaybackDecoder';
 import { keepScrubbers } from './scrubHandover';
 import { SequentialVideoReader, forgetTrack, presentationTimes } from './SequentialVideoReader';
 import { FrameCheck } from './frameCheck';
@@ -447,6 +448,92 @@ export class FrameRenderer {
     return { texture: held, flipY: true };
   }
 
+  /**
+   * Above this rate the picture comes from a WebCodecs reader while playing
+   * rather than from the video element, which does not keep up past it. See
+   * engine/PlaybackDecoder for the measurements.
+   */
+  static readonly HIGH_RATE_FPS = 60;
+
+  /** Forward decoders for a playing playhead, by clip and file. See PlaybackDecoder. */
+  private readonly players = new Map<string, PlaybackDecoder>();
+
+  /** Close the playback decoders `keep` no longer needs; hand over as the scrubbers do. */
+  private closePlayers(keep: readonly Clip[] = []): void {
+    keepScrubbers(
+      this.players,
+      new Map(keep.map((clip) => {
+        const uri = this.laneFor(clip.id) ?? this.media.previewUriFor(clip.sourceUri);
+        return [FrameRenderer.scrubKey(clip, uri), uri];
+      })),
+    );
+  }
+
+  /**
+   * Which frame of `uri` the last draw actually showed: `uri:N`, whichever
+   * path made the picture - the element's own time, or a decoded frame. What
+   * reaches the eye is counted with it (tests/perf/viewer-rates).
+   */
+  shownRevision(uri: string): string | undefined {
+    return this.textures.revisionOf(uri);
+  }
+
+  /** What the playback decoders have managed, for a test and for the log. */
+  playbackCounts(): { ready: number; late: number } {
+    let ready = 0;
+    let late = 0;
+    for (const player of this.players.values()) {
+      ready += player.counts.ready;
+      late += player.counts.late;
+    }
+    return { ready, late };
+  }
+
+  /**
+   * A playing clip's picture, decoded ahead of the playhead.
+   *
+   * Null means this clip is not on that path - the file cannot be read by
+   * WebCodecs - and the caller plays it on the element as it always did. A
+   * decoder that has a picture of its own but not of THIS frame holds the one
+   * it had: handing the frame back to the element for one draw would start it
+   * playing again and cost both of them the decoder.
+   */
+  private playbackUploadFor(
+    clip: Clip,
+    sourceFrame: number,
+    fps: number,
+    pixelArtViewport: boolean,
+    uri: string,
+  ): ClipSource | null {
+    const key = FrameRenderer.scrubKey(clip, uri);
+    let player = this.players.get(key);
+    if (!player) {
+      player = new PlaybackDecoder(uri, fps, () => this.invalidate());
+      this.players.set(key, player);
+    }
+    if (player.unusable) return null;
+
+    const gl = this.compositor.context;
+    const filter = clip.pixelArt.enabled || pixelArtViewport ? gl.NEAREST : gl.LINEAR;
+
+    const decoded = player.frameFor(sourceFrame);
+    if (decoded) {
+      // The element is not making this picture any more, so it stops decoding.
+      this.media.hold(uri);
+      const texture = this.textures.upload(uri, decoded, `${uri}:${sourceFrame}`);
+      this.textures.setFilter(uri, filter);
+      return { texture, flipY: true };
+    }
+
+    // Nothing yet: while the reader is opening, the element carries the
+    // picture. Once it has carried one, it keeps the last rather than let go.
+    if (player.counts.ready === 0) return null;
+    const held = this.textures.get(uri);
+    if (!held) return null;
+    this.textures.setFilter(uri, filter);
+    return { texture: held, flipY: true };
+  }
+
   /** Non-blocking viewport draw. */
   drawViewport(
     project: ProjectState,
@@ -467,12 +554,26 @@ export class FrameRenderer {
     // Playback runs on the elements; the forward decoders are only for a
     // paused playhead, and hold a hardware decoder each, so they go.
     const scrubbing = !playing && !(window as { __scfNoScrubDecoder?: boolean }).__scfNoScrubDecoder;
+    // Playing a high rate project, the picture is decoded ahead of the
+    // playhead instead (PlaybackDecoder); at 60 and below the element keeps
+    // up, costs no decoder of its own, and is left to it.
+    const decodingPlayback =
+      playing &&
+      project.fps > FrameRenderer.HIGH_RATE_FPS &&
+      !(window as { __scfNoPlaybackDecoder?: boolean }).__scfNoPlaybackDecoder;
     this.updateLanes(project);
-    if (!scrubbing) this.closeScrubbers();
-    else {
-      // Every clip drawn now - the two sides of a transition included.
-      const drawn = Compositor.drawList(project, project.currentFrame).flatMap((entry) => (entry.kind === 'clip' ? [entry.clip] : [entry.from, entry.to]));
-      this.closeScrubbers(drawn.filter((clip) => !clip.title));
+    // Every clip drawn now - the two sides of a transition included.
+    const drawnClips = (): Clip[] =>
+      Compositor.drawList(project, project.currentFrame)
+        .flatMap((entry) => (entry.kind === 'clip' ? [entry.clip] : [entry.from, entry.to]))
+        .filter((clip) => !clip.title);
+    if (!scrubbing && !decodingPlayback) {
+      this.closeScrubbers();
+      this.closePlayers();
+    } else {
+      const drawn = drawnClips();
+      this.closeScrubbers(scrubbing ? drawn : []);
+      this.closePlayers(decodingPlayback ? drawn : []);
     }
     this.tidyTitles(project);
 
@@ -498,7 +599,12 @@ export class FrameRenderer {
         const uri = this.laneFor(clip.id) ?? this.media.previewUriFor(clip.sourceUri);
         const isVideo = this.media.get(uri) instanceof HTMLVideoElement;
         let source: ClipSource | null;
-        if (scrubbing && isVideo) {
+        const played = decodingPlayback && isVideo
+          ? this.playbackUploadFor(clip, sourceFrame, project.fps, pixelArtViewport, uri)
+          : null;
+        if (played) {
+          source = played;
+        } else if (scrubbing && isVideo) {
           source = this.scrubUploadFor(clip, sourceFrame, project.fps, pixelArtViewport, uri);
         } else {
           this.media.syncToFrame(uri, sourceFrame, project.fps, playing);
@@ -984,6 +1090,7 @@ export class FrameRenderer {
     this.stopRetainingMattes();
     this.mattes.dispose();
     this.closeScrubbers();
+    this.closePlayers();
     this.stopSequentialDecode();
     this.textures.dispose();
     this.lutLoader.dispose();
