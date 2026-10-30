@@ -13,8 +13,8 @@ import { _electron as electron } from 'playwright';
  *
  *   1. a tap on a clip selects it, and a tap on the ruler moves the playhead;
  *   2. a finger dragging a clip moves it, by the frames it was dragged - the
- *      browser used to take that gesture for a scroll and send pointercancel,
- *      and nothing moved at all;
+ *      browser used to take that gesture for a scroll halfway through, so the
+ *      clip moved 8 of the 142 frames dragged;
  *   3. a finger on an empty stretch slides the timeline, sideways and down;
  *   4. two fingers spreading zoom in around the time between them, and closing
  *      zoom out;

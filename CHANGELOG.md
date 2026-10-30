@@ -15,6 +15,53 @@ y sin red: **129/129** con la v1.95.0-beta.1 (ninguna petición a la red).
 
 ---
 
+## v1.97.0-beta.1 — La aplicación se maneja con los dedos
+2026-10-30 · pre-release para probar · lo pedido: «realiza funcionamiento de la aplicación para usar el touch, ya que quiero probar en laps con touch»
+
+### Añadido
+- **El editor responde al dedo**, para portátiles con pantalla táctil. Antes
+  funcionaba poco más que el toque suelto: medido con táctil emulado, **un
+  arrastre de 224 px movía el clip 8 fotogramas en vez de los 142** que tocaban,
+  porque el navegador se quedaba el gesto a mitad y lo daba por un
+  desplazamiento. Ahora el lienzo de la línea de tiempo y el del visor se quedan
+  el gesto, y:
+  - **un toque selecciona** un clip, y en la regla mueve el cabezal (esto ya
+    iba);
+  - **un dedo arrastra** de principio a fin: clips, recortes y todo lo que ya
+    hacía el ratón;
+  - **un dedo sobre un hueco vacío desliza la línea de tiempo**, a lo ancho y a
+    lo alto a la vez (antes no deslizaba nada);
+  - **dos dedos amplían y reducen**, y el instante que queda entre ellos se
+    mantiene ahí mientras se abre o se cierra el zoom (antes el pellizco no
+    hacía nada);
+  - **mantener el dedo sobre un clip abre su menú**, donde el ratón haría clic
+    derecho (antes no abría nada);
+  - en el **visor**, el dedo mueve y coloca títulos y stickers sin que el
+    navegador pueda quedarse el gesto.
+  - Un dedo que se pierda a mitad de gesto (la ventana pierde el foco, el
+    sistema cancela el toque) ya no deja rastro: el siguiente toque empieza la
+    cuenta de cero, así que no se confunde con el segundo dedo de un pellizco.
+
+### Comprobado
+- **Prueba nueva** `tests/ui/touch.mjs` (**10/10**), con el táctil del propio
+  navegador, que es el mismo que recibe un portátil táctil:
+  - un toque sobre un clip lo selecciona; en la regla, el cabezal se mueve;
+  - un arrastre de 224 px mueve el clip **exactamente los 142 fotogramas** que
+    corresponden a ese zoom;
+  - un dedo en un hueco vacío desliza la vista a lo ancho y a lo alto, justo lo
+    arrastrado;
+  - dos dedos separándose pasan de 2 a 5 píxeles por fotograma, y cerrándose
+    vuelven a 1;
+  - mantener el dedo abre el menú del clip, con sus 18 opciones;
+  - en el visor, el título se mueve los (120, −60) píxeles arrastrados y el
+    lienzo declara `touch-action: none`;
+  - sin errores en la página ni en el registro.
+  - **Con el código de antes esta prueba da 4 de 10**: fallan el arrastre
+    completo, el deslizamiento, el pellizco en los dos sentidos, el menú por
+    pulsación larga y el `touch-action` del visor.
+- **Batería completa de interfaz: 82 de 82 archivos de prueba en verde**, con la
+  app de verdad abierta.
+
 ## v1.96.0-beta.3 — La misma v1.96, con el modelo de voz que ahora publican
 2026-10-30 · pre-release para probar
 
