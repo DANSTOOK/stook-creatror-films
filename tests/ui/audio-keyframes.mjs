@@ -53,10 +53,12 @@ async function main() {
   mkdirSync(join(work, 'out'), { recursive: true });
 
   // A picture with a steady tone in it: any change in level or in the balance
-  // between the channels is the editor's doing, not the footage's.
+  // between the channels is the editor's doing, not the footage's. Dark grey
+  // rather than white, because the filmstrip of a white clip would be read as
+  // the white gain line when the drawing is measured off the canvas.
   const sounding = join(work, 'tone.mp4');
   execFileSync(ffmpeg, ['-y', '-v', 'error',
-    '-f', 'lavfi', '-i', `color=c=white:s=640x360:r=${FPS}`,
+    '-f', 'lavfi', '-i', `color=c=0x242424:s=640x360:r=${FPS}`,
     '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
     '-t', String(SECONDS), '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-ac', '2', '-shortest', sounding]);
@@ -200,7 +202,56 @@ async function main() {
     }, ids.tone);
     await sleep(300);
 
-    /* 5. the exported file -------------------------------------------------------------------- */
+    /* 5. the curve on the clip ---------------------------------------------------------------- */
+    await store((id) => {
+      window.__scfStore.getState().selectClips([id]);
+      window.__scfStore.getState().setCurrentFrame(0);
+    }, ids.tone);
+    await sleep(700);
+    /**
+     * Where the white gain line is, down the clip, at a few places along it.
+     *
+     * Read straight off the timeline canvas: for each column, the topmost
+     * near-white pixel inside the lower part of the clip's body, as a share of
+     * the body's height (0 at the top, 1 at the floor). The clip's name is
+     * white too, so the search starts below the name band.
+     */
+    const lineAt = (clipId, shares) => store(([id, at]) => {
+      const state = window.__scfStore.getState();
+      const clip = state.project.clips[id];
+      const row = window.__scfTimelineRow(clip.trackId);
+      const canvas = document.querySelector('[data-testid="timeline-canvas"]');
+      const rect = canvas.getBoundingClientRect();
+      const scale = canvas.width / rect.width;
+      const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      const left = clip.startFrame * state.ui.pixelsPerFrame - state.ui.scrollLeftPx;
+      const width = clip.durationFrames * state.ui.pixelsPerFrame;
+      // Below the name band, and inside the body.
+      const from = row.top + 22;
+      const to = row.top + row.height - 4;
+      return at.map((share) => {
+        const column = Math.round((left + share * width) * scale);
+        for (let y = Math.round(from * scale); y < Math.round(to * scale); y += 1) {
+          const index = (y * canvas.width + column) * 4;
+          const low = Math.min(data[index], data[index + 1], data[index + 2]);
+          const high = Math.max(data[index], data[index + 1], data[index + 2]);
+          if (low > 200 && high - low < 25) {
+            return Number((((y / scale) - from) / (to - from)).toFixed(3));
+          }
+        }
+        return null;
+      });
+    }, [clipId, shares]);
+
+    const curve = await lineAt(ids.tone, [0.05, 0.5, 0.95]);
+    check('the curve is drawn on the clip, falling from left to right',
+      curve.every((share) => share !== null) && curve[0] < curve[1] - 0.08 && curve[1] < curve[2] - 0.08,
+      `down the body: ${JSON.stringify(curve)} (0 is the top)`);
+
+    const flat = await lineAt(ids.quiet, [0.5]);
+    check('a clip whose gain does not move has no line at all', flat[0] === null, JSON.stringify(flat));
+
+    /* 6. the exported file -------------------------------------------------------------------- */
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, join(work, 'out'));
     await window.getByRole('button', { name: 'Export', exact: true }).click({ timeout: 15_000 });
     const panel = window.getByRole('dialog', { name: 'Export' });

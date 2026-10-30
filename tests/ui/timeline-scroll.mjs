@@ -220,7 +220,73 @@ async function main() {
       check('a clip on the last track can be clicked down there', false, 'no clip could be made for the check');
     }
 
+    /* A clip selected out of sight is brought into view -------------------------------------------- */
+    if (clipId) {
+      // Back to the top, where the clip on the last track cannot be seen, and
+      // then selected without the timeline being touched - as happens when a
+      // clip is picked from the viewer or stepped to with the keyboard.
+      await scrollTo(0);
+      await store((id) => window.__scfStore.getState().selectClips([]), clipId);
+      await sleep(200);
+      const before = (await body()).top;
+      await store((id) => window.__scfStore.getState().selectClips([id]), clipId);
+      await sleep(400);
+      const after = (await body()).top;
+      const visible = await store((id) => {
+        const state = window.__scfStore.getState();
+        const clip = state.project.clips[id];
+        const row = window.__scfTimelineRow(clip.trackId);
+        const canvas = document.querySelector('[data-testid="timeline-canvas"]').getBoundingClientRect();
+        // Where the row is drawn in the canvas. On screen means wholly below
+        // the ruler - a row scrolled to behind it cannot be clicked.
+        const ruler = 24; // RULER_HEIGHT
+        return { top: row.top, height: row.height, canvasHeight: canvas.height, onScreen: row.top >= ruler && row.top + row.height <= canvas.height + 1 };
+      }, clipId);
+      check('a clip selected while out of sight brings its track into view',
+        before === 0 && after > 10 && visible.onScreen,
+        `scrollTop ${before} -> ${after}; the row is now at ${Math.round(visible.top)} of ${Math.round(visible.canvasHeight)}`);
+
+      // And a clip already in view does not move the timeline at all.
+      const held = (await body()).top;
+      await store((id) => {
+        window.__scfStore.getState().selectClips([]);
+        window.__scfStore.getState().selectClips([id]);
+      }, clipId);
+      await sleep(350);
+      check('a clip already in view is left exactly where it is', (await body()).top === held, `scrollTop stayed at ${held}`);
+    } else {
+      check('a clip selected while out of sight brings its track into view', false, 'no clip could be made for the check');
+      check('a clip already in view is left exactly where it is', false, 'no clip could be made for the check');
+    }
+
+    /* A track added above is not born behind the ruler --------------------------------------------- */
+    // A captions track goes ABOVE the others, so on a timeline already
+    // scrolled its row used to be drawn under the ruler: it held its clips and
+    // could not be clicked.
+    await scrollTo(100000);
+    const scrolled = (await body()).top;
+    const born = await store(() => {
+      const id = window.__scfStore.getState().addCaptionTrack(
+        { subtitles: [{ startMs: 0, endMs: 1500, text: 'Una frase.' }] },
+        { preset: 'classic', language: 'es' },
+      );
+      return id;
+    });
+    await sleep(500);
+    const bornRow = await store((trackId) => {
+      const row = window.__scfTimelineRow(trackId);
+      const canvas = document.querySelector('[data-testid="timeline-canvas"]').getBoundingClientRect();
+      const ruler = 24; // RULER_HEIGHT
+      return row ? { top: row.top, height: row.height, canvasHeight: canvas.height, clear: row.top >= ruler && row.top + row.height <= canvas.height + 1 } : null;
+    }, born);
+    check('a track added above, on a scrolled timeline, is brought into view instead of hiding behind the ruler',
+      bornRow !== null && bornRow.clear,
+      `was at scrollTop ${scrolled}; the new row is drawn at ${bornRow ? Math.round(bornRow.top) : 'nowhere'} of ${bornRow ? Math.round(bornRow.canvasHeight) : '?'}`);
+
     /* The ruler stays readable ------------------------------------------------------------------------ */
+    // Scrolled again: revealing the new track above took the view to the top.
+    await scrollTo(100000);
+    await sleep(200);
     const ruler = await window.evaluate(() => {
       const canvas = document.querySelector('[data-testid="timeline-canvas"]');
       let element = canvas?.parentElement ?? null;

@@ -288,6 +288,18 @@ export function Timeline(): JSX.Element {
    * being taken for a scroll.
    */
   const touchesRef = useRef(new Map<number, { x: number; y: number }>());
+  /**
+   * Set while a press on the canvas is being answered, so the selection it
+   * makes is not then revealed.
+   *
+   * A clip clicked was in front of the user's eyes already; scrolling the view
+   * under their hand moves the clip out from under the pointer, which breaks
+   * the very next thing they do with it - a right-click on a clip only half in
+   * view opened the menu of whatever slid into its place (tests/ui/tts-plus).
+   * The reveal is for a selection made somewhere else: the viewer, the
+   * keyboard, the transcript.
+   */
+  const revealSkipRef = useRef(false);
   /** A finger held still on a clip opens its menu, where a mouse would right-click. */
   const longPressRef = useRef<number | null>(null);
   const cancelLongPress = (): void => {
@@ -414,6 +426,72 @@ export function Timeline(): JSX.Element {
       element.scrollLeft = ui.scrollLeftPx;
     }
   }, [ui.scrollLeftPx, ui.pixelsPerFrame]);
+
+  /**
+   * A selected clip on a track scrolled out of sight is brought into view.
+   *
+   * A clip can be chosen without the timeline being touched - from the viewer,
+   * by a keyboard step, from the transcript - and with many tracks the one
+   * chosen may be below the fold. The time axis has had `revealFrames` for
+   * this all along; the rows had nothing, so the selection simply could not be
+   * seen. It moves as little as it takes, the way a list scrolls to a focused
+   * row, which is why a clip already in view is left exactly where it is -
+   * otherwise every click would jump the view.
+   *
+   * Keyed on the selection alone, and the rows are read inside: `tracks` is a
+   * fresh array on every render, so depending on it would run this - and read
+   * clientHeight, forcing layout - on every change to the project, which
+   * during a burst of undos is every frame.
+   */
+  const revealRow = useCallback(
+    (trackId: string | null | undefined): void => {
+      // Brought about by a press on the canvas: it was already in view. The
+      // flag is consumed here, and let go on pointer up for a press that
+      // selected nothing, so it never swallows the reveal after it.
+      if (revealSkipRef.current) {
+        revealSkipRef.current = false;
+        return;
+      }
+      const element = scrollRef.current;
+      if (!element || !trackId || element.clientHeight <= RULER_HEIGHT) return;
+      const index = timelineRows(store.getState().project.tracks).findIndex((track) => track.id === trackId);
+      if (index < 0) return;
+      // trackRowTop already counts the ruler, and the rows are painted at
+      // trackRowTop - scrollTop: so the stretch that can actually be seen runs
+      // from scrollTop + RULER_HEIGHT (anything above that is behind the
+      // ruler) to scrollTop + clientHeight. Getting this wrong by the ruler's
+      // height put a row exactly where the ruler covers it, and a right-click
+      // then opened the menu of whatever had slid into its place.
+      const top = trackRowTop(index);
+      const bottom = top + trackRowHeight(index);
+      const view = element.scrollTop;
+      if (top < view + RULER_HEIGHT) element.scrollTop = Math.max(0, top - RULER_HEIGHT - 4);
+      else if (bottom > view + element.clientHeight) element.scrollTop = bottom - element.clientHeight + 4;
+    },
+    [store],
+  );
+
+  // A clip selected elsewhere brings its own track into view.
+  const firstSelected = ui.selectedClipIds[0];
+  useLayoutEffect(() => {
+    if (!firstSelected) return;
+    revealRow(store.getState().project.clips[firstSelected]?.trackId);
+  }, [firstSelected, revealRow, store]);
+
+  /**
+   * And so does a track that becomes the chosen one - which is how a track
+   * just added is seen.
+   *
+   * A captions or music track is inserted ABOVE the others, so on a timeline
+   * already scrolled it is born behind the ruler: it existed, held the clips
+   * it should, and could not be clicked. Two effects rather than one because
+   * each has to fire only for its own change: while a clip stays selected its
+   * track would otherwise win over the track just made.
+   */
+  const selectedTrackId = ui.selectedTrackId;
+  useLayoutEffect(() => {
+    revealRow(selectedTrackId);
+  }, [selectedTrackId, revealRow]);
 
   // Ctrl+wheel zooms around the pointer, like every editor. Registered by hand
   // because React's onWheel is passive and cannot stop the page from scrolling.
@@ -1044,6 +1122,10 @@ export function Timeline(): JSX.Element {
 
   const onCanvasContextMenu = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
+      // A right-click never reaches onPointerDown, so the flag is set here too:
+      // the clip it picks is under the pointer already, and scrolling the view
+      // would slide something else under the menu about to open.
+      revealSkipRef.current = true;
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
       const y = canvasY(event.clientY, bounds.top);
@@ -1134,6 +1216,7 @@ export function Timeline(): JSX.Element {
       // The context menu handler owns right-click entirely.
       if (event.button !== 0) return;
 
+      revealSkipRef.current = true;
       const bounds = event.currentTarget.getBoundingClientRect();
       const x = event.clientX - bounds.left;
       const y = canvasY(event.clientY, bounds.top);
@@ -1804,6 +1887,7 @@ export function Timeline(): JSX.Element {
 
   const onPointerUp = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
+      revealSkipRef.current = false;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }

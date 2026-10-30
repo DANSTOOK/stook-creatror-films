@@ -9,6 +9,7 @@ import { frameToPixel, type SnapTarget } from './snapping';
 import { isReversed, sourceFramesUsed, speedLabel } from '@renderer/timing/clipSpeed';
 import type { ClipAppearance, Filmstrip } from '@renderer/media/clipContent';
 import { fadeLengths } from '@renderer/timing/clipFades';
+import { volumePoints } from '@renderer/audio/audioEnvelope';
 import { isFamilyMissing } from '@renderer/text/fonts';
 import { captionSettingsOf } from '@renderer/captions/captionClips';
 import { captionIssues, hasIssues, rulesFor } from '@renderer/captions/rules';
@@ -625,6 +626,82 @@ function drawWaveform(
 }
 
 /**
+ * The gain curve across a clip, in the band `[bandTop, bandBottom]`.
+ *
+ * The line every editor draws over clip audio: gain up the band, so unity runs
+ * along the middle (GAIN_TOP is 2, the loudest the clip can be) and silence
+ * along the floor. Each keyframe is a small square on it. Nothing is drawn for
+ * a clip whose gain does not move - which is almost all of them - so this
+ * costs nothing until a curve exists.
+ *
+ * Only the on-screen stretch is walked, like the waveform's: a curve on a
+ * 45-minute clip zoomed in is millions of pixels wide.
+ */
+function drawGainEnvelope(
+  context: CanvasRenderingContext2D,
+  clip: Clip,
+  x: number,
+  clipWidth: number,
+  bandTop: number,
+  bandBottom: number,
+  canvasWidth: number,
+): void {
+  const points = volumePoints(clip);
+  if (!points || clipWidth < 6 || bandBottom - bandTop < 6) return;
+
+  const perFrame = clipWidth / Math.max(1, clip.durationFrames);
+  const height = bandBottom - bandTop;
+  const xOf = (frame: number): number => x + frame * perFrame;
+  const yOf = (gain: number): number => bandBottom - (Math.min(GAIN_TOP, Math.max(0, gain)) / GAIN_TOP) * height;
+  const onScreen = (left: number, right: number): boolean => right >= -2 && left <= canvasWidth + 2;
+
+  context.save();
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
+  // The dark line first, the white one on it: the curve has to read over a
+  // bright waveform as well as over the clip.
+  for (const [colour, lineWidth] of [[GAIN_SHADE, 4], [GAIN_LINE, 2]] as const) {
+    context.strokeStyle = colour;
+    context.lineWidth = lineWidth;
+    context.beginPath();
+    let drawn = false;
+    for (let index = 0; index < points.length; index += 1) {
+      const at = xOf(points[index].frame);
+      const next = points[index + 1];
+      if (next && !onScreen(at, xOf(next.frame))) {
+        drawn = false;
+        continue;
+      }
+      if (!drawn) {
+        context.moveTo(at, yOf(points[index].value));
+        drawn = true;
+      } else {
+        context.lineTo(at, yOf(points[index].value));
+      }
+    }
+    context.stroke();
+  }
+
+  // The keyframes themselves, where they can be seen and aimed at.
+  const keys = clip.volumeKeyframes ?? [];
+  if (perFrame * Math.max(1, clip.durationFrames) > 24) {
+    for (const keyframe of keys) {
+      const at = xOf(keyframe.frame - clip.startFrame);
+      if (!onScreen(at - 3, at + 3)) continue;
+      const atY = yOf(keyframe.value);
+      context.fillStyle = GAIN_LINE;
+      context.strokeStyle = GAIN_SHADE;
+      context.lineWidth = 1;
+      context.beginPath();
+      context.rect(at - 2.5, atY - 2.5, 5, 5);
+      context.fill();
+      context.stroke();
+    }
+  }
+  context.restore();
+}
+
+/**
  * A filmstrip along the clip, in the band `[bandTop, bandTop + bandHeight]`.
  *
  * Tiles are laid from the clip's start, each as wide as a frame of its shape
@@ -988,6 +1065,20 @@ export const WAVE_FILL: Record<Track['type'], string> = {
 export const SOUND_STRIP = 'rgba(8, 10, 14, 0.35)';
 
 /**
+ * The gain curve drawn across a clip - the "rubber band" every editor draws.
+ *
+ * White (slate-50) over a dark underlay, because it has to read on top of the
+ * waveform rather than on the clip: on the five wave colours it is only 1.16:1
+ * to 1.41:1 by itself - a ghost on a loud passage - which is why the dark line
+ * goes under it first. On that it is 18.5:1, well past the 3:1 a graphic needs
+ * (tests/TimelineEnvelope.test.ts measures both).
+ */
+export const GAIN_LINE = '#f8fafc';
+export const GAIN_SHADE = 'rgba(8, 10, 14, 0.7)';
+/** Where unity gain sits in the band: a curve at 1 runs along the middle. */
+export const GAIN_TOP = 2;
+
+/**
  * The notes under a clip's name - speed, a missing font, keyframes - in the
  * palette's lightest amber and slate, the lightest that keep their hue. On
  * every clip colour they clear 4.5:1 (tests/Titles.test.ts measures them):
@@ -1089,16 +1180,19 @@ function drawClip(
       drawFilmstrip(context, clip, picture, x, clipWidth, bodyTop, pictureHeight, fps, canvasWidth);
       pictureBottom = bodyTop + pictureHeight;
     }
+    let soundTop = bodyTop + NAME_BAND_HEIGHT;
     if (peaks) {
-      let bandTop = bodyTop + NAME_BAND_HEIGHT;
       if (picture) {
         // The sound's own strip under the pictures, darker, so the wave reads on it.
         context.fillStyle = SOUND_STRIP;
         context.fillRect(bodyLeft, pictureBottom, bodyWidth, bodyBottom - pictureBottom);
-        bandTop = pictureBottom + 2;
+        soundTop = pictureBottom + 2;
       }
-      drawWaveform(context, clip, peaks, x, clipWidth, bandTop, bodyBottom - 1, fps, canvasWidth, WAVE_FILL[track.type]);
+      drawWaveform(context, clip, peaks, x, clipWidth, soundTop, bodyBottom - 1, fps, canvasWidth, WAVE_FILL[track.type]);
     }
+    // An animated gain is drawn over the sound, so the curve can be seen on the
+    // clip itself rather than only in the keyframe window.
+    drawGainEnvelope(context, clip, x, clipWidth, soundTop, bodyBottom - 1, canvasWidth);
     context.restore();
   }
 
