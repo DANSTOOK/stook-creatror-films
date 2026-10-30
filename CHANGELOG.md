@@ -7,13 +7,64 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1766 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1784 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.97.0-beta.1 (ninguna petición a la red).
 
 ---
+
+## v1.98.0-beta.1 — El volumen y el paneo se pueden animar
+2026-10-30 · pre-release para probar · lo pedido: «fotogramas clave de audio»
+
+### Añadido
+- **El volumen y el paneo de un clip se animan con fotogramas clave**, como ya
+  se animaba la posición o la opacidad. Las curvas salen en la ventana de
+  fotogramas clave (Shift+K), debajo de las del transform, y **solo en los
+  clips que tienen sonido**: en un título o en una grabación muda no aparecen.
+  - **La curva *es* el volumen**, no se multiplica con el fader: son un solo
+    parámetro, como en cualquier mesa de mezclas. Aun así el fader sigue
+    sirviendo — muestra lo que el clip hace **en el cursor** y al arrastrarlo
+    mueve la curva entera sin deformarla, frenándose si algún fotograma clave
+    llegaría al tope.
+  - **Los fundidos montan encima de la curva**: un fundido de salida acaba en
+    silencio aunque la curva vaya a media ganancia.
+  - **Reproducción, arrastre del cursor y exportación leen la misma curva.**
+    Son tres grafos de audio distintos, y la única forma de que lo exportado
+    suene como lo que oíste es que los tres hagan la misma cuenta.
+  - Las curvas **se mueven con el clip**, y borrar el último fotograma clave
+    deja el fader donde la curva había llegado, sin saltos.
+  - Un tramo recto se programa con dos rampas, uno con curva con dieciséis, y
+    un **mantener** con un par plano que salta.
+  - Redibujar una curva mientras suena **reconstruye la programación** (las
+    rampas ya escritas en el grafo no se pueden doblar), igual que ya pasaba al
+    cambiar un canal de bus. Mover el fader en un clip sin curva sigue siendo
+    un cambio en vivo.
+
+### Comprobado
+- **Lo exportado sigue la curva, medido sobre el archivo.** Con una rampa de
+  ganancia y un barrido de izquierda a derecha, exporté el vídeo desde la app y
+  lo medí con ffmpeg: **cae 14,4 dB** del primer segundo al último, y empieza
+  con el canal izquierdo **16 dB por encima** del derecho y acaba con el derecho
+  **15 dB por encima** del izquierdo.
+- **Prueba nueva** `tests/ui/audio-keyframes.mjs` (**10/10**), en la app real:
+  las filas salen en un clip con sonido y no en uno mudo; el diamante pone el
+  fotograma clave en el cursor con el valor que el clip ya tenía; el fader lee
+  0,5 en el fotograma 179 de una rampa de 1 a 0,5; arrastrarlo de 1 a 0,6 pasa
+  la curva a 0,6 y 0,1 manteniendo su forma; mover el clip del fotograma 0 al 50
+  le lleva la curva a 50 y 229.
+- **12 pruebas unitarias** sobre la curva misma y **6 más** sobre las filas del
+  editor. Una de ellas encontró un fallo de verdad: un **mantener** se
+  convertía en rampa porque la curva solo se muestreaba en los extremos.
+  Arreglado y comprobado.
+- **1784 pruebas unitarias**, **22/22** de extremo a extremo, **41/41** de
+  estrés de proyectos y **83/83 archivos de prueba de interfaz**, todo en verde.
+
+### Sin verificar
+- La curva **no se dibuja todavía sobre el clip en la línea de tiempo**: se ve
+  en la ventana de fotogramas clave, no sobre la forma de onda. Funciona, pero
+  hay que abrir la ventana para verla.
 
 ## v1.97.0-beta.1 — La aplicación se maneja con los dedos
 2026-10-30 · pre-release para probar · lo pedido: «realiza funcionamiento de la aplicación para usar el touch, ya que quiero probar en laps con touch»
