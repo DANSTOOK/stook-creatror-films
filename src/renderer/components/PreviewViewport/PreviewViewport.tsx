@@ -434,7 +434,7 @@ export function PreviewViewport(): JSX.Element {
               width={project.width}
               height={project.height}
               className="block h-full w-full object-contain"
-              style={{ imageRendering: ui.pixelArtViewport || (zoom !== 'fit' && zoom > 1) ? 'pixelated' : 'auto' }}
+              style={{ imageRendering: ui.pixelArtViewport || (zoom !== 'fit' && zoom > 1) ? 'pixelated' : 'auto', touchAction: 'none' }}
             />
             {/* Drag the picture itself: move, scale, rotate. */}
             <ViewportControls />

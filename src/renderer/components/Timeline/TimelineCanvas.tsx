@@ -1685,7 +1685,11 @@ export function TimelineCanvas(props: TimelineCanvasProps): JSX.Element {
       ref={canvasRef}
       data-testid="timeline-canvas"
       style={{ width, height, cursor }}
-      className="block"
+      // The gesture is this canvas's own: without this the browser takes a
+      // finger's drag for a scroll and sends pointercancel, so a clip could not
+      // be dragged and a tap did not even select (measured on a touch laptop).
+      // Panning and zooming by finger are handled in Timeline instead.
+      className="block touch-none"
       onPointerDown={props.onPointerDown}
       onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp}

@@ -176,7 +176,9 @@ type DragMode =
    * so dragging back and forth does not pile trims onto the neighbours.
    */
   | { kind: 'smartTrim'; target: TrimTarget; startFrame: number; base: Record<string, Clip> }
-  | { kind: 'pan'; startClientX: number; startScrollLeft: number }
+  | { kind: 'pan'; startClientX: number; startScrollLeft: number; startClientY?: number; startScrollTop?: number }
+  /** Two fingers: the time between them is held while they spread or close (touch). */
+  | { kind: 'pinch'; startGap: number; startPixelsPerFrame: number; anchorX: number }
   /** An edge of a transition: its length follows, both sides together when centred. */
   | { kind: 'transitionEdge'; transitionId: string; cut: number }
   | {
@@ -278,6 +280,20 @@ export function Timeline(): JSX.Element {
   // pointer handlers read - they are made once with their own dependencies, and
   // a scroll must not leave them working from where the rows used to be.
   const scrollTopRef = useRef(0);
+  /**
+   * The fingers on the canvas, by pointer id. Two of them are a pinch; one on
+   * an empty stretch slides the view about. A mouse never appears here, so
+   * nothing it does changes - and TimelineCanvas asks for touch-action: none,
+   * which is what lets a finger's drag reach these handlers at all instead of
+   * being taken for a scroll.
+   */
+  const touchesRef = useRef(new Map<number, { x: number; y: number }>());
+  /** A finger held still on a clip opens its menu, where a mouse would right-click. */
+  const longPressRef = useRef<number | null>(null);
+  const cancelLongPress = (): void => {
+    if (longPressRef.current !== null) window.clearTimeout(longPressRef.current);
+    longPressRef.current = null;
+  };
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [bodyHeight, setBodyHeight] = useState(0);
@@ -1125,6 +1141,61 @@ export function Timeline(): JSX.Element {
 
       const state = store.getState();
 
+      if (event.pointerType === 'touch') {
+        const touches = touchesRef.current;
+        // The first finger of a gesture starts the count again: a pointercancel
+        // or a window losing focus mid-gesture would otherwise leave a finger
+        // behind, and the next tap would be read as the second of a pinch.
+        if (event.isPrimary) touches.clear();
+        touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        // A second finger: whatever the first was doing stops, and the two of
+        // them zoom around the time between them.
+        if (touches.size === 2) {
+          cancelLongPress();
+          const [first, second] = [...touches.values()];
+          dragRef.current = {
+            kind: 'pinch',
+            startGap: Math.max(1, Math.hypot(first.x - second.x, first.y - second.y)),
+            startPixelsPerFrame: state.ui.pixelsPerFrame,
+            anchorX: (first.x + second.x) / 2 - bounds.left,
+          };
+          return;
+        }
+        if (touches.size > 2) return;
+        // One finger on an empty stretch slides the timeline about, in both
+        // axes. A selection band drawn by accident is not what a finger wants,
+        // and with nothing under it there is nothing else to do there.
+        const onSomething =
+          y < RULER_HEIGHT ||
+          clipAtPoint(x, y) !== null ||
+          transitionAt(transitionBoxes(state.project, tracks, state.ui, { rowTop: trackRowTop, rowHeight: trackRowHeight }), x, y) !== null;
+        if (!onSomething) {
+          dragRef.current = {
+            kind: 'pan',
+            startClientX: event.clientX,
+            startScrollLeft: scrollRef.current?.scrollLeft ?? 0,
+            startClientY: event.clientY,
+            startScrollTop: scrollRef.current?.scrollTop ?? 0,
+          };
+          return;
+        }
+        // Held still on something: its menu.
+        const press = { x: event.clientX, y: event.clientY };
+        cancelLongPress();
+        longPressRef.current = window.setTimeout(() => {
+          longPressRef.current = null;
+          const still = touchesRef.current.get(event.pointerId);
+          if (!still || Math.hypot(still.x - press.x, still.y - press.y) > 10) return;
+          dragRef.current = { kind: 'none' };
+          onCanvasContextMenu({
+            preventDefault: () => undefined,
+            clientX: press.x,
+            clientY: press.y,
+            currentTarget: { getBoundingClientRect: () => bounds },
+          } as unknown as React.MouseEvent<HTMLCanvasElement>);
+        }, 500);
+      }
+
       // The hand tool drags the view, so it takes precedence over everything -
       // including the ruler, which would otherwise scrub out from under it.
       if (state.ui.tool === 'hand') {
@@ -1365,11 +1436,34 @@ export function Timeline(): JSX.Element {
       const state = store.getState();
       const frame = pixelToFrame(x, ui.pixelsPerFrame, ui.scrollLeftPx);
 
+      if (event.pointerType === 'touch') {
+        const touches = touchesRef.current;
+        if (touches.has(event.pointerId)) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        cancelLongPress();
+        if (drag.kind === 'pinch' && touches.size >= 2) {
+          const [first, second] = [...touches.values()];
+          const gap = Math.max(1, Math.hypot(first.x - second.x, first.y - second.y));
+          const wanted = (drag.startPixelsPerFrame * gap) / drag.startGap;
+          const now = store.getState().ui.pixelsPerFrame;
+          // zoomBy keeps the time at anchorX under the fingers as it zooms.
+          if (Math.abs(wanted - now) / now > 0.002) store.getState().zoomBy(wanted / now, drag.anchorX);
+          return;
+        }
+      }
+
+      // A pinch is finished with by the touch branch above; with one finger
+      // left there is nothing more for it to do.
+      if (drag.kind === 'pinch') return;
+
       if (drag.kind === 'pan') {
         // Drag right, content moves right: the view scrolls the other way.
         const container = scrollRef.current;
         if (container) {
           container.scrollLeft = drag.startScrollLeft - (event.clientX - drag.startClientX);
+          // A finger slides it up and down as well; the hand tool keeps to time.
+          if (drag.startClientY !== undefined && drag.startScrollTop !== undefined) {
+            container.scrollTop = drag.startScrollTop - (event.clientY - drag.startClientY);
+          }
         }
         return;
       }
@@ -1712,6 +1806,16 @@ export function Timeline(): JSX.Element {
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      if (event.pointerType === 'touch') {
+        touchesRef.current.delete(event.pointerId);
+        cancelLongPress();
+        // The second finger lifted: the pinch is over rather than half done.
+        if (dragRef.current.kind === 'pinch') {
+          dragRef.current = { kind: 'none' };
+          return;
+        }
       }
 
       const drag = dragRef.current;
