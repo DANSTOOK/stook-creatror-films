@@ -51,7 +51,16 @@ env:
   # Kokoro's engine (sherpa-onnx, Apache-2.0) and model (Kokoro-82M int8, Apache-2.0).
   SHERPA_VERSION: v1.13.8
   SHERPA_SHA256: 3e971a04b2e0ba4dfa53d381a006367ce8c9f5f09b4ae00043e9845c2baded22
-  KOKORO_SHA256: 4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e
+  # k2-fsa republished this package on 2026-10-26 under the same URL, which
+  # stopped the release building. Checked before trusting the new one: GitHub's
+  # own digest for the asset matches what came down; voices.bin, tokens.txt and
+  # the licence inside are byte for byte what the app already shipped (so every
+  # speaker id the catalogue asks for still points at the same voice); only
+  # model.int8.onnx differs, by 763 bytes in 114 MB. Spoken side by side, three
+  # of four voices differ less than the engine differs from itself between two
+  # runs (about -40 dB), and tests/ui/tts.mjs passes 129/129 with it - all
+  # sixteen voices generated and read back by the captions engine.
+  KOKORO_SHA256: 72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653
 
 jobs:
   release:

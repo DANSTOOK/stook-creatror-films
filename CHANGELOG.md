@@ -15,6 +15,36 @@ y sin red: **129/129** con la v1.95.0-beta.1 (ninguna petición a la red).
 
 ---
 
+## v1.96.0-beta.3 — La misma v1.96, con el modelo de voz que ahora publican
+2026-10-30 · pre-release para probar
+
+### Arreglado
+- **Ni la beta.1 ni la beta.2 llegaron a tener instalador.** Las dos fallaron
+  al montar el motor de voz, y los reintentos que puse en la beta.2 no
+  sirvieron porque la causa no era la red: **el 26 de octubre el proyecto
+  k2-fsa volvió a subir el paquete del modelo con el mismo nombre y la misma
+  dirección**, así que ya no coincidía con la suma de control que la
+  compilación exige. La verificación hizo su trabajo: se negó a construir con
+  un archivo que no reconocía.
+- Antes de aceptar el paquete nuevo lo comprobé, en vez de limitarme a copiar
+  la suma nueva:
+  - lo descargué y su suma coincide con la que publica el propio GitHub;
+  - dentro, **`voices.bin`, `tokens.txt` y la licencia son byte a byte los que
+    la app ya traía**, así que los identificadores de las ocho voces siguen
+    señalando a las mismas;
+  - lo único distinto es `model.int8.onnx`, y por 763 bytes de 114 MB;
+  - puestas a hablar una al lado de la otra, tres de las cuatro voces
+    comparadas se diferencian menos de lo que **el propio motor se diferencia
+    de sí mismo entre dos ejecuciones** (unos −40 dB, porque no es
+    determinista);
+  - y la prueba de voces de la app pasa **129/129** con el modelo nuevo: las
+    dieciséis voces se generan y el motor de subtítulos las vuelve a leer.
+- Los reintentos de la beta.2 se quedan igualmente: siguen siendo útiles para
+  una descarga que se corte de verdad.
+
+El contenido de la aplicación es **exactamente el de la v1.96.0-beta.1**, que
+se detalla más abajo.
+
 ## v1.96.0-beta.2 — La misma v1.96, compilada otra vez
 2026-10-29 · pre-release para probar
 
