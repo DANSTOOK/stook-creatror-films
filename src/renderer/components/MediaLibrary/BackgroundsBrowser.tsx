@@ -76,6 +76,8 @@ export function BackgroundsBrowser(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<BackgroundGroup | 'all'>('all');
   const [query, setQuery] = useState('');
+  // A still that drifts, not a video loop: the hint beside it says which.
+  const [motion, setMotion] = useState(false);
   // The project's shape, which the tiles take: a vertical edit shows vertical tiles.
   const aspect = useProjectStore((state) => state.project.width / state.project.height);
 
@@ -83,7 +85,7 @@ export function BackgroundsBrowser(): JSX.Element {
     if (!hasNativeBridge()) return;
     setBusy(true);
     try {
-      const clipId = await addBackground(background.id);
+      const clipId = await addBackground(background.id, { motion });
       if (clipId) notify(t('background.added', { name: t(background.label) }), 'success');
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error), 'error');
@@ -133,6 +135,16 @@ export function BackgroundsBrowser(): JSX.Element {
           </button>
         ))}
       </div>
+      <label className="mb-3 flex items-center gap-2 px-0.5 text-2xs leading-relaxed text-slate-300">
+        <input
+          type="checkbox"
+          data-testid="background-motion"
+          className="shrink-0"
+          checked={motion}
+          onChange={(event) => setMotion(event.target.checked)}
+        />
+        <span>{t('background.motion')}</span>
+      </label>
       {shown.map(({ group: id, backgrounds }) => (
         <section key={id} className="mb-3" data-testid={`background-group-${id}`}>
           <h3 className="section-title mb-1.5 px-0.5">{t(GROUP_LABEL[id])}</h3>

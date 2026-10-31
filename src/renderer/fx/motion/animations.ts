@@ -42,7 +42,10 @@ export type ClipAnimationId =
   | 'spinOut'
   | 'pulse'
   | 'sway'
-  | 'float';
+  | 'float'
+  | 'driftSlow'
+  | 'breathSlow'
+  | 'glideSlow';
 
 /** A pose relative to the clip's own: scale and opacity multiply, the rest add. */
 export interface AnimationPose {
@@ -162,6 +165,22 @@ const SPECS: Record<ClipAnimationId, AnimationSpec> = {
   sway: { phase: 'loop', seconds: 2.4, pose: (u) => ({ rotation: 2 * Math.sin(u * Math.PI * 2), scale: 1.06 }) },
   // Drifting up and down as if on water, a touch closer so no edge shows.
   float: { phase: 'loop', seconds: 2.4, pose: (u) => ({ y: 0.018 * Math.sin(u * Math.PI * 2), scale: 1.05 }) },
+  /*
+   * The slow three, for a BACKGROUND rather than a sticker.
+   *
+   * The loops above turn in one to two and a half seconds, which is right for
+   * a heart that pulses behind a caption and wrong for a whole frame: a
+   * background that moves at that rate reads as a camera being jogged. These
+   * take fourteen to twenty seconds to come round, which is slow enough that
+   * the picture is never still and the movement is never the thing you watch.
+   * Each sits a little closer than the frame so no edge ever shows.
+   */
+  // A slow pan across, with the push-in that makes the pan readable.
+  driftSlow: { phase: 'loop', seconds: 18, pose: (u) => ({ x: 0.03 * Math.sin(u * Math.PI * 2), scale: 1.08 }) },
+  // Breathing in and out: no pan at all, for a background behind text.
+  breathSlow: { phase: 'loop', seconds: 14, pose: (u) => ({ scale: 1.06 + 0.04 * Math.sin(u * Math.PI * 2) }) },
+  // A diagonal glide, the two axes a quarter turn apart so it never retraces its path.
+  glideSlow: { phase: 'loop', seconds: 20, pose: (u) => ({ x: 0.025 * Math.sin(u * Math.PI * 2), y: 0.02 * Math.cos(u * Math.PI * 2), scale: 1.09 }) },
 };
 
 export const CLIP_ANIMATIONS: readonly ClipAnimationId[] = Object.keys(SPECS) as ClipAnimationId[];

@@ -2,6 +2,8 @@ import { t } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useHistoryStore } from '@renderer/store/useHistoryStore';
 import { buildAsset } from '@renderer/media/importMedia';
+import { applyClipAnimation } from '@renderer/fx/motion/apply';
+import type { ClipAnimationId } from '@renderer/fx/motion/animations';
 import { backgroundById, type Background } from './catalog';
 
 /**
@@ -26,7 +28,16 @@ export function drawBackground(canvas: HTMLCanvasElement, background: Background
   background.draw(context, width, height);
 }
 
-export async function addBackground(backgroundId: string): Promise<string | null> {
+/**
+ * The loop a moving background gets. A still that drifts is not a video loop,
+ * and the panel says so: what moves is the picture, slowly, by the same
+ * machinery that makes a sticker sway (fx/motion). The slow loops take 14 to 20
+ * seconds to come round, so the frame is never still and the movement is never
+ * the thing you watch.
+ */
+export const BACKGROUND_LOOP: ClipAnimationId = 'driftSlow';
+
+export async function addBackground(backgroundId: string, options: { motion?: boolean } = {}): Promise<string | null> {
   const background = backgroundById(backgroundId);
   const api = window.filmora;
   if (!background || !api?.saveSticker || !api.mediaUrl) return null;
@@ -59,6 +70,7 @@ export async function addBackground(backgroundId: string): Promise<string | null
     for (let step = 0; step < rows; step += 1) useProjectStore.getState().moveTrack(trackId, 1);
   }
   useProjectStore.getState().updateClip(clipId, { name: t(background.label) });
+  if (options.motion) applyClipAnimation(clipId, BACKGROUND_LOOP);
   useHistoryStore.getState().squash(mark, 'Add background');
   useProjectStore.getState().setUi({ selectedClipIds: [clipId], selectedTrackId: trackId });
   return clipId;

@@ -1951,6 +1951,7 @@ export const es: Messages = {
   'library.framesTip': 'Marcos dibujados: zona segura, bordes y viñetas',
   'sticker.hint': 'Haz clic en un sticker para ponerlo sobre la imagen en el cabezal. Entra con un salto y sigue moviéndose; muévelo, cambia su tamaño o su animación como cualquier clip.',
   'background.hint': 'Un fondo detrás del metraje, dibujado al tamaño de tu proyecto. Un clic lo pone en una pista al fondo.',
+  'background.motion': 'Con movimiento (una deriva lenta sobre la imagen, no un vídeo en bucle)',
   'background.search': 'Buscar fondos',
   'background.groupAll': 'Todos',
   'background.groupGradients': 'Degradados',

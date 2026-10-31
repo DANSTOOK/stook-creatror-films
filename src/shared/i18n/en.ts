@@ -1952,6 +1952,7 @@ export const en = {
   'library.framesTip': 'Drawn frames: safe area, borders and vignettes',
   'sticker.hint': 'Click a sticker to put it over the picture at the playhead. It pops on and keeps moving; move, size or change its animation like any clip.',
   'background.hint': 'A background behind your footage, drawn at your project’s size. One click puts it on a track at the bottom.',
+  'background.motion': 'With movement (a slow drift over the picture, not a video loop)',
   'background.search': 'Search backgrounds',
   'background.groupAll': 'All',
   'background.groupGradients': 'Gradients',

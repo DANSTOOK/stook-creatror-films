@@ -159,10 +159,33 @@ async function main() {
     check('it says so when nothing is called that', none);
     await window.getByTestId('background-search').fill('');
 
+    console.log('5. with movement');
+    // A still that drifts: the picture gets a slow loop, not a video file.
+    await window.getByTestId('background-motion').check();
+    await window.getByTestId('library-background-grid').click();
+    await window.waitForFunction(() => Object.keys(window.__scfStore.getState().project.clips).length === 3, null, { timeout: 20_000 });
+    await sleep(300);
+    const moving = await window.evaluate(() => {
+      const { project, assets } = window.__scfStore.getState();
+      const clip = Object.values(project.clips).find((candidate) => {
+        const asset = assets.find((item) => item.uri === candidate.sourceUri);
+        return /bg-grid-/.test(asset?.sourcePath ?? "");
+      });
+      return { loop: clip?.fx?.loop?.id ?? null };
+    });
+    // A clip's loop is stored as its id alone; how long it takes to come round
+    // belongs to the animation, and tests/BackgroundCatalog pins that it is slow.
+    check(
+      'a background added with movement carries one of the slow loops',
+      ['driftSlow', 'breathSlow', 'glideSlow'].includes(moving.loop),
+      String(moving.loop),
+    );
+    await window.getByTestId('background-motion').uncheck();
     await window.evaluate(() => window.__scfStore.getState().undo());
     await sleep(300);
     const left = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
-    check('one undo takes the last background off', left === 1, `${left} clip(s) left`);
+    // Three were added by now: the two above and the moving one.
+    check('one undo takes the last background off', left === 2, `${left} clip(s) left`);
 
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
