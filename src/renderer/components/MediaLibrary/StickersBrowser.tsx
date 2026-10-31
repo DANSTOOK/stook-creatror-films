@@ -25,6 +25,8 @@ const GROUP_LABEL: Record<StickerCategory, MessageKey> = {
   nature: 'sticker.groupNature',
   pointers: 'sticker.groupPointers',
   words: 'sticker.groupWords',
+  food: 'sticker.groupFood',
+  travel: 'sticker.groupTravel',
 };
 
 /** Lower case and without accents: "corazon" finds "Corazón". */

@@ -20,8 +20,8 @@ import { _electron as electron } from 'playwright';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'stickers');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-/** How many the catalog has: the first eighteen and the forty-eight of block 7a (stickers/sets). */
-const STICKER_COUNT = 66;
+/** How many the catalog has: eighteen, block 7a's forty-eight (stickers/sets) and block 8's thirty-two (stickers/more). */
+const STICKER_COUNT = 98;
 
 const checks = [];
 const check = (name, passed, detail = '') => {

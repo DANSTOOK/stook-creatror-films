@@ -1,4 +1,5 @@
 import { brass, crash, envelope, held, hiss, midi, noise, panned, room, seeded, snare, tom, tone, wobble, type Graph } from './primitives';
+import { playExtraEffect } from './extraEffects';
 
 /**
  * The sound effects added beside the first fourteen (block 7b): applause and
@@ -289,6 +290,7 @@ export function playMoreEffect(context: Graph, to: AudioNode, id: string): boole
       tone(context, room(context, to, 0.5, 0.3), 0, 600, { glideTo: 1900, peak: 0.6, attack: 0.002, release: 0.14 });
       return true;
     default:
-      return false;
+      // The third set (sounds/extraEffects): the chain carries on there.
+      return playExtraEffect(context, to, id);
   }
 }

@@ -57,6 +57,7 @@ import { useIndicator } from '@renderer/motion/useIndicator';
 import { TransitionsBrowser } from './LibraryBrowsers';
 import { EffectsBrowser } from './EffectsBrowser';
 import { StickersBrowser } from './StickersBrowser';
+import { BackgroundsBrowser } from './BackgroundsBrowser';
 import { SoundsBrowser } from './SoundsBrowser';
 import { useScreenRecordDialog } from '@renderer/capture/ScreenRecordDialog';
 import { TitlesBrowser } from './TitlesBrowser';
@@ -100,15 +101,16 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'sounds', 'voice', 'captions'];
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'sounds', 'voice', 'captions'];
 /** The parts that show the app's own templates, not the project: kept mounted once opened. */
-const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'sounds']);
+const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'sounds']);
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
   transitions: 'library.transitions',
   effects: 'library.effects',
   stickers: 'library.stickers',
+  backgrounds: 'library.backgrounds',
   sounds: 'library.sounds',
   // Text to speech (components/TextToSpeech/VoicePanel).
   voice: 'library.voice',
@@ -128,6 +130,7 @@ const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
   transitions: ArrowLeftRight,
   effects: Sparkles,
   stickers: Smile,
+  backgrounds: ImageIcon,
   sounds: Music2,
   voice: AudioLines,
   captions: Captions,
@@ -144,6 +147,7 @@ const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
   transitions: 'library.transitionsTip',
   effects: 'library.effectsTip',
   stickers: 'library.stickersTip',
+  backgrounds: 'library.backgroundsTip',
   sounds: 'library.soundsTip',
   voice: 'library.voiceTip',
   captions: 'library.captionsTip',
@@ -728,6 +732,7 @@ export function MediaLibrary(): JSX.Element {
             {id === 'transitions' && <TransitionsBrowser />}
             {id === 'effects' && <EffectsBrowser />}
             {id === 'stickers' && <StickersBrowser />}
+            {id === 'backgrounds' && <BackgroundsBrowser />}
             {id === 'sounds' && <SoundsBrowser />}
           </div>
         ) : null,

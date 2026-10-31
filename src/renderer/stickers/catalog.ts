@@ -2,6 +2,7 @@ import type { MessageKey } from '@shared/i18n';
 import type { ClipAnimationId } from '@renderer/fx/motion/animations';
 import { circle, finish, heartPath, lettering, line, starPath, vertical } from './draw';
 import { MORE_WORDS, NATURE, PARTY, POINTERS, REACTIONS, SOCIAL } from './sets';
+import { BLOCK_EIGHT } from './more';
 
 /**
  * Stickers: small pictures to put over the video - a heart, a star, an
@@ -17,7 +18,7 @@ import { MORE_WORDS, NATURE, PARTY, POINTERS, REACTIONS, SOCIAL } from './sets';
  * its own (fx/motion/animations).
  */
 
-export type StickerCategory = 'reactions' | 'shapes' | 'icons' | 'social' | 'party' | 'nature' | 'pointers' | 'words';
+export type StickerCategory = 'reactions' | 'shapes' | 'icons' | 'social' | 'party' | 'nature' | 'pointers' | 'words' | 'food' | 'travel';
 
 export interface Sticker {
   id: string;
@@ -320,8 +321,8 @@ const FIRST: readonly Sticker[] = [
   },
 ];
 
-export const STICKERS: readonly Sticker[] = [...FIRST, ...REACTIONS, ...SOCIAL, ...PARTY, ...NATURE, ...POINTERS, ...MORE_WORDS];
+export const STICKERS: readonly Sticker[] = [...FIRST, ...REACTIONS, ...SOCIAL, ...PARTY, ...NATURE, ...POINTERS, ...MORE_WORDS, ...BLOCK_EIGHT];
 
 /** The groups, in the order the panel shows them: the faces first, as CapCut's opens on its emoji. */
-export const STICKER_CATEGORIES: readonly StickerCategory[] = ['reactions', 'shapes', 'icons', 'social', 'party', 'nature', 'pointers', 'words'];
+export const STICKER_CATEGORIES: readonly StickerCategory[] = ['reactions', 'shapes', 'icons', 'social', 'party', 'food', 'travel', 'nature', 'pointers', 'words'];
 export const stickerById = (id: string): Sticker | undefined => STICKERS.find((sticker) => sticker.id === id);

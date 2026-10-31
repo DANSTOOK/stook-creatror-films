@@ -4,15 +4,15 @@ import { es } from '@shared/i18n/es';
 import { STICKERS, STICKER_CATEGORIES, stickerById } from '@renderer/stickers/catalog';
 
 /**
- * The sticker catalog: sixty-six stickers in eight groups (block 7a), each
+ * The sticker catalog: ninety-eight stickers in ten groups (blocks 7a and 8), each
  * named in both languages, the lettered ones with their words in both.
  * The pictures themselves are judged in the running app (tests/ui/stickers.mjs,
  * tests/ui/stickers-more.mjs); here, what the panel and the drawings rely on.
  */
 
 describe('the sticker catalog', () => {
-  it('has sixty-six stickers, each its own id', () => {
-    expect(STICKERS).toHaveLength(66);
+  it('has ninety-eight stickers, each its own id', () => {
+    expect(STICKERS).toHaveLength(98);
     expect(new Set(STICKERS.map((sticker) => sticker.id)).size).toBe(STICKERS.length);
     expect(stickerById('thumbsUp')?.category).toBe('social');
   });

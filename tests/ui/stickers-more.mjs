@@ -23,7 +23,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'stickers-more');
 const logs = join(work, 'logs');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-const GROUPS = ['reactions', 'shapes', 'icons', 'social', 'party', 'nature', 'pointers', 'words'];
+const GROUPS = ['reactions', 'shapes', 'icons', 'social', 'party', 'food', 'travel', 'nature', 'pointers', 'words'];
 
 const checks = [];
 const check = (name, passed, detail = '') => {
@@ -66,7 +66,7 @@ async function main() {
 
     /* 1. all of them -------------------------------------------------------------------------- */
     const opening = await panel();
-    check('the panel opens on all of them, group by group', opening.pressed.join() === 'all' && opening.groups.map((group) => group.id).join() === GROUPS.join() && opening.tiles.length === 66 && opening.groups.every((group) => group.tiles >= 5),
+    check('the panel opens on all of them, group by group', opening.pressed.join() === 'all' && opening.groups.map((group) => group.id).join() === GROUPS.join() && opening.tiles.length === 98 && opening.groups.every((group) => group.tiles >= 5),
       opening.groups.map((group) => `${group.id} ${group.tiles}`).join(', '));
 
     /* 2. one group at a time --------------------------------------------------------------------- */
@@ -77,7 +77,7 @@ async function main() {
     await sleep(200);
     const back = await panel();
     check('the row of groups shows one at a time, and All brings the rest back',
-      social.groups.length === 1 && social.groups[0].id === 'social' && social.tiles.includes('thumbsUp') && social.pressed.join() === 'social' && back.tiles.length === 66,
+      social.groups.length === 1 && social.groups[0].id === 'social' && social.tiles.includes('thumbsUp') && social.pressed.join() === 'social' && back.tiles.length === 98,
       `${social.groups.map((group) => `${group.id} ${group.tiles}`).join()}; back to ${back.tiles.length}`);
 
     // The row of groups, narrower than its chips in the docked panel: the wheel turns it sideways.
@@ -140,7 +140,7 @@ async function main() {
     check('the search finds by name, whatever the case and the accents',
       heart.tiles.join() === 'heart' && party.tiles.includes('partyFace') && party.tiles.includes('popper') && party.tiles.length === 2,
       `"CORAZON": ${heart.tiles.join()}; "fiesta": ${party.tiles.join()}`);
-    check('it says so when nothing is called that, and empty shows them all again', nothing.tiles.length === 0 && nothing.none && cleared.tiles.length === 66 && !cleared.none,
+    check('it says so when nothing is called that, and empty shows them all again', nothing.tiles.length === 0 && nothing.none && cleared.tiles.length === 98 && !cleared.none,
       `${nothing.tiles.length} ${nothing.none}; ${cleared.tiles.length}`);
 
     check('no errors on the page', issues.length === 0, issues.slice(0, 3).join(' | '));

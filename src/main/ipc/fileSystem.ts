@@ -512,7 +512,11 @@ export function registerFileSystemHandlers(getWindow: () => BrowserWindow | null
     return path;
   });
 
-  /** A sticker's picture, kept in the app's folder (renderer/stickers). */
+  /**
+   * A sticker's or a background's picture, kept in the app's folder
+   * (renderer/stickers, renderer/backgrounds). A background is a bigger PNG -
+   * the project's whole frame - so the ceiling below is what bounds it.
+   */
   ipcMain.handle(IPC.saveSticker, async (_event, id: string, png: ArrayBuffer): Promise<string> => {
     const name = String(id).toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64) || 'sticker';
     if (!(png instanceof ArrayBuffer) || png.byteLength === 0 || png.byteLength > 16 * 1024 * 1024) throw new Error('Not a sticker');

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
 
 /**
- * Forty-six sound effects in six groups, as CapCut's are:
+ * Seventy-two sound effects in six groups, as CapCut's are:
  * `node tests/ui/sounds-more.mjs`
  *
  *   1. the panel lists every effect in its group, then the music;
@@ -93,7 +93,7 @@ async function main() {
     const opening = await panel();
     const effects = opening.groups.filter((group) => group.id !== 'music').reduce((total, group) => total + group.rows, 0);
     check('the panel lists every effect in its group, then the music',
-      opening.groups.map((group) => group.id).join() === [...GROUPS, 'music'].join() && effects === 46 && opening.groups.every((group) => group.rows >= 4),
+      opening.groups.map((group) => group.id).join() === [...GROUPS, 'music'].join() && effects === 72 && opening.groups.every((group) => group.rows >= 4),
       opening.groups.map((group) => `${group.id} ${group.rows}`).join(', '));
 
     /* 2. the row and the search ------------------------------------------------------------- */
@@ -102,7 +102,7 @@ async function main() {
     const nature = await panel();
     await window.getByTestId('sound-filter-all').click();
     await sleep(200);
-    check('the row of groups shows one at a time', nature.groups.length === 1 && nature.groups[0].id === 'nature' && nature.rows.join() === 'thunder,wind,rain,waterDrop', nature.rows.join());
+    check('the row of groups shows one at a time', nature.groups.length === 1 && nature.groups[0].id === 'nature' && nature.rows.join() === 'thunder,wind,rain,waterDrop,birds,crickets,waves,fireCrackle', nature.rows.join());
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('app:menu-command', 'preferences'));
     await window.getByTestId('language-select').selectOption('es');
     await window.keyboard.press('Escape');

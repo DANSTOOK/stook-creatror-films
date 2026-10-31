@@ -8,7 +8,7 @@
  */
 export const LIBRARY_TAB_EVENT = 'scf:library-tab';
 
-export type LibraryTab = 'media' | 'titles' | 'transitions' | 'effects' | 'stickers' | 'sounds' | 'voice' | 'captions';
+export type LibraryTab = 'media' | 'titles' | 'transitions' | 'effects' | 'stickers' | 'backgrounds' | 'sounds' | 'voice' | 'captions';
 
 /**
  * The tab asked for last, until the panel takes it: a panel put away (the

@@ -4,7 +4,7 @@ import { es } from '@shared/i18n/es';
 import { EFFECT_GROUPS, SOUNDS, soundById } from '@renderer/sounds/catalog';
 
 /**
- * The sound catalog: forty-six effects in six groups (block 7b) and
+ * The sound catalog: seventy-two effects in six groups (blocks 7b and 8) and
  * thirteen music tracks (block 7c), each named in both languages. How they sound is judged in the
  * running app (tests/ui/sounds.mjs, tests/ui/sounds-more.mjs); here, what the
  * panel and the files rely on.
@@ -13,8 +13,8 @@ import { EFFECT_GROUPS, SOUNDS, soundById } from '@renderer/sounds/catalog';
 describe('the sound catalog', () => {
   const effects = SOUNDS.filter((sound) => sound.category === 'effects');
 
-  it('has forty-six effects and the music, each its own id - also as a file name', () => {
-    expect(effects).toHaveLength(46);
+  it('has seventy-two effects and the music, each its own id - also as a file name', () => {
+    expect(effects).toHaveLength(72);
     expect(SOUNDS.filter((sound) => sound.category === 'music')).toHaveLength(13);
     expect(new Set(SOUNDS.map((sound) => sound.id)).size).toBe(SOUNDS.length);
     // The app's folder keeps each as "<id, lower case>-v2.wav" (main/ipc/fileSystem): no two may meet there.

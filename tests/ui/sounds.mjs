@@ -58,7 +58,7 @@ async function main() {
     const listed = await window.locator('[data-testid^="library-sound-"]:not([data-testid*="-play-"])').count();
     await window.getByTestId('library-sound-play-ding').click();
     const heard = await window.waitForFunction(() => document.querySelector('[data-testid="library-sound-play-ding"]')?.getAttribute('aria-label')?.startsWith('Stop'), null, { timeout: 20_000 }).then(() => true).catch(() => false);
-    check('the tab lists the effects and the music; Play makes a sound and plays it', listed === 59 && heard, `${listed} sounds, playing ${heard}`);
+    check('the tab lists the effects and the music; Play makes a sound and plays it', listed === 85 && heard, `${listed} sounds, playing ${heard}`);
 
     console.log('2. an effect');
     await window.getByTestId('library-sound-whoosh').click();
