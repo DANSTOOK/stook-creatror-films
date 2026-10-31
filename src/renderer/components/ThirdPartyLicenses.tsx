@@ -1,5 +1,5 @@
 import { useT } from '@renderer/i18n';
-import { EFFECT_CREDITS, GLFX_MIT, GL_TRANSITIONS_MIT, PAGE_CURL_BSD, PENNER_BSD, TRANSITION_CREDITS } from '@renderer/fx/licenses';
+import { EFFECT_CREDITS, GLFX_MIT, GL_TRANSITIONS_MIT, PAGE_CURL_BSD, PENNER_BSD, TRANSITION_CREDITS , TWEMOJI_CC_BY, TWEMOJI_URL } from '@renderer/fx/licenses';
 import { shaderTransitionLabel } from '@renderer/fx/transitions/catalog';
 import { effectLabel } from '@renderer/fx/effects/catalog';
 
@@ -50,6 +50,12 @@ export function ThirdPartyLicenses(): JSX.Element {
         <h3 className="section-title">{t('fx.licenses.keyframes')}</h3>
         <p className="text-xs leading-relaxed text-slate-300">{t('fx.licenses.keyframesIntro')}</p>
         <pre tabIndex={0} aria-label="Easing equations BSD" className={PRE}>{PENNER_BSD}</pre>
+      </section>
+      {/* The emoji (stickers/twemoji): the one artwork here that is not this app’s. */}
+      <section className="space-y-1.5">
+        <h3 className="section-title">{t('fx.licenses.emoji')}</h3>
+        <p className="text-xs leading-relaxed text-slate-300">{t('fx.licenses.emojiIntro', { url: TWEMOJI_URL })}</p>
+        <pre tabIndex={0} aria-label="Twemoji CC-BY 4.0" className={PRE}>{TWEMOJI_CC_BY}</pre>
       </section>
     </div>
   );

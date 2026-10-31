@@ -5,7 +5,7 @@ import { useLanguageStore, useT } from '@renderer/i18n';
 import { notify } from '@renderer/notifications/notifications';
 import { hasNativeBridge } from '@renderer/media/importMedia';
 import { STICKERS, STICKER_CATEGORIES, type Sticker, type StickerCategory } from '@renderer/stickers/catalog';
-import { addSticker, drawSticker } from '@renderer/stickers/addSticker';
+import { addSticker, paintSticker } from '@renderer/stickers/addSticker';
 
 /**
  * The Stickers tab of the library: every sticker as it will look, in its
@@ -25,6 +25,7 @@ const GROUP_LABEL: Record<StickerCategory, MessageKey> = {
   nature: 'sticker.groupNature',
   pointers: 'sticker.groupPointers',
   words: 'sticker.groupWords',
+  emoji: 'sticker.groupEmoji',
   food: 'sticker.groupFood',
   travel: 'sticker.groupTravel',
 };
@@ -40,7 +41,7 @@ function StickerTile({ sticker, hintId, busy, onAdd }: { sticker: Sticker; hintI
     const canvas = canvasRef.current;
     if (!canvas) return;
     // Drawn at twice its size on screen, so it is sharp on a high-density display.
-    drawSticker(canvas, sticker, 192);
+    void paintSticker(canvas, sticker, 192);
   }, [sticker, language]);
   return (
     <li className="min-w-0">

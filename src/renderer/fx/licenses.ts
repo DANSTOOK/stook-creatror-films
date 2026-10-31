@@ -18,6 +18,24 @@ import { EFFECTS } from './effects/catalog';
 
 export const GL_TRANSITIONS_URL = 'https://github.com/gl-transitions/gl-transitions';
 export const GLFX_URL = 'https://github.com/evanw/glfx.js';
+export const TWEMOJI_URL = 'https://github.com/jdecked/twemoji';
+export const TWEMOJI_LICENCE_URL = 'https://creativecommons.org/licenses/by/4.0/';
+
+/**
+ * Twemoji: the only artwork in the app that is somebody else's.
+ *
+ * CC-BY 4.0 asks for three things - credit, a link to the licence, and a note
+ * of whether the work was changed - and all three are here. A hundred and
+ * twenty of the emoji ship, in the stickers panel, in a group of their own
+ * (renderer/stickers/twemoji.ts).
+ */
+export const TWEMOJI_CC_BY = `Copyright 2019 Twitter, Inc and other contributors
+
+Graphics licensed under CC-BY 4.0: https://creativecommons.org/licenses/by/4.0/
+Code licensed under the MIT License.
+
+Changes made: each SVG is copied through with its XML declaration and its
+comments removed, and nothing else. The drawings themselves are untouched.`;
 
 const MIT_BODY = `Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

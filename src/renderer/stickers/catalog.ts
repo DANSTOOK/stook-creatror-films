@@ -2,6 +2,7 @@ import type { MessageKey } from '@shared/i18n';
 import type { ClipAnimationId } from '@renderer/fx/motion/animations';
 import { circle, finish, heartPath, lettering, line, starPath, vertical } from './draw';
 import { MORE_WORDS, NATURE, PARTY, POINTERS, REACTIONS, SOCIAL } from './sets';
+import { TWEMOJI_STICKERS } from './twemoji';
 import { BLOCK_EIGHT } from './more';
 
 /**
@@ -18,7 +19,7 @@ import { BLOCK_EIGHT } from './more';
  * its own (fx/motion/animations).
  */
 
-export type StickerCategory = 'reactions' | 'shapes' | 'icons' | 'social' | 'party' | 'nature' | 'pointers' | 'words' | 'food' | 'travel';
+export type StickerCategory = 'reactions' | 'shapes' | 'icons' | 'social' | 'party' | 'nature' | 'pointers' | 'words' | 'food' | 'travel' | 'emoji';
 
 export interface Sticker {
   id: string;
@@ -26,8 +27,20 @@ export interface Sticker {
   label: MessageKey;
   /** The loop it keeps moving with once it has popped on. */
   loop: ClipAnimationId;
-  /** Draw it into a square `size` px canvas; `words` are its lettering, in the interface's language. */
-  draw(context: CanvasRenderingContext2D, size: number, words: (key: MessageKey) => string): void;
+  /**
+   * Draw it into a square `size` px canvas; `words` are its lettering, in the
+   * interface's language. Absent on a sticker that is a picture rather than a
+   * set of drawing calls - see `art`. Exactly one of the two is there, and
+   * `paintSticker` (addSticker.ts) is what decides between them.
+   */
+  draw?(context: CanvasRenderingContext2D, size: number, words: (key: MessageKey) => string): void;
+  /**
+   * An SVG document, for a sticker that comes as artwork: Twemoji's emoji
+   * (stickers/twemoji.ts). Rasterised at whatever size is asked.
+   */
+  art?: string;
+  /** Which shelf of its group it sits on, for a group with shelves. */
+  shelf?: string;
 }
 
 /* The set ---------------------------------------------------------------------------- */
@@ -321,8 +334,8 @@ const FIRST: readonly Sticker[] = [
   },
 ];
 
-export const STICKERS: readonly Sticker[] = [...FIRST, ...REACTIONS, ...SOCIAL, ...PARTY, ...NATURE, ...POINTERS, ...MORE_WORDS, ...BLOCK_EIGHT];
+export const STICKERS: readonly Sticker[] = [...FIRST, ...REACTIONS, ...SOCIAL, ...PARTY, ...NATURE, ...POINTERS, ...MORE_WORDS, ...BLOCK_EIGHT, ...TWEMOJI_STICKERS];
 
 /** The groups, in the order the panel shows them: the faces first, as CapCut's opens on its emoji. */
-export const STICKER_CATEGORIES: readonly StickerCategory[] = ['reactions', 'shapes', 'icons', 'social', 'party', 'food', 'travel', 'nature', 'pointers', 'words'];
+export const STICKER_CATEGORIES: readonly StickerCategory[] = ['emoji', 'reactions', 'shapes', 'icons', 'social', 'party', 'food', 'travel', 'nature', 'pointers', 'words'];
 export const stickerById = (id: string): Sticker | undefined => STICKERS.find((sticker) => sticker.id === id);

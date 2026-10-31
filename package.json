@@ -109,6 +109,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@twemoji/svg": "^15.0.0",
     "@types/node": "^20.16.5",
     "@types/react": "^18.3.8",
     "@types/react-dom": "^18.3.0",

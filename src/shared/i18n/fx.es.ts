@@ -99,6 +99,8 @@ export const fxEs: Record<keyof typeof fxEn, string> = {
   'fx.licenses.effects': 'Efectos',
   'fx.licenses.transitionsIntro': 'Las transiciones de shader son GL Transitions, cada una del autor indicado a su lado, usadas bajo la licencia que declara su archivo. Los vídeos que hagas con ellas son tuyos, sin condiciones.',
   'fx.licenses.effectsIntro': 'Los efectos marcados glfx.js están adaptados de glfx.js, de Evan Wallace. Los demás son propios de esta aplicación.',
+  'fx.licenses.emoji': 'Emojis',
+  'fx.licenses.emojiIntro': 'Los 120 emojis del grupo «Emojis» del panel de stickers son de Twemoji ({url}): gráficos con licencia CC BY 4.0, código con licencia MIT. Es la única obra gráfica de la aplicación que no está dibujada aquí.',
   'fx.licenses.keyframes': 'Fotogramas clave',
   'fx.licenses.keyframesIntro': 'El editor de fotogramas clave sigue el modelo de Theatre.js (theatre-js/theatre, @theatre/core, Apache-2.0): cada movimiento entre dos fotogramas clave es una curva bezier en el tiempo, o un mantener. Pasarse y volver, Elástico y Rebote son las ecuaciones de suavizado de Robert Penner (BSD).',
   'fx.licenses.ownWork': 'Propio de esta aplicación',

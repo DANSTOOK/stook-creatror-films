@@ -20,8 +20,8 @@ import { _electron as electron } from 'playwright';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'stickers');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-/** How many the catalog has: eighteen, block 7a's forty-eight (stickers/sets) and block 8's thirty-two (stickers/more). */
-const STICKER_COUNT = 98;
+/** How many the catalog has: 98 drawn here and Twemoji's 120 (stickers/twemoji). */
+const STICKER_COUNT = 218;
 
 const checks = [];
 const check = (name, passed, detail = '') => {

@@ -18,14 +18,54 @@ import { stickerById, type Sticker } from './catalog';
 
 const SIZE = 768;
 
-/** Draw a sticker into `canvas`, `size` px square. */
+/**
+ * Draw a sticker into `canvas`, `size` px square.
+ *
+ * Only for the ones this app draws. A sticker that is artwork (Twemoji's
+ * emoji) has no `draw`, and a picture cannot be decoded in the middle of a
+ * synchronous call: use `paintSticker` instead, which handles both.
+ */
 export function drawSticker(canvas: HTMLCanvasElement, sticker: Sticker, size: number): void {
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext('2d');
+  if (!context || !sticker.draw) return;
+  context.clearRect(0, 0, size, size);
+  sticker.draw(context, size, (key: MessageKey) => t(key));
+}
+
+/**
+ * A sticker of either kind into `canvas`, `size` px square.
+ *
+ * Artwork is rasterised through a blob URL rather than a `data:` one: a data
+ * URL puts the whole document in the address, and Chromium's limit on that is
+ * not something to find out about at 768 px. The URL is revoked either way,
+ * including when the picture fails to decode.
+ */
+export async function paintSticker(canvas: HTMLCanvasElement, sticker: Sticker, size: number): Promise<void> {
+  if (sticker.draw) {
+    drawSticker(canvas, sticker, size);
+    return;
+  }
+  if (!sticker.art) return;
   canvas.width = size;
   canvas.height = size;
   const context = canvas.getContext('2d');
   if (!context) return;
   context.clearRect(0, 0, size, size);
-  sticker.draw(context, size, (key: MessageKey) => t(key));
+  const url = URL.createObjectURL(new Blob([sticker.art], { type: 'image/svg+xml' }));
+  try {
+    const picture = new Image();
+    picture.decoding = 'sync';
+    await new Promise<void>((done, fail) => {
+      picture.onload = () => done();
+      picture.onerror = () => fail(new Error(`cannot decode ${sticker.id}`));
+      picture.src = url;
+    });
+    context.drawImage(picture, 0, 0, size, size);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export async function addSticker(stickerId: string): Promise<string | null> {
@@ -35,7 +75,7 @@ export async function addSticker(stickerId: string): Promise<string | null> {
   // The lettering's face, loaded before it is drawn rather than a fallback caught mid-load.
   await document.fonts?.load('900 100px Outfit').catch(() => undefined);
   const canvas = document.createElement('canvas');
-  drawSticker(canvas, sticker, SIZE);
+  await paintSticker(canvas, sticker, SIZE);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) return null;
   const words = sticker.category === 'words' ? `-${useLanguageStore.getState().language}` : '';
