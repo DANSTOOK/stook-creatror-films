@@ -156,6 +156,7 @@ import { withCompound, withoutCompound } from '@renderer/edit/compound';
 import { withAngle, withMulticam } from '@renderer/edit/multicam';
 import { withSplitLayout, type SplitLayout } from '@renderer/edit/splitScreen';
 import { cleanFx, composeFx, fxIsEmpty } from '@renderer/fx/motion/compose';
+import { clearHistoryBurst, flushHistory } from '@renderer/history/burst';
 
 /** Fired when a razor cut is made: `{ frame, trackIds }`, for the timeline's flash. */
 export const CUT_EVENT = 'scf:cut';
@@ -717,6 +718,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   newProject(width = 1920, height = 1080, fps = 30, options = {}) {
     useHistoryStore.getState().clear();
+    clearHistoryBurst();
     const empty = createEmptyProject(width, height, fps);
     set({
       project: options.chosen ? { ...empty, frameChosen: true } : empty,
@@ -739,6 +741,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       );
     }
     useHistoryStore.getState().clear();
+    clearHistoryBurst();
     set({
       // An opened file's frame was not adopted this session, whatever the last project's was.
       adoptedSettingsFrom: null,
@@ -770,6 +773,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   toDocument() {
+    // Saving, autosaving or making a template reads the document straight out:
+    // a queued undo has to have landed first, or what is written is the state
+    // the user already took back.
+    flushHistory();
     const { project, assets, bins } = get();
     return {
       version: PROJECT_FILE_VERSION,
@@ -786,6 +793,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   /* History -------------------------------------------------------------- */
 
   transact(label, mutate, mergeKey) {
+    // A burst of undos may still be queued a frame away; this edit has to be
+    // recorded against the document they leave behind, not the one before them.
+    flushHistory();
     const before = get().project;
     // Captions follow their footage: whatever the edit did to a clip, it did to its captions.
     const after = withContentLength(followCaptions(before, tidyTransitions(mutate(before)), soundOfAssets(get().assets)));

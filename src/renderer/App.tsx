@@ -73,6 +73,7 @@ import { Toaster } from './notifications/Toaster';
 import { TooltipLayer } from './components/Tooltip/Tooltip';
 import { MENU_IMPORT_EVENT } from './components/MediaLibrary/MediaLibrary';
 import type { MenuCommand } from '@shared/types/ipc';
+import { historyStep } from './history/burst';
 
 /** The project logo, bundled by Vite with the rest of the page. */
 const LOGO_URL = new URL('./assets/logo.png', import.meta.url).href;
@@ -563,10 +564,10 @@ export default function App(): JSX.Element {
         void actions.goHome();
         return;
       case 'undo':
-        store.undo();
+        historyStep('undo');
         return;
       case 'redo':
-        store.redo();
+        historyStep('redo');
         return;
       case 'cut':
       case 'copy':

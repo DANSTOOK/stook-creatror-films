@@ -11,6 +11,7 @@ import { heldClockFrom } from '@renderer/timing/playbackHold';
 import { spaceFromSlider } from './spaceFromSlider';
 import { smoothZoom } from '@renderer/components/Timeline/smoothZoom';
 import { useKeyframeWindow } from '@renderer/components/Keyframes/KeyframeWindow';
+import { historyStep } from '@renderer/history/burst';
 
 /**
  * Playback transport.
@@ -346,8 +347,9 @@ export function useEditorShortcuts(): void {
 
       if (modifier && event.key.toLowerCase() === 'z') {
         event.preventDefault();
-        if (event.shiftKey) store.redo();
-        else store.undo();
+        // Through the burst, not the store: a held key repeats faster than the
+        // screen refreshes, and the states in between are never seen.
+        historyStep(event.shiftKey ? 'redo' : 'undo');
         return;
       }
 
@@ -424,7 +426,7 @@ export function useEditorShortcuts(): void {
             return;
           case 'y':
             event.preventDefault();
-            store.redo();
+            historyStep('redo');
             return;
           case 'l':
             // Link the selection: from here on it moves and trims as one.

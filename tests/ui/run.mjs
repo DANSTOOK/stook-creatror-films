@@ -1509,6 +1509,11 @@ async function main() {
     // Each trim is one step, and so is each piece of the setup: nine in all.
     await window.getByTestId('viewer-timecode').click();
     for (let undoStep = 0; undoStep < 9; undoStep += 1) await window.keyboard.press('Control+z');
+    // A burst of undos renders once a frame, not once a press (history/burst.ts),
+    // so the last of the nine lands on the next frame rather than inside the
+    // keypress. Reading the store a frame later is the app's actual contract;
+    // this check used to read it the instant the key went down.
+    await window.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     const afterTrims = await window.evaluate(() => {
       const { project } = window.__scfStore.getState();
       return { clips: Object.keys(project.clips).length, tracks: project.tracks.length };

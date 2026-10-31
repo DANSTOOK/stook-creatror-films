@@ -24,6 +24,13 @@ import { _electron as electron } from 'playwright';
  * up (their scripts: who called, from where), which is what is needed to
  * make them faster. The JS heap is read at the start and the end.
  *
+ * The undo storm is measured twice: once with the driver pressing the keys,
+ * and once with the key REPEATING inside the page, a keydown every 16 ms, which
+ * is what holding Ctrl+Z does and which no round trip over CDP paces.
+ * PERF_UNDO_AB=3 runs three interleaved rounds of both, with the coalescing off
+ * and then on (window.__scfNoHistoryBurst), since on this machine the rounds
+ * differ by more than most changes do.
+ *
  * PERF_GPU picks the GPU (high-performance by default); PERF_ONLY="zoom|scrub"
  * runs only the scenarios whose names match it; PERF_PROXIES=1 builds the
  * footage's proxies first (Media > Proxies), as an editor of 4K would. Results go to
@@ -186,15 +193,54 @@ async function main() {
     }
 
     const only = process.env.PERF_ONLY;
+
+    /*
+     * PERF_TRACE="undos": a real trace around the scenarios whose names match,
+     * because Long Animation Frames only names scripts of 5 ms and more and the
+     * frames that hurt here have none - their time is in something that is not
+     * a JS callback at all. The trace is read back for the longest top-level
+     * slices on the renderer's main thread and for what the collector spent,
+     * which is where the rest of the time has to be.
+     */
+    const tracing = process.env.PERF_TRACE;
+    const cdp = tracing ? await app.context().newCDPSession(window) : null;
+    const traceOf = async (action) => {
+      const events = [];
+      cdp.on('Tracing.dataCollected', ({ value }) => events.push(...value));
+      const done = new Promise((resolve) => cdp.once('Tracing.tracingComplete', resolve));
+      await cdp.send('Tracing.start', {
+        transferMode: 'ReportEvents',
+        traceConfig: { includedCategories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'disabled-by-default-v8.gc'] },
+      });
+      await action();
+      await cdp.send('Tracing.end');
+      await done;
+      cdp.removeAllListeners('Tracing.dataCollected');
+      return events;
+    };
+    const reportTrace = (events) => {
+      const main = events.filter((event) => event.ph === 'X' && typeof event.dur === 'number');
+      const byName = new Map();
+      for (const event of main) byName.set(event.name, (byName.get(event.name) ?? 0) + event.dur / 1000);
+      const slices = [...byName.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+      console.log('        trace, time by slice:');
+      for (const [name, ms] of slices) console.log(`          ${ms.toFixed(1).padStart(8)} ms  ${name}`);
+      const longest = main.sort((a, b) => b.dur - a.dur).slice(0, 6);
+      console.log('        trace, the longest single slices:');
+      for (const event of longest) console.log(`          ${(event.dur / 1000).toFixed(1).padStart(8)} ms  ${event.name}`);
+    };
+
     const scenario = async (name, action, settleMs = 300) => {
       if (only && !new RegExp(only).test(name)) return null;
+      const traced = tracing && new RegExp(tracing).test(name);
+      const act = traced ? async () => reportTrace(await traceOf(action)) : action;
       await sleep(150);
       await window.evaluate(() => {
         window.__perfFrames.length = 0;
         window.__perfLoaf.length = 0;
       });
       const began = Date.now();
-      await action();
+      await act();
       await sleep(settleMs);
       const { times, loaf } = await window.evaluate(() => ({ times: window.__perfFrames.slice(), loaf: window.__perfLoaf.slice() }));
       const gaps = times.slice(1).map((time, index) => time - times[index]);
@@ -450,10 +496,38 @@ async function main() {
 
     /* 13. a storm of undos and redos ----------------------------------------- */
     await window.locator('[data-testid="viewer-timecode"]').click();
-    await scenario('25 undos and 25 redos', async () => {
+    // Interleaved A/B, both paths in this one build: PERF_UNDO_AB=3 runs three
+    // rounds of off-then-on, which is the only honest way to compare on a
+    // machine whose rounds differ more than the change does.
+    const burst = async () => {
       for (let index = 0; index < 25; index += 1) await window.keyboard.press('Control+z');
       for (let index = 0; index < 25; index += 1) await window.keyboard.press('Control+y');
-    }, 600);
+    };
+    // A key REPEATING, dispatched from inside the page: one keydown every 16 ms,
+    // each in its own task, which is what holding Ctrl+Z actually does. The
+    // presses above go through the driver, so each one is a round trip over
+    // CDP and what is measured is partly the driver's pacing, not the app's.
+    const heldKey = (count, interval) => window.evaluate(async ({ presses, every }) => {
+      const key = (ctrlKey, shiftKey) => new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', ctrlKey, shiftKey, bubbles: true, cancelable: true });
+      const tick = () => new Promise((done) => setTimeout(done, every));
+      for (let index = 0; index < presses; index += 1) { window.dispatchEvent(key(true, false)); await tick(); }
+      for (let index = 0; index < presses; index += 1) { window.dispatchEvent(key(true, true)); await tick(); }
+    }, { presses: count, every: interval });
+
+    const rounds = Number(process.env.PERF_UNDO_AB ?? 0);
+    if (rounds > 0) {
+      for (let round = 1; round <= rounds; round += 1) {
+        for (const on of [false, true]) {
+          await window.evaluate((value) => { window.__scfNoHistoryBurst = !value; }, on);
+          await scenario(`25 undos and 25 redos ${on ? 'burst' : 'each '} #${round}`, burst, 600);
+          await scenario(`Ctrl+Z held, 25 and 25 ${on ? 'burst' : 'each '} #${round}`, () => heldKey(25, 16), 600);
+        }
+      }
+      await window.evaluate(() => { delete window.__scfNoHistoryBurst; });
+    } else {
+      await scenario('25 undos and 25 redos', burst, 600);
+      await scenario('Ctrl+Z held, 25 and 25', () => heldKey(25, 16), 600);
+    }
 
     /* 14. typing into a title -------------------------------------------------- */
     await window.evaluate((trackId) => {
