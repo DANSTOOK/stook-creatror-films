@@ -7,11 +7,171 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1807 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **1851 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **88/88 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.0.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v2.1.0-beta.1 — La cámara sigue a la persona, y la biblioteca se llena de verdad
+2026-10-31 · pre-release para probar · lo pedido: cámara lenta y rápida, una cámara que siga a la gente, más textos y encabezados, marcos para vertical, fondos animados, stickers de un stock libre, y arreglar el texto a voz
+
+### Añadido
+- **«La cámara sigue la cara»**, en la pestaña Efectos del inspector: acerca el
+  clip (suave / normal / cerca) y lo **panea para mantener a la persona
+  encuadrada** durante todo el clip, sin cambiar la forma del proyecto. Es la
+  otra mitad de «Reencuadrar a vertical» y la que necesita un podcast: un plano
+  general fijo de alguien hablando se convierte en un plano que le sigue.
+  - La cabeza sale de **la misma matte de personas que ya usan Quitar fondo y
+    Reencuadrar**, así que **no se descarga nada nuevo** y ese modelo sigue
+    bajándose solo si tú lo pides.
+  - Cómo se suaviza está tomado de lo publicado sobre el tema: todas esas
+    tuberías hacen detectar → seguir → ordenar → **camino suavizado**, y usan un
+    filtro de Kalman para predecir al sujeto y quitar el temblor. Aquí los dos
+    trabajos los hacen una **zona muerta** (un movimiento pequeño no mueve la
+    cámara) y una **aproximación exponencial** (cuando sí se mueve, llega
+    suavemente en los segundos que le digas). Si no hay nadie en el cuadro,
+    sostiene el encuadre en vez de irse al centro.
+  - **Panea y no inclina, y está medido.** El estimador de cabeza acierta en
+    horizontal: sobre un fichero 1080p leyó **0,20 y 0,74** donde la persona
+    estaba en **0,187 y 0,773**. En vertical no: el tramo de filas que contiene
+    al sujeto se corta en el pecho, así que leyó **0,62 y 0,55** donde la cabeza
+    estaba en **0,37 y 0,11** — y una cámara apuntada ahí encuadra el pecho y
+    **corta la cabeza por arriba**. Inclinar pide un detector de caras de
+    verdad (BlazeFace de MediaPipe), que es modelo más runtime WebAssembly a
+    descargar: otra decisión, con licencia que leer. La matemática de los dos
+    ejes queda lista detrás de una opción apagada. El Auto Reframe de CapCut y
+    de Premiere tampoco inclinan.
+- **Seis rampas de velocidad más (de 6 a 12):** caída (entra rápido y se queda
+  en lenta), impacto (un instante casi parado y nada más tocado), latigazo
+  (lenta, un golpe por el medio, lenta), respiración, tartamudeo a tiempo y
+  carrerilla. Mismo mecanismo que las seis anteriores, así que el metraje y la
+  duración no cambian: solo qué fotograma se ve cuándo.
+- **Pestaña Fondos: 24 imágenes a pantalla completa** en cuatro grupos —
+  degradados, escenas (playa, montañas, ciudad de noche, bosque, desierto,
+  espacio), patrones y texturas (papel, grano, hormigón, lino, bokeh, mármol).
+  Un clic la pone **en una pista al fondo**, debajo del metraje, y se dibuja **al
+  tamaño de tu proyecto**: 4K da 4K y un proyecto vertical da una imagen
+  vertical, no el recorte de una horizontal.
+  - **Con movimiento**, si lo marcas: el fondo llega con una **deriva lenta**. Y
+    dice lo que es en vez de venderlo de más — «una deriva lenta sobre la
+    imagen, no un vídeo en bucle». Los bucles que había giran en 1 a 2,4 s, que
+    está bien para un corazón detrás de un rótulo y mal para un cuadro entero;
+    los tres nuevos tardan **14 a 20 s** en dar la vuelta.
+- **Pestaña Marcos: 16 marcos** en tres grupos — zona segura, bordes y viñetas.
+  Se ponen **encima** del metraje. Los de zona segura marcan dónde la app donde
+  publicas tapa tu vídeo con sus botones: la franja de la derecha y la banda de
+  abajo.
+  - **No son una copia de la interfaz de TikTok ni de YouTube.** Sus logos, sus
+    botones y su disposición son marca de alguien, y un marco que pareciera el
+    de verdad sería una imitación. Estos están dibujados para **la forma y los
+    márgenes** que esas apps dejan, que es la parte útil y no es de nadie. Los
+    márgenes son a propósito algo anchos: cada versión de esas apps mueve sus
+    botones, y una guía ancha no cuesta nada mientras una estrecha te mete un
+    rótulo debajo de un botón.
+- **Grupo de encabezados en la biblioteca de textos: 12 plantillas** (de 60 a
+  72), que es lo que menos había. Lo básico se queda en 120 px sobre un cuadro
+  de 1080 líneas, que es tamaño de rótulo, no de portada: el grupo nuevo va de
+  **76 px** para un subtítulo espaciado a **260 px** para una portada vertical —
+  portada gigante, título con su subtítulo, pareja editorial, banda amarilla,
+  degradado, encabezado enmarcado, cita, capítulo, encabezado arriba, subtítulo
+  en píldora, subtítulo espaciado y portada vertical.
+- **Stickers: de 98 a 218.** Los 120 nuevos son **emojis de Twemoji** y son la
+  única obra gráfica de la aplicación que no está dibujada aquí: gráficos
+  **CC BY 4.0**, código MIT. La licencia pide crédito, enlace y nota de los
+  cambios, y las tres cosas están en el diálogo de Licencias junto a las de
+  gl-transitions y glfx.js; el único cambio hecho es quitar la declaración XML y
+  los comentarios, los dibujos están intactos.
+  - **120 de los 3.723, y en un grupo aparte.** El panel dibuja cada ficha en su
+    propio lienzo, así que 3.723 fichas serían 3.723 lienzos; y un muro con todo
+    Unicode es un panel peor que un estante con los que la gente busca. Aparte,
+    porque los otros 98 están dibujados con la misma mano y un emoji al lado se
+    ve venido de fuera: un estante propio es honesto, mezclados quedaría
+    simplemente inconsistente.
+- **Sonidos: de 59 a 85.** Veintiséis efectos nuevos en los seis grupos que ya
+  existían, sintetizados aquí como los demás.
+- **El guion de una voz se puede editar y volver a decir**, desde la pestaña
+  Audio del clip. Antes una voz que no te gustaba solo se podía borrar y
+  reescribir el texto en el panel; ahora el clip **recuerda lo que se le pidió
+  decir** y el inspector te lo devuelve delante, editable. Como en Clipchamp.
+  - Dice lo que no hace, en el propio panel: hace un clip nuevo, **así que se
+    pierde el recorte**, y **no vuelve a crear los subtítulos** (son clips
+    propios una vez hechos, y un segundo juego apareciendo en silencio sería
+    peor que ninguno).
+
+### Arreglado
+- **Un texto largo de voz ya no muere al cambiar de pestaña.** `VoicePanel` se
+  montaba solo mientras su pestaña estaba abierta, así que pasar a Stickers lo
+  desmontaba y se llevaba el trabajo en curso — por eso aparecía justo con los
+  textos largos, que son los que tardan. La voz pasa a las pestañas que se
+  mantienen montadas.
+- **Las voces en español suenan como voces en español.** Nueve de los doce
+  personajes hablaban con las voces **Kokoro** (un modelo para ocho idiomas,
+  unos pocos cientos de horas en total, sin cifra por idioma en su propia ficha)
+  mientras el instalador **ya traía cinco voces Piper entrenadas solo en
+  español**, dos de ellas de calidad *high*. Y `es_MX-claude-high`, la mexicana
+  buena, se gastaba en el personaje **robot**, donde el efecto reconstruye la
+  voz y no sobrevive nada de su calidad. Ahora narran, presentan, dan las
+  noticias y anuncian las de calidad alta; las medianas van donde un efecto las
+  tapa. **No hubo que descargar nada**: los modelos estaban ahí sin usarse.
+  - Comprobado y **descartado** para que nadie vuelva a mirar ahí: el
+    fonemizador recibe el idioma correcto, así que esto nunca fue un texto
+    español leído con las reglas del inglés.
+
+### Comprobado
+- **1851 pruebas unitarias** (160 archivos). Nuevas: 15 sobre el encuadre
+  automático y el estimador de cabeza, 4 sobre los personajes de voz —incluida
+  una que detecta un id de voz mal escrito, que antes caía en silencio—, 6 sobre
+  los marcos, 2 sobre los bucles lentos y 2 sobre los stickers.
+- **Pruebas de interfaz nuevas, en la aplicación real:**
+  - `auto-frame.mjs` **10/10** con la matte de verdad sobre un sujeto que cruza
+    el cuadro: el acercamiento exacto, el paneo de **+336 a −336 px**, **ningún**
+    keyframe vertical, y en la imagen renderizada la persona pasa de 0,26 a 0,69
+    sin salirse nunca.
+  - `frames.mjs` **13/13**, con la comprobación que un marco no puede fallar:
+    con un fondo debajo y el borde blanco encima, el centro renderizado sigue
+    siendo **rgb(2,132,199)**, el metraje, y el borde es **rgb(255,255,255)**.
+  - `respeak.mjs` **9/9**: el guion recordado y mostrado, el clip **sustituido**
+    en vez de acompañado, en el mismo fotograma, de un fichero nuevo y 146
+    fotogramas contra 81 porque el texto es más largo, y un deshacer devolviendo
+    la primera voz con sus palabras.
+  - `backgrounds.mjs` **14/14** con el fondo en movimiento.
+- Suite general **127/127**, extremo a extremo **22/22**, proyectos **41/41**.
+
+### Problemas conocidos
+- **El encuadre automático no inclina**, por lo medido más arriba. Inclinar pide
+  un detector de caras.
+- **En un clip de 6 s, solo 14 de 31 muestras encontraron a alguien**, la última
+  a los 3,2 s, así que la cola del clip conserva el último encuadre. Sostener el
+  último encuadre es lo previsto cuando no hay nadie, pero **por qué la matte
+  pierde al sujeto ahí no está explicado todavía**.
+- **Los subtítulos cambian letras con el modelo «Rápido»**, y eso no es un fallo
+  de código: el instalador trae **Whisper small q5_1** y «Preciso»
+  (large-v3-turbo, 574 MB) es una descarga. Whisper small en español cambia
+  letras y palabras. Si te pasa, elige **Preciso** en el desplegable de calidad:
+  el botón Generar te pedirá permiso para descargarlo, viene del repositorio
+  oficial de whisper.cpp y se verifica por SHA-256 antes de usarse.
+  - Descartados por el camino, comprobándolos: no es la codificación (el texto
+    se lee del JSON completo), no son las fuentes (**las 18 del paquete tienen
+    cobertura española completa**, leído el `cmap` de cada fichero), no es el
+    glosario (solo actúa si escribes términos, y su reemplazo se ofrece) y la
+    aplicación **no baja al modelo pequeño en silencio** (si falta, da error).
+- **El fotograma largo de la reproducción sigue siendo del proceso de GPU**,
+  como en la v2.0, y **el 4K a 120 fps sigue en empate**.
+
+### Otros
+- El estilo de los subtítulos —tamaño, color, caja de fondo— **ya existía** y
+  sigue donde estaba: selecciona un clip de subtítulo y abre la pestaña
+  **Estilo** del inspector. No se ha añadido nada ahí.
+- Contadores que fijan las suites, movidos con los catálogos: stickers 98 → 218,
+  sonidos 46 → 72 efectos y 59 → 85 en total, y el grupo «naturaleza» de 4 a 8
+  sonidos. Esos números son para lo que existen las comprobaciones.
+- Una comprobación de los stickers fijaba la lista exacta que devuelve buscar
+  «CORAZON»; el grupo de emojis tiene sus propios corazones, así que ahora fija
+  que el dibujado sigue apareciendo y que no vuelve nada ajeno. **Es un
+  ensanchamiento, no un arreglo.**
 
 ---
 

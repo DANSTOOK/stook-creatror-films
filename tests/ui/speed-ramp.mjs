@@ -83,7 +83,7 @@ async function main() {
       const c = window.__scfStore.getState().project.clips[id];
       return { ramp: c.speedRamp, length: c.durationFrames, offset: c.sourceOffsetFrames };
     }, clipId);
-    check('the dialog draws each curve; Hero is applied', curves === 7 && after.ramp === 'hero', `${curves} curves, ramp ${after.ramp}`);
+    check('the dialog draws each curve; Hero is applied', curves === 13 && after.ramp === 'hero', `${curves} curves, ramp ${after.ramp}`);
     check('the clip keeps its length and its footage', after.length === before.length && after.offset === before.offset, JSON.stringify({ before, after }));
 
     console.log('2. in the export');

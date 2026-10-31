@@ -101,7 +101,7 @@ async function main() {
         names: tabs.map((tab) => tab.textContent?.trim()),
       };
     });
-    check('eight parts in a rail down the side, one under the other, every name shown', rail.orientation === 'vertical' && rail.count === 8 && rail.stacked && rail.sameColumn && rail.named, JSON.stringify(rail));
+    check('ten parts in a rail down the side, one under the other, every name shown', rail.orientation === 'vertical' && rail.count === 10 && rail.stacked && rail.sameColumn && rail.named, JSON.stringify(rail));
     await window.getByTestId('library-tab-media').focus();
     await window.keyboard.press('ArrowDown');
     const afterDown = await window.evaluate(() => document.querySelector('[data-testid="library-rail"] [aria-selected="true"]')?.id);

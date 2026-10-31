@@ -98,7 +98,7 @@ async function main() {
     const glitch = await pick('glitch');
     const glitchIds = await window.evaluate(() => [...document.querySelectorAll('[data-testid^="library-effect-"]')].map((b) => b.getAttribute('data-testid').replace('library-effect-', '')));
     await pick('all');
-    check('the drop-down picks a whole family, or a group: Glitch holds its seven', camera.length === 29 && camera.every((f) => f === 'camera') && glitch.length === 7 && glitchIds.includes('vhs') && glitchIds.includes('glitch'),
+    check('the drop-down picks a whole family, or a group: Glitch holds its seven', camera.length === 32 && camera.every((f) => f === 'camera') && glitch.length === 7 && glitchIds.includes('vhs') && glitchIds.includes('glitch'),
       `${camera.length} camera tiles; glitch: ${glitchIds.join(', ')}`);
 
     console.log('2. the new effects in the export picture');
