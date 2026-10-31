@@ -27,12 +27,13 @@ import type { FrameSize } from './layout';
  * to the project it is put in.
  */
 
-export type TemplateCategory = 'basic' | 'lowerThirds' | 'cinematic' | 'social' | 'callouts' | 'credits' | 'kinetic';
+export type TemplateCategory = 'basic' | 'headings' | 'lowerThirds' | 'cinematic' | 'social' | 'callouts' | 'credits' | 'kinetic';
 
-export const TEMPLATE_CATEGORIES: readonly TemplateCategory[] = ['basic', 'lowerThirds', 'cinematic', 'social', 'callouts', 'credits', 'kinetic'];
+export const TEMPLATE_CATEGORIES: readonly TemplateCategory[] = ['basic', 'headings', 'lowerThirds', 'cinematic', 'social', 'callouts', 'credits', 'kinetic'];
 
 export const CATEGORY_NAME: Record<TemplateCategory, MessageKey> = {
   basic: 'titleLibrary.basic',
+  headings: 'titleLibrary.headings',
   lowerThirds: 'titleLibrary.lowerThirds',
   cinematic: 'titleLibrary.cinematic',
   social: 'titleLibrary.social',
@@ -777,6 +778,91 @@ const ENTRIES: readonly Entry[] = [
     category: 'kinetic',
     style: look({ fontFamily: 'Righteous', fontWeight: 400, fontSize: 120, color: '#f9a8d4', gradientColor: '#8b5cf6', stroke: { color: '#ffffff', width: 3 } }),
     animation: motion('bounce', 'vanish', 0.9, 0.35),
+  },
+  /* Headings and subheadings: big type, for a cover frame or a section card. */
+  {
+    id: 'head-mega',
+    category: 'headings',
+    // 200 px on a 1080-line frame: a fifth of the height in one line, which is
+    // what a cover frame wants and what the Basic group deliberately is not.
+    style: look({ fontFamily: 'Archivo Black', fontWeight: 400, fontSize: 200, uppercase: true, lineHeight: 0.95, letterSpacing: -4, maxWidth: 0.94, shadow: { opacity: 0.35, blur: 24 } }),
+    animation: motion('zoom', 'fade', 0.7, 0.4),
+  },
+  {
+    id: 'head-stack',
+    category: 'headings',
+    // A heading with its subheading under it: the second line at 38 % is the
+    // ratio a print subhead keeps, so the two read as one block.
+    style: look({ fontFamily: 'Outfit', fontWeight: 800, fontSize: 168, lineHeight: 1, letterSpacing: -3, secondaryScale: 0.38, secondaryColor: '#cbd5e1' }),
+    animation: motion('lines', 'lines', 0.9, 0.5),
+  },
+  {
+    id: 'head-rule',
+    category: 'headings',
+    style: look({ fontFamily: 'Playfair Display', fontWeight: 700, fontSize: 150, lineHeight: 1.05, secondaryScale: 0.34, secondaryColor: '#e7e5e4', shadow: NO_SHADOW }),
+    animation: motion('rise', 'lift', 0.8, 0.45),
+  },
+  {
+    id: 'head-band',
+    category: 'headings',
+    style: look({ fontFamily: 'Outfit', fontWeight: 800, fontSize: 132, uppercase: true, letterSpacing: 2, color: '#0f172a', shadow: NO_SHADOW, box: { color: '#fde047', opacity: 1, padding: 30, radius: 0 } }),
+    animation: motion('wipe', 'toLeft', 0.6, 0.35),
+  },
+  {
+    id: 'head-framed',
+    category: 'headings',
+    // Inside a drawn frame. Hollow type - the shot showing through the
+    // letters - is not something a title can be here: a title's colour has to
+    // be a colour, and there is no stroke-only text.
+    style: look({ fontFamily: 'Cinzel', fontWeight: 700, fontSize: 120, uppercase: true, letterSpacing: 4, maxWidth: 0.72, shadow: NO_SHADOW, shape: shape('frame', '#ffffff', 5) }),
+    animation: motion('tracking', 'tracking', 1, 0.5),
+  },
+  {
+    id: 'head-gradient',
+    category: 'headings',
+    style: look({ fontFamily: 'Outfit', fontWeight: 800, fontSize: 176, uppercase: true, lineHeight: 0.98, letterSpacing: -3, color: '#67e8f9', gradientColor: '#7c3aed', shadow: { opacity: 0.4, blur: 20 } }),
+    animation: motion('pop', 'vanish', 0.7, 0.35),
+  },
+  {
+    id: 'head-quote',
+    category: 'headings',
+    style: look({ fontFamily: 'Playfair Display', fontWeight: 600, fontSize: 124, lineHeight: 1.25, maxWidth: 0.8, secondaryScale: 0.4, secondaryColor: '#d6d3d1', shadow: NO_SHADOW }),
+    animation: motion('words', 'fade', 1.2, 0.5),
+  },
+  {
+    id: 'head-chapter',
+    category: 'headings',
+    // A chapter card: the number big, the name small, a rule between them.
+    style: look({ fontFamily: 'Inter', fontWeight: 800, fontSize: 190, letterSpacing: -6, secondaryScale: 0.22, secondaryColor: '#94a3b8', lineHeight: 1.05, shadow: NO_SHADOW }),
+    animation: motion('fade', 'fade', 0.8, 0.5),
+  },
+  {
+    id: 'head-top',
+    category: 'headings',
+    // Anchored to the top: a section heading that leaves the frame to the shot.
+    style: look({ fontFamily: 'Outfit', fontWeight: 800, fontSize: 116, uppercase: true, letterSpacing: 4, anchor: 'top', shadow: { opacity: 0.45, blur: 16 } }),
+    animation: motion('fromLeft', 'toRight', 0.6, 0.35),
+  },
+  {
+    id: 'head-sub-pill',
+    category: 'headings',
+    // A subheading on its own: the pill keeps it readable over any shot.
+    style: look({ fontFamily: 'Inter', fontWeight: 700, fontSize: 84, color: '#0f172a', shadow: NO_SHADOW, box: { color: '#ffffff', opacity: 0.94, padding: 24, radius: 200 } }),
+    animation: motion('rise', 'drop', 0.5, 0.3),
+  },
+  {
+    id: 'head-sub-wide',
+    category: 'headings',
+    style: look({ fontFamily: 'Inter', fontWeight: 600, fontSize: 76, uppercase: true, letterSpacing: 12, maxWidth: 0.86, shadow: { opacity: 0.5, blur: 14 } }),
+    animation: motion('tracking', 'fade', 0.9, 0.4),
+  },
+  {
+    id: 'head-vertical',
+    category: 'headings',
+    // Designed on a 1080x1920 frame: sizes are of a frame 1920 lines tall.
+    style: look({ fontFamily: 'Archivo Black', fontWeight: 400, fontSize: 260, uppercase: true, lineHeight: 0.95, letterSpacing: -6, maxWidth: 0.9 }),
+    animation: motion('bounce', 'vanish', 0.8, 0.35),
+    vertical: true,
   },
   {
     id: 'kin-handwritten',
