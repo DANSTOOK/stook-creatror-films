@@ -143,10 +143,15 @@ y sin red: **129/129** con la v2.1.0-beta.1 (ninguna petición a la red).
 ### Problemas conocidos
 - **El encuadre automático no inclina**, por lo medido más arriba. Inclinar pide
   un detector de caras.
-- **En un clip de 6 s, solo 14 de 31 muestras encontraron a alguien**, la última
-  a los 3,2 s, así que la cola del clip conserva el último encuadre. Sostener el
-  último encuadre es lo previsto cuando no hay nadie, pero **por qué la matte
-  pierde al sujeto ahí no está explicado todavía**.
+- ~~**En un clip de 6 s, solo 14 de 31 muestras encontraron a alguien.**~~
+  **Explicado después de publicar, y era la prueba, no la aplicación.** La matte
+  cubría los 6 s completos (180 fotogramas, 0,00 a 5,97 s) y todos decodificaban;
+  lo que se desplomaba era la cobertura, de 0,0357 a 0,0013 a partir de los 2,5 s,
+  por debajo del 0,005 que la app considera «una mota, no una persona». El fixture
+  recortaba el 30 % derecho del vídeo con una ventana fija y **el presentador se
+  sale de esa ventana** a mitad del tramo: la matte acertaba al no encontrar a
+  nadie. Con un tramo de 2 s en bucle donde la persona sí está, son **31 de 31**, y
+   ahora lo fija (11/11).
 - **Los subtítulos cambian letras con el modelo «Rápido»**, y eso no es un fallo
   de código: el instalador trae **Whisper small q5_1** y «Preciso»
   (large-v3-turbo, 574 MB) es una descarga. Whisper small en español cambia

@@ -48,10 +48,22 @@ async function main() {
   mkdirSync(work, { recursive: true });
 
   // The presenter alone, small in a wide frame: low on the left for 3 s, then
-  // higher on the right. A camera that follows has to pan and tilt.
+  // higher on the right. A camera that follows has to pan.
+  //
+  // A 2 s stretch is cut out and LOOPED to 6 s, because the presenter leaves
+  // the cropped window partway through the source: taking 6 s straight gave a
+  // fixture with nobody in it after 2.5 s, the matte rightly found nobody, and
+  // only 14 of 31 samples tracked anything. Looped, it is 31 of 31. Two steps,
+  // because -stream_loop with -ss on one input gives a 2 s file however long
+  // the output is asked to be.
   const video = join(work, 'moving.mp4');
+  const piece = join(work, 'piece.mp4');
   execFileSync(ffmpeg, [
-    '-y', '-v', 'error', '-ss', '2', '-t', '6', '-i', source,
+    '-y', '-v', 'error', '-ss', '2', '-t', '2', '-i', source,
+    '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', piece,
+  ]);
+  execFileSync(ffmpeg, [
+    '-y', '-v', 'error', '-stream_loop', '2', '-i', piece, '-t', '6',
     '-filter_complex',
     "color=c=black:s=1920x1080:r=30:d=6[bg];[0:v]crop=iw*0.3:ih:iw*0.68:0,scale=-2:620,setsar=1[p];[bg][p]overlay=x='if(lt(t,3),200,1920-200-w)':y='if(lt(t,3),400,120)':shortest=1",
     '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', video,
@@ -68,6 +80,12 @@ async function main() {
     const window = await app.firstWindow();
     window.on('console', (message) => message.type() === 'error' && issues.push(message.text()));
     window.on('pageerror', (error) => issues.push(`pageerror ${error.message}`));
+    // The card says what it found; this is the only way to see it from outside.
+    let found = null;
+    window.on('console', (message) => {
+      const match = /\[autoframe\] (\d+)\/(\d+) samples/.exec(message.text());
+      if (match) found = { found: Number(match[1]), of: Number(match[2]) };
+    });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
     await window.getByRole('button', { name: 'Blank project' }).click({ force: true, timeout: 30_000 });
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
@@ -106,6 +124,16 @@ async function main() {
       .then(() => true)
       .catch(() => false);
     check('it analyses the file and writes a follow', followed);
+    // Every sample, not most of them. The first version of this fixture took 6 s
+    // straight from the source, and the presenter leaves the cropped window
+    // partway through it: the matte rightly found nobody and only 14 of 31
+    // samples tracked anything, which looked like the tracker failing and was
+    // the fixture. Looped, the subject is there throughout.
+    check(
+      'the tracker finds the subject in every sample, not just some',
+      found !== null && found.found === found.of && found.of >= 25,
+      found ? `${found.found}/${found.of}` : 'the card said nothing',
+    );
     if (!followed) throw new Error('the follow never arrived');
 
     const after = await window.evaluate((id) => {
