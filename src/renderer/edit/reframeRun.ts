@@ -4,7 +4,7 @@ import { MATTE_HEADER_BYTES, decodeMatteFrame, readMatteHeader, readMatteIndex, 
 import { rangeReader } from '@renderer/engine/rangeFetch';
 import { speedOf } from '@renderer/timing/clipSpeed';
 import { simplified } from '@renderer/fx/motion/animations';
-import { DEFAULT_CAMERA, cameraPath, coverScale, positionFor, reframedSize, subjectCentre, type CameraOptions } from './reframe';
+import { DEFAULT_CAMERA, cameraPath, coverScale, positionFor, reframedSize, subjectCentre, subjectHead, type CameraOptions } from './reframe';
 
 /**
  * Auto reframe, run on a project: which clips it moves, where the person is
@@ -33,7 +33,7 @@ const SAMPLE_SECONDS = 0.2;
  * sample every 0.2 s of the clip, in seconds of the clip from its start,
  * with the subject's middle (0..1 across the file) or null for nobody.
  */
-export async function trackSubject(url: string, clip: Clip, fps: number): Promise<Array<{ t: number; x: number | null }>> {
+export async function trackSubject(url: string, clip: Clip, fps: number): Promise<Array<{ t: number; x: number | null; headX: number | null; headY: number | null }>> {
   const read = rangeReader(url);
   const header = readMatteHeader(await read(0, MATTE_HEADER_BYTES));
   if (!header) throw new Error('unreadable matte');
@@ -44,7 +44,7 @@ export async function trackSubject(url: string, clip: Clip, fps: number): Promis
   const pixels = new Uint8Array(header.width * header.height);
   const speed = speedOf(clip);
   const clipSeconds = clip.durationFrames / fps;
-  const samples: Array<{ t: number; x: number | null }> = [];
+  const samples: Array<{ t: number; x: number | null; headX: number | null; headY: number | null }> = [];
   for (let t = 0; t <= clipSeconds + 1e-9; t += SAMPLE_SECONDS) {
     const sourceSeconds = clip.sourceOffsetFrames / fps + t * speed;
     // The matte shown at that moment of the file: the last at or before it (a still has one).
@@ -60,8 +60,12 @@ export async function trackSubject(url: string, clip: Clip, fps: number): Promis
       frame = low;
     }
     const coded = await read(offsets[frame], offsets[frame + 1] - offsets[frame]);
-    const found = decodeMatteFrame(coded, pixels) ? subjectCentre(pixels, header.width, header.height) : null;
-    samples.push({ t, x: found ? found.x : null });
+    const readable = decodeMatteFrame(coded, pixels);
+    const found = readable ? subjectCentre(pixels, header.width, header.height) : null;
+    // The head as well as the middle: a vertical crop wants the middle of the
+    // person, auto framing wants the face (edit/autoFrame.ts).
+    const head = readable && found ? subjectHead(pixels, header.width, header.height) : null;
+    samples.push({ t, x: found ? found.x : null, headX: head ? head.x : null, headY: head ? head.y : null });
   }
   return samples;
 }

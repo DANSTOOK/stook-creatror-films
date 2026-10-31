@@ -102,8 +102,16 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * open is a convenience of this machine.
  */
 const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'sounds', 'voice', 'captions'];
-/** The parts that show the app's own templates, not the project: kept mounted once opened. */
-const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'sounds']);
+/**
+ * The parts that show the app's own templates, not the project: kept mounted
+ * once opened.
+ *
+ * Voice is here for a different reason: a long piece of text takes a while to
+ * speak, and the job lived in the panel - so changing tab to Stickers
+ * unmounted it and the voice was never made. Kept mounted, the work carries
+ * on and the clip arrives whatever tab is open.
+ */
+const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'sounds', 'voice']);
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
@@ -734,6 +742,7 @@ export function MediaLibrary(): JSX.Element {
             {id === 'stickers' && <StickersBrowser />}
             {id === 'backgrounds' && <BackgroundsBrowser />}
             {id === 'sounds' && <SoundsBrowser />}
+            {id === 'voice' && <VoicePanel />}
           </div>
         ) : null,
       )}
@@ -746,7 +755,6 @@ export function MediaLibrary(): JSX.Element {
         aria-labelledby={`library-tab-${tab}`}
         className={`scf-tab-enter flex min-h-0 min-w-0 flex-1 flex-col ${tab === 'media' ? 'media-browser' : ''}`}
       >
-      {tab === 'voice' && <VoicePanel />}
       {tab === 'captions' && <CaptionsTab />}
       {/* Bins above the clips in a narrow panel; beside them, as Resolve's
           Media Pool keeps its bin list, once the panel is wide (index.css). */}

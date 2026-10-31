@@ -73,6 +73,18 @@ export const SPEED_RAMPS: Record<SpeedRampPreset, readonly number[]> = {
   flashIn: [4, 3, 2, 1.4, 1, 1, 1, 1, 1],
   // Settled, rushing out.
   flashOut: [1, 1, 1, 1, 1, 1.4, 2, 3, 4],
+  // Block 8. Dropping in at speed and staying in slow motion from there.
+  dropIn: [3.5, 3, 2, 0.5, 0.35, 0.35, 0.35, 0.35, 0.35],
+  // One moment almost stopped - the hit, the catch, the look - and nothing else touched.
+  impact: [1.5, 1.5, 1.5, 1.5, 0.15, 1.5, 1.5, 1.5, 1.5],
+  // Slow, a whip through the middle, slow again: the turn of a head, a pan.
+  whip: [0.5, 0.5, 0.6, 5, 5, 0.6, 0.5, 0.5, 0.5],
+  // Breathing: never jarring, never still. For a shot that only needs life.
+  breathe: [1, 0.7, 0.5, 0.7, 1, 1.4, 1.8, 1.4, 1],
+  // Stuttering: fast and slow against each other, on the beat.
+  stutter: [2.5, 0.4, 2.5, 0.4, 2.5, 0.4, 2.5, 0.4, 1],
+  // A run-up: slow to begin, faster all the way out.
+  runUp: [0.4, 0.5, 0.7, 1, 1.4, 2, 2.8, 3.6, 4.5],
 };
 
 export const isSpeedRamp = (value: unknown): value is SpeedRampPreset => typeof value === 'string' && value in SPEED_RAMPS;

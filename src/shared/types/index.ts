@@ -658,7 +658,19 @@ export interface ClipMotionFx {
   base?: ClipTransform;
 }
 
-export type SpeedRampPreset = 'montage' | 'hero' | 'bullet' | 'jump' | 'flashIn' | 'flashOut';
+export type SpeedRampPreset =
+  | 'montage'
+  | 'hero'
+  | 'bullet'
+  | 'jump'
+  | 'flashIn'
+  | 'flashOut'
+  | 'dropIn'
+  | 'impact'
+  | 'whip'
+  | 'breathe'
+  | 'stutter'
+  | 'runUp';
 
 export interface ClipTracking {
   fromFrame: number;

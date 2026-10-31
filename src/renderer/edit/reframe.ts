@@ -38,6 +38,102 @@ export function subjectCentre(matte: Uint8Array, width: number, height: number):
   return { x: (sumX / weight + 0.5) / width, y: (sumY / weight + 0.5) / height, coverage };
 }
 
+/**
+ * Where the HEAD is in one matte, 0..1 of the frame - not the middle of the
+ * person.
+ *
+ * The middle of a person's mass is the chest: frame a talking head on it and
+ * the face sits near the top edge. A people matte has no face in it, but it
+ * does have the person's outline, and the top of that outline is the head. So:
+ * the rows that hold the subject are found, and the centre of the top fifth of
+ * that run is taken. On a standing figure it lands on the head, on a seated
+ * one on the head and shoulders, and on a close-up where the head fills the
+ * frame it lands where the middle would anyway.
+ *
+ * This is a head ESTIMATE from a person's silhouette, not a face detector.
+ * A real one (MediaPipe's BlazeFace) is a model and a WebAssembly runtime to
+ * download - a different decision, and a licence to read.
+ */
+export function subjectHead(matte: Uint8Array, width: number, height: number): { x: number; y: number } | null {
+  /*
+   * The mass in each row, at every other pixel: a quarter of the work.
+   *
+   * Only pixels the matte is SURE about count towards finding the person, even
+   * though the centre below is taken over everything above 96. A band of
+   * compression noise over a dark background comes back as a wide, faint row -
+   * and a wide faint row outweighs a narrow solid person, so the fullest row
+   * was the noise and the head went with it. Confidence is what separates
+   * them: noise sits around a half, a person's core at full.
+   */
+  const rowMass = (floor: number): { rows: Float64Array; peak: number } => {
+    const rows = new Float64Array(height);
+    let peak = 0;
+    for (let y = 0; y < height; y += 2) {
+      const start = y * width;
+      let mass = 0;
+      for (let x = 0; x < width; x += 2) {
+        const value = matte[start + x];
+        if (value >= floor) mass += value;
+      }
+      rows[y] = mass;
+      if (mass > peak) peak = mass;
+    }
+    return { rows, peak };
+  };
+  /*
+   * Two thresholds, because they answer different questions.
+   *
+   * WHERE TO START looking is asked of the solid pixels: a person's core is at
+   * full confidence and a band of noise never is, so the fullest solid row is
+   * always on the person. HOW FAR the person reaches is asked of everything the
+   * matte marked at all, because the top of a head is HAIR - the one place a
+   * matte is least sure - and a run measured in solid pixels alone stops at the
+   * shoulders. Measured on a 1080p fixture: solid-only put the head at 0.62 of
+   * the frame, which is the chest, and the camera framed the person's middle
+   * while their head went out of the top.
+   *
+   * A soft matte with nothing solid in it still gets an answer, from what it has.
+   */
+  const solid = rowMass(170);
+  const loose = rowMass(96);
+  const seed = solid.peak > 0 ? solid : loose;
+  const rows = loose.rows;
+  const peak = loose.peak;
+  if (peak <= 0) return null;
+  // A row counts as the person once it holds a sixth of the fullest row: less
+  // than that is a wisp of hair or a speck the matte was unsure about.
+  //
+  // Walked out from the FULLEST row rather than in from the top of the frame,
+  // and only along rows that touch it. Scanning from the top took the first row
+  // that passed anywhere in the frame, so on a small subject in a big frame a
+  // band of noise above them became the head and the estimate went to
+  // wherever the noise was - measured on a 1080p fixture, the head never left
+  // the left edge while the person crossed to the right.
+  const floor = peak / 6;
+  let peakRow = 0;
+  for (let y = 0; y < height; y += 2) if (seed.rows[y] === seed.peak) { peakRow = y; break; }
+  let top = peakRow;
+  while (top - 2 >= 0 && rows[top - 2] >= floor) top -= 2;
+  let bottom = peakRow;
+  while (bottom + 2 < height && rows[bottom + 2] >= floor) bottom += 2;
+  const extent = Math.max(2, bottom - top);
+  const band = Math.max(2, Math.round(extent * 0.2));
+  // Across the head band: where the head is, left to right.
+  let weight = 0;
+  let sumX = 0;
+  for (let y = top; y <= Math.min(bottom, top + band); y += 2) {
+    const start = y * width;
+    for (let x = 0; x < width; x += 2) {
+      const value = matte[start + x];
+      if (value < 96) continue;
+      weight += value;
+      sumX += value * x;
+    }
+  }
+  if (weight <= 0) return null;
+  return { x: (sumX / weight + 0.5) / width, y: (top + band / 2 + 0.5) / height };
+}
+
 export interface CameraOptions {
   /** How far the subject may wander from the middle of the shot before the camera moves, as a share of the shot's width. */
   deadZone: number;

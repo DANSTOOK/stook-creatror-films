@@ -44,13 +44,19 @@ export interface SpeedDialogProps {
 }
 
 export const RAMPS = Object.keys(SPEED_RAMPS) as SpeedRampPreset[];
-export const RAMP_LABEL: Record<SpeedRampPreset, 'ramp.montage' | 'ramp.hero' | 'ramp.bullet' | 'ramp.jump' | 'ramp.flashIn' | 'ramp.flashOut'> = {
+export const RAMP_LABEL: Record<SpeedRampPreset, `ramp.${SpeedRampPreset}`> = {
   montage: 'ramp.montage',
   hero: 'ramp.hero',
   bullet: 'ramp.bullet',
   jump: 'ramp.jump',
   flashIn: 'ramp.flashIn',
   flashOut: 'ramp.flashOut',
+  dropIn: 'ramp.dropIn',
+  impact: 'ramp.impact',
+  whip: 'ramp.whip',
+  breathe: 'ramp.breathe',
+  stutter: 'ramp.stutter',
+  runUp: 'ramp.runUp',
 };
 
 /** A ramp drawn: its speed along the clip, the line at 1x dotted. */
