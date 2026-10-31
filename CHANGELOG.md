@@ -151,7 +151,7 @@ y sin red: **129/129** con la v2.1.0-beta.1 (ninguna petición a la red).
   recortaba el 30 % derecho del vídeo con una ventana fija y **el presentador se
   sale de esa ventana** a mitad del tramo: la matte acertaba al no encontrar a
   nadie. Con un tramo de 2 s en bucle donde la persona sí está, son **31 de 31**, y
-   ahora lo fija (11/11).
+  `tests/ui/auto-frame.mjs` ahora lo fija (11/11).
 - **Los subtítulos cambian letras con el modelo «Rápido»**, y eso no es un fallo
   de código: el instalador trae **Whisper small q5_1** y «Preciso»
   (large-v3-turbo, 574 MB) es una descarga. Whisper small en español cambia
