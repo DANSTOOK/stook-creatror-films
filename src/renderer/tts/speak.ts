@@ -109,7 +109,7 @@ export function captionLines(text: string, seconds: number): Array<{ start: numb
 }
 
 /** A Voice track free over [start, end), or a new one. */
-function voiceTrackFor(start: number, end: number): string {
+export function voiceTrackFor(start: number, end: number): string {
   const name = t('tts.track');
   const free = (trackId: string): boolean =>
     !Object.values(useProjectStore.getState().project.clips).some((clip) => clip.trackId === trackId && clip.startFrame < end && clip.startFrame + clip.durationFrames > start);
@@ -124,7 +124,7 @@ function voiceTrackFor(start: number, end: number): string {
 }
 
 /** One line spoken: generated, kept, imported. No timeline change yet. */
-async function generate(text: string, options: TtsOptions, voice: string, onProgress?: (fraction: number) => void, job?: string) {
+export async function generate(text: string, options: TtsOptions, voice: string, onProgress?: (fraction: number) => void, job?: string) {
   const jobId = job ?? createId('tts');
   const stop = onProgress ? window.filmora.onTtsProgress?.((event) => event.jobId === jobId && onProgress(event.fraction)) : undefined;
   try {
@@ -157,6 +157,23 @@ export async function speakText(text: string, startFrame: number, options: TtsOp
   const length = Math.max(1, Math.round(made.seconds * fps));
   const trackId = voiceTrackFor(startFrame, startFrame + length);
   const clipId = useProjectStore.getState().addAssetToTimeline(asset, trackId, startFrame);
+  // What it was asked to say, so the inspector can offer the words back
+  // (components/Inspector/SpeechCard). The captions flag is deliberately not
+  // kept: captions are their own clips once made, and saying it again must
+  // not quietly make a second set.
+  if (clipId) {
+    useProjectStore.getState().updateClip(clipId, {
+      speech: {
+        text,
+        voice,
+        language: options.language,
+        speed: options.speed,
+        pitch: options.pitch,
+        enhance: options.enhance,
+        effect: options.effect,
+      },
+    });
+  }
   if (options.captions) {
     const start = startFrame / fps;
     // Timed by where each piece of speech really is in the voice - so a pause

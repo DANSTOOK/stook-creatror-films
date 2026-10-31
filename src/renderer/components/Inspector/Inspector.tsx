@@ -23,6 +23,7 @@ import { CurveEditor } from './CurveEditor';
 import { LEVEL_CURVES, OFFSET_CURVES, neutralCurve, type LevelCurve, type OffsetCurve } from '@renderer/color/curves';
 import { neutralVignette } from '@renderer/color/grade';
 import { NumberRow, PairRow, Section, SliderRow, SwitchRow, type SectionProps } from './rows';
+import { SpeechCard } from './SpeechCard';
 import { TitleTab } from './TitleTab';
 import { CaptionTab } from './CaptionTab';
 import { CaptionStyleTab } from './CaptionStyleTab';
@@ -754,6 +755,8 @@ export function Inspector(): JSX.Element {
   );
   const audioTab = clip.audioDetached ? detachedTab : (
     <>
+      {/* The script of a voice clip, editable (components/Inspector/SpeechCard). */}
+      <SpeechCard clip={clip} />
       <Section
         {...sectionProps('level')}
         title={t('inspector.level')}

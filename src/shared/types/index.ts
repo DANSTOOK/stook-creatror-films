@@ -817,6 +817,29 @@ export interface Clip {
   title?: TitleContent;
   /** Present on a caption, which lives on a captions track. */
   caption?: CaptionContent;
+  /**
+   * Present on a clip of spoken text: what it was asked to say, and how.
+   *
+   * The voice itself is a WAV like any other, so the clip would otherwise
+   * be a sound with no memory of where it came from - and a voice you do
+   * not like could only be deleted and done again from the panel, with the
+   * script retyped. With this the inspector can offer the words back.
+   */
+  speech?: ClipSpeech;
+}
+
+/** What a spoken clip was asked to say, kept so it can be said again. */
+export interface ClipSpeech {
+  text: string;
+  /** The voice it was said in (main/tts/catalog.ts). */
+  voice: string;
+  language: 'es' | 'en';
+  speed: number;
+  /** Semitones, -6..6. */
+  pitch: number;
+  enhance: boolean;
+  /** The character the voice was given (main/tts/finish.ts). */
+  effect: string;
 }
 
 export interface Track {
