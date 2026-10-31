@@ -7,11 +7,125 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1796 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1807 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v1.99.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v2.0.0-beta.1 — Mantener Ctrl+Z deja de atragantar, y la biblioteca se llena
+2026-10-30 · pre-release para probar · lo pedido: «pule la velocidad de respuesta», «más stickers más variados», «stock de fotos» y «una librería de sonidos más extensa»
+
+### Añadido
+- **Pestaña Fondos en la biblioteca: 24 imágenes a pantalla completa**, en cuatro
+  grupos — degradados (amanecer, océano, menta, uva, brasa, medianoche),
+  escenas (playa, montañas, ciudad de noche, bosque, desierto, espacio),
+  patrones (puntos, rayas, rejilla, galones, confeti, ondas) y texturas (papel,
+  grano de película, hormigón, lino, bokeh, mármol). Un clic pone una **en una
+  pista propia y manda esa pista al fondo**, porque una pista nueva se inserta
+  arriba y un fondo encima del metraje lo tapa.
+  - Cada una **se dibuja al tamaño de tu proyecto**, no a uno fijo: un proyecto
+    4K recibe 4K y uno vertical recibe una imagen vertical en vez del recorte de
+    una horizontal. Las miniaturas también salen en la forma del proyecto; si no,
+    la miniatura mentiría sobre lo que hace el clic. Medido en la app: el fichero
+    sale **1920×1080** en horizontal y **1080×1920** al pasar el proyecto a
+    vertical.
+  - **Lo que no es: fotografías de sitios y personas reales.** Eso no se dibuja,
+    y distribuir las de otro necesita licencia. Un navegador hacia un servicio de
+    stock (Pexels, Unsplash) es una decisión aparte, porque implica peticiones a
+    la red, una clave de API y los términos de ese servicio. Está dicho en el
+    propio catálogo en vez de dejar el hueco para que se descubra.
+- **Stickers: de 66 a 98**, con dos grupos que el panel no tenía, **Comida** y
+  **Viajes** — pizza, hamburguesa, café, helado, dónut, taco, tarta, aguacate;
+  avión, maleta, cámara, palmera, entrada, globo terráqueo. Y además diamante,
+  hexágono, roseta, destello y mancha; candado, bombilla, cohete, reloj y
+  huella; serpentinas, bengala y gema; flecha arriba, círculo a mano alzada y
+  mano que desliza; ola y cactus.
+- **Sonidos: de 59 a 85.** Veintiséis efectos nuevos en los seis grupos que ya
+  existían: cinta que se para, frenazo de vinilo, barrido al revés, subida corta
+  y subida con glitch; interruptor, desbloqueo, subir de nivel, tecla y deslizar
+  arriba; chirrido, corcho, cucú y resorte; palmada, maraca, carrera de charles
+  y bombo con caída; puerta al cerrar, papel que se rompe, brindis y timbre de
+  ascensor; pájaros, grillos, olas y fuego crepitando.
+- Lo de arriba sigue la regla de siempre: **todo dibujado y sintetizado aquí**
+  (`stickers/draw`, `sounds/primitives`), así que nada se descarga, no se
+  distribuye obra de nadie y cada pieza es libre de usar en cualquier sitio, sin
+  licencia que leer ni atribución que arrastrar.
+
+### Arreglado
+- **Una ráfaga de deshacer se dibuja una vez por fotograma, no una vez por
+  pulsación.** Mantener Ctrl+Z no es una edición: es una tecla repitiéndose, y
+  cada repetición llegaba como su propia tarea, cambiaba el documento entero del
+  proyecto y hacía que el editor se volviera a dibujar. Ahora la primera
+  pulsación se aplica en el instante en que llega —un deshacer suelto no debe
+  esperar un fotograma— y todo lo que venga antes del siguiente refresco se
+  encola y se aplica **con él, en una sola tarea**. Los pasos siguen ocurriendo
+  todos y en orden; lo que se deja de pintar son los estados intermedios, que
+  nadie podía ver.
+  - Medido en el proyecto de 120 clips (`tests/perf/editing`), **A/B intercalado
+    en un mismo build** (`__scfNoHistoryBurst`), tres rondas:
+
+    | | antes | después |
+    |---|---|---|
+    | p95, tecla mantenida dentro de la página | 22,2 / 5,9 / 6,0 ms | **5,8 / 6,0 / 5,8** |
+    | p95, teclas pulsadas por el conductor | 22,2 / 33,3 / 16,7 ms | **11,1 / 11,1 / 11,2** |
+    | fotogramas descartados | 20,6 / 16,5 / 17,6 % | **13,8 / 14,6 / 7,3 %** |
+
+    Con la tecla repitiéndose, el p95 de después **es el refresco de la pantalla
+    en las tres rondas** (5,6 ms): la ráfaga deja de costar fotogramas.
+- **Guardar justo después de deshacer escribía el estado que ya habías
+  quitado.** Guardar, autoguardar y crear una plantilla leen el documento
+  directamente del store, así que un paso en cola no estaba aplicado todavía.
+  Ahora `toDocument()` vacía la cola antes de leer, y `transact()` también, para
+  que una edición se grabe contra el documento que la cola deja detrás. Fallo
+  introducido por el cambio de arriba y encontrado por `tests/ui/run.mjs` antes
+  de salir de casa.
+
+### Comprobado
+- **1807 pruebas unitarias** (157 archivos): 6 sobre la decisión de la ráfaga de
+  deshacer y 5 sobre el catálogo de fondos — entre ellas que **ningún par de
+  identificadores acaba en el mismo nombre de fichero** (el proceso principal
+  los pasa a minúsculas y deja solo a-z, 0-9 y guion, así que dos que coincidan
+  serían un único fichero y un fondo mostraría otro sin avisar).
+- **`tests/ui/backgrounds.mjs` nueva (13/13)**, en la aplicación real: las 24
+  mostradas grupo a grupo y cada una con su propia imagen, el clip en la pista
+  de abajo, el fichero hecho al tamaño del proyecto en horizontal y en vertical,
+  los grupos, la búsqueda y deshacer.
+- **80/84 archivos de interfaz** en la barrida sobre el cambio del deshacer; las
+  4 restantes eran los contadores de catálogo que yo acababa de mover, porque la
+  barrida compila una vez al principio y luego lee las pruebas del disco.
+  Recompilado y pasadas una por una: **stickers 6/6, stickers-more 9/9,
+  sounds 5/5, sounds-more 9/9**, y la suite general **127/127**.
+- **22/22** de extremo a extremo y **41/41** de proyectos.
+- **Instrumentación nueva en el arnés**, que es lo que la v1.99 dejó pendiente:
+  la ráfaga se mide también con la **tecla repitiéndose dentro de la página**,
+  una pulsación cada 16 ms, porque las del conductor son un viaje de ida y
+  vuelta por CDP y miden en parte al conductor; y `PERF_TRACE` toma una **traza
+  real por CDP**, que los Long Animation Frames no podían sustituir, porque solo
+  nombran scripts de 5 ms o más y los fotogramas que molestan aquí no tienen
+  ninguno.
+
+### Problemas conocidos
+- **Los fotogramas largos de la reproducción no son de esta aplicación.** La
+  traza dice que son **una sola `GPUTask` de 78,4 ms** — el proceso de GPU, no el
+  JS del editor. El changelog de la v1.99 suponía otra cosa y esa suposición era
+  falsa. Sigue abierto, ahora con la causa localizada.
+- Lo que queda de picos en la ráfaga son tareas de ~40 ms **sin ninguna llamada
+  de JS grande dentro**, y aparecen con la coalescencia encendida y apagada por
+  igual: no son el deshacer.
+- **El 4K a 120 fps sigue en empate**, igual que en la v1.99.
+
+### Otros
+- Una comprobación de `tests/ui/run.mjs` leía el store en el instante mismo en
+  que bajaba el noveno Ctrl+Z. Ahora espera un fotograma, que es el contrato real
+  de la aplicación. **Es ensanchar la comprobación para que quepa el cambio, no
+  arreglar nada.**
+- Los contadores que fijan las suites se mueven con los catálogos: 66 a 98, 46 a
+  72, 59 a 85, y la lista del grupo «naturaleza» de cuatro sonidos a ocho. Esos
+  números son para lo que existen las comprobaciones, así que moverlos es el
+  objetivo y no un margen ensanchado.
 
 ---
 
