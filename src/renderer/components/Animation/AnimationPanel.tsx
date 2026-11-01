@@ -4,6 +4,7 @@ import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useT } from '@renderer/i18n';
 import { MAX_SIZE, MIN_SIZE, useDrawStore } from '@renderer/animation/drawStore';
 import { celAt, exposureAt, exposureCount, frameOfExposure, MAX_ONION, MAX_STEP, stepOf, strokeCount } from '@renderer/animation/model';
+import { placeOf } from '@renderer/animation/motion';
 
 /**
  * The 2D animation panel: the brush, the exposure sheet, and the layers.
@@ -34,6 +35,8 @@ export function AnimationPanel(): JSX.Element {
   const clearCel = useProjectStore((state) => state.clearCel);
   const duplicateCel = useProjectStore((state) => state.duplicateCel);
   const addBlankCel = useProjectStore((state) => state.addBlankCel);
+  const setLayerKeyframe = useProjectStore((state) => state.setLayerKeyframe);
+  const setLayerParent = useProjectStore((state) => state.setLayerParent);
   const seek = useProjectStore((state) => state.setCurrentFrame);
 
   const drawing = useDrawStore((state) => state.clipId);
@@ -86,6 +89,11 @@ export function AnimationPanel(): JSX.Element {
   const here = exposureAt(anim, clip, currentFrame);
   const onion = anim.onion;
   const layerId = activeLayer ?? anim.layers[anim.layers.length - 1]?.id ?? null;
+  // Where the chosen layer stands right now: what the fields show, and what a
+  // new keyframe starts from, so writing one never moves the drawing.
+  const chosen = anim.layers.find((entry) => entry.id === layerId);
+  const at = placeOf(chosen?.motion, currentFrame);
+  const placeNow = { position: { x: at.x, y: at.y }, scale: { x: at.scaleX, y: at.scaleY }, rotation: at.rotation };
   const on = drawing === clip.id;
 
   return (
@@ -315,6 +323,93 @@ export function AnimationPanel(): JSX.Element {
               className="flex-1"
             />
           </label>
+
+          {/* Cut-out: the layer moved as a whole, with the keyframes the rest
+              of the app already uses. A key is written at the playhead. */}
+          <div className="mt-2 border-t border-white/5 pt-2">
+            <span className="text-[10px] text-slate-500">{t('animation.cutout')}</span>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <button
+                type="button"
+                data-testid="animation-key-position"
+                onClick={() => layerId && setLayerKeyframe(clip.id, layerId, 'position', currentFrame, placeNow.position)}
+                className="flex-1 rounded-control bg-white/5 px-1.5 py-1 text-[10px] text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
+              >
+                {t('animation.keyPosition')}
+              </button>
+              <button
+                type="button"
+                data-testid="animation-key-scale"
+                onClick={() => layerId && setLayerKeyframe(clip.id, layerId, 'scale', currentFrame, placeNow.scale)}
+                className="flex-1 rounded-control bg-white/5 px-1.5 py-1 text-[10px] text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
+              >
+                {t('animation.keyScale')}
+              </button>
+              <button
+                type="button"
+                data-testid="animation-key-rotation"
+                onClick={() => layerId && setLayerKeyframe(clip.id, layerId, 'rotation', currentFrame, placeNow.rotation)}
+                className="flex-1 rounded-control bg-white/5 px-1.5 py-1 text-[10px] text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
+              >
+                {t('animation.keyRotation')}
+              </button>
+            </div>
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <label className="flex flex-1 items-center gap-1 text-[10px] text-slate-500">
+                X
+                <input
+                  type="number"
+                  data-testid="animation-move-x"
+                  step={0.01}
+                  value={Number(placeNow.position.x.toFixed(3))}
+                  onChange={(event) => layerId && setLayerKeyframe(clip.id, layerId, 'position', currentFrame, { x: Number(event.target.value), y: placeNow.position.y })}
+                  className="w-full min-w-0 rounded-control bg-white/5 px-1 py-0.5 text-slate-200 ring-1 ring-white/10"
+                />
+              </label>
+              <label className="flex flex-1 items-center gap-1 text-[10px] text-slate-500">
+                Y
+                <input
+                  type="number"
+                  data-testid="animation-move-y"
+                  step={0.01}
+                  value={Number(placeNow.position.y.toFixed(3))}
+                  onChange={(event) => layerId && setLayerKeyframe(clip.id, layerId, 'position', currentFrame, { x: placeNow.position.x, y: Number(event.target.value) })}
+                  className="w-full min-w-0 rounded-control bg-white/5 px-1 py-0.5 text-slate-200 ring-1 ring-white/10"
+                />
+              </label>
+              <label className="flex flex-1 items-center gap-1 text-[10px] text-slate-500">
+                °
+                <input
+                  type="number"
+                  data-testid="animation-move-rotation"
+                  step={1}
+                  value={Number(placeNow.rotation.toFixed(1))}
+                  onChange={(event) => layerId && setLayerKeyframe(clip.id, layerId, 'rotation', currentFrame, Number(event.target.value))}
+                  className="w-full min-w-0 rounded-control bg-white/5 px-1 py-0.5 text-slate-200 ring-1 ring-white/10"
+                />
+              </label>
+            </div>
+            {anim.layers.length > 1 && (
+              <label className="mt-1.5 flex items-center gap-1.5 text-[10px] text-slate-500">
+                <span className="shrink-0">{t('animation.parent')}</span>
+                <select
+                  data-testid="animation-parent"
+                  value={anim.layers.find((entry) => entry.id === layerId)?.parentId ?? ''}
+                  onChange={(event) => layerId && setLayerParent(clip.id, layerId, event.target.value || null)}
+                  className="min-w-0 flex-1 rounded-control bg-white/5 px-1.5 py-0.5 text-slate-200 ring-1 ring-white/10"
+                >
+                  <option value="">{t('animation.parentNone')}</option>
+                  {anim.layers
+                    .filter((entry) => entry.id !== layerId)
+                    .map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+          </div>
         </section>
 
         {/* The exposure sheet -------------------------------------------- */}

@@ -36,7 +36,7 @@ export class AnimationLayers {
     const anim = clip.anim;
     if (!anim) return null;
     const exposure = exposureAt(anim, clip, frame);
-    const key = rasterKey(anim, exposure, width, height, onion);
+    const key = rasterKey(anim, exposure, width, height, onion, frame);
     const textureKey = AnimationLayers.textureKey(clip);
 
     if (this.keys.get(clip.id) === key) {
@@ -45,7 +45,7 @@ export class AnimationLayers {
     }
 
     let canvas = this.canvases.get(clip.id);
-    canvas = rasterizeAnimation(anim, exposure, { width, height, onion, into: canvas });
+    canvas = rasterizeAnimation(anim, exposure, { width, height, onion, into: canvas, frame });
     this.canvases.set(clip.id, canvas);
     const texture = this.textures.upload(textureKey, canvas, key);
     this.keys.set(clip.id, key);

@@ -1,5 +1,6 @@
 import type { AnimationCel, DrawnAnimation, OnionSkin, Stroke } from '@shared/types';
 import { celAt, onionAround } from './model';
+import { applyPlace, chainKey, chainOf, isMoved, placeOf } from './motion';
 
 /**
  * Drawing an animation's strokes onto a canvas.
@@ -20,6 +21,11 @@ export interface RasterOptions {
   onion?: OnionSkin;
   /** A canvas to draw into again, to avoid making one per frame. */
   into?: HTMLCanvasElement;
+  /**
+   * The TIMELINE frame, for layers that are moved about (cut-out animation).
+   * Left out, nothing moves - which is right for a layer with no motion on it.
+   */
+  frame?: number;
 }
 
 /** A stroke's width in pixels at a given point's pressure. */
@@ -120,6 +126,14 @@ export function rasterizeAnimation(anim: DrawnAnimation, exposure: number, optio
 
     ctx.save();
     ctx.globalAlpha = Math.min(1, Math.max(0, layer.opacity));
+    // Cut-out animation: the layer moved as a whole, with every layer it hangs
+    // from applied first - furthest ancestor down - so a hand follows its arm.
+    if (options.frame !== undefined) {
+      for (const link of chainOf(anim.layers, layer)) {
+        const place = placeOf(link.motion, options.frame);
+        if (isMoved(place)) applyPlace(ctx, place, width, height);
+      }
+    }
     ctx.drawImage(scratch, 0, 0);
     ctx.restore();
   }
@@ -135,7 +149,7 @@ export function rasterizeAnimation(anim: DrawnAnimation, exposure: number, optio
  * whole animation, so drawing on exposure 40 does not force exposure 1 to be
  * drawn again.
  */
-export function rasterKey(anim: DrawnAnimation, exposure: number, width: number, height: number, onion?: OnionSkin): string {
+export function rasterKey(anim: DrawnAnimation, exposure: number, width: number, height: number, onion?: OnionSkin, frame?: number): string {
   const parts: string[] = [`${width}x${height}`];
   for (const layer of anim.layers) {
     if (!layer.visible || layer.opacity <= 0) {
@@ -144,9 +158,14 @@ export function rasterKey(anim: DrawnAnimation, exposure: number, width: number,
     }
     const cel = celAt(layer, exposure);
     const ghosts = onion ? onionAround(layer, exposure, onion) : [];
+    // The motion too: a layer that is moving changes picture every frame even
+    // though its drawing is held, so the key has to say so or it would never
+    // be drawn again.
+    const moved = frame === undefined ? '' : chainKey(anim.layers, layer, frame);
     parts.push(
       `${layer.id}@${layer.opacity.toFixed(3)}:${cel ? `${cel.id}/${cel.strokes.length}` : '-'}` +
-        (ghosts.length ? `+${ghosts.map((ghost) => `${ghost.cel.id}/${ghost.cel.strokes.length}@${ghost.opacity.toFixed(2)}`).join(',')}` : ''),
+        (ghosts.length ? `+${ghosts.map((ghost) => `${ghost.cel.id}/${ghost.cel.strokes.length}@${ghost.opacity.toFixed(2)}`).join(',')}` : '') +
+        (moved ? `~${moved}` : ''),
     );
   }
   return parts.join('|');

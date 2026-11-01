@@ -80,6 +80,30 @@ const brightness = (window) =>
     return total;
   });
 
+/** Where the ink sits, as a fraction of the frame: how a drawing is seen to move. */
+const inkCentre = (window) =>
+  window.evaluate(() => {
+    const canvas = document.querySelector('canvas.block.h-full.w-full.object-contain');
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    const ctx = copy.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, copy.width, copy.height);
+    ctx.drawImage(canvas, 0, 0);
+    const { data } = ctx.getImageData(0, 0, copy.width, copy.height);
+    let sx = 0, sy = 0, total = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const lit = data[i] + data[i + 1] + data[i + 2];
+      if (lit < 90) continue;
+      const pixel = i / 4;
+      sx += (pixel % copy.width) * lit;
+      sy += Math.floor(pixel / copy.width) * lit;
+      total += lit;
+    }
+    return total > 0 ? { x: sx / total / copy.width, y: sy / total / copy.height } : { x: -1, y: -1 };
+  });
+
 /** The animation of the one animation clip there is. */
 const animOf = (window) =>
   window.evaluate(() => {
@@ -293,6 +317,58 @@ async function main() {
     await sleep(350);
     const litFaint = await brightness(window);
     check('a layer laid in faintly draws faintly', litFaint < litFull * 0.6, litFull + ' -> ' + litFaint + ' total brightness');
+
+    console.log('11. cut-out: a layer moved instead of redrawn');
+    const rig = await animOf(window);
+    // The bottom layer, at an exposure where it has a drawing, with the
+    // ghosts off so only the drawing itself is measured.
+    await window.getByTestId(`animation-layer-${rig.layers[0].id}`).click();
+    await window.getByTestId('animation-layer-opacity').fill('100');
+    await window.evaluate((v) => window.__scfStore.getState().setCurrentFrame(v), rig.startFrame);
+    await sleep(300);
+    // Step 9 left a BLANK drawing at exposure 1 on this layer. Take it off, or
+    // the halfway frame below lands on nothing and measures noise.
+    await window.evaluate((id) => {
+      const st = window.__scfStore.getState();
+      const clip = Object.values(st.project.clips).find((c) => c.anim);
+      st.clearCel(clip.id, id, 1);
+    }, rig.layers[0].id);
+    await sleep(300);
+    const whereBefore = await inkCentre(window);
+    await window.getByTestId('animation-move-x').fill('0.25');
+    await sleep(400);
+    const whereAfter = await inkCentre(window);
+    check('moving a layer moves its drawing on screen', whereAfter.x > whereBefore.x + 0.1, JSON.stringify(whereBefore) + ' -> ' + JSON.stringify(whereAfter));
+
+    const keyed = await window.evaluate(() => {
+      const clip = Object.values(window.__scfStore.getState().project.clips).find((c) => c.anim);
+      const layer = clip.anim.layers[0];
+      return { keys: layer.motion?.position?.length ?? 0, easing: layer.motion?.position?.[0]?.easing ?? null };
+    });
+    check('it wrote a real keyframe, with one of the app’s easings', keyed.keys === 1 && keyed.easing === 'easeInOut', JSON.stringify(keyed));
+
+    // A second keyframe further on, and the drawing is somewhere between them
+    // halfway: that is the whole point of cut-out animation.
+    await window.evaluate((v) => window.__scfStore.getState().setCurrentFrame(v), rig.startFrame + 6);
+    await sleep(200);
+    await window.getByTestId('animation-move-x').fill('-0.25');
+    await sleep(300);
+    await window.evaluate((v) => window.__scfStore.getState().setCurrentFrame(v), rig.startFrame + 3);
+    await sleep(400);
+    const midway = await inkCentre(window);
+    check('and it interpolates between them', Math.abs(midway.x - whereBefore.x) < 0.12, 'halfway x ' + midway.x.toFixed(3) + ' vs start ' + whereBefore.x.toFixed(3));
+
+    // A loop is refused rather than drawn wrongly.
+    const refused = await window.evaluate(() => {
+      const s = window.__scfStore.getState();
+      const clip = Object.values(s.project.clips).find((c) => c.anim);
+      const [a, b] = clip.anim.layers;
+      s.setLayerParent(clip.id, a.id, b.id);
+      s.setLayerParent(clip.id, b.id, a.id);
+      const after = Object.values(window.__scfStore.getState().project.clips).find((c) => c.anim);
+      return after.anim.layers.map((l) => l.parentId ?? null);
+    });
+    check('a loop in the rig is refused', refused.filter(Boolean).length === 1, JSON.stringify(refused));
 
     console.log('10. the console');
     check('nothing in the console', issues.length === 0, issues.slice(0, 3).join(' | '));

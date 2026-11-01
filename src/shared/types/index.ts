@@ -877,6 +877,21 @@ export interface AnimationLayer {
   visible: boolean;
   /** 0..1, over the clip’s own opacity. */
   opacity: number;
+  /**
+   * The layer moved about as a whole, over time: cut-out animation. Absent
+   * on a layer that only holds drawings, which is most of them.
+   *
+   * It uses the SAME keyframes as everything else in this app - the same nine
+   * easings, the same curve editor - so a drawn arm swings with the easing a
+   * title comes on with. Nothing new had to be invented for it.
+   */
+  motion?: LayerMotion;
+  /**
+   * The layer this one hangs from, by id: a hand follows its arm. The parent's
+   * motion is applied first, then this one, as a joint works. A layer whose
+   * parent is missing, is itself, or would make a loop simply has none.
+   */
+  parentId?: string;
   /** The drawings, by the exposure each one starts at; ascending, no two the same. */
   cels: AnimationCel[];
 }
@@ -888,6 +903,22 @@ export interface AnimationCel {
   at: number;
   /** Drawn in order, so a later stroke covers an earlier one. */
   strokes: Stroke[];
+}
+
+/**
+ * A drawing layer moved as a whole: position, scale and rotation over time.
+ *
+ * Position is in fractions of the frame, like a stroke, so it holds at any
+ * project size. Rotation is in degrees, as the inspector shows it. The pivot
+ * is the point it scales and turns about, in the same fractions - a shoulder,
+ * for an arm.
+ */
+export interface LayerMotion {
+  position?: Keyframe<Vector2D>[];
+  scale?: Keyframe<Vector2D>[];
+  rotation?: Keyframe<number>[];
+  /** The point it turns about, 0..1 of the frame. The middle when absent. */
+  pivot?: Vector2D;
 }
 
 export type BrushKind = 'pencil' | 'marker' | 'eraser';

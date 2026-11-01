@@ -15,6 +15,7 @@ import {
 } from '../src/renderer/animation/model';
 import { rasterKey } from '../src/renderer/animation/raster';
 import { drawKeyOf, nextDrawing, previousDrawing, SIZE_STEP } from '../src/renderer/animation/keys';
+import { chainOf, isMoved, NO_PLACE, placeOf } from '../src/renderer/animation/motion';
 
 const stroke = (id: string, points = [0.1, 0.1, 0.5, 0.2, 0.2, 0.5]): Stroke => ({
   id,
@@ -371,5 +372,110 @@ describe('a split or trimmed animation clip', () => {
     const a = anim([layer([{ at: 0 }])], 2);
     expect(exposureAt(a, { startFrame: 10, sourceOffsetFrames: 0 }, 14)).toBe(2);
     expect(exposureAt(a, { startFrame: 10 }, 14)).toBe(2);
+  });
+});
+
+describe('cut-out animation: a layer moved as a whole', () => {
+  const key = (frame: number, value: unknown) => ({ id: `k${frame}`, frame, value, easing: 'linear' as const });
+  const moving = (id: string, motion: object, parentId?: string): AnimationLayer => ({
+    ...layer([{ at: 0 }]),
+    id,
+    motion: motion as AnimationLayer['motion'],
+    ...(parentId ? { parentId } : {}),
+  });
+
+  it('sits still when it has no motion at all', () => {
+    expect(placeOf(undefined, 10)).toEqual(NO_PLACE);
+    expect(isMoved(placeOf(undefined, 10))).toBe(false);
+  });
+
+  it('interpolates between keyframes, with the app’s own easings', () => {
+    const motion = { position: [key(0, { x: 0, y: 0 }), key(10, { x: 0.5, y: 0.25 })] };
+    expect(placeOf(motion as never, 0).x).toBeCloseTo(0);
+    expect(placeOf(motion as never, 5).x).toBeCloseTo(0.25);
+    expect(placeOf(motion as never, 10).x).toBeCloseTo(0.5);
+    expect(placeOf(motion as never, 5).y).toBeCloseTo(0.125);
+  });
+
+  it('holds the first and last values outside the keyframes, as every other track does', () => {
+    const motion = { rotation: [key(10, 0), key(20, 90)] };
+    expect(placeOf(motion as never, 0).rotation).toBe(0);
+    expect(placeOf(motion as never, 999).rotation).toBe(90);
+  });
+
+  it('takes the middle as the pivot unless one is given', () => {
+    expect(placeOf({ rotation: [key(0, 45)] } as never, 0).pivotX).toBe(0.5);
+    expect(placeOf({ rotation: [key(0, 45)], pivot: { x: 0.2, y: 0.8 } } as never, 0).pivotY).toBe(0.8);
+  });
+
+  it('builds the chain furthest ancestor first, so a hand follows its arm', () => {
+    const hand = moving('hand', {}, 'arm');
+    const arm = moving('arm', {}, 'body');
+    const body = moving('body', {});
+    const layers = [body, arm, hand];
+    expect(chainOf(layers, hand).map((link) => link.id)).toEqual(['body', 'arm', 'hand']);
+    expect(chainOf(layers, body).map((link) => link.id)).toEqual(['body']);
+  });
+
+  it('refuses a loop rather than hang, and ignores a parent that is not there', () => {
+    const a = moving('a', {}, 'b');
+    const b = moving('b', {}, 'a');
+    expect(chainOf([a, b], a).map((link) => link.id)).toEqual(['b', 'a']);
+    // Its own parent, and a parent that does not exist: neither is a chain.
+    const lonely = moving('lonely', {}, 'ghost');
+    expect(chainOf([lonely], lonely).map((link) => link.id)).toEqual(['lonely']);
+  });
+
+  it('the cache key changes as a layer moves, so a held drawing is drawn again', () => {
+    // A drawing held across the whole clip, but the layer moving: without the
+    // motion in the key the picture would freeze on the first frame.
+    const l = moving('arm', { position: [key(0, { x: 0, y: 0 }), key(10, { x: 0.5, y: 0 })] });
+    const a = anim([l], 2);
+    expect(rasterKey(a, 0, 1920, 1080, undefined, 0)).not.toBe(rasterKey(a, 0, 1920, 1080, undefined, 5));
+  });
+
+  it('and does not change for a layer that never moves', () => {
+    const a = anim([layer([{ at: 0 }])], 2);
+    expect(rasterKey(a, 0, 1920, 1080, undefined, 0)).toBe(rasterKey(a, 0, 1920, 1080, undefined, 5));
+  });
+
+  it('reads a rig back from a file, and drops what it cannot play', () => {
+    const read = normalizeAnimation({
+      step: 2,
+      layers: [
+        {
+          id: 'arm',
+          cels: [{ id: 'c', at: 0, strokes: [] }],
+          parentId: 'body',
+          motion: {
+            position: [
+              { id: 'a', frame: 10, value: { x: 0.2, y: 0.1 }, easing: 'bounce' },
+              { id: 'b', frame: 0, value: { x: 0, y: 0 }, easing: 'linear' },
+              // Not playable: dropped rather than jumped to.
+              { id: 'c', frame: 5, value: { x: Number.NaN, y: 0 } },
+              { id: 'd', frame: 'soon', value: { x: 1, y: 1 } },
+            ],
+            rotation: [{ id: 'r', frame: 0, value: 45, easing: 'nonsense' }],
+          },
+        },
+      ],
+    });
+    const arm = read?.layers[0];
+    expect(arm?.parentId).toBe('body');
+    expect(arm?.motion?.position?.map((k) => k.frame)).toEqual([0, 10]);
+    expect(arm?.motion?.position?.[1].easing).toBe('bounce');
+    // An easing this build does not know becomes the plainest one.
+    expect(arm?.motion?.rotation?.[0].easing).toBe('linear');
+  });
+
+  it('a layer with nothing playable carries no motion at all', () => {
+    const read = normalizeAnimation({
+      step: 1,
+      layers: [{ id: 'l', cels: [{ id: 'c', at: 0, strokes: [] }], motion: { position: [], rotation: 'none' } }],
+    });
+    expect(read?.layers[0].motion).toBeUndefined();
+    // And a layer cannot be its own parent.
+    const self = normalizeAnimation({ step: 1, layers: [{ id: 'l', parentId: 'l', cels: [] }] });
+    expect(self?.layers[0].parentId).toBeUndefined();
   });
 });

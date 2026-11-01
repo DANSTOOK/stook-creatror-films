@@ -1,4 +1,5 @@
-import type { AnimationCel, AnimationLayer, Clip, DrawnAnimation, OnionSkin, Stroke } from '@shared/types';
+import type { AnimationCel, AnimationLayer, Clip, DrawnAnimation, Keyframe, LayerMotion, OnionSkin, Stroke, Vector2D } from '@shared/types';
+import { isEasing } from '@renderer/keyframes/easing';
 
 /**
  * The shape of a drawn animation, and the arithmetic of time in it.
@@ -237,12 +238,15 @@ function normalizeLayer(value: unknown): AnimationLayer | null {
     cels.push(normalized);
   }
   cels.sort((a, b) => a.at - b.at);
+  const motion = normalizeMotion(raw.motion);
   return {
     id: raw.id,
     name: typeof raw.name === 'string' && raw.name ? raw.name : 'Layer',
     visible: raw.visible !== false,
     opacity: Number.isFinite(raw.opacity) ? clamp01(raw.opacity as number) : 1,
     cels,
+    ...(motion ? { motion } : {}),
+    ...(typeof raw.parentId === 'string' && raw.parentId && raw.parentId !== raw.id ? { parentId: raw.parentId } : {}),
   };
 }
 
@@ -279,6 +283,71 @@ function normalizeStroke(value: unknown): Stroke | null {
     opacity: Number.isFinite(raw.opacity) ? clamp01(raw.opacity as number) : 1,
     points,
   };
+}
+
+/**
+ * A layer’s motion in a shape this build can play.
+ *
+ * A keyframe without a real frame or a real value is dropped: a rig that
+ * jumps to NaN is worse than one that does not move. Nothing left means no
+ * motion at all, so a layer carries no field rather than an empty one.
+ */
+function normalizeMotion(value: unknown): LayerMotion | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Partial<LayerMotion>;
+  const position = normalizeVectorKeys(raw.position);
+  const scale = normalizeVectorKeys(raw.scale);
+  const rotation = normalizeNumberKeys(raw.rotation);
+  const pivot = normalizeVector(raw.pivot);
+  if (!position && !scale && !rotation && !pivot) return undefined;
+  return {
+    ...(position ? { position } : {}),
+    ...(scale ? { scale } : {}),
+    ...(rotation ? { rotation } : {}),
+    ...(pivot ? { pivot } : {}),
+  };
+}
+
+function normalizeVector(value: unknown): Vector2D | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Partial<Vector2D>;
+  if (!Number.isFinite(raw.x) || !Number.isFinite(raw.y)) return undefined;
+  return { x: raw.x as number, y: raw.y as number };
+}
+
+function keyShell(value: unknown): { id: string; frame: number; easing: Keyframe<never>['easing'] } | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as { id?: unknown; frame?: unknown; easing?: unknown };
+  const frame = Math.round(Number(raw.frame));
+  if (!Number.isFinite(frame)) return null;
+  const id = typeof raw.id === 'string' && raw.id ? raw.id : newId('key');
+  return { id, frame, easing: isEasing(raw.easing) ? raw.easing : 'linear' };
+}
+
+function normalizeNumberKeys(value: unknown): Keyframe<number>[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const keys: Keyframe<number>[] = [];
+  for (const entry of value) {
+    const shell = keyShell(entry);
+    const at = Number((entry as { value?: unknown })?.value);
+    if (!shell || !Number.isFinite(at)) continue;
+    keys.push({ ...shell, value: at });
+  }
+  keys.sort((a, b) => a.frame - b.frame);
+  return keys.length > 0 ? keys : undefined;
+}
+
+function normalizeVectorKeys(value: unknown): Keyframe<Vector2D>[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const keys: Keyframe<Vector2D>[] = [];
+  for (const entry of value) {
+    const shell = keyShell(entry);
+    const at = normalizeVector((entry as { value?: unknown })?.value);
+    if (!shell || !at) continue;
+    keys.push({ ...shell, value: at });
+  }
+  keys.sort((a, b) => a.frame - b.frame);
+  return keys.length > 0 ? keys : undefined;
 }
 
 function normalizeOnion(value: unknown): OnionSkin {

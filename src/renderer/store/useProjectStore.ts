@@ -25,6 +25,7 @@ import type {
   TrackType,
   Transition,
   Vector2D,
+  Easing,
   OnionSkin,
   Stroke,
 } from '@shared/types';
@@ -388,6 +389,20 @@ interface ProjectStore {
   /** A new layer above the others, and a name for it. Returns its id. */
   addAnimationLayer(clipId: string): string;
   removeAnimationLayer(clipId: string, layerId: string): void;
+  /**
+   * Cut-out animation: a keyframe on a layer at a frame, so a drawing can be
+   * moved instead of redrawn. The keyframes are the app’s own, with the same
+   * nine easings and the same curve editor a title uses.
+   *
+   * A keyframe already at that frame is replaced, as everywhere else.
+   */
+  setLayerKeyframe(clipId: string, layerId: string, channel: 'position' | 'scale' | 'rotation', frame: number, value: Vector2D | number): void;
+  /** Take a layer’s keyframe at a frame off; the layer stops moving when none are left. */
+  removeLayerKeyframe(clipId: string, layerId: string, channel: 'position' | 'scale' | 'rotation', frame: number): void;
+  /** Hang a layer from another, or from none. A loop or a missing parent is refused. */
+  setLayerParent(clipId: string, layerId: string, parentId: string | null): void;
+  /** The point a layer turns and scales about, 0..1 of the frame: a shoulder, for an arm. */
+  setLayerPivot(clipId: string, layerId: string, pivot: Vector2D | null): void;
   updateAnimationLayer(clipId: string, layerId: string, patch: { name?: string; visible?: boolean; opacity?: number }): void;
 
   /* Titles --------------------------------------------------------------- */
@@ -1645,6 +1660,85 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers: [...clip.anim.layers, layer] } } } };
     });
     return id;
+  },
+
+  setLayerKeyframe(clipId, layerId, channel, frame, value) {
+    get().transact('Animate layer', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const at = Math.round(frame);
+      if (!Number.isFinite(at)) return project;
+      const layers = clip.anim.layers.map((layer) => {
+        if (layer.id !== layerId) return layer;
+        const motion = layer.motion ?? {};
+        const existing = (motion[channel] ?? []) as { id: string; frame: number; easing: Easing; value: unknown }[];
+        // Replaced, not doubled: two keyframes on one frame cannot both be read.
+        const kept = existing.filter((key) => key.frame !== at);
+        const easing = existing.find((key) => key.frame === at)?.easing ?? 'easeInOut';
+        const next = [...kept, { id: newId(`key-${channel}`), frame: at, value, easing }].sort((a, b) => a.frame - b.frame);
+        return { ...layer, motion: { ...motion, [channel]: next } };
+      });
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  removeLayerKeyframe(clipId, layerId, channel, frame) {
+    get().transact('Remove keyframe', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const at = Math.round(frame);
+      let changed = false;
+      const layers = clip.anim.layers.map((layer) => {
+        if (layer.id !== layerId || !layer.motion) return layer;
+        const existing = (layer.motion[channel] ?? []) as { frame: number }[];
+        const kept = existing.filter((key) => key.frame !== at);
+        if (kept.length === existing.length) return layer;
+        changed = true;
+        const motion = { ...layer.motion, [channel]: kept.length > 0 ? kept : undefined };
+        // No keyframes left anywhere means no motion at all, not an empty one.
+        const empty = !motion.position?.length && !motion.scale?.length && !motion.rotation?.length && !motion.pivot;
+        return empty ? { ...layer, motion: undefined } : { ...layer, motion };
+      });
+      if (!changed) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  setLayerParent(clipId, layerId, parentId) {
+    get().transact('Layer parent', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      if (parentId !== null) {
+        // Itself, something that is not there, or a loop: refused outright
+        // rather than drawn wrongly. Walk up from the would-be parent and see
+        // whether this layer is already above it.
+        if (parentId === layerId || !clip.anim.layers.some((layer) => layer.id === parentId)) return project;
+        const byId = new Map(clip.anim.layers.map((layer) => [layer.id, layer]));
+        let at = byId.get(parentId);
+        for (let depth = 0; at && depth <= clip.anim.layers.length; depth += 1) {
+          if (at.id === layerId) return project;
+          at = at.parentId ? byId.get(at.parentId) : undefined;
+        }
+      }
+      const layers = clip.anim.layers.map((layer) =>
+        layer.id === layerId ? { ...layer, ...(parentId ? { parentId } : { parentId: undefined }) } : layer,
+      );
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  setLayerPivot(clipId, layerId, pivot) {
+    get().transact('Layer pivot', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const layers = clip.anim.layers.map((layer) => {
+        if (layer.id !== layerId) return layer;
+        const motion = { ...(layer.motion ?? {}), pivot: pivot ?? undefined };
+        const empty = !motion.position?.length && !motion.scale?.length && !motion.rotation?.length && !motion.pivot;
+        return empty ? { ...layer, motion: undefined } : { ...layer, motion };
+      });
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
   },
 
   removeAnimationLayer(clipId, layerId) {
