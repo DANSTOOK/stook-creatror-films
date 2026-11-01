@@ -235,6 +235,71 @@ async function main() {
     const undone = await window.evaluate((id) => Boolean(window.__scfStore.getState().project.clips[id]?.tracking), clipId);
     check('one undo brings the follow back', undone);
 
+    console.log('5. the head height changes where it aims');
+    // A SMALLER head height asks for the head higher up the frame, so the camera
+    // has to look LOWER - a more negative offset. Measured: 20 % aims at -189 px
+    // (clamped at the bottom of the picture) and 45 % at +146.
+    const aimedAt = async (percent) => {
+      await window.getByTestId('clip-fx-auto-frame-remove').click();
+      await sleep(300);
+      await window.getByTestId('clip-fx-auto-frame-headroom').fill(String(percent / 100));
+      await sleep(150);
+      await window.getByTestId('clip-fx-auto-frame-run').click();
+      await window
+        .waitForFunction((id) => Boolean(window.__scfStore.getState().project.clips[id]?.tracking), clipId, { timeout: 180_000 })
+        .catch(() => undefined);
+      await sleep(300);
+      return window.evaluate((id) => {
+        const clip = window.__scfStore.getState().project.clips[id];
+        const transform = clip.fx?.base ?? clip.transform;
+        const ys = transform.position.map((key) => key.value.y);
+        return Math.max(...ys);
+      }, clipId);
+    };
+    const at20 = await aimedAt(20);
+    const at45 = await aimedAt(45);
+    check(
+      'the head height slider moves where the camera aims',
+      at45 > at20 + 20,
+      `20 %: ${Math.round(at20)} px, 45 %: ${Math.round(at45)} px`,
+    );
+
+    console.log('6. on every clip');
+    // A second clip from the same file: the batch must analyse the FILE once and
+    // follow both.
+    await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const track = store.project.tracks.find((candidate) => candidate.type === 'video');
+      store.addAssetToTimeline(store.assets[0], track.id, 200);
+    });
+    await sleep(400);
+    await window.getByTestId('clip-fx-auto-frame-all').click();
+    const both = await window
+      .waitForFunction(
+        () => Object.values(window.__scfStore.getState().project.clips).filter((clip) => clip.tracking).length === 2,
+        null,
+        { timeout: 240_000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    check('on every clip follows both clips of the same file', both);
+    // One undo takes back THE BATCH, not everything ever done: the first clip was
+    // already followed on its own a moment ago, and that was its own step. So the
+    // clip the batch added a follow to - the one at frame 200 - loses it, and the
+    // other keeps the one it had.
+    const oneStep = await window.evaluate(() => {
+      window.__scfStore.getState().undo();
+      const clips = Object.values(window.__scfStore.getState().project.clips);
+      return {
+        followed: clips.filter((clip) => clip.tracking).length,
+        second: Boolean(clips.find((clip) => clip.startFrame === 200)?.tracking),
+      };
+    });
+    check(
+      'and the lot is one undo step',
+      oneStep.followed === 1 && !oneStep.second,
+      `${oneStep.followed} still followed, the second one ${oneStep.second ? 'still' : 'no longer'}`,
+    );
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);

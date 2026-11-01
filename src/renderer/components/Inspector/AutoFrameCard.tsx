@@ -8,6 +8,7 @@ import { notify } from '@renderer/notifications/notifications';
 import { matteEntry, useMattes } from '@renderer/matting/mattes';
 import { trackSubject } from '@renderer/edit/reframeRun';
 import { DEFAULT_AUTO_FRAME, TIGHTNESS, planAutoFrame, type HeadSample } from '@renderer/edit/autoFrame';
+import { autoFrameableClips, runAutoFrame } from '@renderer/edit/autoFrameRun';
 import { applyFollow, removeFollow } from '@renderer/edit/trackApply';
 
 /**
@@ -41,6 +42,12 @@ export function AutoFrameCard({ clip }: { clip: Clip }): JSX.Element | null {
   const downloading = useMattes((state) => state.downloading);
   const [tightness, setTightness] = useState<(typeof CHOICES)[number]['id']>('standard');
   const [calm, setCalm] = useState(DEFAULT_AUTO_FRAME.settleSeconds);
+  // Where down the frame the head sits, and how far it may wander before the
+  // camera moves at all. Both were fixed; a talking head and a wide shot of a
+  // room want different answers.
+  const [headroom, setHeadroom] = useState(DEFAULT_AUTO_FRAME.headroom);
+  const [deadZone, setDeadZone] = useState(DEFAULT_AUTO_FRAME.deadZone);
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
 
   useEffect(() => {
@@ -82,7 +89,7 @@ export function AutoFrameCard({ clip }: { clip: Clip }): JSX.Element | null {
       const place = (sample: HeadSample): string => `${sample.t.toFixed(1)}s (${sample.x?.toFixed(2)}, ${sample.y?.toFixed(2)})`;
       console.info(`[autoframe] ${found.length}/${samples.length} samples found a head, from ${place(found[0])} to ${place(found[found.length - 1])}`);
       const chosen = CHOICES.find((candidate) => candidate.id === tightness) ?? CHOICES[1];
-      const plan = planAutoFrame(store.project, current, asset, samples, { ...DEFAULT_AUTO_FRAME, tightness: chosen.value, settleSeconds: calm });
+      const plan = planAutoFrame(store.project, current, asset, samples, { ...DEFAULT_AUTO_FRAME, tightness: chosen.value, settleSeconds: calm, headroom, deadZone });
       if (!plan) {
         setPhase({ kind: 'noRoom' });
         return;
@@ -92,6 +99,28 @@ export function AutoFrameCard({ clip }: { clip: Clip }): JSX.Element | null {
       notify(t('autoFrame.done', { percent: Math.round(plan.shot.width * 100) }), 'success');
     } catch (error) {
       setPhase({ kind: 'failed', detail: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
+  /** The same follow, on every clip that can take one. */
+  const everywhere = async (): Promise<void> => {
+    if (!native) return;
+    const chosen = CHOICES.find((candidate) => candidate.id === tightness) ?? CHOICES[1];
+    // `busy` is read off the phase, so this is what disables the card's buttons.
+    setPhase({ kind: 'running' });
+    setBatch({ done: 0, total: 0 });
+    try {
+      const result = await runAutoFrame(
+        { tightness: chosen.value, settleSeconds: calm, headroom, deadZone },
+        (progress) => setBatch({ done: progress.done, total: progress.total }),
+      );
+      const left = result.skipped.nobody + result.skipped.noRoom + result.skipped.noMatte;
+      notify(t('autoFrame.everywhereDone', { count: result.followed, left }), result.followed > 0 ? 'success' : 'error');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error), 'error');
+    } finally {
+      setPhase({ kind: 'idle' });
+      setBatch(null);
     }
   };
 
@@ -136,6 +165,38 @@ export function AutoFrameCard({ clip }: { clip: Clip }): JSX.Element | null {
         />
         <span className="w-10 shrink-0 text-right tabular-nums text-slate-400">{calm.toFixed(1)} s</span>
       </label>
+      <label className="mb-2 flex items-center gap-2 text-2xs text-slate-300">
+        <span className="shrink-0">{t('autoFrame.headroom')}</span>
+        <input
+          type="range"
+          data-testid="clip-fx-auto-frame-headroom"
+          min={0.15}
+          max={0.5}
+          step={0.01}
+          value={headroom}
+          disabled={busy}
+          aria-label={t('autoFrame.headroom')}
+          className="min-w-0 flex-1"
+          onChange={(event) => setHeadroom(Number(event.target.value))}
+        />
+        <span className="w-10 shrink-0 text-right tabular-nums text-slate-400">{Math.round(headroom * 100)} %</span>
+      </label>
+      <label className="mb-2 flex items-center gap-2 text-2xs text-slate-300">
+        <span className="shrink-0">{t('autoFrame.deadZone')}</span>
+        <input
+          type="range"
+          data-testid="clip-fx-auto-frame-deadzone"
+          min={0}
+          max={0.25}
+          step={0.01}
+          value={deadZone}
+          disabled={busy}
+          aria-label={t('autoFrame.deadZone')}
+          className="min-w-0 flex-1"
+          onChange={(event) => setDeadZone(Number(event.target.value))}
+        />
+        <span className="w-10 shrink-0 text-right tabular-nums text-slate-400">{Math.round(deadZone * 100)} %</span>
+      </label>
 
       {model && !modelReady && (
         <button
@@ -176,6 +237,17 @@ export function AutoFrameCard({ clip }: { clip: Clip }): JSX.Element | null {
         )}
       </div>
 
+      {/* The same thing across the timeline: one matte a FILE, not a clip. */}
+      <button
+        type="button"
+        data-testid="clip-fx-auto-frame-all"
+        className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-control border border-panel-700 px-2 py-1 text-2xs text-slate-200 disabled:opacity-50"
+        disabled={busy || !native || !modelReady || autoFrameableClips().length < 2}
+        onClick={() => void everywhere()}
+      >
+        {batch ? <Loader2 size={13} className="animate-spin" /> : <ScanFace size={13} />}
+        {batch && batch.total > 0 ? `${batch.done}/${batch.total}` : t('autoFrame.everywhere')}
+      </button>
       {phase.kind === 'failed' && <p data-testid="clip-fx-auto-frame-failed" className="mt-1.5 text-2xs text-rose-300">{phase.detail}</p>}
       {phase.kind === 'noRoom' && <p data-testid="clip-fx-auto-frame-no-room" className="mt-1.5 text-2xs text-amber-300">{t('autoFrame.noRoom')}</p>}
       {phase.kind === 'nobody' && <p data-testid="clip-fx-auto-frame-nobody" className="mt-1.5 text-2xs text-amber-300">{t('autoFrame.nobody')}</p>}
