@@ -29,6 +29,14 @@ import { showLibraryTab } from '@renderer/components/MediaLibrary/libraryTabs';
 
 export interface CaptionJobOptions {
   language: CaptionLanguage;
+  /**
+   * Write the captions in English rather than the language spoken.
+   *
+   * Whisper's own translate task: free, no other model, and one-way - INTO
+   * English only. `language` stays what is SPOKEN, because that is what the
+   * model listens for.
+   */
+  translate?: boolean;
   /** `mix` for everything audible, or the id of the one track to listen to. */
   source: 'mix' | string;
   model: CaptionModelId;
@@ -185,7 +193,7 @@ export const useCaptionJob = create<JobState>((set, get) => ({
       if (job.cancelled) throw new Cancelled();
 
       set({ phase: 'transcribing', fraction: MIX_SHARE });
-      const result = await api.captionsTranscribe(jobId, { model: options.model, language: options.language, prompt: options.prompt ?? '', vad: options.vad !== false });
+      const result = await api.captionsTranscribe(jobId, { model: options.model, language: options.language, prompt: options.prompt ?? '', vad: options.vad !== false, translate: options.translate === true });
       if (result.cancelled || job.cancelled) throw new Cancelled();
 
       // On the project as it is now: its size and rate decide lines and frames.
@@ -195,7 +203,11 @@ export const useCaptionJob = create<JobState>((set, get) => ({
         notify(t('captions.otherProject'), 'warning');
         return null;
       }
-      const cues = wordsToCues(result.words, rulesFor(options.preset, now), options.language, now.fps);
+      // Translated words come back in English, so the LINE BREAKING and the
+      // track are English too - the language asked for above is only what the
+      // model listened for.
+      const written: CaptionLanguage = options.translate === true && options.language !== 'en' ? 'en' : options.language;
+      const cues = wordsToCues(result.words, rulesFor(options.preset, now), written, now.fps);
       if (cues.length === 0) {
         // Kept all the same: what was heard and thrown away is worth knowing.
         set({ last: { captions: 0, words: result.words.length, result, totalSeconds: (performance.now() - startedAt) / 1000 } });
@@ -205,7 +217,7 @@ export const useCaptionJob = create<JobState>((set, get) => ({
       // Heard on one track: tied to that track's clips. Heard in the mix: to whichever clip carries the speech.
       const made = { cues, offsetFrame: from, ...(options.source !== 'mix' ? { sourceTrackId: options.source } : {}) };
       if (into && useProjectStore.getState().project.tracks.some((track) => track.id === into)) useProjectStore.getState().addCaptionsToTrack(into, made, { from, to });
-      else useProjectStore.getState().addCaptionTrack(made, { preset: options.preset, language: options.language });
+      else useProjectStore.getState().addCaptionTrack(made, { preset: options.preset, language: written });
       // The list of what was just written comes forward.
       showLibraryTab('captions');
       const summary: CaptionJobSummary = { captions: cues.length, words: result.words.length, result, totalSeconds: (performance.now() - startedAt) / 1000 };

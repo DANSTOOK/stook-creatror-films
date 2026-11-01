@@ -203,7 +203,12 @@ export function registerSubtitleHandlers(getWindow: () => BrowserWindow | null):
         modelPath(readyDir, model),
         language,
         (fraction) => send(IPC.captionsProgress, { jobId, fraction } satisfies CaptionProgressEvent),
-        { prompt: typeof request.prompt === 'string' ? request.prompt : '', vad: request.vad !== false },
+        {
+          prompt: typeof request.prompt === 'string' ? request.prompt : '',
+          vad: request.vad !== false,
+          // Only ever INTO English, so asking for it on an English video is nothing.
+          translate: request.translate === true && language !== 'en',
+        },
       );
     } catch (error) {
       if (error instanceof TranscriptionError) {

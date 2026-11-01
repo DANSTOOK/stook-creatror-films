@@ -188,7 +188,7 @@ export class Transcriber {
     modelFile: string,
     language: 'es' | 'en',
     onProgress: (fraction: number) => void,
-    options: { prompt?: string; vad?: boolean } = {},
+    options: { prompt?: string; vad?: boolean; translate?: boolean } = {},
   ): Promise<TranscriptionOutcome> {
     const job = this.jobs.get(id);
     if (!job) throw new TranscriptionError('no-job', id);
@@ -216,6 +216,7 @@ export class Transcriber {
           gpu,
           vadModel,
           prompt: options.prompt,
+          translate: options.translate === true,
         });
         if (job.cancelled) return cancelled();
         const child = spawn(engine.cli, args, { cwd: engine.dir, env: { ...process.env, ...env }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

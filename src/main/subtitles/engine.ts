@@ -172,6 +172,8 @@ export interface WhisperRun {
    */
   gpu: VulkanDevice | 'auto' | null;
   vadModel: string | null;
+  /** Write the result in English rather than the language spoken (-tr). */
+  translate?: boolean;
   /** Text taken as said just before: a glossary's names, to lean the spelling towards. */
   prompt?: string;
 }
@@ -185,6 +187,8 @@ export interface WhisperRun {
  * - The language is given, never guessed: a wrong guess in the first thirty
  *   seconds transcribes the whole file in the wrong language.
  * - `-pp` prints progress.
+ * - `-tr` asks for English out rather than the language in. It is the one
+ *   direction the model has, and the language given stays what it listens for.
  * - With the voice detector, only what it hears as speech is transcribed,
  *   which is what keeps Whisper from writing over music. The token times
  *   then come back in the time of the sound without its silences, and the
@@ -203,6 +207,9 @@ export function whisperCommand(run: WhisperRun): { args: string[]; env: Record<s
     '-dtw', run.dtw,
     '-nfa',
   ];
+  // Whisper’s translate task, which only ever writes English. The language
+  // above stays the language SPOKEN: it is what the model listens for.
+  if (run.translate) args.push('-tr');
   if (run.vadModel) args.push('--vad', '-vm', run.vadModel);
   const prompt = cleanPrompt(run.prompt);
   if (prompt) args.push('--prompt', prompt);

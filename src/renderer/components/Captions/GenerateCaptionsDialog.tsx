@@ -77,6 +77,8 @@ export function GenerateCaptionsForm({ onClose }: GenerateCaptionsFormProps): JS
 
   const saved = useMemo(remembered, []);
   const [language, setLanguage] = useState<CaptionLanguage>(saved.language ?? uiLanguage);
+  // Only ever INTO English, so there is nothing to offer on an English video.
+  const [translate, setTranslate] = useState(false);
   const [source, setSource] = useState<'mix' | string>('mix');
   const [model, setModel] = useState<CaptionModelId>(saved.model ?? DEFAULT_MODEL);
   // A tall frame is phone video: it starts on the one-line style.
@@ -155,6 +157,7 @@ export function GenerateCaptionsForm({ onClose }: GenerateCaptionsFormProps): JS
       intoTrackId: into === 'new' ? null : into,
       prompt: glossaryPrompt(terms),
       vad: status?.vad ? vad : undefined,
+      translate: language !== 'en' && translate,
     });
   };
 
@@ -188,6 +191,19 @@ export function GenerateCaptionsForm({ onClose }: GenerateCaptionsFormProps): JS
           <p id={hintId} className="text-2xs leading-relaxed text-slate-400">
             {t('captions.languageHint')}
           </p>
+          {/* Whisper's translate task goes one way only, into English. */}
+          {language !== 'en' && (
+            <label className="flex items-start gap-2 text-2xs leading-relaxed text-slate-300">
+              <input
+                type="checkbox"
+                data-testid="captions-translate"
+                className="mt-0.5 shrink-0"
+                checked={translate}
+                onChange={(event) => setTranslate(event.target.checked)}
+              />
+              <span>{t('captions.translate')}</span>
+            </label>
+          )}
         </div>
 
         {(marked || heardSelection.length > 0) && (

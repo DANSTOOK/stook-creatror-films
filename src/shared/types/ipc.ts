@@ -281,6 +281,14 @@ export interface CaptionTranscribeRequest {
   prompt?: string;
   /** Listen only to what the voice detector hears as speech. Absent: yes, when the build has it. */
   vad?: boolean;
+  /**
+   * Write the captions in ENGLISH instead of the language spoken.
+   *
+   * Whisper's own second task, so it costs nothing and needs no other model -
+   * but it only goes one way: INTO English. A Spanish video can have English
+   * subtitles; an English one cannot have Spanish ones this way.
+   */
+  translate?: boolean;
 }
 
 export interface CaptionTranscribeResult {

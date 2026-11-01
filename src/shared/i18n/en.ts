@@ -2405,6 +2405,7 @@ export const en = {
   'tts.errorEngine': 'The voice could not be generated ({detail}).',
   'captions.title': 'Generate captions',
   'captions.language': 'Spoken language',
+  'captions.translate': 'Subtitles in English (the model only ever translates INTO English; it still listens in the language above)',
   'captions.languageHint': 'The language people speak in the video. It is chosen, not guessed: a wrong guess would write the whole video in the wrong language.',
   'captions.source': 'Sound to listen to',
   'captions.sourceMix': 'The whole mix (everything you hear)',

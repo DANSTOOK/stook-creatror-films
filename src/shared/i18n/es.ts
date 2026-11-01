@@ -2404,6 +2404,7 @@ export const es: Messages = {
   'tts.errorEngine': 'No se pudo generar la voz ({detail}).',
   'captions.title': 'Generar subtítulos',
   'captions.language': 'Idioma hablado',
+  'captions.translate': 'Subtítulos en inglés (el modelo traduce solo hacia el inglés; escucha el español igual)',
   'captions.languageHint': 'El idioma en que se habla en el vídeo. Se elige, no se adivina: si se adivinara mal, todo el vídeo saldría escrito en otro idioma.',
   'captions.source': 'Sonido que se escucha',
   'captions.sourceMix': 'Toda la mezcla (todo lo que se oye)',
