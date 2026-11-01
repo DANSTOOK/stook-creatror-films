@@ -175,6 +175,20 @@ async function main() {
       check(`${label}: the audio is not silent`, peak > 1000, `peak ${peak}`);
       check(`${label}: the audio is at least a couple of seconds`, seconds > 2, `${seconds.toFixed(2)}s`);
       const heard = await transcribe(wav, c.language);
+      /*
+       * A quarter of the words wrong is the bar, and it is loose on purpose:
+       * this measures a voice THROUGH the captions engine, so it carries both
+       * of their errors.
+       *
+       * It is also not perfectly repeatable, which is worth knowing before
+       * chasing it. Whisper's output shifts a little with how the work is
+       * split - threads, and whether the GPU took it - so the same audio can
+       * come back slightly differently on a loaded machine. Measured on
+       * en-US-norman, whose 'Hello, this is a test' the model hears as
+       * 'Although this is a test': 14 % with the machine idle and 29 % inside a
+       * full sweep. If this check fails in a sweep, run it on its own before
+       * believing it.
+       */
       const rate = wer(fold(c.ref), fold(heard));
       check(`${label}: the app's captions read the speech back (WER ${(rate * 100).toFixed(0)}%)`, rate <= 0.25, heard.slice(0, 120));
     }

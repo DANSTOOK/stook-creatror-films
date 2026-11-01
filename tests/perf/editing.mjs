@@ -470,6 +470,21 @@ async function main() {
         await sleep(220);
       }
     }, 500);
+    // The same switching, clicked from INSIDE the page. The driver’s own click
+    // runs an injected script to find and hit-test the element, and on a DOM
+    // this size that is itself tens of milliseconds - measured: a 77 ms task of
+    // which 76.7 ms was v8.callFunction, which is CDP calling in. This variant
+    // has no driver in the frame at all, so the two together say which side the
+    // stall is on.
+    await scenario('switch the rail, from the page', async () => {
+      await window.evaluate(async (ids) => {
+        const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+        for (const id of ids) {
+          document.querySelector(`[data-testid="library-tab-${id}"]`)?.click();
+          await wait(220);
+        }
+      }, ['media', 'titles', 'transitions', 'effects', 'stickers', 'sounds', 'voice', 'captions', 'media']);
+    }, 500);
     await window.getByTestId('library-tab-effects').click();
     await sleep(800);
     await scenario('browse the effects tiles', async () => {
