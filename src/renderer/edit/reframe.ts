@@ -56,82 +56,132 @@ export function subjectCentre(matte: Uint8Array, width: number, height: number):
  */
 export function subjectHead(matte: Uint8Array, width: number, height: number): { x: number; y: number } | null {
   /*
-   * The mass in each row, at every other pixel: a quarter of the work.
+   * The mass and the WIDTH of each row, at every other pixel.
    *
-   * Only pixels the matte is SURE about count towards finding the person, even
-   * though the centre below is taken over everything above 96. A band of
-   * compression noise over a dark background comes back as a wide, faint row -
-   * and a wide faint row outweighs a narrow solid person, so the fullest row
-   * was the noise and the head went with it. Confidence is what separates
-   * them: noise sits around a half, a person's core at full.
+   * Mass finds the person: only pixels the matte is sure about count, because a
+   * band of compression noise over a dark background comes back as a wide faint
+   * row, and a wide faint row outweighs a narrow solid person - so the fullest
+   * row was the noise and the "head" went with it. Width finds the neck, and
+   * counts everything the matte marked at all, because the edge of a head is
+   * hair and hair is where a matte is least sure.
    */
-  const rowMass = (floor: number): { rows: Float64Array; peak: number } => {
-    const rows = new Float64Array(height);
-    let peak = 0;
-    for (let y = 0; y < height; y += 2) {
-      const start = y * width;
-      let mass = 0;
-      for (let x = 0; x < width; x += 2) {
-        const value = matte[start + x];
-        if (value >= floor) mass += value;
-      }
-      rows[y] = mass;
-      if (mass > peak) peak = mass;
+  const rows = new Float64Array(height);
+  const solidRows = new Float64Array(height);
+  const span = new Float64Array(height);
+  let peak = 0;
+  let solidPeak = 0;
+  for (let y = 0; y < height; y += 2) {
+    const start = y * width;
+    let mass = 0;
+    let solid = 0;
+    let count = 0;
+    for (let x = 0; x < width; x += 2) {
+      const value = matte[start + x];
+      if (value < 96) continue;
+      mass += value;
+      count += 1;
+      if (value >= 170) solid += value;
     }
-    return { rows, peak };
-  };
-  /*
-   * Two thresholds, because they answer different questions.
-   *
-   * WHERE TO START looking is asked of the solid pixels: a person's core is at
-   * full confidence and a band of noise never is, so the fullest solid row is
-   * always on the person. HOW FAR the person reaches is asked of everything the
-   * matte marked at all, because the top of a head is HAIR - the one place a
-   * matte is least sure - and a run measured in solid pixels alone stops at the
-   * shoulders. Measured on a 1080p fixture: solid-only put the head at 0.62 of
-   * the frame, which is the chest, and the camera framed the person's middle
-   * while their head went out of the top.
-   *
-   * A soft matte with nothing solid in it still gets an answer, from what it has.
-   */
-  const solid = rowMass(170);
-  const loose = rowMass(96);
-  const seed = solid.peak > 0 ? solid : loose;
-  const rows = loose.rows;
-  const peak = loose.peak;
+    rows[y] = mass;
+    solidRows[y] = solid;
+    span[y] = count;
+    if (mass > peak) peak = mass;
+    if (solid > solidPeak) solidPeak = solid;
+  }
   if (peak <= 0) return null;
-  // A row counts as the person once it holds a sixth of the fullest row: less
-  // than that is a wisp of hair or a speck the matte was unsure about.
-  //
-  // Walked out from the FULLEST row rather than in from the top of the frame,
-  // and only along rows that touch it. Scanning from the top took the first row
-  // that passed anywhere in the frame, so on a small subject in a big frame a
-  // band of noise above them became the head and the estimate went to
-  // wherever the noise was - measured on a 1080p fixture, the head never left
-  // the left edge while the person crossed to the right.
-  const floor = peak / 6;
+
+  /*
+   * The subject is the run of rows that TOUCHES its fullest solid row. Walked
+   * out from there rather than in from the top of the frame: scanning from the
+   * top took the first row that passed anywhere, so noise above a small subject
+   * became the head. A soft matte with nothing solid in it falls back to mass.
+   */
+  const seed = solidPeak > 0 ? solidRows : rows;
+  const seedPeak = solidPeak > 0 ? solidPeak : peak;
+  /*
+   * A row carries on the run while it holds a sliver of the fullest row; the
+   * run ends where the matte does, at a row holding nothing.
+   *
+   * It used to take a SIXTH, and a sixth cuts the person in half at the neck:
+   * shoulders are four to eight times a neck wide, so the neck rows fall under
+   * the bar, the walk out from the shoulders stops there, and the head is left
+   * out of the subject entirely - the "head" then came back in the shoulders
+   * (measured on a 320x180 bust: 0.46 of the frame down, where the head's
+   * middle was 0.22). The sliver is small enough that a real neck, and the
+   * crown of a head where the matte reads only hair, both stay in.
+   *
+   * It is a share rather than nothing at all so that a hairline of stray
+   * pixels cannot join the subject to a band of noise it happens to touch: at
+   * a sixty-fourth, a row needs more than a pixel or two to carry the run.
+   */
+  const floor = peak / 64;
   let peakRow = 0;
-  for (let y = 0; y < height; y += 2) if (seed.rows[y] === seed.peak) { peakRow = y; break; }
+  for (let y = 0; y < height; y += 2) if (seed[y] === seedPeak) { peakRow = y; break; }
   let top = peakRow;
   while (top - 2 >= 0 && rows[top - 2] >= floor) top -= 2;
   let bottom = peakRow;
   while (bottom + 2 < height && rows[bottom + 2] >= floor) bottom += 2;
   const extent = Math.max(2, bottom - top);
-  const band = Math.max(2, Math.round(extent * 0.2));
-  // Across the head band: where the head is, left to right.
+
+  /*
+   * Where the head ends: the NECK, the sharpest narrowing under the skull. A
+   * standing or seated person narrows there by a factor of three or four, and
+   * it is the one landmark a silhouette really has.
+   *
+   * NOT the narrowest row above the shoulders, which is what this first took:
+   * the narrowest row of a person is the CROWN, where the head tapers away to
+   * nothing, and it beats the neck every time. Measured on a real 1024x576
+   * matte, where the head ran from 0.31 to 0.41 of the frame down and the neck
+   * was 16 pixels wide at 0.41: the crown was 13 wide at 0.32, so the band
+   * stopped two rows below the top of the hair and the "head" came back at
+   * 0.318 - the scalp, not the face.
+   *
+   * So each row is judged against the WIDEST row ABOVE it - the skull - and the
+   * neck is where that ratio is largest. A crown scores 1, because nothing
+   * above it is wider; the real neck scored 24/16. On the same matte this puts
+   * the head at 0.363, inside the head and 0.003 from its middle.
+   *
+   * The lowest row, where several tie: a flat-sided silhouette is one width all
+   * the way down and every row of it scores 1, and there the lowest is the
+   * bottom of the head, which is where the band should stop.
+   *
+   * The top fifth of the extent stays as the fallback, for a close-up whose
+   * head fills the frame and has no neck in it, or any silhouette that never
+   * narrows.
+   */
+  let widest = top;
+  for (let y = top; y <= bottom; y += 2) if (span[y] > span[widest]) widest = y;
+  let neck = -1;
+  let sharpest = 0;
+  let skull = span[top];
+  for (let y = top + 2; y < widest; y += 2) {
+    if (span[y] > 0 && skull / span[y] >= sharpest) {
+      sharpest = skull / span[y];
+      neck = y;
+    }
+    // Widest ABOVE the next row, so the row being judged is not its own skull.
+    if (span[y] > skull) skull = span[y];
+  }
+  // A neck worth the name: above the middle of the subject, and narrower than
+  // half the widest row. Anything else is a silhouette without one.
+  const narrows = neck > top && neck < top + extent / 2 && span[neck] * 2 < span[widest];
+  const headBottom = narrows ? neck : Math.min(bottom, top + Math.max(2, Math.round(extent * 0.2)));
+
   let weight = 0;
   let sumX = 0;
-  for (let y = top; y <= Math.min(bottom, top + band); y += 2) {
+  let sumY = 0;
+  for (let y = top; y <= headBottom; y += 2) {
     const start = y * width;
     for (let x = 0; x < width; x += 2) {
       const value = matte[start + x];
       if (value < 96) continue;
       weight += value;
       sumX += value * x;
+      sumY += value * y;
     }
   }
   if (weight <= 0) return null;
-  return { x: (sumX / weight + 0.5) / width, y: (top + band / 2 + 0.5) / height };
+  return { x: (sumX / weight + 0.5) / width, y: (sumY / weight + 0.5) / height };
 }
 
 export interface CameraOptions {

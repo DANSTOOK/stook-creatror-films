@@ -7,7 +7,7 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1851 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1852 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **88/88 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
@@ -36,14 +36,42 @@ y sin red: **129/129** con la v2.1.0-beta.1 (ninguna petición a la red).
     sostiene el encuadre en vez de irse al centro.
   - **Panea y no inclina, y está medido.** El estimador de cabeza acierta en
     horizontal: sobre un fichero 1080p leyó **0,20 y 0,74** donde la persona
-    estaba en **0,187 y 0,773**. En vertical no: el tramo de filas que contiene
-    al sujeto se corta en el pecho, así que leyó **0,62 y 0,55** donde la cabeza
-    estaba en **0,37 y 0,11** — y una cámara apuntada ahí encuadra el pecho y
-    **corta la cabeza por arriba**. Inclinar pide un detector de caras de
-    verdad (BlazeFace de MediaPipe), que es modelo más runtime WebAssembly a
-    descargar: otra decisión, con licencia que leer. La matemática de los dos
-    ejes queda lista detrás de una opción apagada. El Auto Reframe de CapCut y
-    de Premiere tampoco inclinan.
+    estaba en **0,187 y 0,773**.
+  - ~~**En vertical no: el tramo de filas que contiene al sujeto se corta en el
+    pecho, así que leyó 0,62 y 0,55 donde la cabeza estaba en 0,37 y 0,11.**~~
+    **Medido otra vez después de publicar: el «0,37 y 0,11» era la medida, no la
+    aplicación.** Esas dos cifras salían del borde superior del recorte del
+    fixture, no de la cabeza del presentador, y el recorte lleva aire por encima:
+    la persona queda unas 117 filas más abajo de lo supuesto. Leyendo la silueta
+    de la propia matte —de la coronilla al cuello, calculado aparte del
+    estimador— el tramo de la cabeza es **0,573–0,670** y **0,313–0,406**, y lo
+    que lee la versión publicada (**0,617 y 0,360**) cae **dentro del tramo en
+    los 18 fotogramas medidos**, a **0,004** de su centro. El 0,55 no se
+    reproduce.
+  - **Lo que sí estaba roto, y ya no:** una fila entraba en el sujeto si llevaba
+    **un sexto** de la fila más llena, y un sexto **parte a la persona en dos por
+    el cuello**. Los hombros son cuatro a ocho veces un cuello, así que las filas
+    del cuello no llegaban al sexto, el recorrido que sale de los hombros se
+    paraba ahí y **la cabeza se quedaba fuera del sujeto**: en un busto de
+    320×180 la «cabeza» salía en **0,46** —los hombros— con su centro en
+    **0,22**. Ahora una fila sigue el recorrido con **1/64**, que un cuello y una
+    coronilla de pelo sí pasan, y el recorrido acaba donde acaba la matte. Mismo
+    busto: **0,220**. El fixture no lo veía porque su cabeza es un tercio del
+    cuerpo de ancha y no tiene cuello que cortar; la prueba nueva sí lo ve (falla
+    con 0,458 contra el código de antes).
+  - **La cabeza se toma hasta el cuello**, el estrechamiento más marcado bajo el
+    cráneo, en vez del quinto superior del sujeto. Lo que encuentra el cuello es
+    juzgar cada fila contra **la más ancha por encima de ella**: la fila más
+    estrecha de una persona es la **coronilla**, y tomarla sin más dejaba la
+    «cabeza» en el pelo —**0,318** sobre la matte real, con la cabeza de 0,31 a
+    0,41—. Sobre esa matte el cuello marcó 24/16 y la cabeza sale en **0,363**, a
+    **0,003** del centro del tramo; el quinto superior, con el recorrido ya
+    arreglado, se queda en 0,006.
+  - Inclinar sigue pidiendo un detector de caras de verdad (BlazeFace de
+    MediaPipe), que es modelo más runtime WebAssembly a descargar: otra
+    decisión, con licencia que leer. La matemática de los dos ejes queda lista
+    detrás de una opción apagada. El Auto Reframe de CapCut y de Premiere
+    tampoco inclinan.
 - **Seis rampas de velocidad más (de 6 a 12):** caída (entra rápido y se queda
   en lenta), impacto (un instante casi parado y nada más tocado), latigazo
   (lenta, un golpe por el medio, lenta), respiración, tartamudeo a tiempo y
@@ -121,15 +149,17 @@ y sin red: **129/129** con la v2.1.0-beta.1 (ninguna petición a la red).
     español leído con las reglas del inglés.
 
 ### Comprobado
-- **1851 pruebas unitarias** (160 archivos). Nuevas: 15 sobre el encuadre
+- **1852 pruebas unitarias** (160 archivos). Nuevas: 16 sobre el encuadre
   automático y el estimador de cabeza, 4 sobre los personajes de voz —incluida
   una que detecta un id de voz mal escrito, que antes caía en silencio—, 6 sobre
   los marcos, 2 sobre los bucles lentos y 2 sobre los stickers.
 - **Pruebas de interfaz nuevas, en la aplicación real:**
-  - `auto-frame.mjs` **10/10** con la matte de verdad sobre un sujeto que cruza
+  - `auto-frame.mjs` **11/11** con la matte de verdad sobre un sujeto que cruza
     el cuadro: el acercamiento exacto, el paneo de **+336 a −336 px**, **ningún**
-    keyframe vertical, y en la imagen renderizada la persona pasa de 0,26 a 0,69
-    sin salirse nunca.
+    keyframe vertical, **31/31 muestras** con sujeto encontrado, y en la imagen
+    renderizada la persona pasa de 0,26 a 0,74 sin salirse nunca.
+  - `reframe.mjs` **7/7**, y las dos vuelven a pasar con el cuello y el
+    recorrido arreglados.
   - `frames.mjs` **13/13**, con la comprobación que un marco no puede fallar:
     con un fondo debajo y el borde blanco encima, el centro renderizado sigue
     siendo **rgb(2,132,199)**, el metraje, y el borde es **rgb(255,255,255)**.
@@ -141,8 +171,10 @@ y sin red: **129/129** con la v2.1.0-beta.1 (ninguna petición a la red).
 - Suite general **127/127**, extremo a extremo **22/22**, proyectos **41/41**.
 
 ### Problemas conocidos
-- **El encuadre automático no inclina**, por lo medido más arriba. Inclinar pide
-  un detector de caras.
+- **El encuadre automático no inclina**, y ahora es solo decisión: el estimador
+  vertical acierta (arriba, 18/18 dentro del tramo de la cabeza), pero inclinar
+  bien pide un detector de caras y no una silueta. La matemática está detrás de
+  una opción apagada.
 - ~~**En un clip de 6 s, solo 14 de 31 muestras encontraron a alguien.**~~
   **Explicado después de publicar, y era la prueba, no la aplicación.** La matte
   cubría los 6 s completos (180 fotogramas, 0,00 a 5,97 s) y todos decodificaban;

@@ -27,6 +27,33 @@ function personMatte(width: number, height: number, headX: number, bodyX: number
   return matte;
 }
 
+/**
+ * A matte of a person with a NECK: a round head, a neck an eighth of the
+ * shoulders wide, and shoulders below - all centred on `x`, 0..1 across.
+ *
+ * `personMatte` above has no neck worth the name (its head is a third of the
+ * body wide), and a head that wide keeps the whole silhouette in one run
+ * whatever the run's bar is. A real person narrows at the neck by four to
+ * eight, which is what finds the head and what used to sever it from the body.
+ */
+function bustMatte(width: number, height: number, x: number): Uint8Array {
+  const matte = new Uint8Array(width * height);
+  const row = (y: number, span: number): void => {
+    for (let at = Math.round((x - span / 2) * width); at < Math.round((x + span / 2) * width); at += 1) {
+      if (at >= 0 && at < width) matte[y * width + at] = 255;
+    }
+  };
+  const headTop = Math.round(0.1 * height);
+  const headBottom = Math.round(0.34 * height);
+  // Round, so the crown is as thin as the matte reads real hair.
+  for (let y = headTop; y <= headBottom; y += 1) {
+    row(y, 0.16 * Math.sin(Math.PI * Math.max(0.08, (y - headTop) / (headBottom - headTop))));
+  }
+  for (let y = headBottom + 1; y < Math.round(0.4 * height); y += 1) row(y, 0.05);
+  for (let y = Math.round(0.4 * height); y < height; y += 1) row(y, 0.44);
+  return matte;
+}
+
 const project = { width: 1920, height: 1080, fps: 30 } as ProjectState;
 const clip = { id: 'c1', startFrame: 100, durationFrames: 90 } as Clip;
 const asset = { width: 1920, height: 1080 };
@@ -61,6 +88,23 @@ describe('finding the head in a matte', () => {
     expect(head).not.toBeNull();
     expect(head!.x).toBeCloseTo(0.78, 1);
     expect(head!.y).toBeGreaterThan(0.08);
+  });
+
+  it('finds the head above a real neck, not the shoulders', () => {
+    // The neck holds far less than a sixth of the shoulders, which is the bar
+    // the run of rows used to ask of a row. Under it the walk out from the
+    // shoulders stopped at the neck, the head fell outside the subject, and
+    // the "head" came back at 0.46 of the frame down - the shoulders - while
+    // the head's middle was at 0.22.
+    const width = 320;
+    const height = 180;
+    const head = subjectHead(bustMatte(width, height, 0.4), width, height);
+    expect(head).not.toBeNull();
+    expect(head!.x).toBeCloseTo(0.4, 2);
+    // Inside the head (0.10 to 0.34 of the frame down), near its middle.
+    expect(head!.y).toBeGreaterThan(0.1);
+    expect(head!.y).toBeLessThan(0.34);
+    expect(head!.y).toBeCloseTo(0.22, 1);
   });
 
   it('finds nobody in an empty matte', () => {
