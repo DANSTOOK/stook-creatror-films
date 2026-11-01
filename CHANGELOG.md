@@ -7,11 +7,70 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1853 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1857 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **88/88 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.2.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v2.3.0-beta.1 — Un proyecto nuevo ya trae algo dentro
+2026-10-31 · pre-release para probar · lo pedido: «dale a todo y prueba»
+
+### Añadido
+- **Cuatro kits de inicio en la sala principal**, junto a «En blanco»: **Short
+  vertical**, **Podcast**, **Tutorial** y **Portada**. Un proyecto nuevo ya no
+  es una línea de tiempo vacía: llega con el fondo detrás, la guía de zona
+  segura de donde va a publicarse, un encabezado y una línea debajo, y las
+  duraciones puestas para que la pieza dure lo que el kit dice.
+  - **Son código, no ficheros de proyecto guardados, y eso es lo importante.**
+    Un fichero guardado lleva una resolución, una forma y los medios con los que
+    se hizo; un kit son unas llamadas a los catálogos que ya vienen en la app,
+    así que el mismo kit llena bien un proyecto 4K 16:9 y uno vertical de
+    1080×1920, **dibuja su fondo a ese tamaño** y no necesita nada empaquetado
+    aparte.
+  - Se montan **antes de escribir el fichero**, así que lo que queda en disco es
+    el kit y el proyecto no se abre con cambios sin guardar. Y es **un solo paso
+    de deshacer**: las piezas empujan cada una el suyo —un fondo se añade y se
+    manda al fondo, un rótulo se añade y se dimensiona— y quien no quiera el kit
+    quiere un Ctrl+Z, no once.
+- **El diálogo de subtítulos avisa de lo que hace el modelo «Rápido»** antes de
+  usarlo, no después. El modelo pequeño no transcribe «algo peor» en abstracto:
+  en español **cambia letras dentro de palabras por lo demás correctas**, y eso
+  se lee como que la aplicación está rota y no como que el modelo es pequeño. El
+  aviso sale solo cuando eliges «Rápido» y señala a «Preciso».
+
+### Comprobado
+- **1857 pruebas unitarias** (161 archivos), 4 nuevas sobre los kits. Una de
+  ellas cubre lo único que fallaría en silencio: un kit que nombre un fondo, un
+  marco o una plantilla de título que ya no exista **montaría una pieza menos sin
+  decir nada**, así que los identificadores se leen del propio código del kit y
+  se contrastan con los tres catálogos.
+- **`tests/ui/kits.mjs` nueva (11/11)** en la aplicación real: las cinco
+  opciones ofrecidas, el kit Short montado en un proyecto 1080×1920 con su fondo
+  en la fila 0 dibujado a 1080×1920, el marco de zona segura encima en la fila
+  3, dos rótulos, la deriva del fondo, la pieza de 15 s, y **un deshacer dejando
+  la línea de tiempo vacía**.
+- **Barrida de interfaz: 87/89 archivos.** Las dos restantes —`scopes.mjs` y
+  `titles-motion.mjs`— son comparaciones de rendimiento (27,2 contra 29,5
+  imágenes/s con los osciloscopios abiertos; 8 fotogramas descartados contra 2
+  de unos 715, con el p95 idéntico). **Repetidas con la máquina en reposo pasan
+  16/16 y 30/30**, así que es carga de la máquina y no una regresión — dicho
+  como lo que es: la barrida completa marcó 87/89.
+
+### Problemas conocidos
+- **El fotograma largo de la reproducción sigue siendo del proceso de GPU** (una
+  sola `GPUTask` de 78 ms, localizada desde la v1.99) y **el 4K a 120 fps sigue
+  en empate**. Ninguno de los dos se ha tocado.
+- Los subtítulos con «Rápido» siguen cambiando letras; lo nuevo es que **la app
+  lo avisa**. La solución sigue siendo elegir «Preciso», que el botón Generar te
+  ofrece descargar.
+
+### Otros
+- Una comprobación de `tests/ui/kits.mjs` comparaba el nombre del fichero del
+  marco **distinguiendo mayúsculas**, y el proceso principal pasa a minúsculas
+  el nombre de toda imagen que guarda. Era la prueba, no el código.
 
 ---
 
