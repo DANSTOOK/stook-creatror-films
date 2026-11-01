@@ -15,6 +15,75 @@ y sin red: **129/129** con la v2.1.0-beta.1 (ninguna petición a la red).
 
 ---
 
+## v2.2.0-beta.1 — La cámara ya no solo panea: también inclina
+2026-10-31 · pre-release para probar · lo pedido: «algo que valga la pena publicar», y lo que faltaba era que el seguimiento de rostros estuviera completo
+
+### Añadido
+- **«La cámara sigue la cara» ahora inclina además de panear**, así que mantiene
+  la cabeza encuadrada de verdad y no solo centrada a lo ancho. Es lo que
+  faltaba para que la función hiciera lo que su nombre promete.
+  - **Dónde apunta está calculado, no tanteado.** Querer la cabeza al 36 % del
+    alto deja la cámara 0,104 por debajo de ella. Medido en la aplicación sobre
+    un fichero cuya cabeza está en 0,617 del origen mientras la persona está
+    baja y en 0,360 cuando sube: la cámara arranca **pegada al tope inferior de
+    lo que la imagen permite (−189 px)**, sube por −38, 17, 37, 45 y se asienta
+    en **49**, donde la holgura pide 53 — los cuatro píxeles son lo que al
+    suavizado le falta por terminar al acabar el clip.
+  - **Se detiene antes de enseñar un borde.** Si el sujeto está demasiado cerca
+    de un canto para darle toda la holgura, la cámara se queda en el límite, lo
+    mismo que ya hacía al panear.
+
+### Arreglado
+- **El estimador de cabeza encontraba los hombros, no la cabeza.** Dos fallos,
+  los dos invisibles para el fixture con el que se escribió:
+  - El tramo de filas que forma el sujeto admitía una fila solo si tenía **un
+    sexto** de la más llena. Unos hombros son de cuatro a ocho veces más anchos
+    que un cuello, así que las filas del cuello no llegaban al listón, el
+    recorrido se paraba ahí y **la cabeza quedaba fuera del sujeto**. En un busto
+    de 320×180 la «cabeza» salía en 0,46 del cuadro —los hombros— cuando su
+    centro estaba en 0,22. Ahora basta **un sesenta y cuatroavo**, que un cuello
+    de verdad y una mata de pelo superan los dos.
+  - **El «cuello» era la coronilla.** La fila más estrecha por encima de los
+    hombros es la cima del cráneo, donde la cabeza se afila hasta nada, y gana
+    siempre: en una matte real de 1024×576 la coronilla medía 13 frente a un
+    cuello de 16, así que la banda se cortaba dos filas dentro del pelo y la
+    cabeza se leía en 0,318, el cuero cabelludo. Ahora cada fila se juzga contra
+    la más ancha **por encima** de ella: una coronilla saca 1 y el cuello de
+    verdad sacaba 24/16.
+  - Comprobado contra la banda coronilla-cuello de la propia silueta, calculada
+    aparte del estimador, sobre la matte que dejó una sonda anterior: **18 de 18
+    fotogramas dentro de la banda y a 0,003 de su centro**; a lo ancho, 0,001.
+
+### Comprobado
+- **1853 pruebas unitarias** (160 archivos), dos nuevas sobre la inclinación:
+  que inclina por defecto y se le puede decir que no, y que una cabeza a la
+  altura de la holgura deja la cámara donde dice la aritmética mientras una
+  cabeza al fondo del origen se queda dentro del margen sin enseñar borde.
+- **`tests/ui/auto-frame.mjs` 11/11** en la aplicación real, con **31 de 31
+  muestras** siguiendo al sujeto.
+- **`tests/ui/reframe.mjs` 7/7** — apunta solo a lo ancho y no se ha tocado — y
+  la **suite general 127/127**.
+
+### Problemas conocidos
+- **Los subtítulos cambian letras con el modelo «Rápido»**, igual que en la
+  v2.1: elige **Preciso** en el desplegable de calidad y el botón Generar te
+  pedirá permiso para descargarlo.
+- **El fotograma largo de la reproducción sigue siendo del proceso de GPU** y
+  **el 4K a 120 fps sigue en empate**.
+
+### Otros
+- Lo que la v2.1 dejó escrito como «la silueta no puede decir cuánto baja una
+  cabeza» **era falso, y la culpa era de mi vara de medir**: los 0,37 y 0,11 con
+  los que comparaba eran el borde superior del recorte del fixture, que lleva
+  encima la holgura que dejó el cámara original —unas 117 filas—, no la cabeza
+  del presentador. El comentario del código y la nota del changelog dicen ahora
+  lo que es cierto.
+- Una de las pruebas nuevas pilló mi propia aritmética antes que el código: tenía
+  el desplazamiento como `−holgura` en vez de `(0,5 − (cabeza + holgura))`, que
+  es el signo equivocado además de la cantidad equivocada.
+
+---
+
 ## v2.1.0-beta.1 — La cámara sigue a la persona, y la biblioteca se llena de verdad
 2026-10-31 · pre-release para probar · lo pedido: cámara lenta y rápida, una cámara que siga a la gente, más textos y encabezados, marcos para vertical, fondos animados, stickers de un stock libre, y arreglar el texto a voz
 
