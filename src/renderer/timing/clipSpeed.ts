@@ -89,17 +89,23 @@ export const SPEED_RAMPS: Record<SpeedRampPreset, readonly number[]> = {
 
 export const isSpeedRamp = (value: unknown): value is SpeedRampPreset => typeof value === 'string' && value in SPEED_RAMPS;
 
-/** Relative speed of a ramp at `u` (0..1 along the clip). */
-export function rampSpeedAt(preset: SpeedRampPreset, u: number): number {
-  const points = SPEED_RAMPS[preset];
+/** The points a clip is ramped along: its own curve, else its preset’s, else nothing. */
+export function rampPoints(clip: Pick<Clip, 'speedRamp' | 'speedCurve'>): readonly number[] | null {
+  if (clip.speedCurve && clip.speedCurve.length >= 2 && clip.speedCurve.every((value) => Number.isFinite(value) && value > 0)) {
+    return clip.speedCurve;
+  }
+  return clip.speedRamp && isSpeedRamp(clip.speedRamp) ? SPEED_RAMPS[clip.speedRamp] : null;
+}
+
+/** Relative speed at `u` (0..1 along the clip), along any points. */
+export function speedAlong(points: readonly number[], u: number): number {
   const at = Math.min(1, Math.max(0, u)) * (points.length - 1);
   const i = Math.min(points.length - 2, Math.floor(at));
   return points[i] + (points[i + 1] - points[i]) * (at - i);
 }
 
-/** How much of the footage a ramp has shown by `u` along the clip, 0..1: the integral of its speed, made whole. */
-export function rampedFraction(preset: SpeedRampPreset, u: number): number {
-  const points = SPEED_RAMPS[preset];
+/** How much of the footage has been shown by `u`, 0..1: the integral of the speed, made whole. */
+export function fractionAlong(points: readonly number[], u: number): number {
   const segments = points.length - 1;
   const area = (to: number): number => {
     const at = Math.min(1, Math.max(0, to)) * segments;
@@ -115,6 +121,12 @@ export function rampedFraction(preset: SpeedRampPreset, u: number): number {
   return total > 0 ? area(u) / total : u;
 }
 
+/** Relative speed of a ready-made ramp at `u`. */
+export const rampSpeedAt = (preset: SpeedRampPreset, u: number): number => speedAlong(SPEED_RAMPS[preset], u);
+
+/** How much of the footage a ready-made ramp has shown by `u`. */
+export const rampedFraction = (preset: SpeedRampPreset, u: number): number => fractionAlong(SPEED_RAMPS[preset], u);
+
 /**
  * The frame of footage shown at a timeline frame.
  *
@@ -122,15 +134,16 @@ export function rampedFraction(preset: SpeedRampPreset, u: number): number {
  * means: the nearest frame of footage, held or skipped as the speed requires.
  */
 export function sourceFrameFor(
-  clip: Pick<Clip, 'startFrame' | 'durationFrames' | 'sourceOffsetFrames' | 'speed' | 'reversed' | 'speedRamp'>,
+  clip: Pick<Clip, 'startFrame' | 'durationFrames' | 'sourceOffsetFrames' | 'speed' | 'reversed' | 'speedRamp' | 'speedCurve'>,
   frame: number,
 ): number {
   const elapsed = frame - clip.startFrame;
   const speed = speedOf(clip);
   const used = sourceFramesUsed(clip);
   // Along a ramp, the footage shown so far is the curve's integral; one speed, a straight line.
-  const shown = clip.speedRamp && isSpeedRamp(clip.speedRamp)
-    ? Math.min(used - 1, Math.round(used * rampedFraction(clip.speedRamp, elapsed / Math.max(1, clip.durationFrames))))
+  const ramp = rampPoints(clip);
+  const shown = ramp
+    ? Math.min(used - 1, Math.round(used * fractionAlong(ramp, elapsed / Math.max(1, clip.durationFrames))))
     : Math.round(elapsed * speed);
 
   if (!isReversed(clip)) {
@@ -206,7 +219,8 @@ export function speedLabel(clip: Pick<Clip, 'speed' | 'reversed'>): string | nul
  * not yet: that needs the samples themselves reversed, and a buffer read
  * back-to-front is not something a playback rate can express.
  */
-export function audioFollowsSpeed(clip: Pick<Clip, 'speed' | 'reversed' | 'speedRamp'>): boolean {
-  // Nor along a ramp: one playback rate cannot follow a speed that changes.
-  return !isReversed(clip) && !clip.speedRamp;
+export function audioFollowsSpeed(clip: Pick<Clip, 'speed' | 'reversed' | 'speedRamp' | 'speedCurve'>): boolean {
+  // Nor along a ramp OR a curve of its own: one playback rate cannot follow a
+  // speed that changes, however that change was asked for.
+  return !isReversed(clip) && rampPoints(clip) === null;
 }

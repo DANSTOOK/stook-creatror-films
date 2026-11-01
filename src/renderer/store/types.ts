@@ -581,6 +581,12 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             fx: normalizeClipFx(clip.fx),
             // A ramp this build knows, or none.
             speedRamp: isSpeedRamp(clip.speedRamp) ? clip.speedRamp : undefined,
+            // A curve of the clip’s own: kept when every point is a real, positive
+            // speed, dropped whole otherwise - half a curve would retime wrongly.
+            speedCurve:
+              Array.isArray(clip.speedCurve) && clip.speedCurve.length >= 2 && clip.speedCurve.every((value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0)
+                ? (clip.speedCurve as number[])
+                : undefined,
             tracking: normalizeTracking(clip.tracking),
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),

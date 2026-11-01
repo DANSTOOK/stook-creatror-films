@@ -564,7 +564,7 @@ interface ProjectStore {
    * already follows.
    */
   /** Speed, reverse and a speed ramp (`ramp`: a curve, null for one speed; left out, kept as it was). One undo step. */
-  setClipSpeed(clipId: string, change: { speed: number; reversed: boolean; ripple: boolean; ramp?: SpeedRampPreset | null }): void;
+  setClipSpeed(clipId: string, change: { speed: number; reversed: boolean; ripple: boolean; ramp?: SpeedRampPreset | null; curve?: number[] | null }): void;
 
   /* The trim tool -------------------------------------------------------- */
   /** Drag one edge and take the rest of the track with it. */
@@ -2601,7 +2601,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     );
   },
 
-  setClipSpeed(clipId, { speed, reversed, ripple, ramp }) {
+  setClipSpeed(clipId, { speed, reversed, ripple, ramp, curve }) {
     const source = sourceFramesFor(get(), get().project.clips[clipId]);
     get().transact(
       'Change speed',
@@ -2610,7 +2610,16 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         if (!clip) return project;
 
         const timed = retimed(clip, { speed, reversed }, source);
-        const next = ramp === undefined ? timed : { ...timed, speedRamp: ramp ?? undefined };
+        const ramped = ramp === undefined ? timed : { ...timed, speedRamp: ramp ?? undefined };
+        // A curve of its own and a preset cannot both apply, so choosing one
+        // clears the other: a clip carrying both would silently follow the
+        // curve while the panel showed the preset as chosen.
+        const next =
+          curve === undefined
+            ? ramped
+            : curve === null
+              ? { ...ramped, speedCurve: undefined }
+              : { ...ramped, speedCurve: curve, speedRamp: undefined };
         const delta = next.durationFrames - clip.durationFrames;
         const clips = { ...project.clips, [clipId]: next };
 

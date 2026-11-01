@@ -5,6 +5,7 @@ import { useT } from '@renderer/i18n';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { MAX_SPEED, MIN_SPEED, clampSpeed, durationForSpeed, sourceFramesUsed, speedForDuration, speedOf } from '@renderer/timing/clipSpeed';
 import { RAMPS, RAMP_LABEL, RampShape } from '@renderer/components/Timeline/SpeedDialog';
+import { SpeedCurveEditor, pointsOfPreset } from './SpeedCurveEditor';
 import { NumberInput, Section, SwitchRow, type SectionProps } from './rows';
 
 /**
@@ -46,6 +47,7 @@ export function SpeedTab({ clip, fps, sectionProps }: SpeedTabProps): JSX.Elemen
   const used = sourceFramesUsed(clip);
   const duration = durationForSpeed(used, speed);
   const ramp = clip.speedRamp ?? null;
+  const curve = clip.speedCurve ?? null;
   const reversed = clip.reversed === true;
 
   /** What is being typed into the duration, while it is being typed. */
@@ -54,7 +56,7 @@ export function SpeedTab({ clip, fps, sectionProps }: SpeedTabProps): JSX.Elemen
   const typed = draft === null ? duration : parseDuration(draft, fps);
   const invalid = draft !== null && (typed === null || typed <= 0);
 
-  const apply = (change: Partial<{ speed: number; reversed: boolean; ramp: SpeedRampPreset | null }>): void =>
+  const apply = (change: Partial<{ speed: number; reversed: boolean; ramp: SpeedRampPreset | null; curve: number[] | null }>): void =>
     setClipSpeed(clip.id, { speed, reversed, ramp, ripple, ...change });
   const commitDuration = (): void => {
     if (draft === null) return;
@@ -132,7 +134,23 @@ export function SpeedTab({ clip, fps, sectionProps }: SpeedTabProps): JSX.Elemen
             );
           })}
         </div>
-        <p className="text-2xs leading-relaxed text-slate-400">{ramp ? t('ramp.hint') : t('ramp.noneHint')}</p>
+        {/* A curve of one’s own takes the place of a preset (timing/clipSpeed). */}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={curve !== null}
+          data-testid="inspector-ramp-mine"
+          className={`press mt-1 w-full rounded-md border px-2 py-1 text-2xs transition-colors ${
+            curve !== null ? 'border-accent/70 bg-accent/15 text-slate-100' : 'border-panel-700 bg-panel-900 text-slate-400 hover:border-panel-600 hover:text-slate-200'
+          }`}
+          onClick={() => apply({ curve: curve === null ? pointsOfPreset(ramp) : null })}
+        >
+          {t('ramp.curveMine')}
+        </button>
+        {curve !== null && (
+          <SpeedCurveEditor points={curve} onChange={(next) => apply({ curve: next })} />
+        )}
+        <p className="text-2xs leading-relaxed text-slate-400">{curve !== null ? t('ramp.curve') : ramp ? t('ramp.hint') : t('ramp.noneHint')}</p>
       </Section>
     </div>
   );

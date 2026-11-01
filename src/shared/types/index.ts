@@ -759,6 +759,15 @@ export interface Clip {
    */
   speedRamp?: SpeedRampPreset;
   /**
+   * A speed curve of the clip’s own, which takes the place of `speedRamp`:
+   * relative speeds along the clip, joined by straight lines, as the
+   * ready-made ramps are (timing/clipSpeed). Two points at least.
+   *
+   * The two cannot both apply, and this one wins: a curve dragged by hand is
+   * a deliberate act and a preset is a starting point.
+   */
+  speedCurve?: number[];
+  /**
    * An adjustment layer: no picture of its own - its colour grade and its
    * effects are put on everything drawn under it while it lasts, its
    * opacity how much (engine/Compositor). Its sourceUri is ADJUSTMENT_URI.
