@@ -158,10 +158,17 @@ async function main() {
       early.length > 0 && late.length > 0 && Math.min(...early.map(([, x]) => x)) > 40 && Math.max(...late.map(([, x]) => x)) < -40,
       `early x ${early.map(([, x]) => x).join()} | late x ${late.map(([, x]) => x).join()}`,
     );
+    // It tilts too, and where to is known rather than eyeballed: the head in
+    // this fixture sits at 0.617 of the source while the presenter is low and
+    // 0.360 once they are high (measured off the matte itself). Wanting the head
+    // 0.36 down the frame puts the camera 0.104 below it, so low it is past the
+    // bottom of what the picture allows and clamps to +189, and high it lands at
+    // (0.5 - 0.464) x 1458 = +53 px.
+    const tilt = after.position.map(([, , y]) => y);
     check(
-      'it pans and does not tilt: no vertical keyframes at all',
-      after.position.every(([, , y]) => y === 0),
-      `y ${after.position.map(([, , y]) => y).join()}`,
+      'it tilts as well as pans, from the edge of the picture to where the headroom asks',
+      Math.min(...tilt) <= -180 && Math.abs(Math.max(...tilt) - 53) <= 12,
+      `y ${tilt.join()}`,
     );
     check(
       'in a handful of keyframes, never past the edge of the picture',

@@ -185,11 +185,34 @@ describe('planning the keyframes', () => {
     }
   });
 
-  it('does not tilt by default, and does when asked', () => {
-    const flat = planAutoFrame(project, clip, asset, samples);
-    expect(flat!.position.every((key) => key.value.y === 0)).toBe(true);
-    const tilted = planAutoFrame(project, clip, asset, samples, { ...DEFAULT_AUTO_FRAME, tilt: true });
+  it('tilts by default, and can be told not to', () => {
+    const tilted = planAutoFrame(project, clip, asset, samples);
     expect(tilted!.position.some((key) => key.value.y !== 0)).toBe(true);
+    const flat = planAutoFrame(project, clip, asset, samples, { ...DEFAULT_AUTO_FRAME, tilt: false });
+    expect(flat!.position.every((key) => key.value.y === 0)).toBe(true);
+  });
+
+  it('aims the camera below the head by the headroom, and clamps rather than showing an edge', () => {
+    // The head 0.36 down the frame means the camera's centre sits below it by
+    // what is left of the half shot - so for a head at 0.36 the camera is
+    // centred and the offset is nothing.
+    const level: HeadSample[] = Array.from({ length: 16 }, (_unused, index) => ({ t: index * 0.2, x: 0.5, y: 0.36 }));
+    const centred = planAutoFrame(project, clip, asset, level);
+    const shot = 1 / TIGHTNESS.standard;
+    const drop = (0.5 - DEFAULT_AUTO_FRAME.headroom) * shot;
+    // The clip moves by how far the camera's centre is from the middle of the
+    // source, across the drawn width - so a camera aimed below the middle moves
+    // the picture UP, and the offset is positive.
+    const expected = (0.5 - (0.36 + drop)) * project.height * TIGHTNESS.standard;
+    expect(centred!.position[centred!.position.length - 1].value.y).toBeCloseTo(expected, 0);
+
+    // A head at the very bottom of the source cannot be given headroom: the
+    // camera stops at the edge of the picture instead.
+    const low: HeadSample[] = Array.from({ length: 16 }, (_unused, index) => ({ t: index * 0.2, x: 0.5, y: 0.98 }));
+    const overhang = (project.height * TIGHTNESS.standard - project.height) / 2;
+    for (const key of planAutoFrame(project, clip, asset, low)!.position) {
+      expect(Math.abs(key.value.y)).toBeLessThanOrEqual(overhang + 1e-6);
+    }
   });
 
   it('refuses when there is no room to pan', () => {
