@@ -7,11 +7,124 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1857 pruebas unitarias**, **22/22
-comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **88/88 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
+Cifras de referencia al día de hoy: **1866 pruebas unitarias**, **22/22
+comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **90/90 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.3.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v2.4.0-beta.1 — Una curva de velocidad propia, y la cámara se puede apuntar
+2026-11-01 · pre-release para probar · lo pedido: cuatro de los cambios que elegiste de una lista de diez
+
+### Añadido
+- **Una curva de velocidad dibujada a mano**, junto a las doce rampas hechas.
+  Nueve puntos a lo largo del clip, cada uno una velocidad relativa — la misma
+  forma que tienen los presets, así que **las matemáticas del retiempo son las
+  suyas** y no hubo que inventar nada. «A mano» parte del preset que tuvieras
+  elegido y suelta ese preset, porque un clip con los dos seguiría la curva
+  mientras el panel te mostraba el preset como elegido.
+  - **La duración del clip no cambia** por mucho que estires la curva: la
+    velocidad media sigue siendo la del clip, así que una rampa solo mueve qué
+    fotograma se ve cuándo. Medido en la app: un punto arrastrado de 0,3x a
+    **2,57x** y el clip sigue midiendo exactamente **180 fotogramas**.
+  - Los puntos se mueven **solo arriba y abajo**. De lado también podrían
+    cruzarse, y una curva con los puntos desordenados no es una función del
+    tiempo. Las flechas del teclado también mueven un punto, así que no hace
+    falta ratón.
+- **La cámara que sigue la cara se puede apuntar**: dos deslizadores para la
+  **altura de la cabeza** en el cuadro y para la **zona muerta** (cuánto puede
+  moverse antes de que la cámara reaccione). Antes estaban fijos, y un primer
+  plano hablando y un plano general de una sala quieren respuestas distintas.
+  Medido: al 20 % apunta a −189 px (pegada al tope de lo que la imagen permite)
+  y al 45 % a +146.
+- **«En todos los clips»**, en la misma tarjeta: el mismo seguimiento por toda
+  la línea de tiempo. Lo que se ahorra no son los clics: una matte de personas
+  se hace **por FICHERO**, y tres clips cortados de una misma toma comparten
+  una, así que hacerlo clip a clip pasaría el modelo tres veces por el mismo
+  metraje. Todo el lote es **un paso de deshacer**, y un clip al que el
+  seguimiento no puede ayudar —sin matte, sin nadie dentro, o sin margen para
+  moverse— se queda **exactamente como estaba y se cuenta**, en vez de quedar a
+  medias o saltarse en silencio.
+- **Un fondo o un marco se puede volver a dibujar en otro color.** Los dos
+  llegan como PNG plano, así que cambiarles el color significaba borrarlos y
+  poner otro — perdiendo dónde estaban, cuánto duraban y todo lo que les
+  hubieras hecho. El clip ahora recuerda de qué se dibujó, así que el inspector
+  lo dibuja otra vez y cambia la imagen por debajo. Medido: el clip se queda en
+  el fotograma 48 con sus 90 fotogramas mientras el fichero pasa de
+  `bg-mountains-1920x1080.png` a `bg-mountains-1080x1920-f472b6-45.png`.
+  - El tinte es `source-atop`, y las dos alternativas obvias se probaron antes:
+    un **giro de tono no hace nada al gris** (papel, hormigón, mármol y todas
+    las guías de zona segura lo son), y el modo de fusión **`color` sí colorea
+    el gris pero pinta sobre lo transparente** — es decir, **le rellena el hueco
+    al marco**, que es justo para lo que existe un marco.
+  - Las muestras de color están dibujadas por el mismo código que dibuja lo
+    real, así que lo que ves es lo que vas a obtener y no un cuadrado de color.
+
+### Arreglado
+- **Un clip con una curva propia seguía sonando**, a una velocidad constante
+  equivocada. El silenciado solo preguntaba por `speedRamp`, cuando la razón por
+  la que un clip rampado se silencia —una sola velocidad de reproducción no
+  puede seguir una velocidad que cambia— vale igual para una curva hecha a mano.
+- **Una curva guardada no habría sobrevivido a reabrir el proyecto.** El
+  cargador de documentos normaliza campo a campo y no conocía este. Ahora sí, y
+  **descarta la curva entera, no a medias**: menos de dos puntos, o un cero, un
+  negativo o un valor no finito, dejarían el metraje parado para siempre o
+  corriendo hacia atrás dentro de un clip hacia adelante.
+
+### Comprobado
+- **1866 pruebas unitarias** (162 archivos), 9 nuevas sobre la curva — que
+  además fijan que **los presets se comportan exactamente igual que antes**,
+  porque ahora pasan por las mismas dos funciones.
+- En la aplicación real: **`speed-curve.mjs` nueva (8/8)**,
+  **`auto-frame.mjs` 14/14**, **`backgrounds.mjs` 18/18**, `frames.mjs` 13/13 y
+  `speed-ramp.mjs` 6/6.
+
+### Rendimiento, medido
+- **Las 17 escenas del arnés salen en «ok»** con la máquina en reposo, y el p50
+  es el refresco de la pantalla (5,6 ms) en todas ellas.
+- **El peor atasco aparente no era de la aplicación.** «Cambiar de pestaña en la
+  biblioteca» daba un fotograma de 84–87 ms con 31–33 ms de bloqueo, y parecía
+  lo siguiente que había que optimizar. La traza dijo otra cosa: la rodaja más
+  larga eran 77 ms de los cuales **76,7 ms eran `v8.callFunction`**, que es CDP
+  entrando en la página — el clic del conductor de pruebas ejecuta un script
+  inyectado para localizar el elemento, y sobre un DOM de 120 clips en 11 pistas
+  eso ya cuesta decenas de milisegundos. Pulsando las mismas pestañas **desde
+  dentro de la página**:
+
+  | | peor fotograma | fotogramas largos | descartados |
+  |---|---|---|---|
+  | por el conductor | 66,8 ms | 1 (71 ms) | 7,3 % |
+  | desde la página | **16,8 ms** | **0** | 2,2 % |
+
+  Cambiar de pestaña cuesta como mucho tres refrescos. Las dos variantes se
+  quedan en el arnés: es la **segunda** escena que sobreestima así, después de
+  la ráfaga de deshacer.
+- Buscados bugs donde se esconden y **no había**: ni un `TODO`/`FIXME` en el
+  código, **cero `catch {}` vacíos**, el log de la aplicación instalada con una
+  sola línea («Started») tras recorrer 13 pantallas, cero errores de página y
+  los tipos limpios en los dos configs.
+
+### Problemas conocidos
+- **El fotograma largo de la reproducción sigue siendo del proceso de GPU** (una
+  `GPUTask` de 78 ms, localizada desde la v1.99) y **el 4K a 120 fps sigue en
+  empate**. Ninguno se ha tocado.
+- Los subtítulos con el modelo «Rápido» siguen cambiando letras; desde la v2.3
+  la app lo avisa y la solución sigue siendo elegir «Preciso».
+
+### Otros
+- **Tres de las diez mejoras que ofrecí ya estaban construidas** —ajustes de
+  exportación por plataforma (`socialPresets`), elegir el fotograma de portada
+  (`captureCurrentFrame`) y los subtítulos tipo karaoke (ya hay cinco
+  animaciones de subtítulo, karaoke incluido)—. **Fue un fallo mío ofrecerlas
+  sin mirar antes el código.** No se ha añadido nada en esas tres.
+- La comprobación del arrastre de la curva falló tres veces antes de pasar, y
+  las tres fue la prueba. La última merece quedar escrita: el punto devolvía una
+  caja estando **por debajo del área visible del inspector**, y esa caja cae
+  sobre el lienzo de la línea de tiempo — así que el arrastre se lo comía el
+  lienzo y el punto no recibía ni un evento. `document.elementFromPoint` dijo
+  `CANVAS#timeline-canvas` y ahí se vio.
 
 ---
 
