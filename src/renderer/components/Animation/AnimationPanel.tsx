@@ -301,6 +301,20 @@ export function AnimationPanel(): JSX.Element {
               </li>
             ))}
           </ul>
+          {/* Of the layer being drawn on: a rough layer is laid in faintly and
+              the clean one drawn over it, which is how a drawing gets made. */}
+          <label className="mt-2 flex items-center gap-2 text-2xs text-slate-400">
+            <span className="w-14 shrink-0">{t('animation.opacity')}</span>
+            <input
+              type="range"
+              data-testid="animation-layer-opacity"
+              min={5}
+              max={100}
+              value={Math.round((anim.layers.find((layer) => layer.id === layerId)?.opacity ?? 1) * 100)}
+              onChange={(event) => layerId && updateAnimationLayer(clip.id, layerId, { opacity: Number(event.target.value) / 100 })}
+              className="flex-1"
+            />
+          </label>
         </section>
 
         {/* The exposure sheet -------------------------------------------- */}

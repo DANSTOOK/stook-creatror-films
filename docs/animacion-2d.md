@@ -130,6 +130,20 @@ Esa es la única decisión que, tomada mal, no se puede corregir después.
 
 ## 4. El plan por fases
 
+> **Estado a 1 de noviembre de 2026.** Hechas las fases **0, 1, 2 y 3**
+> (commits `4b9aedd` y `04935f7`). Se tomó el camino **C, el híbrido**: los
+> trazos se guardan como datos. Pendientes las fases 4 a 7.
+>
+> Un hallazgo del camino, por si se olvida: la exposición se calcula contando
+> también `sourceOffsetFrames`, no solo `startFrame`. Sin eso, partir un clip
+> de animación manda la segunda mitad de vuelta al dibujo uno.
+>
+> Y una corrección de diseño: dibujar en una exposición que solo **mantiene**
+> un dibujo crea uno **en blanco**, no una copia. La copia dejaba el papel
+> cebolla inútil (el dibujo anterior quedaba idéntico debajo) y hacía que cada
+> dibujo acumulase todos los trazos anteriores. Copiar es ahora una acción
+> aparte, «Duplicar dibujo».
+
 Cada fase entrega algo utilizable y comprobable. Ninguna deja la aplicación a
 medias.
 

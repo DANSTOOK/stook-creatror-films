@@ -39,6 +39,11 @@ const painted = (window) =>
     copy.width = canvas.width;
     copy.height = canvas.height;
     const ctx = copy.getContext('2d');
+    // Over black, which is what the eye sees. A canvas keeps straight alpha,
+    // so a white stroke at a fifth reads as RGB 255 with alpha 51: measuring
+    // RGB alone would call a faded layer fully bright.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, copy.width, copy.height);
     ctx.drawImage(canvas, 0, 0);
     const { data } = ctx.getImageData(0, 0, copy.width, copy.height);
     let lit = 0;
@@ -46,6 +51,33 @@ const painted = (window) =>
       if (data[index] > 24 || data[index + 1] > 24 || data[index + 2] > 24) lit += 1;
     }
     return lit;
+  });
+
+/**
+ * The viewer's total brightness.
+ *
+ * Opacity needs this rather than a count of lit pixels: white at a fifth is
+ * still about 51, well over any sensible threshold, so the COUNT does not move
+ * when a layer is laid in faintly - only the brightness does.
+ */
+const brightness = (window) =>
+  window.evaluate(() => {
+    const canvas = document.querySelector('canvas.block.h-full.w-full.object-contain');
+    if (!canvas) return -1;
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width;
+    copy.height = canvas.height;
+    const ctx = copy.getContext('2d');
+    // Over black, which is what the eye sees. A canvas keeps straight alpha,
+    // so a white stroke at a fifth reads as RGB 255 with alpha 51: measuring
+    // RGB alone would call a faded layer fully bright.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, copy.width, copy.height);
+    ctx.drawImage(canvas, 0, 0);
+    const { data } = ctx.getImageData(0, 0, copy.width, copy.height);
+    let total = 0;
+    for (let index = 0; index < data.length; index += 4) total += data[index] + data[index + 1] + data[index + 2];
+    return total;
   });
 
 /** The animation of the one animation clip there is. */
@@ -250,6 +282,17 @@ async function main() {
     const blanked = await animOf(window);
     const atOne = blanked?.layers[0].cels.find((cel) => cel.at === 1);
     check('the blank drawing is its own, holding nothing', atOne?.strokes === 0, JSON.stringify(blanked?.layers[0].cels));
+
+    console.log('10. layer opacity');
+    // Back to an exposure where this layer HAS a drawing: step 9 left the
+    // playhead on the blank one, where there is nothing to fade.
+    await window.evaluate((value) => window.__scfStore.getState().setCurrentFrame(value), holding.startFrame);
+    await sleep(300);
+    const litFull = await brightness(window);
+    await window.getByTestId('animation-layer-opacity').fill('20');
+    await sleep(350);
+    const litFaint = await brightness(window);
+    check('a layer laid in faintly draws faintly', litFaint < litFull * 0.6, litFull + ' -> ' + litFaint + ' total brightness');
 
     console.log('10. the console');
     check('nothing in the console', issues.length === 0, issues.slice(0, 3).join(' | '));

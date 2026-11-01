@@ -7,11 +7,151 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1866 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1909 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **90/90 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.4.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v3.0.0 — Animación 2D: se dibuja dentro del editor
+2026-11-01 · lo pedido: «un apartado de animación 2d completo […] que en este se pueda dibujar, tela de los key frames que ya tienes, de seguir una secuencia»
+
+Antes de escribir una línea de código salió la investigación y el plan por
+fases que pediste: **[docs/animacion-2d.md](docs/animacion-2d.md)**. Ahí están
+los programas libres que ya resolvieron esto y lo que se les tomó, lo que esta
+aplicación ya tenía y lo que faltaba, las tres arquitecturas posibles con su
+coste, las ocho fases, y lo que **no** haría y por qué. Esta entrega son las
+**fases 0 a 3** de ese plan; las fases 4 a 7 irán como v3.1, v3.2…
+
+### Añadido
+
+- **Un clip de animación**, que es un clip como cualquier otro: se mueve, se
+  recorta, se escala, se gradúa y se exporta igual. Como un título, **no tiene
+  archivo**: su imagen se dibuja de sus propios datos en cada fotograma.
+  - Comprobado en la app (`tests/ui/animation.mjs`): se crea con una capa y
+    nada dibujado, y el pincel queda en la mano al momento.
+
+- **Se dibuja sobre el visor**, a la resolución del proyecto, con lápiz,
+  rotulador y borrador, grosor, color y opacidad. El grosor responde a la
+  presión del lápiz si el dispositivo la da, y **funciona igual si no la da**
+  (0,5 por defecto).
+  - **Un trazo es un paso de deshacer.** Medido: el historial pasa de 1 a 2 con
+    un trazo, y Ctrl+Z lo quita **de la imagen**, no solo de los datos — los
+    píxeles encendidos vuelven de 5079 a 0.
+  - El trazo que está bajo la mano se dibuja en un lienzo propio, no pasando por
+    el proyecto: si cada movimiento del puntero escribiera en el store, la línea
+    iría detrás de la mano y el historial se llenaría de cientos de pasos. Se
+    confirma al soltar.
+  - **El borrador borra de verdad** (`destination-out`), y cada capa se compone
+    en su propio lienzo, así que borrar en una capa **no agujerea las de abajo**.
+    Eso es el sentido de tener capas.
+
+- **Los trazos se guardan como datos**, no como píxeles: puntos, presión,
+  pincel, color, en fracciones del fotograma. Cuesta lo mismo que guardar
+  píxeles, mantiene el proyecto pequeño, se redibuja a cualquier tamaño, y es la
+  **única forma desde la que son posibles los intermedios y exportar a Lottie**
+  más adelante. Guardar píxeles cerraba esas puertas para siempre.
+  - Comprobado: una animación de 2 capas y 3 trazos vuelve entera del archivo,
+    con sus capas y su exposición.
+  - Un trazo que no se puede leer **se descarta en vez de adivinarlo**: cuatro
+    números no son un punto y medio, y medio trazo se dibujaría mal.
+
+- **Hoja de exposición en vertical**, como un X-sheet de OpenToonz y como se ha
+  hecho en papel durante un siglo — no en horizontal como la línea de tiempo.
+  Son instrumentos distintos: la línea de tiempo dice dónde está el clip en la
+  película, la hoja dice dónde está el dibujo en el clip. Un dibujo propio se
+  marca con un punto; uno mantenido, con una línea que sigue hacia abajo.
+
+- **Rodar a unos, a dos o hasta a ocho**: un dibujo expuesto N fotogramas. A dos
+  — lo normal en animación dibujada — doce dibujos cubren un segundo de 24.
+  - Medido: el mismo dibujo cubre **los dos fotogramas** de su exposición
+    (5079 píxeles en ambos).
+
+- **Papel cebolla**, con las **dos formas de contar** que casi todos los
+  programas confunden en una, y que son cosas distintas:
+  - **Por dibujos** salta de un dibujo al siguiente por mucho que cada uno se
+    mantenga. Responde a «qué dibujé antes de este».
+  - **Por fotogramas** mira una distancia fija en el tiempo, así que un dibujo
+    mantenido no aparece como vecino de sí mismo. Responde a «qué hay en
+    pantalla un instante antes y después».
+  - Se desvanece con la distancia, hasta 8 dibujos a cada lado. Por defecto 1 y
+    1 al 35 %, dentro de lo que recomienda el manual de Pencil2D (1 o 2 dibujos,
+    entre el 15 % y el 50 %).
+  - **No sale nunca en la exportación**, solo se ve en el clip que estás
+    dibujando, y **no se ve mientras se reproduce**: es una ayuda para la mano,
+    no parte de la película.
+  - Medido: los fantasmas suben la imagen de 4056 a 8649 píxeles encendidos y se
+    van al apagarlos.
+
+- **Capas dentro de la animación**, con su visibilidad y su opacidad, dibujadas
+  de abajo arriba y listadas de arriba abajo como se ven.
+  - Medido: ocultar una capa le quita su dibujo a la imagen (10692 → 8649), y
+    una capa puesta al 20 % dibuja al 20 % — el brillo total pasa de 3,24 M a
+    0,66 M, exactamente un quinto.
+
+- **Dibujo nuevo en blanco**, que no es lo mismo que no tener dibujo: **termina
+  el mantenido**, así que una capa puede quedarse vacía sin ocultarla — que es
+  cómo un personaje sale de escena. Medido: 5102 píxeles → 23.
+
+- **Duplicar dibujo**, para empezar el siguiente desde el último a propósito.
+
+- **Las teclas del pincel**, vivas solo mientras el pincel está en la mano:
+  `[` y `]` grosor, `,` y `.` dibujo anterior y siguiente, `E` borrador,
+  `P` lápiz, `Esc` guardar el pincel.
+  - `,` y `.` saltan entre **dibujos**, no entre exposiciones. Medido: del
+    dibujo en 0 al de la exposición 4, que a dos son 8 fotogramas.
+  - **No se tocan `B` ni `C`**, que el editor usa para partir y para la
+    cuchilla: son teclas que la mano busca entre trazo y trazo. Medido con el
+    pincel en la mano: `B` sigue partiendo (1 clip → 2).
+  - Una tecla con modificador **nunca** se toma, así que Ctrl+Z sigue
+    deshaciendo el trazo.
+
+### Arreglado
+
+- **Partir un clip de animación mandaba la segunda mitad de vuelta al dibujo
+  uno.** La exposición se calculaba solo desde el inicio del clip; ahora cuenta
+  también `sourceOffsetFrames`, el mismo campo con el que un clip de vídeo dice
+  cuánto lleva dentro de su archivo. Con eso partir y recortar por la cabeza
+  funcionan como en cualquier otro clip.
+
+### Cómo se comprobó
+
+- **43/43** unitarias nuevas (`tests/Animation.test.ts`): la aritmética de las
+  dos relojes, el mantenido, las dos formas de contar el papel cebolla, la clave
+  de caché, la lectura de archivos corruptos y las teclas.
+- **26/26** en la aplicación en marcha (`tests/ui/animation.mjs`), dibujando con
+  el puntero real y **leyendo los píxeles del visor**, no solo los datos.
+- **1909/1909** unitarias en todo el proyecto, y `tsc` limpio en los dos
+  proyectos.
+
+### De lo que me equivoqué, dicho
+
+- Mi primera versión, al dibujar en una exposición que solo **mantenía** un
+  dibujo, **copiaba** el dibujo mantenido. Lo cazó la prueba de interfaz, no las
+  unitarias: yo había escrito la unitaria afirmando el comportamiento
+  equivocado. Copiar dejaba el papel cebolla inútil (el dibujo anterior quedaba
+  idéntico debajo, así que los fantasmas eran invisibles) y hacía que cada
+  dibujo acumulase todos los trazos anteriores, sin fin. Ahora una exposición
+  nueva es un dibujo **en blanco**, y copiar es su propia acción.
+- Tres comprobaciones fallaron por fallos **de mi prueba**, no del código, y dos
+  de ellas por el mismo error: medir a través del papel cebolla, y medir solo
+  RGB sin el alfa — un trazo blanco al 20 % está en el lienzo como RGB 255 con
+  alfa 51, así que parecía a pleno brillo. Las mediciones se hacen ahora sobre
+  negro, que es lo que ve el ojo.
+
+### Problemas conocidos
+
+- **No hay intermedios todavía.** Esta entrega es animación dibujada: un dibujo
+  por exposición. Interpolar entre dibujos es la fase 5 del plan.
+- **No hay recortes ni esqueleto.** Animar un dibujo con los fotogramas clave
+  que ya existen es la fase 4.
+- **No se importa ni se exporta Lottie** todavía (fase 6). Los datos están
+  guardados en la forma que lo permite, que era la decisión importante.
+- El tirón de ~78–100 ms en el proceso de GPU durante la reproducción sigue
+  abierto desde la v1.99, y no tiene que ver con esto.
+
 
 ---
 
