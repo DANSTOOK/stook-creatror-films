@@ -187,6 +187,56 @@ async function main() {
     // Three were added by now: the two above and the moving one.
     check('one undo takes the last background off', left === 2, `${left} clip(s) left`);
 
+    console.log('6. recolouring it');
+    // The clip is moved and shortened first, because the point of redrawing
+    // rather than replacing is that neither is lost.
+    const target = await window.evaluate(() => {
+      const store = window.__scfStore.getState();
+      const clip = Object.values(store.project.clips).find((candidate) => candidate.drawn);
+      if (!clip) return null;
+      store.updateClip(clip.id, { startFrame: 48, durationFrames: 90 });
+      store.selectClips([clip.id]);
+      return clip.id;
+    });
+    check('a drawn clip remembers what it was drawn from', target !== null, String(target));
+    if (target) {
+      await sleep(400);
+      await window.locator('#inspector-tab-fx').click();
+      await sleep(400);
+      const before = await window.evaluate((id) => {
+        const { project, assets } = window.__scfStore.getState();
+        const clip = project.clips[id];
+        const asset = assets.find((candidate) => candidate.uri === clip.sourceUri);
+        return { start: clip.startFrame, length: clip.durationFrames, file: (asset?.sourcePath ?? "").split(/[\\/]/).pop() };
+      }, target);
+      await window.getByTestId('clip-fx-drawn-f472b6').click();
+      const redrawn = await window
+        .waitForFunction((id) => Boolean(window.__scfStore.getState().project.clips[id]?.drawn?.tint), target, { timeout: 30_000 })
+        .then(() => true)
+        .catch(() => false);
+      check('picking a colour draws it again', redrawn);
+      const after = await window.evaluate((id) => {
+        const { project, assets } = window.__scfStore.getState();
+        const clip = project.clips[id];
+        const asset = assets.find((candidate) => candidate.uri === clip.sourceUri);
+        return {
+          start: clip.startFrame,
+          length: clip.durationFrames,
+          file: (asset?.sourcePath ?? "").split(/[\\/]/).pop(),
+          tint: clip.drawn?.tint?.color ?? null,
+        };
+      }, target);
+      check(
+        'the picture is a new file, named after the colour',
+        after.file !== before.file && /f472b6/.test(after.file ?? ''),
+        `${before.file} -> ${after.file}`,
+      );
+      check(
+        'and the clip keeps where it is and how long it is',
+        after.start === before.start && after.length === before.length,
+        `frame ${after.start} (was ${before.start}), ${after.length}f (was ${before.length})`,
+      );
+    }
     check('no errors in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);

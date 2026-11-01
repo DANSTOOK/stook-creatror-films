@@ -826,6 +826,21 @@ export interface Clip {
    * script retyped. With this the inspector can offer the words back.
    */
   speech?: ClipSpeech;
+  /**
+   * Present on a clip the app DREW - a background or a frame. Without it the
+   * clip is a PNG like any other and the only way to change its colour is to
+   * delete it and add another; with it the inspector can draw it again.
+   */
+  drawn?: ClipDrawn;
+}
+
+/** A background or a frame this app drew, and how. */
+export interface ClipDrawn {
+  kind: 'background' | 'frame';
+  /** Its id in renderer/backgrounds/catalog or renderer/frames/catalog. */
+  id: string;
+  /** A colour laid over it, and how strongly; absent for the colours it was drawn in. */
+  tint?: { color: string; strength: number };
 }
 
 /** What a spoken clip was asked to say, kept so it can be said again. */

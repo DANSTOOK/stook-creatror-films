@@ -29,6 +29,7 @@ import { useZoneEditStore } from '@renderer/fx/motion/zoneEdit';
 import { SliderRow } from './rows';
 import { FollowCard } from './FollowCard';
 import { AutoFrameCard } from './AutoFrameCard';
+import { DrawnCard } from './DrawnCard';
 
 /**
  * The top of the inspector's Effects tab: everything put on the clip from
@@ -231,6 +232,8 @@ export function ClipFxPanel({ clip }: { clip: Clip }): JSX.Element {
       {!clip.caption && <FollowCard clip={clip} />}
       {/* The camera follows the face inside this frame (edit/autoFrame.ts). */}
       {!clip.caption && <AutoFrameCard clip={clip} />}
+      {/* The colour of a background or frame this app drew (Inspector/DrawnCard). */}
+      <DrawnCard clip={clip} />
     </div>
   );
 }

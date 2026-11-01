@@ -1,4 +1,6 @@
 import { t } from '@renderer/i18n';
+import type { ClipDrawn } from '@shared/types';
+import { applyTint, tintSuffix } from '@renderer/backgrounds/tint';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useHistoryStore } from '@renderer/store/useHistoryStore';
 import { buildAsset } from '@renderer/media/importMedia';
@@ -18,26 +20,27 @@ import { frameById, type Frame } from './catalog';
  */
 
 /** Draw a frame into `canvas` at `width` x `height`, over transparency. */
-export function drawFrame(canvas: HTMLCanvasElement, frame: Frame, width: number, height: number): void {
+export function drawFrame(canvas: HTMLCanvasElement, frame: Frame, width: number, height: number, tint?: ClipDrawn['tint']): void {
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return;
   context.clearRect(0, 0, width, height);
   frame.draw(context, width, height);
+  if (tint) applyTint(context, width, height, tint);
 }
 
-export async function addFrame(frameId: string): Promise<string | null> {
+export async function addFrame(frameId: string, options: { tint?: ClipDrawn['tint'] } = {}): Promise<string | null> {
   const frame = frameById(frameId);
   const api = window.filmora;
   if (!frame || !api?.saveSticker || !api.mediaUrl) return null;
   const { project } = useProjectStore.getState();
   const { width, height } = project;
   const canvas = document.createElement('canvas');
-  drawFrame(canvas, frame, width, height);
+  drawFrame(canvas, frame, width, height, options.tint);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) return null;
-  const path = await api.saveSticker(`frame-${frame.id}-${width}x${height}`, await blob.arrayBuffer());
+  const path = await api.saveSticker(`frame-${frame.id}-${width}x${height}${tintSuffix(options.tint)}`, await blob.arrayBuffer());
 
   const store = useProjectStore.getState();
   let asset = store.assets.find((candidate) => candidate.sourcePath === path);
@@ -51,7 +54,10 @@ export async function addFrame(frameId: string): Promise<string | null> {
   const mark = useHistoryStore.getState().undoStack.length;
   const clipId = useProjectStore.getState().addAssetOnNewTrack(asset);
   if (!clipId) return null;
-  useProjectStore.getState().updateClip(clipId, { name: t(frame.label) });
+  useProjectStore.getState().updateClip(clipId, {
+    name: t(frame.label),
+    drawn: { kind: 'frame', id: frame.id, ...(options.tint ? { tint: options.tint } : {}) },
+  });
   useHistoryStore.getState().squash(mark, 'Add frame');
   const trackId = useProjectStore.getState().project.clips[clipId]?.trackId ?? null;
   useProjectStore.getState().setUi({ selectedClipIds: [clipId], selectedTrackId: trackId });

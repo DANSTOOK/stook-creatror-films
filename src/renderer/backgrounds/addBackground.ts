@@ -1,4 +1,6 @@
 import { t } from '@renderer/i18n';
+import type { ClipDrawn } from '@shared/types';
+import { applyTint, tintSuffix } from './tint';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useHistoryStore } from '@renderer/store/useHistoryStore';
 import { buildAsset } from '@renderer/media/importMedia';
@@ -19,13 +21,14 @@ import { backgroundById, type Background } from './catalog';
  */
 
 /** Draw a background into `canvas` at `width` x `height`. */
-export function drawBackground(canvas: HTMLCanvasElement, background: Background, width: number, height: number): void {
+export function drawBackground(canvas: HTMLCanvasElement, background: Background, width: number, height: number, tint?: ClipDrawn['tint']): void {
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return;
   context.clearRect(0, 0, width, height);
   background.draw(context, width, height);
+  if (tint) applyTint(context, width, height, tint);
 }
 
 /**
@@ -37,17 +40,17 @@ export function drawBackground(canvas: HTMLCanvasElement, background: Background
  */
 export const BACKGROUND_LOOP: ClipAnimationId = 'driftSlow';
 
-export async function addBackground(backgroundId: string, options: { motion?: boolean } = {}): Promise<string | null> {
+export async function addBackground(backgroundId: string, options: { motion?: boolean; tint?: ClipDrawn['tint'] } = {}): Promise<string | null> {
   const background = backgroundById(backgroundId);
   const api = window.filmora;
   if (!background || !api?.saveSticker || !api.mediaUrl) return null;
   const { project } = useProjectStore.getState();
   const { width, height } = project;
   const canvas = document.createElement('canvas');
-  drawBackground(canvas, background, width, height);
+  drawBackground(canvas, background, width, height, options.tint);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) return null;
-  const path = await api.saveSticker(`bg-${background.id}-${width}x${height}`, await blob.arrayBuffer());
+  const path = await api.saveSticker(`bg-${background.id}-${width}x${height}${tintSuffix(options.tint)}`, await blob.arrayBuffer());
 
   const store = useProjectStore.getState();
   let asset = store.assets.find((candidate) => candidate.sourcePath === path);
@@ -69,7 +72,10 @@ export async function addBackground(backgroundId: string, options: { motion?: bo
     const rows = useProjectStore.getState().project.tracks.filter((track) => track.type !== 'audio').length;
     for (let step = 0; step < rows; step += 1) useProjectStore.getState().moveTrack(trackId, 1);
   }
-  useProjectStore.getState().updateClip(clipId, { name: t(background.label) });
+  useProjectStore.getState().updateClip(clipId, {
+    name: t(background.label),
+    drawn: { kind: 'background', id: background.id, ...(options.tint ? { tint: options.tint } : {}) },
+  });
   if (options.motion) applyClipAnimation(clipId, BACKGROUND_LOOP);
   useHistoryStore.getState().squash(mark, 'Add background');
   useProjectStore.getState().setUi({ selectedClipIds: [clipId], selectedTrackId: trackId });
