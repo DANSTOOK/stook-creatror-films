@@ -33,6 +33,7 @@ export function AnimationPanel(): JSX.Element {
   const updateAnimationLayer = useProjectStore((state) => state.updateAnimationLayer);
   const clearCel = useProjectStore((state) => state.clearCel);
   const duplicateCel = useProjectStore((state) => state.duplicateCel);
+  const addBlankCel = useProjectStore((state) => state.addBlankCel);
   const seek = useProjectStore((state) => state.setCurrentFrame);
 
   const drawing = useDrawStore((state) => state.clipId);
@@ -239,6 +240,13 @@ export function AnimationPanel(): JSX.Element {
           )}
         </section>
 
+        {/* The brush’s keys, which work only while it is in hand. */}
+        <section className="border-b border-white/5 px-3 py-2">
+          <p data-testid="animation-keys" className="text-[10px] leading-relaxed text-slate-500">
+            {t('animation.keys')}
+          </p>
+        </section>
+
         {/* Layers -------------------------------------------------------- */}
         <section className="border-b border-white/5 px-3 py-2">
           <div className="flex items-center justify-between">
@@ -298,7 +306,17 @@ export function AnimationPanel(): JSX.Element {
         {/* The exposure sheet -------------------------------------------- */}
         <section className="px-3 py-2">
           <div className="flex items-center justify-between">
-            <span className="text-2xs text-slate-300">{t('animation.sheet')}</span>
+            <span className="flex items-center gap-2 text-2xs text-slate-300">
+              {t('animation.sheet')}
+              <button
+                type="button"
+                data-testid="animation-new-drawing"
+                onClick={() => addBlankCel(clip.id, layerId ?? '', here)}
+                className="rounded-control bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
+              >
+                {t('animation.newDrawing')}
+              </button>
+            </span>
             <span data-testid="animation-counts" className="text-[10px] text-slate-500">
               {t('animation.strokes', { count: strokeCount(anim) })}
             </span>

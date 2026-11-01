@@ -15,7 +15,10 @@ import type { AnimationCel, AnimationLayer, Clip, DrawnAnimation, OnionSkin, Str
  * four, six and the rest.
  */
 
-export const DEFAULT_ONION: OnionSkin = { enabled: true, before: 1, after: 1, opacity: 0.35, by: 'drawings' };
+/** What the time arithmetic needs of a clip: where it starts, and how far into the animation that is. */
+export type AnimClipTime = Pick<Clip, 'startFrame'> & { sourceOffsetFrames?: number };
+
+export const DEFAULT_ONION: OnionSkin ={ enabled: true, before: 1, after: 1, opacity: 0.35, by: 'drawings' };
 
 /** The largest `step` worth allowing: beyond this a drawing is on screen so long it reads as a still. */
 export const MAX_STEP = 8;
@@ -41,16 +44,21 @@ export function newId(what: string): string {
  * same points in itself. Before the clip starts, the first exposure - a
  * drawing does not begin halfway through.
  */
-export function exposureAt(anim: DrawnAnimation, clip: Pick<Clip, 'startFrame'>, frame: number): number {
+export function exposureAt(anim: DrawnAnimation, clip: AnimClipTime, frame: number): number {
   const step = stepOf(anim);
-  const into = Math.floor(frame) - Math.floor(clip.startFrame);
+  // `sourceOffsetFrames` is how far into the animation this clip starts, just
+  // as it is how far into a file a video clip starts. Without it, splitting an
+  // animation clip or trimming its head would send the second piece back to
+  // drawing one instead of carrying on.
+  const into = Math.floor(frame) - Math.floor(clip.startFrame) + Math.floor(clip.sourceOffsetFrames ?? 0);
   if (into <= 0) return 0;
   return Math.floor(into / step);
 }
 
 /** The first timeline frame of an exposure, which is where a drawing appears. */
-export function frameOfExposure(anim: DrawnAnimation, clip: Pick<Clip, 'startFrame'>, exposure: number): number {
-  return Math.floor(clip.startFrame) + Math.max(0, Math.floor(exposure)) * stepOf(anim);
+export function frameOfExposure(anim: DrawnAnimation, clip: AnimClipTime, exposure: number): number {
+  const at = Math.max(0, Math.floor(exposure)) * stepOf(anim) - Math.floor(clip.sourceOffsetFrames ?? 0);
+  return Math.floor(clip.startFrame) + at;
 }
 
 /** How many exposures a clip of this length holds; at least one. */

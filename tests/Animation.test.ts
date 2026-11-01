@@ -14,6 +14,7 @@ import {
   withStroke,
 } from '../src/renderer/animation/model';
 import { rasterKey } from '../src/renderer/animation/raster';
+import { drawKeyOf, nextDrawing, previousDrawing, SIZE_STEP } from '../src/renderer/animation/keys';
 
 const stroke = (id: string, points = [0.1, 0.1, 0.5, 0.2, 0.2, 0.5]): Stroke => ({
   id,
@@ -280,5 +281,95 @@ describe('reading an animation from a file', () => {
     const fresh = emptyAnimation();
     const read = normalizeAnimation(JSON.parse(JSON.stringify(fresh)));
     expect(read).toEqual(fresh);
+  });
+});
+
+describe('moving between drawings', () => {
+  it('steps to the next drawing that exists, not the next exposure', () => {
+    const a = anim([layer([{ at: 0 }, { at: 6 }])], 2);
+    const clip = clipAt(0, 60);
+    expect(nextDrawing(a, clip, layer([{ at: 0 }, { at: 6 }]), 0)).toBe(6);
+    expect(previousDrawing(layer([{ at: 0 }, { at: 6 }]), 6)).toBe(0);
+    void a;
+  });
+
+  it('past the last drawing, goes one on so a new one can be started there', () => {
+    const a = anim([layer([{ at: 0 }])], 2);
+    expect(nextDrawing(a, clipAt(0, 60), layer([{ at: 0 }]), 0)).toBe(1);
+  });
+
+  it('stops at the ends of the clip rather than running past them', () => {
+    // 8 frames on twos is 4 exposures: 0 to 3.
+    const a = anim([layer([{ at: 0 }])], 2);
+    expect(nextDrawing(a, clipAt(0, 8), layer([{ at: 0 }]), 3)).toBe(3);
+    expect(previousDrawing(layer([{ at: 0 }]), 0)).toBe(0);
+  });
+
+  it('works on a layer with nothing drawn on it', () => {
+    const a = anim([layer([])], 1);
+    expect(nextDrawing(a, clipAt(0, 60), undefined, 4)).toBe(5);
+    expect(previousDrawing(undefined, 4)).toBe(3);
+  });
+});
+
+describe('the brush’s keys', () => {
+  const press = (key: string, over: Partial<KeyboardEvent> = {}) =>
+    drawKeyOf({ key, ctrlKey: false, metaKey: false, altKey: false, ...over } as KeyboardEvent);
+
+  it('changes the width with the brackets every program uses', () => {
+    expect(press(']')).toEqual({ kind: 'size', by: SIZE_STEP });
+    expect(press('[')?.kind).toBe('size');
+    expect((press('[') as { by: number }).by).toBeLessThan(1);
+  });
+
+  it('steps between drawings with the comma and the full stop', () => {
+    expect(press('.')).toEqual({ kind: 'step', by: 1 });
+    expect(press(',')).toEqual({ kind: 'step', by: -1 });
+  });
+
+  it('picks the eraser and the pencil, either case', () => {
+    expect(press('e')).toEqual({ kind: 'brush', brush: 'eraser' });
+    expect(press('E')).toEqual({ kind: 'brush', brush: 'eraser' });
+    expect(press('P')).toEqual({ kind: 'brush', brush: 'pencil' });
+  });
+
+  it('leaves the editor’s own keys alone', () => {
+    // B splits a clip and C is the razor: a hand reaches for those between
+    // strokes, so the brush must not take them.
+    expect(press('b')).toBeNull();
+    expect(press('c')).toBeNull();
+    expect(press('v')).toBeNull();
+    expect(press(' ')).toBeNull();
+  });
+
+  it('never takes a key with a modifier, so Ctrl+Z still undoes a stroke', () => {
+    expect(press('e', { ctrlKey: true })).toBeNull();
+    expect(press(']', { altKey: true })).toBeNull();
+    expect(press('.', { metaKey: true })).toBeNull();
+  });
+});
+
+describe('a split or trimmed animation clip', () => {
+  it('carries on from where it was cut, instead of going back to drawing one', () => {
+    // Split at frame 20 of a clip on twos: the second piece starts at 20 with
+    // 20 frames already behind it, which is exposure 10. Without
+    // sourceOffsetFrames it would show exposure 0 again.
+    const a = anim([layer([{ at: 0 }, { at: 10 }])], 2);
+    const second = { startFrame: 20, durationFrames: 28, sourceOffsetFrames: 20 };
+    expect(exposureAt(a, second, 20)).toBe(10);
+    expect(exposureAt(a, second, 22)).toBe(11);
+  });
+
+  it('and the sheet still points at the frame a drawing is on', () => {
+    const a = anim([layer([{ at: 0 }])], 2);
+    const second = { startFrame: 20, durationFrames: 28, sourceOffsetFrames: 20 };
+    expect(frameOfExposure(a, second, 10)).toBe(20);
+    expect(exposureAt(a, second, frameOfExposure(a, second, 13))).toBe(13);
+  });
+
+  it('is unchanged for a clip that was never cut', () => {
+    const a = anim([layer([{ at: 0 }])], 2);
+    expect(exposureAt(a, { startFrame: 10, sourceOffsetFrames: 0 }, 14)).toBe(2);
+    expect(exposureAt(a, { startFrame: 10 }, 14)).toBe(2);
   });
 });

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Stroke } from '@shared/types';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useDrawStore } from '@renderer/animation/drawStore';
-import { exposureAt, newId } from '@renderer/animation/model';
+import { exposureAt, frameOfExposure, newId } from '@renderer/animation/model';
 import { drawStroke } from '@renderer/animation/raster';
+import { drawKeyOf, nextDrawing, previousDrawing } from '@renderer/animation/keys';
 
 /**
  * Drawing on the picture.
@@ -31,6 +32,7 @@ export function DrawOverlay(): JSX.Element | null {
   const size = useDrawStore((state) => state.size);
   const opacity = useDrawStore((state) => state.opacity);
   const stop = useDrawStore((state) => state.stop);
+  const pick = useDrawStore((state) => state.pick);
   const clip = useProjectStore((state) => (clipId ? state.project.clips[clipId] : undefined));
   const currentFrame = useProjectStore((state) => state.project.currentFrame);
   const width = useProjectStore((state) => state.project.width);
@@ -48,17 +50,47 @@ export function DrawOverlay(): JSX.Element | null {
     if (clipId && !clip?.anim) stop();
   }, [clipId, clip, stop]);
 
+  // Escape puts the brush away, and the brush’s own keys work while it is in
+  // hand: `[` and `]` for width, `,` and `.` between drawings, E and P for the
+  // eraser and the pencil. They are a tool’s keys and live only here, so the
+  // editor keeps its own the moment the brush is put down.
   useEffect(() => {
     if (!clipId) return undefined;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        stop();
+        return;
+      }
+      // Typing somewhere keeps its letters: a layer being renamed is not a brush.
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      const meant = drawKeyOf(event);
+      if (!meant) return;
+      const state = useProjectStore.getState();
+      const clip = state.project.clips[clipId];
+      if (!clip?.anim) return;
       event.preventDefault();
       event.stopPropagation();
-      stop();
+      if (meant.kind === 'brush') {
+        pick({ brush: meant.brush });
+        return;
+      }
+      if (meant.kind === 'size') {
+        pick({ size: useDrawStore.getState().size * meant.by });
+        return;
+      }
+      const anim = clip.anim;
+      const wanted = useDrawStore.getState().layerId ?? anim.layers[anim.layers.length - 1]?.id;
+      const layer = anim.layers.find((candidate) => candidate.id === wanted);
+      const here = exposureAt(anim, clip, state.project.currentFrame);
+      const to = meant.by === 1 ? nextDrawing(anim, clip, layer, here) : previousDrawing(layer, here);
+      state.setCurrentFrame(frameOfExposure(anim, clip, to));
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [clipId, stop]);
+  }, [clipId, stop, pick]);
 
   const clear = useCallback((): void => {
     const ctx = canvas.current?.getContext('2d');

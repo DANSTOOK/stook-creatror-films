@@ -2431,6 +2431,7 @@ export const es: Messages = {
   'animation.onionByFrames': 'Fotogramas',
   'animation.onionHint': 'Por dibujos salta de un dibujo al siguiente; por fotogramas mira una distancia fija en el tiempo.',
   'animation.sheet': 'Hoja de exposición',
+  'animation.keys': 'Con el pincel en la mano: [ y ] grosor, , y . dibujo anterior y siguiente, E borrador, P lápiz, Esc guardar el pincel.',
   'animation.newDrawing': 'Dibujo nuevo',
   'animation.duplicateDrawing': 'Duplicar dibujo',
   'animation.clearDrawing': 'Vaciar dibujo',

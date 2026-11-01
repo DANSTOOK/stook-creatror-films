@@ -194,7 +194,64 @@ async function main() {
     check('the drawings come back from the file', reloaded?.strokes === wanted && reloaded.strokes >= 3, JSON.stringify(reloaded));
     check('and so do the layers and the exposure', reloaded?.layers === 2 && reloaded.step === 2, JSON.stringify(reloaded));
 
-    console.log('8. the console');
+    console.log('8. the brush’s keys');
+    const sheetClip = await animOf(window);
+    // `.` and `,` step between DRAWINGS, not exposures: from the drawing at 0,
+    // one press forward lands on the one at 4, eight frames on at twos.
+    await window.evaluate((value) => window.__scfStore.getState().setCurrentFrame(value), sheetClip.startFrame);
+    await window.getByTestId('draw-overlay').click({ position: { x: 5, y: 5 } }).catch(() => undefined);
+    await window.keyboard.press('.');
+    await sleep(200);
+    const stepped = await window.evaluate(() => window.__scfStore.getState().project.currentFrame);
+    check('. goes to the next drawing, not the next exposure', stepped === sheetClip.startFrame + 8, `frame ${stepped}, wanted ${sheetClip.startFrame + 8}`);
+    await window.keyboard.press(',');
+    await sleep(200);
+    const back = await window.evaluate(() => window.__scfStore.getState().project.currentFrame);
+    check(', goes back to the previous drawing', back === sheetClip.startFrame, `frame ${back}`);
+
+    const sizeBefore = await window.evaluate(() => window.__scfDraw.getState().size);
+    await window.keyboard.press(']');
+    const sizeAfter = await window.evaluate(() => window.__scfDraw.getState().size);
+    check('] makes the brush wider', sizeAfter > sizeBefore, `${sizeBefore} -> ${sizeAfter}`);
+    await window.keyboard.press('e');
+    check('E picks the eraser', (await window.evaluate(() => window.__scfDraw.getState().brush)) === 'eraser');
+    await window.keyboard.press('p');
+    check('P picks the pencil back', (await window.evaluate(() => window.__scfDraw.getState().brush)) === 'pencil');
+
+    // B is the editor's: with a brush in hand it must still be the editor's.
+    // Partway into the clip, because the first frame of a clip has nothing to
+    // split and B would rightly do nothing there.
+    await window.evaluate((value) => window.__scfStore.getState().setCurrentFrame(value), sheetClip.startFrame + 10);
+    await sleep(150);
+    const clipsBefore = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
+    await window.keyboard.press('b');
+    await sleep(200);
+    const clipsAfter = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
+    check('B still splits, so the editor keeps its own keys', clipsAfter > clipsBefore, `${clipsBefore} -> ${clipsAfter}`);
+    await window.evaluate(() => window.__scfStore.getState().undo());
+    await sleep(200);
+
+    console.log('9. a blank drawing ends a hold');
+    const holding = await animOf(window);
+    // The bottom layer: it has a drawing at exposure 0, so exposure 1 is
+    // HOLDING it - which is what a blank drawing has to end.
+    await window.getByTestId(`animation-layer-${holding.layers[0].id}`).click();
+    // With the ghosts off: they would show the neighbouring drawing's strokes
+    // over the blanked one, so this would measure the aid and not the film.
+    await window.getByTestId('animation-onion').uncheck();
+    await window.evaluate((value) => window.__scfStore.getState().setCurrentFrame(value), holding.startFrame + 2);
+    await sleep(300);
+    const litHeld = await painted(window);
+    await window.getByTestId('animation-new-drawing').click();
+    await sleep(350);
+    const litBlank = await painted(window);
+    check('a blank drawing clears what was held', litBlank < litHeld - 100, `${litHeld} -> ${litBlank}`);
+    // And it is a blank drawing of its own, not the absence of one.
+    const blanked = await animOf(window);
+    const atOne = blanked?.layers[0].cels.find((cel) => cel.at === 1);
+    check('the blank drawing is its own, holding nothing', atOne?.strokes === 0, JSON.stringify(blanked?.layers[0].cels));
+
+    console.log('10. the console');
     check('nothing in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);

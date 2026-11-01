@@ -30,7 +30,7 @@ import type {
 } from '@shared/types';
 import { createTitleClip, planTitlePlacement, titleDropPlacement, TITLE_NAME, TITLE_SECONDS } from '@renderer/text/titleClip';
 import { ANIM_SECONDS, createAnimationClip } from '@renderer/animation/animClip';
-import { DEFAULT_ONION, duplicateCel, MAX_ONION, MAX_STEP, newId, withStroke } from '@renderer/animation/model';
+import { DEFAULT_ONION, duplicateCel, MAX_ONION, MAX_STEP, newId, withCel, withStroke } from '@renderer/animation/model';
 import { templateById, templateOf } from '@renderer/text/templates';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
@@ -373,6 +373,12 @@ interface ProjectStore {
    * drawing, and the old one is what onion skin shows.
    */
   duplicateCel(clipId: string, layerId: string, exposure: number): void;
+  /**
+   * A drawing with nothing on it at an exposure. It is not the same as no
+   * drawing: it ENDS the hold, so the layer goes blank there - which is how a
+   * character leaves the screen without the layer being hidden.
+   */
+  addBlankCel(clipId: string, layerId: string, exposure: number): void;
   /** Take a drawing off a layer, leaving the one before it to hold. */
   clearCel(clipId: string, layerId: string, exposure: number): void;
   /** How many frames each drawing is held for: 1 on ones, 2 on twos. */
@@ -1548,6 +1554,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       const at = Math.max(0, Math.round(exposure));
       const layers = clip.anim.layers.map((layer) => (layer.id === layerId ? withStroke(layer, at, stroke) : layer));
       if (layers === clip.anim.layers) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  addBlankCel(clipId, layerId, exposure) {
+    get().transact('New drawing', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const at = Math.max(0, Math.round(exposure));
+      let changed = false;
+      const layers = clip.anim.layers.map((layer) => {
+        if (layer.id !== layerId || layer.cels.some((cel) => cel.at === at)) return layer;
+        changed = true;
+        return withCel(layer, { id: newId('cel'), at, strokes: [] });
+      });
+      if (!changed) return project;
       return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
     });
   },

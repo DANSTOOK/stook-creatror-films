@@ -4,6 +4,7 @@ import App from './App';
 import { AudioStream } from './audio/AudioStream';
 import { renderTimelineAudio, streamTimelineAudio } from './audio/renderMix';
 import { useHistoryStore } from './store/useHistoryStore';
+import { useDrawStore } from '@renderer/animation/drawStore';
 import { useExportQueue } from './export/queue';
 import { captureErrors } from './diagnostics/appLog';
 
@@ -49,6 +50,9 @@ prepareGhosts();
 // The stress test storms undo and redo and has to stop exactly where it began,
 // which only the history itself can say.
 (window as { __scfHistory?: typeof useHistoryStore }).__scfHistory = useHistoryStore;
+// The brush in hand: its width, colour and which layer it draws on. The
+// animation test presses the brush’s keys and reads what they did.
+(window as { __scfDraw?: typeof useDrawStore }).__scfDraw = useDrawStore;
 // Waveforms and filmstrips arrive from the main process; the probes wait for them.
 (window as { __scfMediaStore?: typeof useMediaStore }).__scfMediaStore = useMediaStore;
 // The render queue's jobs, for its test.

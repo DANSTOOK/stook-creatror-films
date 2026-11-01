@@ -2432,6 +2432,7 @@ export const en = {
   'animation.onionByFrames': 'Frames',
   'animation.onionHint': 'By drawings steps from one drawing to the next; by frames looks a fixed distance in time.',
   'animation.sheet': 'Exposure sheet',
+  'animation.keys': 'With the brush in hand: [ and ] width, , and . previous and next drawing, E eraser, P pencil, Esc puts it away.',
   'animation.newDrawing': 'New drawing',
   'animation.duplicateDrawing': 'Duplicate drawing',
   'animation.clearDrawing': 'Clear drawing',
