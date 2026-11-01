@@ -246,6 +246,17 @@ export function GenerateCaptionsForm({ onClose }: GenerateCaptionsFormProps): JS
               );
             })}
           </select>
+          {/*
+            Said before it happens rather than discovered afterwards. The small
+            model does not just transcribe less well in the abstract: in Spanish
+            it changes LETTERS inside otherwise correct words, which reads as the
+            app being broken rather than as a model being small.
+          */}
+          {model === 'fast' && (
+            <p data-testid="captions-fast-warning" className="text-2xs leading-relaxed text-amber-300">
+              {t('captions.modelFastWarning')}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1">

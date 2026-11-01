@@ -3,6 +3,7 @@ import { Clock, Film, FolderOpen, FolderPlus, Languages, LifeBuoy, Plus, Search,
 import type { ProjectRecovery, ProjectTemplate, RecentProject } from '@shared/types/ipc';
 import { MyTemplates } from '@renderer/project/templates';
 import { hasNativeBridge } from '@renderer/media/importMedia';
+import { STARTER_KITS } from '@renderer/project/kits';
 import { useFlip } from '@renderer/motion/useFlip';
 import { formatLength, nextUntitledName, relativeTime } from '@renderer/project/projectSession';
 import type { NewProjectOptions } from '@renderer/project/useProjectActions';
@@ -80,6 +81,8 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
   const [fps, setFps] = useState(30);
   const [folder, setFolder] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Which kit a new project arrives with; 'blank' is the empty timeline.
+  const [kitId, setKitId] = useState('blank');
 
   const refresh = useCallback(async () => {
     if (!native) {
@@ -126,7 +129,7 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
   const create = async (): Promise<void> => {
     setCreating(true);
     try {
-      await onCreate({ name: name.trim() || t('home.untitled'), folder, width: frame.width, height: frame.height, fps });
+      await onCreate({ name: name.trim() || t('home.untitled'), folder, width: frame.width, height: frame.height, fps, kit: kitId === 'blank' ? undefined : kitId });
     } finally {
       setCreating(false);
     }
@@ -239,6 +242,33 @@ export function Home({ onBlank, onCreate, onOpenDialog, onOpenRecent, onRecover,
               </label>
             </div>
 
+            <div className="flex flex-col gap-1">
+              <span className="field-label">{t('kit.heading')}</span>
+              <div role="radiogroup" aria-label={t('kit.heading')} className="grid grid-cols-5 gap-1.5">
+                {[{ id: 'blank', name: 'kit.blank', what: 'kit.blankWhat' } as const, ...STARTER_KITS].map((kit) => {
+                  const on = kit.id === kitId;
+                  return (
+                    <button
+                      key={kit.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      data-testid={`home-kit-${kit.id}`}
+                      title={t(kit.what)}
+                      onClick={() => setKitId(kit.id)}
+                      className={`press rounded-menu border px-1 py-1.5 text-2xs font-medium leading-tight transition-colors ${
+                        on ? 'border-accent/70 bg-accent/15 text-slate-100' : 'border-panel-700 bg-panel-900 text-slate-400 hover:border-panel-600 hover:text-slate-200'
+                      }`}
+                    >
+                      {t(kit.name)}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-2xs leading-relaxed text-slate-500" data-testid="home-kit-what">
+                {t(kitId === 'blank' ? 'kit.hint' : (STARTER_KITS.find((kit) => kit.id === kitId)?.what ?? 'kit.hint'))}
+              </p>
+            </div>
             <div className="flex items-end gap-2">
               <label className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="field-label">{t('home.location')}</span>

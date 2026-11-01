@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { getActiveFrameRenderer } from '@renderer/engine/FrameRenderer';
 import { hasNativeBridge, rehydrateDocument } from '@renderer/media/importMedia';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { applyKit } from './kits';
 import type { ProjectDocument } from '@renderer/store/types';
 import { currentMarker, documentIsDirty, useSessionStore } from '@renderer/store/useSessionStore';
 import { withViewTransition } from '@renderer/motion/viewTransition';
@@ -30,6 +31,8 @@ export interface NewProjectOptions {
   width: number;
   height: number;
   fps: number;
+  /** A starter kit to build into it (project/kits.ts); absent for an empty timeline. */
+  kit?: string;
 }
 
 const describe = errorText;
@@ -324,6 +327,15 @@ export function useProjectActions(): ProjectActions {
       await pendingRecord;
       // Chosen on the start screen: the first clip imported does not replace it.
       useProjectStore.getState().newProject(options.width, options.height, options.fps, { chosen: true });
+      // Built BEFORE the file is written, so what is saved on disk is the kit
+      // and the project does not open with unsaved changes in it.
+      if (options.kit) {
+        try {
+          await applyKit(options.kit);
+        } catch (error) {
+          notify(t('kit.failed', { detail: describe(error) }), 'error');
+        }
+      }
       try {
         const folder = options.folder ?? (await window.filmora.projectsDefaultFolder());
         const json = JSON.stringify(useProjectStore.getState().toDocument(), null, 2);
