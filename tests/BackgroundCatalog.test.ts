@@ -4,15 +4,15 @@ import { es } from '@shared/i18n/es';
 import { BACKGROUNDS, BACKGROUND_GROUPS, backgroundById } from '@renderer/backgrounds/catalog';
 
 /**
- * The background catalog: twenty-four full-frame pictures in four groups, each
+ * The background catalog: thirty-six full-frame pictures in four groups, each
  * named in both languages. The pictures themselves are judged in the running
  * app (tests/ui/backgrounds.mjs); here, what the panel and the file names rely
  * on.
  */
 
 describe('the background catalog', () => {
-  it('has twenty-four backgrounds, each its own id', () => {
-    expect(BACKGROUNDS).toHaveLength(24);
+  it('has thirty-six backgrounds, each its own id', () => {
+    expect(BACKGROUNDS).toHaveLength(36);
     expect(new Set(BACKGROUNDS.map((background) => background.id)).size).toBe(BACKGROUNDS.length);
     expect(backgroundById('sunrise')?.group).toBe('gradients');
     expect(backgroundById('cityNight')?.group).toBe('scenes');

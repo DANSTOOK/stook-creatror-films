@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Step, Steps } from '@renderer/components/Common/Steps';
 import { AudioLines, Check, Loader2, Play, Sparkles, Square, Timer, Wand2 } from 'lucide-react';
 import type { TtsEffect, TtsEngineStatus, TtsVoiceStatus } from '@shared/types/ipc';
 import type { MessageKey } from '@shared/i18n';
@@ -227,6 +228,16 @@ export function VoicePanel(): JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="tts-dialog">
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2">
+        <Steps>
+        <Step
+          number={1}
+          title={t('tts.step1')}
+          hint={t('tts.step1Hint')}
+          done={spoken.trim().length > 0}
+          open={spoken.trim().length === 0}
+          summary={spoken.trim() ? `${spoken.trim().slice(0, 48)}${spoken.trim().length > 48 ? '…' : ''}` : undefined}
+          testId="tts-step-1"
+        >
         <div className="space-y-1">
           <label className="block space-y-1">
             <span className="field-label flex items-center justify-between">
@@ -271,6 +282,17 @@ export function VoicePanel(): JSX.Element {
           </div>
         </div>
 
+        </Step>
+
+        <Step
+          number={2}
+          title={t('tts.step2')}
+          hint={t('tts.step2Hint')}
+          done={Boolean(voice)}
+          open={spoken.trim().length > 0 && !voice}
+          summary={voice ? `${voice.name} · ${t(language === 'es' ? 'tts.es' : 'tts.en')}` : undefined}
+          testId="tts-step-2"
+        >
         <section className="space-y-1.5">
           <h3 className="field-label flex items-center gap-1.5">
             <Sparkles size={12} aria-hidden />
@@ -307,7 +329,9 @@ export function VoicePanel(): JSX.Element {
           </div>
         </section>
 
-        <section className="space-y-1.5">
+        <details className="rounded-control bg-panel-900/60 px-2 py-1" data-testid="tts-more-voices">
+          <summary className="cursor-pointer text-2xs text-slate-400">{t('tts.moreVoices')}</summary>
+        <section className="mt-1.5 space-y-1.5">
           <div className="flex items-center gap-2">
             <h3 className="field-label flex-1">{t('tts.voice')}</h3>
             <select
@@ -370,8 +394,19 @@ export function VoicePanel(): JSX.Element {
             })}
           </ul>
         </section>
+        </details>
+        </Step>
 
-        <section className="space-y-1.5">
+        <Step
+          number={3}
+          title={t('tts.step3')}
+          open={spoken.trim().length > 0 && Boolean(voice)}
+          hint={t('tts.step3Hint')}
+          testId="tts-step-3"
+        >
+        <details className="rounded-control bg-panel-900/60 px-2 py-1" data-testid="tts-fine">
+          <summary className="cursor-pointer text-2xs text-slate-400">{t('tts.fine')}</summary>
+        <section className="mt-1.5 space-y-1.5">
           <h3 className="field-label flex items-center gap-1.5">
             <Wand2 size={12} aria-hidden />
             {t('tts.style')}
@@ -415,7 +450,10 @@ export function VoicePanel(): JSX.Element {
             {t('tts.captions')}
           </label>
         </div>
+        </details>
         {voice && <p className="text-[10px] leading-relaxed text-slate-500">{t('tts.licence', { name: voice.name, licence: voice.licence })}</p>}
+        </Step>
+        </Steps>
       </div>
 
       <footer className="flex shrink-0 items-center gap-2 border-t border-[color:var(--hairline)] p-2">

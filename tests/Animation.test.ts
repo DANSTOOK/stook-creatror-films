@@ -16,6 +16,7 @@ import {
 import { rasterKey } from '../src/renderer/animation/raster';
 import { drawKeyOf, nextDrawing, previousDrawing, SIZE_STEP } from '../src/renderer/animation/keys';
 import { chainOf, isMoved, NO_PLACE, placeOf } from '../src/renderer/animation/motion';
+import { isRealDrag, MAX_SIDES, MIN_SIDES, shapePoints, shapeStroke } from '../src/renderer/animation/shapes';
 
 const stroke = (id: string, points = [0.1, 0.1, 0.5, 0.2, 0.2, 0.5]): Stroke => ({
   id,
@@ -477,5 +478,95 @@ describe('cut-out animation: a layer moved as a whole', () => {
     // And a layer cannot be its own parent.
     const self = normalizeAnimation({ step: 1, layers: [{ id: 'l', parentId: 'l', cels: [] }] });
     expect(self?.layers[0].parentId).toBeUndefined();
+  });
+});
+
+describe('shapes dragged out', () => {
+  const pt = (points: number[], index: number) => ({ x: points[index * 3], y: points[index * 3 + 1], p: points[index * 3 + 2] });
+  const from = { x: 0.2, y: 0.3 };
+  const to = { x: 0.6, y: 0.7 };
+
+  it('a line is its two ends, at full pressure so it draws evenly', () => {
+    const points = shapePoints({ kind: 'line', from, to });
+    expect(points).toHaveLength(6);
+    expect(pt(points, 0)).toEqual({ x: 0.2, y: 0.3, p: 1 });
+    expect(pt(points, 1)).toEqual({ x: 0.6, y: 0.7, p: 1 });
+  });
+
+  it('a rectangle closes, or its last side would be missing', () => {
+    const points = shapePoints({ kind: 'rectangle', from, to });
+    expect(points).toHaveLength(15);
+    expect(pt(points, 0)).toEqual(pt(points, 4));
+    // Every corner, whichever way the drag went.
+    const corners = [0, 1, 2, 3].map((index) => pt(points, index));
+    expect(new Set(corners.map((c) => `${c.x},${c.y}`)).size).toBe(4);
+  });
+
+  it('a rectangle is the same however the drag runs', () => {
+    const forwards = shapePoints({ kind: 'rectangle', from, to });
+    const backwards = shapePoints({ kind: 'rectangle', from: to, to: from });
+    expect(new Set(forwards).size).toBe(new Set(backwards).size);
+    expect(Math.min(...forwards.filter((_, i) => i % 3 === 0))).toBeCloseTo(0.2);
+  });
+
+  it('an ellipse is round the middle of the drag and closes on itself', () => {
+    const points = shapePoints({ kind: 'ellipse', from, to });
+    expect(pt(points, 0).x).toBeCloseTo(pt(points, points.length / 3 - 1).x);
+    expect(pt(points, 0).y).toBeCloseTo(pt(points, points.length / 3 - 1).y);
+    const xs = points.filter((_, i) => i % 3 === 0);
+    const ys = points.filter((_, i) => i % 3 === 1);
+    // It fills the drag exactly: left to right, top to bottom.
+    expect(Math.min(...xs)).toBeCloseTo(0.2);
+    expect(Math.max(...xs)).toBeCloseTo(0.6);
+    expect(Math.min(...ys)).toBeCloseTo(0.3);
+    expect(Math.max(...ys)).toBeCloseTo(0.7);
+  });
+
+  it('a polygon has the sides asked for, and points upwards', () => {
+    for (const sides of [3, 5, 8]) {
+      const points = shapePoints({ kind: 'polygon', from, to, sides });
+      // One point per side, plus the first again to close it.
+      expect(points.length / 3).toBe(sides + 1);
+      expect(pt(points, 0).x).toBeCloseTo(0.4);
+      expect(pt(points, 0).y).toBeCloseTo(0.3);
+    }
+  });
+
+  it('a polygon refuses a side count that is not a polygon', () => {
+    expect(shapePoints({ kind: 'polygon', from, to, sides: 1 }).length / 3).toBe(MIN_SIDES + 1);
+    expect(shapePoints({ kind: 'polygon', from, to, sides: 99 }).length / 3).toBe(MAX_SIDES + 1);
+  });
+
+  it('Shift squares a rectangle and circles an ellipse', () => {
+    const points = shapePoints({ kind: 'rectangle', from: { x: 0.2, y: 0.2 }, to: { x: 0.8, y: 0.3 }, even: true });
+    const xs = points.filter((_, i) => i % 3 === 0);
+    const ys = points.filter((_, i) => i % 3 === 1);
+    // Measured from the LONGER side, so the shape follows the hand.
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(0.6);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(0.6);
+  });
+
+  it('Shift holds a line to a right angle, along whichever way it went further', () => {
+    const across = shapePoints({ kind: 'line', from: { x: 0.2, y: 0.2 }, to: { x: 0.8, y: 0.25 }, even: true });
+    expect(pt(across, 1).y).toBeCloseTo(0.2);
+    const down = shapePoints({ kind: 'line', from: { x: 0.2, y: 0.2 }, to: { x: 0.25, y: 0.8 }, even: true });
+    expect(pt(down, 1).x).toBeCloseTo(0.2);
+  });
+
+  it('a shape becomes an ordinary stroke, which is what makes everything else work on it', () => {
+    const stroke = shapeStroke({ kind: 'ellipse', from, to }, { brush: 'pencil', color: '#ff0000', size: 0.01, opacity: 1 });
+    expect(stroke.id).toBeTruthy();
+    expect(stroke.color).toBe('#ff0000');
+    // And it survives a save and a load like any other stroke.
+    const read = normalizeAnimation({
+      step: 1,
+      layers: [{ id: 'l', cels: [{ id: 'c', at: 0, strokes: [JSON.parse(JSON.stringify(stroke))] }] }],
+    });
+    expect(read?.layers[0].cels[0].strokes[0].points).toEqual(stroke.points);
+  });
+
+  it('ignores a slip of the hand that is not really a drag', () => {
+    expect(isRealDrag({ x: 0.5, y: 0.5 }, { x: 0.5006, y: 0.5 })).toBe(false);
+    expect(isRealDrag({ x: 0.5, y: 0.5 }, { x: 0.52, y: 0.5 })).toBe(true);
   });
 });

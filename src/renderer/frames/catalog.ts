@@ -283,6 +283,244 @@ export const FRAMES: readonly Frame[] = [
       context.fillRect(0, 0, w, h);
     },
   },
+  {
+    id: 'gold',
+    group: 'borders',
+    label: 'frame.gold',
+    draw: (context, w, h) => {
+      // A gilt picture frame: a broad band with a lit edge and a dark one, so
+      // it reads as moulding rather than a flat stripe.
+      const band = Math.min(w, h) * 0.055;
+      const sheen = context.createLinearGradient(0, 0, w, h);
+      sheen.addColorStop(0, '#fde68a');
+      sheen.addColorStop(0.35, '#b45309');
+      sheen.addColorStop(0.5, '#fef3c7');
+      sheen.addColorStop(0.7, '#92400e');
+      sheen.addColorStop(1, '#fbbf24');
+      hole(context, w, h, { left: band / w, right: band / w, top: band / h, bottom: band / h }, 0, sheen);
+      context.strokeStyle = 'rgb(69 26 3 / 0.55)';
+      context.lineWidth = Math.max(1, band * 0.09);
+      context.strokeRect(band * 0.3, band * 0.3, w - band * 0.6, h - band * 0.6);
+      context.strokeRect(band, band, w - band * 2, h - band * 2);
+    },
+  },
+  {
+    id: 'woodFrame',
+    group: 'borders',
+    label: 'frame.wood',
+    draw: (context, w, h) => {
+      const band = Math.min(w, h) * 0.05;
+      context.fillStyle = '#8b5a2b';
+      context.fillRect(0, 0, w, h);
+      // Grain along the band, which is what tells wood from brown paint.
+      context.strokeStyle = 'rgb(69 26 3 / 0.35)';
+      context.lineWidth = Math.max(1, band * 0.05);
+      for (let line = 0; line < 26; line += 1) {
+        const y = (h / 26) * line + band * 0.1;
+        context.beginPath();
+        context.moveTo(0, y);
+        context.bezierCurveTo(w * 0.3, y + band * 0.1, w * 0.7, y - band * 0.1, w, y);
+        context.stroke();
+      }
+      // The grain was drawn across the whole canvas; cut the picture out of it.
+      context.globalCompositeOperation = 'destination-out';
+      context.fillRect(band, band, w - band * 2, h - band * 2);
+      context.globalCompositeOperation = 'source-over';
+      context.strokeStyle = 'rgb(255 255 255 / 0.18)';
+      context.lineWidth = Math.max(1, band * 0.08);
+      context.strokeRect(band * 0.5, band * 0.5, w - band, h - band);
+    },
+  },
+  {
+    id: 'doubleLine',
+    group: 'borders',
+    label: 'frame.doubleLine',
+    draw: (context, w, h) => {
+      // Two hairlines with air between them: the plainest frame that still
+      // looks deliberate.
+      const gap = Math.min(w, h) * 0.022;
+      context.strokeStyle = '#f8fafc';
+      context.lineWidth = Math.max(1, Math.min(w, h) * 0.004);
+      context.strokeRect(gap, gap, w - gap * 2, h - gap * 2);
+      context.lineWidth = Math.max(1, Math.min(w, h) * 0.0018);
+      context.strokeRect(gap * 2.1, gap * 2.1, w - gap * 4.2, h - gap * 4.2);
+    },
+  },
+  {
+    id: 'cornerTicks',
+    group: 'borders',
+    label: 'frame.cornerTicks',
+    draw: (context, w, h) => {
+      // Only the corners: a viewfinder, which frames without boxing in.
+      const arm = Math.min(w, h) * 0.09;
+      const inset = Math.min(w, h) * 0.035;
+      context.strokeStyle = '#f8fafc';
+      context.lineWidth = Math.max(2, Math.min(w, h) * 0.006);
+      context.lineCap = 'round';
+      const corner = (x: number, y: number, dx: number, dy: number): void => {
+        context.beginPath();
+        context.moveTo(x + dx * arm, y);
+        context.lineTo(x, y);
+        context.lineTo(x, y + dy * arm);
+        context.stroke();
+      };
+      corner(inset, inset, 1, 1);
+      corner(w - inset, inset, -1, 1);
+      corner(inset, h - inset, 1, -1);
+      corner(w - inset, h - inset, -1, -1);
+    },
+  },
+  {
+    id: 'torn',
+    group: 'borders',
+    label: 'frame.torn',
+    draw: (context, w, h) => {
+      // A torn paper edge: a ragged white band round the picture.
+      const band = Math.min(w, h) * 0.05;
+      let seed = 7;
+      const random = () => {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        return seed / 2147483648;
+      };
+      context.fillStyle = '#fafaf9';
+      context.beginPath();
+      context.rect(0, 0, w, h);
+      context.moveTo(band, band);
+      const edge = (fromX: number, fromY: number, toX: number, toY: number): void => {
+        const steps = 26;
+        for (let step = 1; step <= steps; step += 1) {
+          const t = step / steps;
+          const jitter = (random() - 0.5) * band * 0.7;
+          const nx = fromX + (toX - fromX) * t + (fromY === toY ? 0 : jitter);
+          const ny = fromY + (toY - fromY) * t + (fromX === toX ? 0 : jitter);
+          context.lineTo(nx, ny);
+        }
+      };
+      edge(band, band, w - band, band);
+      edge(w - band, band, w - band, h - band);
+      edge(w - band, h - band, band, h - band);
+      edge(band, h - band, band, band);
+      context.closePath();
+      context.fill('evenodd');
+    },
+  },
+  {
+    id: 'dashed',
+    group: 'borders',
+    label: 'frame.dashed',
+    draw: (context, w, h) => {
+      const inset = Math.min(w, h) * 0.03;
+      const unit = Math.min(w, h) * 0.02;
+      context.strokeStyle = '#f8fafc';
+      context.lineWidth = Math.max(2, Math.min(w, h) * 0.005);
+      context.setLineDash([unit, unit * 0.7]);
+      context.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
+      context.setLineDash([]);
+    },
+  },
+  {
+    id: 'ribbon',
+    group: 'borders',
+    label: 'frame.ribbon',
+    draw: (context, w, h) => {
+      // A coloured band along the bottom to write on, and a thin rule above it.
+      const bandH = h * 0.16;
+      const ribbon = context.createLinearGradient(0, h - bandH, 0, h);
+      ribbon.addColorStop(0, 'rgb(6 182 212 / 0.92)');
+      ribbon.addColorStop(1, 'rgb(14 116 144 / 0.96)');
+      context.fillStyle = ribbon;
+      context.fillRect(0, h - bandH, w, bandH);
+      context.fillStyle = 'rgb(255 255 255 / 0.85)';
+      context.fillRect(0, h - bandH, w, Math.max(2, h * 0.004));
+    },
+  },
+  {
+    id: 'arch',
+    group: 'borders',
+    label: 'frame.arch',
+    draw: (context, w, h) => {
+      // An arched top, as a poster or a church window: the picture is cut to
+      // a rounded head and everything round it is covered.
+      const inset = Math.min(w, h) * 0.05;
+      const left = inset;
+      const right = w - inset;
+      const bottom = h - inset;
+      const radius = Math.min((right - left) / 2, (bottom - inset) * 0.42);
+      const headY = inset + radius;
+      context.fillStyle = '#f8fafc';
+      context.beginPath();
+      context.rect(0, 0, w, h);
+      context.moveTo(left, bottom);
+      context.lineTo(left, headY);
+      // The head is a half-ellipse, so it spans the full width whatever the
+      // frame’s shape while the sides stay straight.
+      context.ellipse((left + right) / 2, headY, (right - left) / 2, radius, 0, Math.PI, 0);
+      context.lineTo(right, bottom);
+      context.closePath();
+      context.fill('evenodd');
+    },
+  },
+  {
+    id: 'roundWindow',
+    group: 'vignettes',
+    label: 'frame.roundWindow',
+    draw: (context, w, h) => {
+      // Everything outside a circle is covered: a porthole.
+      context.fillStyle = '#000000';
+      context.beginPath();
+      context.rect(0, 0, w, h);
+      context.arc(w / 2, h / 2, Math.min(w, h) * 0.44, 0, Math.PI * 2);
+      context.fill('evenodd');
+    },
+  },
+  {
+    id: 'warmVignette',
+    group: 'vignettes',
+    label: 'frame.warmVignette',
+    draw: (context, w, h) => {
+      const gradient = context.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.72);
+      gradient.addColorStop(0, 'rgb(120 53 15 / 0)');
+      gradient.addColorStop(1, 'rgb(69 26 3 / 0.7)');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, w, h);
+    },
+  },
+  {
+    id: 'sideScrims',
+    group: 'vignettes',
+    label: 'frame.sideScrims',
+    draw: (context, w, h) => {
+      // Darkened down the sides: a wide shot cropped by eye to the middle.
+      for (const side of [0, 1]) {
+        const gradient = context.createLinearGradient(side ? w : 0, 0, side ? w * 0.74 : w * 0.26, 0);
+        gradient.addColorStop(0, 'rgb(0 0 0 / 0.75)');
+        gradient.addColorStop(1, 'rgb(0 0 0 / 0)');
+        context.fillStyle = gradient;
+        context.fillRect(side ? w * 0.74 : 0, 0, w * 0.26, h);
+      }
+    },
+  },
+  {
+    id: 'safeSquare',
+    group: 'safe',
+    label: 'frame.safeSquare',
+    draw: (context, w, h) => {
+      // The square middle a feed crops to, marked on a wider frame.
+      const side = Math.min(w, h);
+      const x = (w - side) / 2;
+      const y = (h - side) / 2;
+      context.fillStyle = 'rgb(0 0 0 / 0.55)';
+      context.beginPath();
+      context.rect(0, 0, w, h);
+      context.rect(x, y, side, side);
+      context.fill('evenodd');
+      context.strokeStyle = 'rgb(34 211 238 / 0.95)';
+      // At least 2px: a hairline works out thinner than a pixel on a thumbnail
+      // and the guide disappears exactly where it is being chosen.
+      context.lineWidth = Math.max(2, Math.min(w, h) * 0.005);
+      context.strokeRect(x, y, side, side);
+    },
+  },
 ];
 
 /** The groups, in the order the panel shows them. */

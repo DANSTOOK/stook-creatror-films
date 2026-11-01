@@ -5,6 +5,7 @@ import { useDrawStore } from '@renderer/animation/drawStore';
 import { exposureAt, frameOfExposure, newId } from '@renderer/animation/model';
 import { drawStroke } from '@renderer/animation/raster';
 import { drawKeyOf, nextDrawing, previousDrawing } from '@renderer/animation/keys';
+import { isRealDrag, shapePoints } from '@renderer/animation/shapes';
 
 /**
  * Drawing on the picture.
@@ -27,6 +28,8 @@ const MIN_STEP = 0.0015;
 export function DrawOverlay(): JSX.Element | null {
   const clipId = useDrawStore((state) => state.clipId);
   const layerId = useDrawStore((state) => state.layerId);
+  const tool = useDrawStore((state) => state.tool);
+  const sides = useDrawStore((state) => state.sides);
   const brush = useDrawStore((state) => state.brush);
   const color = useDrawStore((state) => state.color);
   const size = useDrawStore((state) => state.size);
@@ -43,6 +46,9 @@ export function DrawOverlay(): JSX.Element | null {
   /** The stroke being drawn, as x, y, pressure triplets. Not state: it changes per pointer event. */
   const points = useRef<number[]>([]);
   const drawing = useRef(false);
+  /** Where a shape drag began, and whether Shift was down at the last move. */
+  const origin = useRef<{ x: number; y: number } | null>(null);
+  const even = useRef(false);
 
   // The tool puts itself away when its clip is gone, so a deleted animation
   // cannot leave a live canvas over the picture.
@@ -135,6 +141,8 @@ export function DrawOverlay(): JSX.Element | null {
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     const point = at(event);
     drawing.current = true;
+    origin.current = { x: point.x, y: point.y };
+    even.current = event.shiftKey;
     points.current = [point.x, point.y, point.pressure];
     repaint();
   };
@@ -142,6 +150,16 @@ export function DrawOverlay(): JSX.Element | null {
   const move = (event: React.PointerEvent): void => {
     if (!drawing.current) return;
     const point = at(event);
+    // A shape is REBUILT from where the drag began to where it is now, not
+    // accumulated: dragging back makes it smaller, as a shape tool should.
+    if (tool !== 'freehand' && origin.current) {
+      even.current = event.shiftKey;
+      points.current = isRealDrag(origin.current, point)
+        ? shapePoints({ kind: tool, from: origin.current, to: point, sides, even: even.current })
+        : [];
+      repaint();
+      return;
+    }
     const last = points.current.length;
     // Points the hand did not really move between are dropped: a stroke of
     // 2000 points draws no better than one of 200 and makes the file four
@@ -154,6 +172,7 @@ export function DrawOverlay(): JSX.Element | null {
   const end = (): void => {
     if (!drawing.current) return;
     drawing.current = false;
+    origin.current = null;
     const drawn = points.current;
     points.current = [];
     if (!clipId || !clip?.anim || drawn.length < 3) {

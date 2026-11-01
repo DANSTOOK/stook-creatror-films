@@ -473,6 +473,269 @@ export const BACKGROUNDS: readonly Background[] = [
       specks(context, w, h, 8, 113, () => 'rgb(255 255 255 / 0.9)', 0.004, 0.008);
     },
   },
+  {
+    id: 'sunset',
+    group: 'scenes',
+    label: 'background.sunset',
+    draw: (context, w, h) => {
+      sweep(context, w, h, Math.PI / 2, ['#1e1b4b', '#7c2d12', '#f97316', '#fbbf24']);
+      glow(context, w, h, 0.5, 0.72, 0.3, 'rgb(255 237 160 / 0.95)', 'rgb(255 237 160 / 0)');
+      // The sun sitting on the horizon, and its path across the water.
+      context.fillStyle = 'rgb(254 243 199 / 0.95)';
+      context.beginPath();
+      context.arc(w * 0.5, h * 0.72, Math.min(w, h) * 0.09, 0, Math.PI * 2);
+      context.fill();
+      sweepBand(context, w, h, 0.74, 1, ['#9a3412', '#431407']);
+      for (let row = 0; row < 16; row += 1) {
+        const y = h * (0.75 + row * 0.016);
+        const spread = w * (0.03 + row * 0.012);
+        context.fillStyle = `rgb(253 230 138 / ${0.5 - row * 0.03})`;
+        context.fillRect(w * 0.5 - spread / 2, y, spread, h * 0.006);
+      }
+      grain(context, w, h, 2, 127);
+    },
+  },
+  {
+    id: 'clouds',
+    group: 'scenes',
+    label: 'background.clouds',
+    draw: (context, w, h) => {
+      sweep(context, w, h, Math.PI / 2, ['#0284c7', '#7dd3fc', '#e0f2fe']);
+      // Each cloud is a run of overlapping circles, which is enough at this size.
+      const random = seeded(131);
+      for (let cloud = 0; cloud < 7; cloud += 1) {
+        const cx = random() * w;
+        const cy = h * (0.12 + random() * 0.5);
+        const scale = Math.min(w, h) * (0.05 + random() * 0.07);
+        context.fillStyle = `rgb(255 255 255 / ${0.55 + random() * 0.35})`;
+        for (let puff = 0; puff < 6; puff += 1) {
+          context.beginPath();
+          context.arc(cx + (puff - 2.5) * scale * 0.5, cy + Math.sin(puff) * scale * 0.18, scale * (0.5 + random() * 0.5), 0, Math.PI * 2);
+          context.fill();
+        }
+      }
+      grain(context, w, h, 1.5, 137);
+    },
+  },
+  {
+    id: 'rain',
+    group: 'scenes',
+    label: 'background.rain',
+    draw: (context, w, h) => {
+      // A window on a grey day: the blur behind, the drops on the glass.
+      sweep(context, w, h, Math.PI / 2, ['#16243a', '#2f4a68', '#5b7a96']);
+      // Blurred lights behind the glass: it is these, not the drops, that say
+      // "a window on a wet day" at a glance.
+      glow(context, w, h, 0.26, 0.3, 0.4, 'rgb(226 232 240 / 0.55)', 'rgb(226 232 240 / 0)');
+      glow(context, w, h, 0.68, 0.24, 0.26, 'rgb(253 224 71 / 0.45)', 'rgb(253 224 71 / 0)');
+      glow(context, w, h, 0.78, 0.66, 0.3, 'rgb(56 189 248 / 0.4)', 'rgb(56 189 248 / 0)');
+      glow(context, w, h, 0.42, 0.78, 0.26, 'rgb(248 113 113 / 0.3)', 'rgb(248 113 113 / 0)');
+      const random = seeded(139);
+      for (let drop = 0; drop < 140; drop += 1) {
+        const x = random() * w;
+        const y = random() * h;
+        const length = Math.min(w, h) * (0.01 + random() * 0.03);
+        context.strokeStyle = `rgb(241 245 249 / ${0.3 + random() * 0.5})`;
+        context.lineWidth = Math.max(1, Math.min(w, h) * 0.0015);
+        context.beginPath();
+        context.moveTo(x, y);
+        context.lineTo(x + length * 0.25, y + length);
+        context.stroke();
+      }
+      grain(context, w, h, 3, 149);
+    },
+  },
+  {
+    id: 'snow',
+    group: 'scenes',
+    label: 'background.snow',
+    draw: (context, w, h) => {
+      sweep(context, w, h, Math.PI / 2, ['#0c1f4a', '#3b6fb5', '#cfe6fb']);
+      // A treeline between the sky and the drifts: without something dark the
+      // whole thing read as a plain blue wash at thumbnail size.
+      hills(context, w, h, 0.62, 0.16, 6, 151, 'rgb(30 58 95 / 0.95)');
+      hills(context, w, h, 0.74, 0.1, 9, 311, 'rgb(15 32 56 / 0.9)');
+      hills(context, w, h, 0.82, 0.12, 4, 157, '#eef6ff');
+      hills(context, w, h, 0.93, 0.07, 3, 313, '#ffffff');
+      specks(context, w, h, 220, 163, (alpha) => `rgb(255 255 255 / ${alpha})`, 0.0015, 0.004);
+      grain(context, w, h, 1.5, 167);
+    },
+  },
+  {
+    id: 'studio',
+    group: 'scenes',
+    label: 'background.studio',
+    draw: (context, w, h) => {
+      // A seamless paper backdrop with a single soft light: what a talking
+      // head is usually shot against.
+      context.fillStyle = '#334155';
+      context.fillRect(0, 0, w, h);
+      glow(context, w, h, 0.5, 0.38, 0.55, 'rgb(203 213 225 / 0.85)', 'rgb(203 213 225 / 0)');
+      sweepBand(context, w, h, 0.78, 1, ['rgb(30 41 59 / 0)', 'rgb(2 6 23 / 0.75)']);
+      grain(context, w, h, 2.5, 173);
+    },
+  },
+  {
+    id: 'neon',
+    group: 'scenes',
+    label: 'background.neon',
+    draw: (context, w, h) => {
+      context.fillStyle = '#0b0618';
+      context.fillRect(0, 0, w, h);
+      glow(context, w, h, 0.26, 0.34, 0.42, 'rgb(236 72 153 / 0.55)', 'rgb(236 72 153 / 0)');
+      glow(context, w, h, 0.74, 0.62, 0.45, 'rgb(34 211 238 / 0.5)', 'rgb(34 211 238 / 0)');
+      glow(context, w, h, 0.52, 0.2, 0.3, 'rgb(139 92 246 / 0.4)', 'rgb(139 92 246 / 0)');
+      // A grid running to a vanishing point, which is what makes it read as a floor.
+      context.strokeStyle = 'rgb(34 211 238 / 0.35)';
+      context.lineWidth = Math.max(1, Math.min(w, h) * 0.0015);
+      for (let line = -10; line <= 10; line += 1) {
+        context.beginPath();
+        context.moveTo(w * 0.5 + line * w * 0.02, h * 0.62);
+        context.lineTo(w * 0.5 + line * w * 0.16, h);
+        context.stroke();
+      }
+      for (let row = 0; row < 9; row += 1) {
+        const y = h * (0.62 + (row / 8) ** 2 * 0.38);
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(w, y);
+        context.stroke();
+      }
+    },
+  },
+  {
+    id: 'autumn',
+    group: 'scenes',
+    label: 'background.autumn',
+    draw: (context, w, h) => {
+      sweep(context, w, h, Math.PI / 2, ['#7c2d12', '#c2410c', '#fbbf24']);
+      glow(context, w, h, 0.62, 0.26, 0.4, 'rgb(254 240 138 / 0.6)', 'rgb(254 240 138 / 0)');
+      // Leaves: small ellipses turned every which way.
+      const random = seeded(179);
+      for (let leaf = 0; leaf < 90; leaf += 1) {
+        const x = random() * w;
+        const y = random() * h;
+        const size = Math.min(w, h) * (0.006 + random() * 0.016);
+        context.save();
+        context.translate(x, y);
+        context.rotate(random() * Math.PI * 2);
+        context.fillStyle = `rgb(${180 + random() * 70 | 0} ${60 + random() * 60 | 0} ${20 + random() * 30 | 0} / ${0.4 + random() * 0.45})`;
+        context.beginPath();
+        context.ellipse(0, 0, size, size * 0.5, 0, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
+      grain(context, w, h, 2.5, 181);
+    },
+  },
+  {
+    id: 'underwater',
+    group: 'scenes',
+    label: 'background.underwater',
+    draw: (context, w, h) => {
+      sweep(context, w, h, Math.PI / 2, ['#0e7490', '#155e75', '#083344']);
+      // Light shafts coming down from the surface.
+      const random = seeded(191);
+      for (let shaft = 0; shaft < 9; shaft += 1) {
+        const x = random() * w;
+        const width = w * (0.02 + random() * 0.06);
+        const beam = context.createLinearGradient(x, 0, x + width * 0.4, h);
+        beam.addColorStop(0, 'rgb(165 243 252 / 0.3)');
+        beam.addColorStop(1, 'rgb(165 243 252 / 0)');
+        context.fillStyle = beam;
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x + width, 0);
+        context.lineTo(x + width * 1.8, h);
+        context.lineTo(x + width * 0.4, h);
+        context.closePath();
+        context.fill();
+      }
+      specks(context, w, h, 120, 193, (alpha) => `rgb(224 242 254 / ${alpha * 0.7})`, 0.001, 0.004);
+      grain(context, w, h, 2, 197);
+    },
+  },
+  {
+    id: 'wood',
+    group: 'textures',
+    label: 'background.wood',
+    draw: (context, w, h) => {
+      sweep(context, w, h, 0, ['#92400e', '#b45309', '#a16207']);
+      // Planks with a grain running along them.
+      const random = seeded(199);
+      const planks = 7;
+      for (let plank = 0; plank < planks; plank += 1) {
+        const y = (h / planks) * plank;
+        context.fillStyle = `rgb(120 53 15 / ${0.1 + random() * 0.18})`;
+        context.fillRect(0, y, w, h / planks);
+        context.strokeStyle = 'rgb(69 26 3 / 0.55)';
+        context.lineWidth = Math.max(1, h * 0.002);
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(w, y);
+        context.stroke();
+        for (let line = 0; line < 9; line += 1) {
+          const gy = y + (h / planks) * (0.1 + random() * 0.8);
+          context.strokeStyle = `rgb(69 26 3 / ${0.08 + random() * 0.15})`;
+          context.lineWidth = Math.max(1, h * 0.0012);
+          context.beginPath();
+          context.moveTo(0, gy);
+          context.bezierCurveTo(w * 0.33, gy + h * 0.01, w * 0.66, gy - h * 0.01, w, gy);
+          context.stroke();
+        }
+      }
+      grain(context, w, h, 3, 211);
+    },
+  },
+  {
+    id: 'brick',
+    group: 'textures',
+    label: 'background.brick',
+    draw: (context, w, h) => {
+      context.fillStyle = '#d6d3d1';
+      context.fillRect(0, 0, w, h);
+      const random = seeded(223);
+      const rows = 14;
+      const brickH = h / rows;
+      const brickW = brickH * 2.4;
+      for (let row = 0; row < rows; row += 1) {
+        const offset = row % 2 === 0 ? 0 : -brickW / 2;
+        for (let x = offset; x < w; x += brickW) {
+          context.fillStyle = `rgb(${140 + random() * 40 | 0} ${60 + random() * 30 | 0} ${50 + random() * 25 | 0})`;
+          context.fillRect(x + brickH * 0.07, row * brickH + brickH * 0.07, brickW - brickH * 0.14, brickH - brickH * 0.14);
+        }
+      }
+      grain(context, w, h, 4, 227);
+    },
+  },
+  {
+    id: 'velvet',
+    group: 'textures',
+    label: 'background.velvet',
+    draw: (context, w, h) => {
+      // Deep cloth: a dark base, a soft sheen, and a very fine grain.
+      sweep(context, w, h, Math.PI / 3, ['#4c0519', '#881337', '#4c0519']);
+      glow(context, w, h, 0.38, 0.3, 0.5, 'rgb(251 113 133 / 0.22)', 'rgb(251 113 133 / 0)');
+      glow(context, w, h, 0.7, 0.74, 0.4, 'rgb(136 19 55 / 0.4)', 'rgb(136 19 55 / 0)');
+      grain(context, w, h, 5, 229);
+    },
+  },
+  {
+    id: 'meshGradient',
+    group: 'gradients',
+    label: 'background.meshGradient',
+    draw: (context, w, h) => {
+      // Four coloured lights bled into one another: the look every design tool
+      // calls a mesh gradient.
+      context.fillStyle = '#0f172a';
+      context.fillRect(0, 0, w, h);
+      glow(context, w, h, 0.22, 0.26, 0.6, 'rgb(99 102 241 / 0.85)', 'rgb(99 102 241 / 0)');
+      glow(context, w, h, 0.78, 0.24, 0.55, 'rgb(236 72 153 / 0.75)', 'rgb(236 72 153 / 0)');
+      glow(context, w, h, 0.26, 0.78, 0.55, 'rgb(34 211 238 / 0.7)', 'rgb(34 211 238 / 0)');
+      glow(context, w, h, 0.8, 0.8, 0.6, 'rgb(251 191 36 / 0.6)', 'rgb(251 191 36 / 0)');
+      grain(context, w, h, 2, 233);
+    },
+  },
 ];
 
 /** A gradient filling the band from `from` to `to` of the height. */

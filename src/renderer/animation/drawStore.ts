@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { BrushKind } from '@shared/types';
+import type { ShapeKind } from './shapes';
 
 /**
  * What the hand is holding.
@@ -15,6 +16,14 @@ export interface DrawState {
   clipId: string | null;
   /** The layer strokes land on. Null means the topmost one, which is the usual. */
   layerId: string | null;
+  /**
+   * What the hand is doing: drawing by feel, or dragging out a shape.
+   * A shape becomes an ordinary stroke, so nothing downstream knows the
+   * difference (animation/shapes).
+   */
+  tool: 'freehand' | ShapeKind;
+  /** Sides of a polygon, 3 to 12. */
+  sides: number;
   brush: BrushKind;
   /** #rrggbb. */
   color: string;
@@ -25,7 +34,7 @@ export interface DrawState {
   recent: string[];
   start(clipId: string, layerId?: string | null): void;
   stop(): void;
-  pick(patch: { brush?: BrushKind; color?: string; size?: number; opacity?: number; layerId?: string | null }): void;
+  pick(patch: { tool?: 'freehand' | ShapeKind; sides?: number; brush?: BrushKind; color?: string; size?: number; opacity?: number; layerId?: string | null }): void;
 }
 
 /** Sensible for a 1080p frame: about 6 px, which draws like a pencil. */
@@ -38,6 +47,8 @@ const RECENT = 8;
 export const useDrawStore = create<DrawState>((set) => ({
   clipId: null,
   layerId: null,
+  tool: 'freehand',
+  sides: 5,
   brush: 'pencil',
   color: '#ffffff',
   size: DEFAULT_SIZE,
@@ -48,6 +59,8 @@ export const useDrawStore = create<DrawState>((set) => ({
   pick: (patch) =>
     set((state) => ({
       ...state,
+      ...(patch.tool !== undefined ? { tool: patch.tool } : {}),
+      ...(patch.sides !== undefined ? { sides: Math.min(12, Math.max(3, Math.round(patch.sides))) } : {}),
       ...(patch.brush !== undefined ? { brush: patch.brush } : {}),
       ...(patch.layerId !== undefined ? { layerId: patch.layerId } : {}),
       ...(patch.size !== undefined ? { size: Math.min(MAX_SIZE, Math.max(MIN_SIZE, patch.size)) } : {}),

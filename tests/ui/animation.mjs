@@ -80,6 +80,13 @@ const brightness = (window) =>
     return total;
   });
 
+/** Unfold the panel’s "More" section, where the deeper controls live. */
+const openMore = (window) =>
+  window.evaluate(() => {
+    const more = document.querySelector('[data-testid="animation-more"]');
+    if (more && !more.open) more.open = true;
+  });
+
 /** Where the ink sits, as a fraction of the frame: how a drawing is seen to move. */
 const inkCentre = (window) =>
   window.evaluate(() => {
@@ -198,6 +205,9 @@ async function main() {
     const second = await atFrame(held.startFrame + 1);
     check('the same drawing covers both frames of its exposure', Math.abs(first - second) < 80, `${first} vs ${second}`);
 
+    // Onion skin, layers and cut-out now live behind "More": the three steps
+    // are what a first-timer needs, the rest is for when they ask for it.
+    await openMore(window);
     console.log('5. the onion skin');
     // A second drawing four exposures on, so there is something to ghost.
     await window.evaluate((value) => window.__scfStore.getState().setCurrentFrame(value), held.startFrame + 8);

@@ -4,14 +4,14 @@ import { es } from '@shared/i18n/es';
 import { FRAMES, FRAME_GROUPS, frameById } from '@renderer/frames/catalog';
 
 /**
- * The frame catalog: sixteen frames in three groups, each named in both
+ * The frame catalog: twenty-eight frames in three groups, each named in both
  * languages. That a frame leaves the middle of the picture CLEAR is judged in
  * the running app (tests/ui/frames.mjs), where there are pixels to read.
  */
 
 describe('the frame catalog', () => {
-  it('has sixteen frames, each its own id', () => {
-    expect(FRAMES).toHaveLength(16);
+  it('has twenty-eight frames, each its own id', () => {
+    expect(FRAMES).toHaveLength(28);
     expect(new Set(FRAMES.map((frame) => frame.id)).size).toBe(FRAMES.length);
     expect(frameById('safeShorts')?.group).toBe('safe');
     expect(frameById('vignette')?.group).toBe('vignettes');
