@@ -50,6 +50,7 @@ export function AnimationPanel(): JSX.Element {
   const seek = useProjectStore((state) => state.setCurrentFrame);
 
   const drawing = useDrawStore((state) => state.clipId);
+  const mode = useDrawStore((state) => state.mode);
   const tool = useDrawStore((state) => state.tool);
   const sides = useDrawStore((state) => state.sides);
   const brush = useDrawStore((state) => state.brush);
@@ -168,6 +169,29 @@ export function AnimationPanel(): JSX.Element {
             summary={t('animation.strokes', { count: drawn })}
             testId="animation-step-2"
           >
+            {/* Draw it, or move what is drawn. Two jobs, and the pointer can
+                only do one at a time. */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                data-testid="animation-mode-draw"
+                aria-pressed={mode === 'draw'}
+                onClick={() => pick({ mode: 'draw' })}
+                className={`flex-1 rounded-control px-2 py-1 text-2xs ring-1 ${mode === 'draw' ? 'bg-white/15 text-white ring-white/20' : 'bg-white/5 text-slate-400 ring-white/10'}`}
+              >
+                {t('animation.modeDraw')}
+              </button>
+              <button
+                type="button"
+                data-testid="animation-mode-animate"
+                aria-pressed={mode === 'animate'}
+                onClick={() => { pick({ mode: 'animate' }); if (!on) start(clip.id, layerId); }}
+                className={`flex-1 rounded-control px-2 py-1 text-2xs ring-1 ${mode === 'animate' ? 'bg-white/15 text-white ring-white/20' : 'bg-white/5 text-slate-400 ring-white/10'}`}
+              >
+                {t('animation.modeAnimate')}
+              </button>
+            </div>
+            {mode === 'animate' && <p className="text-[10px] leading-relaxed text-slate-500">{t('animation.animateHint')}</p>}
             <div className="flex items-center gap-1.5">
               <button
                 type="button"

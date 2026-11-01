@@ -34,6 +34,7 @@ import { CompareCurtain } from './CompareCurtain';
 import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { TrackBoxOverlay } from './TrackBoxOverlay';
 import { DrawOverlay } from './DrawOverlay';
+import { AnimateOverlay } from './AnimateOverlay';
 import { MulticamBar } from './MulticamBar';
 import { usePreviewQuality } from './previewQuality';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
@@ -448,6 +449,9 @@ export function PreviewViewport(): JSX.Element {
                 overlays: while the hand is drawing, nothing else should take a
                 pointer. */}
             {!fullscreen && <DrawOverlay />}
+            {/* Moving a drawing about rather than drawing it: only one of the
+                two is ever mounted, so the pointer is never fought over. */}
+            {!fullscreen && <AnimateOverlay />}
             {/* An empty edit: a black frame says nothing, so say how to start. */}
             {!fullscreen && Object.keys(project.clips).length === 0 && (
               <div data-testid="viewer-empty" className="scf-rise pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">

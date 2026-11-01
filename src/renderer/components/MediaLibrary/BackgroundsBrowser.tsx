@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { PhotoBackgrounds } from './PhotoBackgrounds';
 import { Search } from 'lucide-react';
 import type { MessageKey } from '@shared/i18n';
 import { useT } from '@renderer/i18n';
@@ -160,6 +161,14 @@ export function BackgroundsBrowser(): JSX.Element {
           {t('background.noMatch')}
         </p>
       )}
+      {/* Real photographs, searched for rather than shipped. Folded, because
+          the drawn ones need no network and are beyond question to publish. */}
+      <details className="mt-3 rounded-control bg-panel-900/60 px-2 py-1" data-testid="photos-more">
+        <summary className="cursor-pointer text-2xs text-slate-400">{t('photos.title')}</summary>
+        <div className="mt-2 border-t border-white/5 pt-2">
+          <PhotoBackgrounds />
+        </div>
+      </details>
     </div>
   );
 }

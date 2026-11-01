@@ -5,6 +5,7 @@ import type {
   GpuReport,
   HardwareEncoder,
 } from '@shared/types';
+import type { PhotoSearchReply } from '@shared/types/ipc';
 import {
   IPC,
   type FilmoraApi,
@@ -52,6 +53,8 @@ const api: FilmoraApi = {
   detectScenes: (path, request) => ipcRenderer.invoke(IPC.detectScenes, path, request) as Promise<number[]>,
   detectBeats: (path, fromSeconds, toSeconds) => ipcRenderer.invoke(IPC.detectBeats, path, fromSeconds, toSeconds) as Promise<{ bpm: number; beats: number[]; downbeats: number[] }>,
   saveSticker: (id, png) => ipcRenderer.invoke(IPC.saveSticker, id, png) as Promise<string>,
+  photosSearch: (query, page) => ipcRenderer.invoke(IPC.photosSearch, query, page) as Promise<PhotoSearchReply>,
+  photosFetch: (url) => ipcRenderer.invoke(IPC.photosFetch, url) as Promise<ArrayBuffer | null>,
   saveSound: (id, wav) => ipcRenderer.invoke(IPC.saveSound, id, wav) as Promise<string>,
   findSound: (id) => ipcRenderer.invoke(IPC.findSound, id) as Promise<string | null>,
   saveStill: (id, png) => ipcRenderer.invoke(IPC.saveStill, id, png) as Promise<string>,

@@ -7,6 +7,7 @@ import { buildAsset } from '@renderer/media/importMedia';
 import { applyClipAnimation } from '@renderer/fx/motion/apply';
 import type { ClipAnimationId } from '@renderer/fx/motion/animations';
 import { backgroundById, type Background } from './catalog';
+import { creditFor, photoDataUrl, type StockPhoto } from './photos';
 
 /**
  * A background onto the timeline: drawn at the PROJECT's own size, kept as a
@@ -80,4 +81,80 @@ export async function addBackground(backgroundId: string, options: { motion?: bo
   useHistoryStore.getState().squash(mark, 'Add background');
   useProjectStore.getState().setUi({ selectedClipIds: [clipId], selectedTrackId: trackId });
   return clipId;
+}
+
+/**
+ * A real photograph onto the timeline, the same way a drawn background goes.
+ *
+ * The picture is fetched, drawn into a canvas at the PROJECT's size and saved
+ * as a PNG beside the drawn ones, so from that point on nothing downstream
+ * knows or cares that it came off the internet: same asset, same track, same
+ * export. It is also why the photo is only ever fetched once.
+ *
+ * It is COVERED, not stretched: the picture keeps its shape and whatever does
+ * not fit is cropped. Squashing somebody's photograph to fit a frame is the
+ * one thing that always looks wrong.
+ *
+ * The credit is written into the clip's name, so a licence that asks for one
+ * is satisfied by the project itself rather than by the user remembering.
+ */
+export async function addPhotoBackground(photo: StockPhoto): Promise<string | null> {
+  const api = window.filmora;
+  if (!api?.saveSticker || !api.mediaUrl) return null;
+  const { project } = useProjectStore.getState();
+  const { width, height } = project;
+
+  // Through main: the page may not reach the host that holds the picture.
+  const dataUrl = await photoDataUrl(photo.url);
+  if (!dataUrl) return null;
+  const image = await loadImage(dataUrl);
+  if (!image) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  // Cover: fill the frame, keep the shape, crop the overflow evenly.
+  const scale = Math.max(width / image.width, height / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  context.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return null;
+  const path = await api.saveSticker(`photo-${photo.id}-${width}x${height}`, await blob.arrayBuffer());
+
+  const store = useProjectStore.getState();
+  let asset = store.assets.find((candidate) => candidate.sourcePath === path);
+  if (!asset) {
+    const uri = await api.mediaUrl(path);
+    asset = await buildAsset({ name: `${photo.title}.png`, uri, sourcePath: path }, store.project.fps);
+    useProjectStore.getState().addAssets([asset]);
+    asset = useProjectStore.getState().assets.find((candidate) => candidate.sourcePath === path) ?? asset;
+  }
+
+  const mark = useHistoryStore.getState().undoStack.length;
+  const clipId = useProjectStore.getState().addAssetOnNewTrack(asset);
+  if (!clipId) return null;
+  const trackId = useProjectStore.getState().project.clips[clipId]?.trackId ?? null;
+  if (trackId) {
+    const rows = useProjectStore.getState().project.tracks.filter((track) => track.type !== 'audio').length;
+    for (let step = 0; step < rows; step += 1) useProjectStore.getState().moveTrack(trackId, 1);
+  }
+  // The credit rides on the clip, so the project itself carries it.
+  useProjectStore.getState().updateClip(clipId, { name: creditFor(photo) });
+  useHistoryStore.getState().squash(mark, 'Add photo');
+  useProjectStore.getState().setUi({ selectedClipIds: [clipId], selectedTrackId: trackId });
+  return clipId;
+}
+
+/** The picture, or null if it cannot be had - a dead link, or no network. */
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
 }

@@ -20,6 +20,8 @@ export const IPC = {
   detectBeats: 'media:detect-beats',
   saveStill: 'media:save-still',
   saveSticker: 'media:save-sticker',
+  photosSearch: 'photos:search',
+  photosFetch: 'photos:fetch',
   saveSound: 'media:save-sound',
   findSound: 'media:find-sound',
   trackObject: 'media:track-object',
@@ -624,6 +626,14 @@ export interface RecentProjectInput {
   clipCount: number;
 }
 
+/** What a photo search gives back; `error` is a word the panel can translate. */
+export interface PhotoSearchReply {
+  results: unknown[];
+  resultCount: number;
+  pageCount: number;
+  error?: 'rate' | 'failed';
+}
+
 export interface FilmoraApi {
   openMedia(): Promise<PickedFile[]>;
   /**
@@ -671,6 +681,14 @@ export interface FilmoraApi {
    * path, ready to import. The same sticker in the same language is one file.
    */
   saveSticker(id: string, png: ArrayBuffer): Promise<string>;
+  /**
+   * Search Openverse for openly licensed photographs. Done here rather than
+   * in the page because the page's CSP allows no outside connection, which
+   * is a rule worth keeping in an app that opens other people’s files.
+   */
+  photosSearch(query: string, page: number): Promise<PhotoSearchReply>;
+  /** One picture’s bytes, for the same reason. */
+  photosFetch(url: string): Promise<ArrayBuffer | null>;
   /** A sound of the library (renderer/sounds), rendered as a WAV and kept in the app's folder; its path. */
   saveSound(id: string, wav: ArrayBuffer): Promise<string>;
   /** That sound's file when it was made before, or null. */

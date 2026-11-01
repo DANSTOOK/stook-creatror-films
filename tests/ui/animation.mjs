@@ -380,6 +380,35 @@ async function main() {
     });
     check('a loop in the rig is refused', refused.filter(Boolean).length === 1, JSON.stringify(refused));
 
+    console.log('12. the animate tool: dragging the drawing itself');
+    const rig2 = await animOf(window);
+    await window.evaluate((v) => window.__scfStore.getState().setCurrentFrame(v), rig2.startFrame);
+    await sleep(250);
+    await window.getByTestId('animation-mode-animate').click();
+    await window.getByTestId('animate-box').waitFor({ state: 'visible', timeout: 10_000 });
+    check('the drawing canvas steps aside for the animate tool', (await window.getByTestId('draw-overlay').count()) === 0);
+
+    const before2 = await inkCentre(window);
+    const depth2 = await window.evaluate(() => window.__scfHistory.getState().undoStack.length);
+    const frameBox = await window.getByTestId('animate-overlay').boundingBox();
+    const grip = await window.getByTestId('animate-box').boundingBox();
+    await window.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await window.mouse.down();
+    // Many small moves, as a hand makes: they must still be ONE undo step.
+    for (let i = 1; i <= 14; i += 1) {
+      await window.mouse.move(grip.x + grip.width / 2 + (frameBox.width * 0.22 * i) / 14, grip.y + grip.height / 2);
+    }
+    await window.mouse.up();
+    await sleep(400);
+    const after2 = await inkCentre(window);
+    check('dragging on the viewer moves the drawing', after2.x > before2.x + 0.1, JSON.stringify(before2) + ' -> ' + JSON.stringify(after2));
+    const depth3 = await window.evaluate(() => window.__scfHistory.getState().undoStack.length);
+    check('a whole drag is one undo step', depth3 === depth2 + 1, depth2 + ' -> ' + depth3);
+    await window.evaluate(() => window.__scfStore.getState().undo());
+    await sleep(400);
+    const undone2 = await inkCentre(window);
+    check('and undo puts it back where it was', Math.abs(undone2.x - before2.x) < 0.02, before2.x.toFixed(3) + ' vs ' + undone2.x.toFixed(3));
+
     console.log('10. the console');
     check('nothing in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {

@@ -28,6 +28,7 @@ const MIN_STEP = 0.0015;
 export function DrawOverlay(): JSX.Element | null {
   const clipId = useDrawStore((state) => state.clipId);
   const layerId = useDrawStore((state) => state.layerId);
+  const mode = useDrawStore((state) => state.mode);
   const tool = useDrawStore((state) => state.tool);
   const sides = useDrawStore((state) => state.sides);
   const brush = useDrawStore((state) => state.brush);
@@ -190,7 +191,9 @@ export function DrawOverlay(): JSX.Element | null {
     clear();
   };
 
-  if (!clipId || !clip?.anim) return null;
+  // The animate tool has the pointer instead (AnimateOverlay); two canvases
+  // both taking the drag would fight.
+  if (!clipId || !clip?.anim || mode === 'animate') return null;
 
   return (
     <canvas

@@ -361,3 +361,33 @@ function normalizeOnion(value: unknown): OnionSkin {
     by: raw.by === 'frames' ? 'frames' : 'drawings',
   };
 }
+
+/**
+ * The box a layer's drawing occupies at an exposure, in fractions of the
+ * frame, before its own motion is applied.
+ *
+ * Null when the layer draws nothing there - there is no box round nothing, and
+ * the animate tool must not offer a handle to drag.
+ */
+export function layerBounds(layer: AnimationLayer, exposure: number): { x: number; y: number; width: number; height: number } | null {
+  const cel = celAt(layer, exposure);
+  if (!cel || cel.strokes.length === 0) return null;
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const stroke of cel.strokes) {
+    // Half the stroke's width sticks out past its centre line on every side.
+    const bleed = stroke.size / 2;
+    for (let index = 0; index < stroke.points.length; index += 3) {
+      const x = stroke.points[index];
+      const y = stroke.points[index + 1];
+      if (x - bleed < left) left = x - bleed;
+      if (x + bleed > right) right = x + bleed;
+      if (y - bleed < top) top = y - bleed;
+      if (y + bleed > bottom) bottom = y + bleed;
+    }
+  }
+  if (!Number.isFinite(left) || right <= left || bottom <= top) return null;
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}

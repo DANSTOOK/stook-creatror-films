@@ -10,6 +10,7 @@ import { registerFileSystemHandlers } from './ipc/fileSystem';
 import { registerYouTubeHandlers } from './youtube/youtubeIpc';
 import { registerSubtitleHandlers } from './subtitles/subtitlesIpc';
 import { registerTtsHandlers } from './tts/ttsIpc';
+import { registerPhotoIpc } from './ipc/photos';
 import { logFailedRequests, registerLogHandlers } from './logging/logIpc';
 import { registerMattingHandlers } from './matting/mattingIpc';
 import type { Transcriber } from './subtitles/transcriber';
@@ -348,6 +349,8 @@ app.whenReady().then(() => {
   registerYouTubeHandlers(() => mainWindow);
   transcriber = registerSubtitleHandlers(() => mainWindow);
   registerTtsHandlers(() => mainWindow);
+  // Openverse, here rather than in the page: the page may not reach outside.
+  registerPhotoIpc();
   // An analysis left running stops with the app; what it had half written is
   // swept away at the next start (matting/matteStore.ts).
   const matting = registerMattingHandlers(() => mainWindow);

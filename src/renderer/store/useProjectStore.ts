@@ -396,7 +396,7 @@ interface ProjectStore {
    *
    * A keyframe already at that frame is replaced, as everywhere else.
    */
-  setLayerKeyframe(clipId: string, layerId: string, channel: 'position' | 'scale' | 'rotation', frame: number, value: Vector2D | number): void;
+  setLayerKeyframe(clipId: string, layerId: string, channel: 'position' | 'scale' | 'rotation', frame: number, value: Vector2D | number, mergeKey?: string): void;
   /** Take a layer’s keyframe at a frame off; the layer stops moving when none are left. */
   removeLayerKeyframe(clipId: string, layerId: string, channel: 'position' | 'scale' | 'rotation', frame: number): void;
   /** Hang a layer from another, or from none. A loop or a missing parent is refused. */
@@ -1662,24 +1662,30 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     return id;
   },
 
-  setLayerKeyframe(clipId, layerId, channel, frame, value) {
-    get().transact('Animate layer', (project) => {
-      const clip = project.clips[clipId];
-      if (!clip?.anim) return project;
-      const at = Math.round(frame);
-      if (!Number.isFinite(at)) return project;
-      const layers = clip.anim.layers.map((layer) => {
-        if (layer.id !== layerId) return layer;
-        const motion = layer.motion ?? {};
-        const existing = (motion[channel] ?? []) as { id: string; frame: number; easing: Easing; value: unknown }[];
-        // Replaced, not doubled: two keyframes on one frame cannot both be read.
-        const kept = existing.filter((key) => key.frame !== at);
-        const easing = existing.find((key) => key.frame === at)?.easing ?? 'easeInOut';
-        const next = [...kept, { id: newId(`key-${channel}`), frame: at, value, easing }].sort((a, b) => a.frame - b.frame);
-        return { ...layer, motion: { ...motion, [channel]: next } };
-      });
-      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
-    });
+  setLayerKeyframe(clipId, layerId, channel, frame, value, mergeKey) {
+    get().transact(
+      'Animate layer',
+      (project) => {
+        const clip = project.clips[clipId];
+        if (!clip?.anim) return project;
+        const at = Math.round(frame);
+        if (!Number.isFinite(at)) return project;
+        const layers = clip.anim.layers.map((layer) => {
+          if (layer.id !== layerId) return layer;
+          const motion = layer.motion ?? {};
+          const existing = (motion[channel] ?? []) as { id: string; frame: number; easing: Easing; value: unknown }[];
+          // Replaced, not doubled: two keyframes on one frame cannot both be read.
+          const kept = existing.filter((key) => key.frame !== at);
+          const easing = existing.find((key) => key.frame === at)?.easing ?? 'easeInOut';
+          const next = [...kept, { id: newId(`key-${channel}`), frame: at, value, easing }].sort((a, b) => a.frame - b.frame);
+          return { ...layer, motion: { ...motion, [channel]: next } };
+        });
+        return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+      },
+      // A drag writes a keyframe on every pointer move; one key makes the whole
+      // drag a single undo step instead of a hundred.
+      mergeKey,
+    );
   },
 
   removeLayerKeyframe(clipId, layerId, channel, frame) {
