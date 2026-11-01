@@ -27,6 +27,7 @@ import { AudioLines,
   Sparkles,
   Captions,
   Frame,
+  PencilLine,
   type LucideProps,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -65,6 +66,7 @@ import { useScreenRecordDialog } from '@renderer/capture/ScreenRecordDialog';
 import { TitlesBrowser } from './TitlesBrowser';
 import { CaptionsTab } from '@renderer/components/Captions/CaptionsTab';
 import { VoicePanel } from '@renderer/components/TextToSpeech/VoicePanel';
+import { AnimationPanel } from '@renderer/components/Animation/AnimationPanel';
 import { LIBRARY_TAB_EVENT, takeRequestedLibraryTab, type LibraryTab } from './libraryTabs';
 import type { MessageKey } from '@shared/i18n';
 import { notify } from '@renderer/notifications/notifications';
@@ -103,7 +105,7 @@ const hasAssetDrag = (event: DragEvent): boolean => event.dataTransfer.types.inc
  * Transitions and Premiere its Effects beside the Project panel. Which one is
  * open is a convenience of this machine.
  */
-const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'frames', 'sounds', 'voice', 'captions'];
+const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'frames', 'sounds', 'voice', 'captions', 'animation'];
 /**
  * The parts that show the app's own templates, not the project: kept mounted
  * once opened.
@@ -113,7 +115,7 @@ const LIBRARY_TABS: readonly LibraryTab[] = ['media', 'titles', 'transitions', '
  * unmounted it and the voice was never made. Kept mounted, the work carries
  * on and the clip arrives whatever tab is open.
  */
-const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'frames', 'sounds', 'voice']);
+const KEPT_TABS: ReadonlySet<LibraryTab> = new Set<LibraryTab>(['titles', 'transitions', 'effects', 'stickers', 'backgrounds', 'frames', 'sounds', 'voice', 'animation']);
 const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   media: 'library.media',
   titles: 'library.titles',
@@ -127,6 +129,8 @@ const LIBRARY_TAB_LABEL: Record<LibraryTab, MessageKey> = {
   voice: 'library.voice',
   // The transcript: the captions as a list (components/Captions/TranscriptPanel).
   captions: 'library.captions',
+  // Drawing frame by frame (components/Animation/AnimationPanel).
+  animation: 'library.animation',
 };
 
 /**
@@ -142,6 +146,7 @@ const LIBRARY_TAB_ICON: Record<LibraryTab, ComponentType<LucideProps>> = {
   effects: Sparkles,
   stickers: Smile,
   backgrounds: ImageIcon,
+  animation: PencilLine,
   frames: Frame,
   sounds: Music2,
   voice: AudioLines,
@@ -164,6 +169,7 @@ const LIBRARY_TAB_TIP: Record<LibraryTab, MessageKey> = {
   sounds: 'library.soundsTip',
   voice: 'library.voiceTip',
   captions: 'library.captionsTip',
+  animation: 'library.animationTip',
 };
 
 /** File > Import media: the application menu asks the panel to run its Import. */
@@ -749,6 +755,7 @@ export function MediaLibrary(): JSX.Element {
             {id === 'frames' && <FramesBrowser />}
             {id === 'sounds' && <SoundsBrowser />}
             {id === 'voice' && <VoicePanel />}
+            {id === 'animation' && <AnimationPanel />}
           </div>
         ) : null,
       )}

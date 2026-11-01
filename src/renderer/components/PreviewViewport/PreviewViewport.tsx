@@ -33,6 +33,7 @@ import { ScopesPanel } from './ScopesPanel';
 import { CompareCurtain } from './CompareCurtain';
 import { ZoomZoneOverlay } from './ZoomZoneOverlay';
 import { TrackBoxOverlay } from './TrackBoxOverlay';
+import { DrawOverlay } from './DrawOverlay';
 import { MulticamBar } from './MulticamBar';
 import { usePreviewQuality } from './previewQuality';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
@@ -443,6 +444,10 @@ export function PreviewViewport(): JSX.Element {
             {!fullscreen && <ZoomZoneOverlay />}
             {/* Marking what a clip is to follow, from the same tab. */}
             {!fullscreen && <TrackBoxOverlay />}
+            {/* Drawing on the picture, from the Animation panel. Over the other
+                overlays: while the hand is drawing, nothing else should take a
+                pointer. */}
+            {!fullscreen && <DrawOverlay />}
             {/* An empty edit: a black frame says nothing, so say how to start. */}
             {!fullscreen && Object.keys(project.clips).length === 0 && (
               <div data-testid="viewer-empty" className="scf-rise pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">

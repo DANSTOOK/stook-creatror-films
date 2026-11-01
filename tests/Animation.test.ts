@@ -1,0 +1,284 @@
+import { describe, expect, it } from 'vitest';
+import type { AnimationLayer, DrawnAnimation, OnionSkin, Stroke } from '../src/shared/types';
+import {
+  celAt,
+  duplicateCel,
+  emptyAnimation,
+  exposureAt,
+  exposureCount,
+  frameOfExposure,
+  normalizeAnimation,
+  onionAround,
+  stepOf,
+  strokeCount,
+  withStroke,
+} from '../src/renderer/animation/model';
+import { rasterKey } from '../src/renderer/animation/raster';
+
+const stroke = (id: string, points = [0.1, 0.1, 0.5, 0.2, 0.2, 0.5]): Stroke => ({
+  id,
+  brush: 'pencil',
+  color: '#ffffff',
+  size: 0.006,
+  opacity: 1,
+  points,
+});
+
+const layer = (cels: { at: number; id?: string; strokes?: Stroke[] }[]): AnimationLayer => ({
+  id: 'layer-1',
+  name: 'Layer 1',
+  visible: true,
+  opacity: 1,
+  cels: cels.map((cel) => ({ id: cel.id ?? `cel-${cel.at}`, at: cel.at, strokes: cel.strokes ?? [stroke(`s-${cel.at}`)] })),
+});
+
+const anim = (layers: AnimationLayer[], step = 2, onion?: OnionSkin): DrawnAnimation => ({ layers, step, onion });
+
+/** A clip stub, declared once so a test may pass a length the arithmetic ignores. */
+const clipAt = (startFrame: number, durationFrames: number): { startFrame: number; durationFrames: number } => ({ startFrame, durationFrames });
+
+describe('exposures and timeline frames', () => {
+  it('holds each drawing for `step` frames, so twos is two frames a drawing', () => {
+    const a = anim([layer([{ at: 0 }])], 2);
+    const clip = { startFrame: 0, durationFrames: 48 };
+    expect(exposureAt(a, clip, 0)).toBe(0);
+    expect(exposureAt(a, clip, 1)).toBe(0);
+    expect(exposureAt(a, clip, 2)).toBe(1);
+    expect(exposureAt(a, clip, 3)).toBe(1);
+    expect(exposureAt(a, clip, 46)).toBe(23);
+  });
+
+  it('counts from the clip, not the timeline, so moving a clip shows the same drawings', () => {
+    const a = anim([layer([{ at: 0 }])], 2);
+    expect(exposureAt(a, clipAt(100, 48), 104)).toBe(2);
+    expect(exposureAt(a, clipAt(0, 48), 4)).toBe(2);
+  });
+
+  it('shows the first drawing before the clip starts rather than a part of one', () => {
+    const a = anim([layer([{ at: 0 }])], 3);
+    expect(exposureAt(a, clipAt(10, 30), 4)).toBe(0);
+  });
+
+  it('turns an exposure back into the frame it appears on', () => {
+    const a = anim([layer([{ at: 0 }])], 3);
+    const clip = { startFrame: 12, durationFrames: 60 };
+    expect(frameOfExposure(a, clip, 0)).toBe(12);
+    expect(frameOfExposure(a, clip, 4)).toBe(24);
+    // And back again, which must agree or the sheet and the playhead disagree.
+    expect(exposureAt(a, clip, frameOfExposure(a, clip, 4))).toBe(4);
+  });
+
+  it('fits the exposures to the clip length, rounding up so the last frames are drawn', () => {
+    expect(exposureCount(anim([layer([{ at: 0 }])], 2), { durationFrames: 48 })).toBe(24);
+    // 49 frames on twos is 25 drawings: the last one covers a single frame.
+    expect(exposureCount(anim([layer([{ at: 0 }])], 2), { durationFrames: 49 })).toBe(25);
+    expect(exposureCount(anim([layer([{ at: 0 }])], 1), { durationFrames: 1 })).toBe(1);
+  });
+
+  it('refuses a step that is not a whole number of frames', () => {
+    expect(stepOf(anim([], 0))).toBe(1);
+    expect(stepOf(anim([], -4))).toBe(1);
+    expect(stepOf(anim([], 2.4))).toBe(2);
+    expect(stepOf(anim([], 999))).toBe(8);
+    expect(stepOf(anim([], Number.NaN))).toBe(1);
+  });
+});
+
+describe('a drawing is held until the next one', () => {
+  it('shows the last drawing that has begun', () => {
+    const l = layer([{ at: 0 }, { at: 4 }, { at: 10 }]);
+    expect(celAt(l, 0)?.at).toBe(0);
+    expect(celAt(l, 3)?.at).toBe(0);
+    expect(celAt(l, 4)?.at).toBe(4);
+    expect(celAt(l, 9)?.at).toBe(4);
+    expect(celAt(l, 400)?.at).toBe(10);
+  });
+
+  it('shows nothing before a layer’s first drawing, so a character can enter', () => {
+    const l = layer([{ at: 6 }]);
+    expect(celAt(l, 0)).toBeNull();
+    expect(celAt(l, 5)).toBeNull();
+    expect(celAt(l, 6)?.at).toBe(6);
+  });
+});
+
+describe('drawing onto a drawing', () => {
+  it('adds to the drawing that is its own', () => {
+    const l = withStroke(layer([{ at: 2 }]), 2, stroke('new'));
+    expect(l.cels).toHaveLength(1);
+    expect(l.cels[0].strokes.map((s) => s.id)).toEqual(['s-2', 'new']);
+  });
+
+  it('starts a new, BLANK drawing at an exposure that was only holding one', () => {
+    // A new exposure is a new drawing - that is what frame-by-frame animation
+    // is. Carrying the held drawing over would make onion skin pointless (the
+    // previous drawing would always sit identical underneath) and would make
+    // every drawing accumulate every stroke before it.
+    const l = withStroke(layer([{ at: 2 }]), 5, stroke('new'));
+    expect(l.cels.map((cel) => cel.at)).toEqual([2, 5]);
+    expect(l.cels[0].strokes.map((s) => s.id)).toEqual(['s-2']);
+    expect(l.cels[1].strokes.map((s) => s.id)).toEqual(['new']);
+  });
+
+  it('copies the held drawing only when asked to, to draw on top of it', () => {
+    const l = duplicateCel(layer([{ at: 2 }]), 5);
+    expect(l.cels.map((cel) => cel.at)).toEqual([2, 5]);
+    expect(l.cels[1].strokes.map((s) => s.id)).toEqual(['s-2']);
+    // Nothing to copy, or it already has its own: left alone.
+    expect(duplicateCel(layer([{ at: 2 }]), 2).cels).toHaveLength(1);
+    expect(duplicateCel(layer([{ at: 7 }]), 3).cels).toHaveLength(1);
+  });
+
+  it('keeps the drawings ascending however they are put in', () => {
+    let l = layer([{ at: 4 }]);
+    l = withStroke(l, 9, stroke('a'));
+    l = withStroke(l, 1, stroke('b'));
+    expect(l.cels.map((cel) => cel.at)).toEqual([1, 4, 9]);
+  });
+
+  it('counts what is drawn across every layer', () => {
+    const a = anim([layer([{ at: 0 }, { at: 2 }]), { ...layer([{ at: 0 }]), id: 'layer-2' }]);
+    expect(strokeCount(a)).toBe(3);
+  });
+});
+
+describe('onion skin', () => {
+  const on = (over: Partial<OnionSkin> = {}): OnionSkin => ({ enabled: true, before: 1, after: 1, opacity: 0.4, by: 'drawings', ...over });
+
+  it('shows nothing when it is off', () => {
+    expect(onionAround(layer([{ at: 0 }, { at: 1 }]), 1, on({ enabled: false }))).toEqual([]);
+  });
+
+  it('by drawings, steps from one drawing to the next however long each is held', () => {
+    // Drawings at 0, 5 and 20. At 5, the neighbours are 0 and 20 - not
+    // whatever happens to be four and six exposures away.
+    const ghosts = onionAround(layer([{ at: 0 }, { at: 5 }, { at: 20 }]), 5, on());
+    expect(ghosts.map((ghost) => ghost.cel.at)).toEqual([0, 20]);
+    expect(ghosts.map((ghost) => ghost.side)).toEqual(['before', 'after']);
+  });
+
+  it('by frames, looks a fixed distance in time and so shows a held drawing no twice', () => {
+    // A drawing held from 0 to 20: one exposure either side of 10 is the SAME
+    // drawing, so there is nothing new to show. This is the distinction most
+    // programs muddle.
+    expect(onionAround(layer([{ at: 0 }, { at: 20 }]), 10, on({ by: 'frames' }))).toEqual([]);
+    // One exposure before 20 is the drawing at 0, which is something new.
+    const ghosts = onionAround(layer([{ at: 0 }, { at: 20 }]), 20, on({ by: 'frames' }));
+    expect(ghosts.map((ghost) => ghost.cel.at)).toEqual([0]);
+  });
+
+  it('never shows the drawing that is current', () => {
+    for (const by of ['drawings', 'frames'] as const) {
+      const ghosts = onionAround(layer([{ at: 0 }, { at: 1 }, { at: 2 }]), 1, on({ before: 4, after: 4, by }));
+      expect(ghosts.map((ghost) => ghost.cel.at)).not.toContain(1);
+    }
+  });
+
+  it('fades with distance, so the drawing just before is clearly the one just before', () => {
+    const ghosts = onionAround(layer([{ at: 0 }, { at: 1 }, { at: 2 }, { at: 3 }]), 3, on({ before: 3, after: 0, opacity: 0.6 }));
+    expect(ghosts).toHaveLength(3);
+    expect(ghosts[0].opacity).toBeCloseTo(0.6);
+    expect(ghosts[0].opacity).toBeGreaterThan(ghosts[1].opacity);
+    expect(ghosts[1].opacity).toBeGreaterThan(ghosts[2].opacity);
+    expect(ghosts[2].opacity).toBeGreaterThan(0);
+  });
+
+  it('stops at the ends instead of inventing drawings', () => {
+    expect(onionAround(layer([{ at: 0 }]), 0, on({ before: 5, after: 5 }))).toEqual([]);
+  });
+
+  it('shows nothing at no opacity, rather than draw an invisible layer', () => {
+    expect(onionAround(layer([{ at: 0 }, { at: 1 }]), 1, on({ opacity: 0 }))).toEqual([]);
+  });
+});
+
+describe('the cache key', () => {
+  it('does not change while a drawing is held, which is what makes playback free', () => {
+    const a = anim([layer([{ at: 0 }, { at: 8 }])], 2);
+    expect(rasterKey(a, 1, 1920, 1080)).toBe(rasterKey(a, 7, 1920, 1080));
+    expect(rasterKey(a, 7, 1920, 1080)).not.toBe(rasterKey(a, 8, 1920, 1080));
+  });
+
+  it('changes when a stroke is added, so the drawing is drawn again', () => {
+    const before = anim([layer([{ at: 0 }])]);
+    const after = anim([withStroke(layer([{ at: 0 }]), 0, stroke('new'))]);
+    expect(rasterKey(before, 0, 1920, 1080)).not.toBe(rasterKey(after, 0, 1920, 1080));
+  });
+
+  it('changes with the size drawn at, and with a layer being hidden', () => {
+    const a = anim([layer([{ at: 0 }])]);
+    expect(rasterKey(a, 0, 1920, 1080)).not.toBe(rasterKey(a, 0, 960, 540));
+    const hidden = anim([{ ...layer([{ at: 0 }]), visible: false }]);
+    expect(rasterKey(a, 0, 1920, 1080)).not.toBe(rasterKey(hidden, 0, 1920, 1080));
+  });
+
+  it('separates the onion skin, so the export’s picture is not the viewer’s', () => {
+    const a = anim([layer([{ at: 0 }, { at: 1 }])]);
+    const onion: OnionSkin = { enabled: true, before: 1, after: 1, opacity: 0.4, by: 'drawings' };
+    expect(rasterKey(a, 1, 1920, 1080)).not.toBe(rasterKey(a, 1, 1920, 1080, onion));
+  });
+});
+
+describe('reading an animation from a file', () => {
+  it('keeps a sound one and sorts its drawings', () => {
+    const read = normalizeAnimation({
+      step: 2,
+      layers: [{ id: 'l', name: 'A', visible: true, opacity: 1, cels: [{ id: 'c2', at: 5, strokes: [stroke('s')] }, { id: 'c1', at: 0, strokes: [] }] }],
+    });
+    expect(read?.layers[0].cels.map((cel) => cel.at)).toEqual([0, 5]);
+    expect(read?.step).toBe(2);
+  });
+
+  it('drops a stroke whose coordinates do not make whole points', () => {
+    // Four numbers is not a point and a half: half a stroke would draw wrongly.
+    const read = normalizeAnimation({
+      step: 1,
+      layers: [{ id: 'l', name: 'A', visible: true, opacity: 1, cels: [{ id: 'c', at: 0, strokes: [{ ...stroke('bad'), points: [0, 0, 1, 0.5] }, stroke('good')] }] }],
+    });
+    expect(read?.layers[0].cels[0].strokes.map((s) => s.id)).toEqual(['good']);
+  });
+
+  it('drops a stroke with a coordinate that is not a number', () => {
+    const read = normalizeAnimation({
+      step: 1,
+      layers: [{ id: 'l', name: 'A', visible: true, opacity: 1, cels: [{ id: 'c', at: 0, strokes: [{ ...stroke('bad'), points: [0, 0, 'x' as unknown as number] }] }] }],
+    });
+    expect(read?.layers[0].cels[0].strokes).toEqual([]);
+  });
+
+  it('gives back nothing at all when there is nothing to draw', () => {
+    expect(normalizeAnimation(undefined)).toBeUndefined();
+    expect(normalizeAnimation({})).toBeUndefined();
+    expect(normalizeAnimation({ layers: [] })).toBeUndefined();
+    // A layer with no id cannot be addressed, so it is not a layer.
+    expect(normalizeAnimation({ layers: [{ name: 'A' }] })).toBeUndefined();
+  });
+
+  it('mends what can be mended instead of throwing the drawing away', () => {
+    const read = normalizeAnimation({
+      step: 40,
+      layers: [{ id: 'l', opacity: 5, cels: [{ id: 'c', at: 0, strokes: [{ ...stroke('s'), color: 'red', opacity: 9, size: -1 }] }] }],
+    });
+    expect(read?.step).toBe(8);
+    expect(read?.layers[0].opacity).toBe(1);
+    expect(read?.layers[0].name).toBe('Layer');
+    const kept = read?.layers[0].cels[0].strokes[0];
+    expect(kept?.color).toBe('#ffffff');
+    expect(kept?.opacity).toBe(1);
+    expect(kept?.size).toBeGreaterThan(0);
+  });
+
+  it('keeps only one drawing per exposure, since two could not both be shown', () => {
+    const read = normalizeAnimation({
+      step: 1,
+      layers: [{ id: 'l', cels: [{ id: 'a', at: 3, strokes: [] }, { id: 'b', at: 3, strokes: [] }] }],
+    });
+    expect(read?.layers[0].cels).toHaveLength(1);
+  });
+
+  it('reads back what a new animation starts as', () => {
+    const fresh = emptyAnimation();
+    const read = normalizeAnimation(JSON.parse(JSON.stringify(fresh)));
+    expect(read).toEqual(fresh);
+  });
+});

@@ -32,6 +32,7 @@ import { neutralCurves } from '@renderer/color/curves';
 import { migrateTitleOrigin, normalizeTitle } from '@renderer/text/titleStyle';
 import { normalizeTransitions, tidyTransitions, type TransitionPreset } from '@renderer/timing/transitions';
 import { normalizeCaption, normalizeCaptionSettings } from '@renderer/captions/normalize';
+import { normalizeAnimation } from '@renderer/animation/model';
 import { normalizeGlossary } from '@renderer/captions/glossary';
 import { normalizeEffects } from '@renderer/fx/effects/catalog';
 
@@ -591,6 +592,10 @@ function normalizeClipsAndTracks(project: ProjectState): ProjectState {
             // A title with a setting missing or out of range still draws.
             ...(clip.title ? { title: normalizeTitle(clip.title) } : {}),
             ...(clip.caption ? { caption: normalizeCaption(clip.caption) } : {}),
+            // A drawn animation, in a shape this build can draw: a stroke it
+            // cannot read is dropped rather than guessed at, and an animation
+            // with nothing left becomes no animation at all.
+            ...(clip.anim ? { anim: normalizeAnimation(clip.anim) } : {}),
           }),
         ]),
       ),

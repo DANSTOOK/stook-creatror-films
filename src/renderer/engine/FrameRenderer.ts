@@ -9,6 +9,7 @@ import { SequentialVideoReader, forgetTrack, presentationTimes } from './Sequent
 import { FrameCheck } from './frameCheck';
 import { TextureManager } from './TextureManager';
 import { TitleLayers } from './TitleLayers';
+import { AnimationLayers } from './AnimationLayers';
 import { activeTransitionsAt } from '@renderer/timing/transitions';
 import { assetLengthFrames } from '@renderer/media/assetLength';
 import { withCaptionTitles } from '@renderer/captions/captionRender';
@@ -35,6 +36,14 @@ import { previewSize, type PreviewQuality } from './previewSize';
  * short enough not to hold a hardware decoder the preview could use.
  */
 const READERS_IDLE_MS = 2000;
+
+/**
+ * Clips this app draws itself, from their own data, rather than reading from
+ * a file: a title and a drawn animation. Everywhere a decoder, a proxy, a
+ * transition lane or a matte is involved, these are the clips it does not
+ * apply to.
+ */
+const fileless = (clip: Clip): boolean => Boolean(clip.title || clip.anim);
 
 export class FrameRenderer {
   readonly compositor: Compositor;
@@ -100,7 +109,7 @@ export class FrameRenderer {
     // A transition past the end of a file holds its last frame: the
     // compositor needs to know where each file ends.
     this.compositor.sourceLengthOf = (clip, fps) => {
-      if (clip.title) return undefined;
+      if (fileless(clip)) return undefined;
       const asset = this.assets.get(clip.sourceUri);
       return asset && asset.kind !== 'image' ? assetLengthFrames(asset, fps) : undefined;
     };
@@ -108,6 +117,7 @@ export class FrameRenderer {
     this.compositor.lutLoader = this.lutLoader;
     this.textures = new TextureManager(this.compositor.context);
     this.titles = new TitleLayers(this.textures);
+    this.anims = new AnimationLayers(this.textures);
     this.mattes = new MatteTextures(this.compositor.context);
     this.mattes.onLoaded = () => this.invalidate();
     // A title drawn before its font arrived is drawn again with it.
@@ -130,7 +140,7 @@ export class FrameRenderer {
    * its file is being analysed, the frames finished so far (a partial URL).
    */
   private matteUrl(clip: Clip): string | null | undefined {
-    if (clip.title || !clip.backgroundRemoval?.enabled) return undefined;
+    if (fileless(clip) || !clip.backgroundRemoval?.enabled) return undefined;
     const path = this.assets.get(clip.sourceUri)?.sourcePath;
     if (!path) return null;
     return matteUrlFor(path, clip.backgroundRemoval.model) ?? partialMatteUrlFor(path, clip.backgroundRemoval.model);
@@ -146,6 +156,7 @@ export class FrameRenderer {
 
   /** Title clips, drawn as text into textures of their own. */
   readonly titles: TitleLayers;
+  readonly anims: AnimationLayers;
   /** The clips the titles were last tidied against, to drop a deleted title's texture once. */
   private titlesTidiedFor: ProjectState['clips'] | null = null;
 
@@ -153,6 +164,7 @@ export class FrameRenderer {
     if (this.titlesTidiedFor === project.clips) return;
     this.titlesTidiedFor = project.clips;
     this.titles.retain(new Set(Object.keys(project.clips)));
+    this.anims.retain(new Set(Object.keys(project.clips)));
   }
 
   get options(): CompositorOptions {
@@ -267,7 +279,7 @@ export class FrameRenderer {
     for (const transition of Object.values(project.transitions ?? {})) {
       const from = project.clips[transition.fromClipId];
       const to = project.clips[transition.toClipId];
-      if (!from || !to || from.title || to.title) continue;
+      if (!from || !to || fileless(from) || fileless(to)) continue;
       const uri = this.media.previewUriFor(to.sourceUri);
       if (this.media.previewUriFor(from.sourceUri) !== uri) continue;
       const cut = from.startFrame + from.durationFrames;
@@ -542,6 +554,12 @@ export class FrameRenderer {
     compare?: ViewerCompare,
     /** The title being typed into in the viewer, drawn at rest. */
     restingTitleId: string | null = null,
+    /**
+     * The animation clip being drawn into, which is the only one whose onion
+     * skin is shown. Null while nothing is being drawn, so a project full of
+     * animation clips shows ghosts on none of them.
+     */
+    onionClipId: string | null = null,
   ): void {
     // Captions are drawn as titles: see captions/captionRender.
     project = withCaptionTitles(project);
@@ -566,7 +584,7 @@ export class FrameRenderer {
     const drawnClips = (): Clip[] =>
       Compositor.drawList(project, project.currentFrame)
         .flatMap((entry) => (entry.kind === 'clip' ? [entry.clip] : [entry.from, entry.to]))
-        .filter((clip) => !clip.title);
+        .filter((clip) => !fileless(clip));
     if (!scrubbing && !decodingPlayback) {
       this.closeScrubbers();
       this.closePlayers();
@@ -581,6 +599,11 @@ export class FrameRenderer {
       project,
       project.currentFrame,
       (clip, sourceFrame) => {
+        // A drawn animation has no file either: its picture is its strokes at
+        // this frame. Only the clip being drawn into shows the onion skin.
+        if (clip.anim) {
+          return this.anims.sourceFor(clip, project.width, project.height, project.currentFrame, clip.id === onionClipId ? clip.anim.onion : undefined);
+        }
         // A title has no file: its picture is drawn from its text.
         // The one being typed into stands still, as the compositor draws it.
         if (clip.title) {
@@ -774,7 +797,7 @@ export class FrameRenderer {
     // of its own, or both sides would show whichever seek landed last.
     const lanes = new Map<string, string>();
     for (const entry of Compositor.drawList(project, frame)) {
-      if (entry.kind !== 'transition' || entry.from.sourceUri !== entry.to.sourceUri || entry.to.title) continue;
+      if (entry.kind !== 'transition' || entry.from.sourceUri !== entry.to.sourceUri || fileless(entry.to)) continue;
       const lane = `${entry.to.sourceUri}#scf-exact-lane=${entry.to.id}`;
       this.media.ensureLane(lane, entry.to.sourceUri);
       lanes.set(entry.to.id, lane);
@@ -790,6 +813,8 @@ export class FrameRenderer {
       drawn.map(async ({ clip, sourceFrame }) => {
         // A title waits for its fonts instead of a decoder: a frame drawn
         // before they load would go out in a fallback face.
+        // A drawing is ready the moment it exists: no font, no decoder.
+        if (clip.anim) return;
         if (clip.title) {
           await this.titles.prepare(clip);
           return;
@@ -1012,6 +1037,8 @@ export class FrameRenderer {
 
   /** The texture for a clip in an exact render: its decoded frame, or the element. */
   private exactUploadFor(clip: Clip, fps: number, project: ProjectState, timelineFrame: number, sourceFrame: number): ClipSource | null {
+    // No onion skin here, ever: the ghosts are an aid to the hand, not film.
+    if (clip.anim) return this.anims.sourceFor(clip, project.width, project.height, timelineFrame);
     if (clip.title) return this.titles.sourceFor(clip, project.width, project.height, { frame: timelineFrame, fps: project.fps });
     const source = this.exactPictureFor(clip, fps);
     // seekSources has made this frame's matte ready, or refused the frame.

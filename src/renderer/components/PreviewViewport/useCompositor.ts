@@ -4,6 +4,7 @@ import {
   setActiveFrameRenderer,
 } from '@renderer/engine/FrameRenderer';
 import { useProjectStore } from '@renderer/store/useProjectStore';
+import { useDrawStore } from '@renderer/animation/drawStore';
 import { scopesWanted, tickScopes } from '@renderer/scopes/scopeFeed';
 import { cancelFrame, requestFrame } from '@renderer/timing/animationFrame';
 import { useZoneEditStore } from '@renderer/fx/motion/zoneEdit';
@@ -129,7 +130,7 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
   useEffect(() => {
     let cancelled = false;
     // What the last draw was of, and when.
-    let drawn: { project: unknown; ui: unknown; assets: unknown; zone: unknown; picture: number; scopes: boolean } | null = null;
+    let drawn: { project: unknown; ui: unknown; assets: unknown; zone: unknown; drawingClipId: string | null; picture: number; scopes: boolean } | null = null;
     let drawnAt = -Infinity;
     let changedAt = -Infinity;
     // Since when a move of the playhead has waited for the video's frame (see below).
@@ -144,13 +145,17 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
 
       const { project: edit, ui, assets: media } = useProjectStore.getState();
       const zone = useZoneEditStore.getState();
-      const seen = { project: edit, ui, assets: media, zone, picture: renderer.pictureRevision, scopes: scopesWanted() };
+      // The clip being drawn into: its onion skin is part of the picture, so a
+      // change of it has to count as a change.
+      const drawingClipId = useDrawStore.getState().clipId;
+      const seen = { project: edit, ui, assets: media, zone, drawingClipId, picture: renderer.pictureRevision, scopes: scopesWanted() };
       const changed =
         drawn === null ||
         seen.project !== drawn.project ||
         seen.ui !== drawn.ui ||
         seen.assets !== drawn.assets ||
         seen.zone !== drawn.zone ||
+        seen.drawingClipId !== drawn.drawingClipId ||
         seen.picture !== drawn.picture ||
         seen.scopes !== drawn.scopes;
       if (changed) changedAt = now;
@@ -171,6 +176,7 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
         seen.ui === drawn.ui &&
         seen.assets === drawn.assets &&
         seen.zone === drawn.zone &&
+        seen.drawingClipId === drawn.drawingClipId &&
         seen.scopes === drawn.scopes;
       if (due && ui.isPlaying && playheadOnly && edit.fps <= 60 && renderer.media.anyPlaying) {
         waitingSince ??= now;
@@ -194,6 +200,10 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
             ui.pixelArtViewport,
             { bypass: ui.gradeBypass, split: ui.compareSplit },
             ui.editingTitleId,
+            // The ghosts belong to the drawing hand: only the clip being drawn
+            // into shows them, and never while playing - an animation playing
+            // back is being watched, not drawn.
+            ui.isPlaying ? null : drawingClipId,
           );
         }
         // The video scopes read the last picture drawn, when they are open - on

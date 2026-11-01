@@ -841,9 +841,91 @@ export interface Clip {
    * delete it and add another; with it the inspector can draw it again.
    */
   drawn?: ClipDrawn;
+  /**
+   * A drawn animation, when this clip is one: its layers and their
+   * drawings. Like a title, a clip with this has no file - its picture is
+   * drawn from this data for each frame (renderer/animation).
+   */
+  anim?: DrawnAnimation;
 }
 
 /** A background or a frame this app drew, and how. */
+/**
+ * A drawn 2D animation.
+ *
+ * Kept as STROKES rather than pixels, on purpose. It keeps a project small
+ * (a stroke is a few hundred numbers, a 1080p drawing is megabytes), it lets
+ * a drawing be redrawn at any size, and it is the only shape from which
+ * in-betweens and a Lottie export are possible later. Pixels would close
+ * those doors for good: see docs/animacion-2d.md.
+ */
+export interface DrawnAnimation {
+  /** The layers, BOTTOM first, as they are drawn. */
+  layers: AnimationLayer[];
+  /**
+   * How many timeline frames each drawing is held for: 1 is "on ones", 2 is
+   * "on twos", which is what most hand-drawn animation is shot at.
+   */
+  step: number;
+  /** Seeing the neighbouring drawings through the current one, while editing. */
+  onion?: OnionSkin;
+}
+
+export interface AnimationLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  /** 0..1, over the clip’s own opacity. */
+  opacity: number;
+  /** The drawings, by the exposure each one starts at; ascending, no two the same. */
+  cels: AnimationCel[];
+}
+
+/** One drawing, and the exposure it starts at. It is held until the next one. */
+export interface AnimationCel {
+  id: string;
+  /** Which exposure (not timeline frame) it starts at; 0 is the first. */
+  at: number;
+  /** Drawn in order, so a later stroke covers an earlier one. */
+  strokes: Stroke[];
+}
+
+export type BrushKind = 'pencil' | 'marker' | 'eraser';
+
+/** One stroke of the brush. */
+export interface Stroke {
+  id: string;
+  brush: BrushKind;
+  /** #rrggbb. An eraser ignores it.*/
+  color: string;
+  /** Width as a fraction of the frame’s SHORTER side, so it holds at any project size. */
+  size: number;
+  /** 0..1. */
+  opacity: number;
+  /**
+   * x, y, pressure - flat, three numbers per point, because a drawing holds
+   * thousands of them and a project file is JSON. x and y are 0..1 of the
+   * frame, so a drawing survives a change of project size; pressure is 0..1,
+   * and 0.5 from a device that does not report it.
+   */
+  points: number[];
+}
+
+/**
+ * Onion skin: the drawings before and after shown faintly under the current
+ * one. `by` is the distinction Blender’s Grease Pencil makes and most others
+ * muddle: counting DRAWINGS steps from one to the next however long each is
+ * held, counting FRAMES looks a fixed distance in time.
+ */
+export interface OnionSkin {
+  enabled: boolean;
+  /** How many to show behind, 0..8. */
+  before: number;
+  after: number;
+  /** The nearest one’s opacity, 0..1; the ones beyond fade from it. */
+  opacity: number;
+  by: 'drawings' | 'frames';
+}
 export interface ClipDrawn {
   kind: 'background' | 'frame';
   /** Its id in renderer/backgrounds/catalog or renderer/frames/catalog. */

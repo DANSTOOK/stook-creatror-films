@@ -25,8 +25,12 @@ import type {
   TrackType,
   Transition,
   Vector2D,
+  OnionSkin,
+  Stroke,
 } from '@shared/types';
 import { createTitleClip, planTitlePlacement, titleDropPlacement, TITLE_NAME, TITLE_SECONDS } from '@renderer/text/titleClip';
+import { ANIM_SECONDS, createAnimationClip } from '@renderer/animation/animClip';
+import { DEFAULT_ONION, duplicateCel, MAX_ONION, MAX_STEP, newId, withStroke } from '@renderer/animation/model';
 import { templateById, templateOf } from '@renderer/text/templates';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
@@ -346,6 +350,39 @@ interface ProjectStore {
    * across the whole selection is one step too.
    */
   updateClips(clipIds: readonly string[], patch: (clip: Clip) => Partial<Clip> | null, mergeKey?: string): void;
+
+  /* Drawn animation ------------------------------------------------------ */
+  /**
+   * A new animation clip at the playhead, placed as a title is. Empty: one
+   * layer and nothing drawn on it. Selected and shown. Returns its id.
+   */
+  addAnimationClip(seconds?: number): string;
+  /**
+   * One stroke onto a layer at an exposure. One stroke is ONE undo step, so
+   * Ctrl+Z takes back the line just drawn and no more.
+   *
+   * Drawing at an exposure that is only showing a held drawing starts a new
+   * drawing there, carrying what was on screen: the hand sees what it drew
+   * onto, so it must stay (animation/model).
+   */
+  drawStroke(clipId: string, layerId: string, exposure: number, stroke: Stroke): void;
+  /**
+   * The drawing shown at an exposure copied into one of its own, so the next
+   * drawing starts from the last instead of from blank paper. Drawing on a
+   * held exposure does NOT do this by itself: a new exposure is a new
+   * drawing, and the old one is what onion skin shows.
+   */
+  duplicateCel(clipId: string, layerId: string, exposure: number): void;
+  /** Take a drawing off a layer, leaving the one before it to hold. */
+  clearCel(clipId: string, layerId: string, exposure: number): void;
+  /** How many frames each drawing is held for: 1 on ones, 2 on twos. */
+  setAnimationStep(clipId: string, step: number): void;
+  /** The onion skin, as animation/model describes it. */
+  setOnionSkin(clipId: string, patch: Partial<OnionSkin>): void;
+  /** A new layer above the others, and a name for it. Returns its id. */
+  addAnimationLayer(clipId: string): string;
+  removeAnimationLayer(clipId: string, layerId: string): void;
+  updateAnimationLayer(clipId: string, layerId: string, patch: { name?: string; visible?: boolean; opacity?: number }): void;
 
   /* Titles --------------------------------------------------------------- */
   /**
@@ -1476,6 +1513,146 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       },
       mergeKey,
     );
+  },
+
+  addAnimationClip(seconds = ANIM_SECONDS) {
+    const { project } = get();
+    const duration = Math.max(1, Math.round(seconds * project.fps));
+    const placement = planTitlePlacement(project, project.currentFrame, duration);
+    let createdId = '';
+    get().transact('Add animation', (current) => {
+      let rows = timelineRows(current.tracks);
+      let trackId = placement.trackId;
+      if (!trackId) {
+        const track = createTrack('video', 0, nextTrackName(rows, 'video'));
+        rows = [...rows];
+        rows.splice(insertionRow(rows, 'video'), 0, track);
+        trackId = track.id;
+      }
+      const used = Object.values(current.clips).filter((clip) => clip.anim).length;
+      const clip = createAnimationClip(trackId, placement.startFrame, placement.durationFrames, `${translateNow('animation.clipName')} ${used + 1}`);
+      createdId = clip.id;
+      return { ...current, tracks: withRowOrders(rows), clips: { ...current.clips, [clip.id]: clip } };
+    });
+    set({ ui: { ...get().ui, selectedClipIds: [createdId], selectedTrackId: get().project.clips[createdId]?.trackId ?? null } });
+    get().revealFrames(placement.startFrame, placement.startFrame + placement.durationFrames);
+    return createdId;
+  },
+
+  drawStroke(clipId, layerId, exposure, stroke) {
+    // Each stroke its own step, and never merged: a line is the unit a hand
+    // draws in, so it is the unit undo should take back.
+    get().transact('Draw', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const at = Math.max(0, Math.round(exposure));
+      const layers = clip.anim.layers.map((layer) => (layer.id === layerId ? withStroke(layer, at, stroke) : layer));
+      if (layers === clip.anim.layers) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  duplicateCel(clipId, layerId, exposure) {
+    get().transact('Duplicate drawing', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const at = Math.max(0, Math.round(exposure));
+      let changed = false;
+      const layers = clip.anim.layers.map((layer) => {
+        if (layer.id !== layerId) return layer;
+        const next = duplicateCel(layer, at);
+        if (next !== layer) changed = true;
+        return next;
+      });
+      if (!changed) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  clearCel(clipId, layerId, exposure) {
+    get().transact('Clear drawing', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const at = Math.max(0, Math.round(exposure));
+      let changed = false;
+      const layers = clip.anim.layers.map((layer) => {
+        if (layer.id !== layerId) return layer;
+        const cels = layer.cels.filter((cel) => cel.at !== at);
+        if (cels.length === layer.cels.length) return layer;
+        changed = true;
+        return { ...layer, cels };
+      });
+      if (!changed) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  setAnimationStep(clipId, step) {
+    const wanted = Math.min(MAX_STEP, Math.max(1, Math.round(step)));
+    get().transact('Exposure', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim || clip.anim.step === wanted) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, step: wanted } } } };
+    });
+  },
+
+  setOnionSkin(clipId, patch) {
+    // A setting of the view, not of the film, but it is kept with the clip so
+    // it is there again tomorrow - and so one undo step covers a change of it.
+    get().transact('Onion skin', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const current = clip.anim.onion ?? DEFAULT_ONION;
+      const onion: OnionSkin = {
+        ...current,
+        ...patch,
+        before: Math.min(MAX_ONION, Math.max(0, Math.round(patch.before ?? current.before))),
+        after: Math.min(MAX_ONION, Math.max(0, Math.round(patch.after ?? current.after))),
+        opacity: Math.min(1, Math.max(0, patch.opacity ?? current.opacity)),
+      };
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, onion } } } };
+    });
+  },
+
+  addAnimationLayer(clipId) {
+    const id = newId('layer');
+    get().transact('Add layer', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const layer = { id, name: `${translateNow('animation.layer')} ${clip.anim.layers.length + 1}`, visible: true, opacity: 1, cels: [] };
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers: [...clip.anim.layers, layer] } } } };
+    });
+    return id;
+  },
+
+  removeAnimationLayer(clipId, layerId) {
+    get().transact('Remove layer', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const layers = clip.anim.layers.filter((layer) => layer.id !== layerId);
+      // Never none: a clip with no layer has nothing to draw on, and the panel
+      // would have nothing to show.
+      if (layers.length === 0 || layers.length === clip.anim.layers.length) return project;
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
+  },
+
+  updateAnimationLayer(clipId, layerId, patch) {
+    get().transact('Layer', (project) => {
+      const clip = project.clips[clipId];
+      if (!clip?.anim) return project;
+      const layers = clip.anim.layers.map((layer) =>
+        layer.id === layerId
+          ? {
+              ...layer,
+              ...(patch.name !== undefined ? { name: patch.name } : {}),
+              ...(patch.visible !== undefined ? { visible: patch.visible } : {}),
+              ...(patch.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, patch.opacity)) } : {}),
+            }
+          : layer,
+      );
+      return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
+    });
   },
 
   addTitle(id, at) {
