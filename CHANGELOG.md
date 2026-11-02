@@ -7,11 +7,147 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1909 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1929 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **90/90 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.4.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v3.1.0 — Mover lo dibujado, formas, y fotos reales de verdad
+2026-11-01 · lo pedido: «más marcos, más fondos reales», «el editor de animación más robusto, no solo dibujar sino animar objetos», «simplifica la ventana de voz», «no se entiende qué se debe hacer primero», y mirar OpenToonz
+
+### Añadido
+
+- **Los dos paneles que no se entendían, ahora en pasos numerados.** Tenían el
+  mismo defecto: todo en pantalla a la vez y todo con el mismo peso, así que no
+  había forma de saber qué iba primero. Comparten un componente de pasos, así
+  que se sienten igual.
+  - **Voz**: `1 Escribe lo que se va a decir` → `2 Elige quién lo dice` →
+    `3 Genera`. Los personajes **ya traen su voz**, así que la lista cruda de
+    voces y los ajustes finos (estilo, velocidad, tono) se pliegan. Comprobado
+    en capturas de la aplicación: pasó de un scroll interminable a tres líneas.
+  - **Animación**: el estado vacío decía «elige un clip» cuando lo que hay que
+    hacer es **crearlo**. Ahora es un botón con `1. Crea` `2. Dibuja`
+    `3. Siguiente dibujo` escrito debajo.
+  - Solo un paso se abre solo, con **dos excepciones que salieron de usarlo**:
+    el paso 2 sigue abierto con el pincel en la mano (un trazo lo daba por
+    hecho y se llevaba las herramientas en mitad del trabajo), y el 3 se abre
+    en cuanto hay algo dibujado, porque esconder «Siguiente dibujo» mientras
+    animas es justo al revés.
+
+- **Formas, de la herramienta geométrica de OpenToonz**: línea, rectángulo,
+  elipse y polígono de 3 a 12 lados, arrastrados, con Shift para cuadrar o
+  circular y para sujetar una línea al ángulo recto.
+  - La clave: **una forma es un trazo normal** con los puntos calculados en vez
+    de sentidos. No es un objeto nuevo con su almacenamiento, su render y su
+    formato. Por eso el borrador, deshacer, el papel cebolla, el movimiento de
+    capa, guardar y el futuro Lottie funcionan sobre ella **sin una línea de
+    código nueva**.
+  - Medido en la aplicación: rectángulo 5 puntos, elipse 65, pentágono 6, los
+    tres exactos en el mismo rectángulo de arrastre, y **un paso de deshacer
+    por forma**.
+
+- **Mover: la herramienta Animar de OpenToonz**, para un clip de animación.
+  Arrastras el dibujo **sobre el visor** para moverlo, la esquina para su
+  tamaño y el tirador de arriba para girarlo (Shift, cuartos de vuelta).
+  Escribe los fotogramas clave que ya usa el resto de la aplicación.
+  - **Un arrastre entero es un paso de deshacer.** Medido: catorce movimientos
+    del puntero, un paso, y deshacer devuelve el dibujo a x 0,747 exacto.
+  - Solo se monta **un lienzo a la vez**: el de dibujo se retira cuando Mover
+    está activo. Dos lienzos peleando por el puntero es un fallo clásico y aquí
+    no puede ocurrir por construcción.
+
+- **Buscar fotografías reales**, de [Openverse](https://openverse.org), dentro
+  del panel de Fondos. Elegido sobre Canva, Pexels y Unsplash por tres razones
+  concretas:
+  - **No necesita clave de API.** Nada que registrar ni que guardar en secreto.
+  - Cada resultado trae **licencia y autor**, y el crédito se escribe en el
+    nombre del clip, así que lo cumple el proyecto y no tu memoria.
+  - **Solo se descarga la que elijas.** No viaja ninguna foto dentro del
+    instalador, que es lo que mantiene limpio lo que exportas.
+  - Solo **CC0, PDM, BY y BY-SA**. **NC y ND quedan fuera a propósito**: un
+    fondo bajo un vídeo es obra derivada y normalmente de uso comercial, así
+    que ofrecerlas sería tenderte una trampa.
+  - La foto se recorta **para llenar** el fotograma, nunca se deforma, y se
+    guarda como PNG junto a los fondos dibujados: desde ahí es un clip normal.
+  - Comprobado contra el servicio real (`tests/ui/photos.mjs`, **8/8**): busca,
+    devuelve fotos con su licencia, y una de ellas aterriza en la línea de
+    tiempo con el crédito «Cloudy Mountain Lake iPad wallpaper — xploitme
+    (BY-SA, via flickr)».
+
+- **12 fondos más** (36 en total): atardecer, nubes, lluvia en el cristal,
+  nieve, estudio, neón, otoño, bajo el agua, madera, ladrillo, terciopelo y
+  degradado de malla. Dibujados por código como los demás.
+
+- **12 marcos más** (28 en total): dorado, madera, doble línea, esquinas, papel
+  rasgado, discontinuo, banda inferior, arco, ojo de buey, viñeta cálida,
+  lados oscurecidos y cuadrado seguro.
+
+### Arreglado
+
+- **Un clip de animación partido volvía al dibujo uno.** La exposición se
+  calculaba solo desde el inicio del clip; ahora cuenta `sourceOffsetFrames`,
+  el mismo campo con el que un clip de vídeo dice cuánto lleva dentro de su
+  archivo.
+
+### Cómo se comprobó
+
+- **1929/1929** unitarias, **63/63** de ellas del módulo de animación.
+- **34/34** en la aplicación en marcha (`tests/ui/animation.mjs`), dibujando y
+  arrastrando con el puntero real y **leyendo los píxeles del visor**.
+- **8/8** contra Openverse en vivo. Esta prueba **no** está en la suite sin red
+  a propósito: simular lo único que merece probarse sería probar la simulación.
+- `tsc` limpio en los dos proyectos.
+
+### De lo que me equivoqué, dicho
+
+Cuatro fallos en la parte de fotos, **los cuatro encontrados hablando con el
+servicio real, ninguno razonando**. Los tres primeros habrían pasado cualquier
+revisión de código:
+
+- `page_size: 24` devuelve **401** sin cuenta; el máximo es 20. El motivo venía
+  **en el cuerpo de la respuesta** y mi código lo tiraba, diciendo «comprueba
+  la conexión» sobre una conexión perfecta. Ahora registra lo que responde el
+  servicio.
+- `aspect_ratio=wide` y `size=large` parecían lo correcto y **hacían expirar la
+  misma consulta** a los 45 segundos. Fuera; la forma la arregla el recorte.
+- Openverse indexa sobre todo copias de 1024 px, así que mi filtro de 1280
+  **descartaba los 240 resultados** de una búsqueda que sí los tenía. El suelo
+  es 800 y cada miniatura **dice sus píxeles**, para que la decisión sea tuya.
+- Y diagnostiqué mal una vez: subí los tiempos de espera por un síntoma cuando
+  la causa era el 401.
+
+Y tres en el resto, cazados por mirar las capturas:
+
+- Escribí todas las cadenas nuevas con `{{nombre}}` cuando esta aplicación usa
+  `{nombre}`. Se veía literalmente **«{0} dibujos»**.
+- Mi marco «cinemaScope» era **idéntico** al letterbox que ya existía, mismo
+  nombre en pantalla incluido. Lo cambié por un arco.
+- Nieve y Lluvia quedaban planas en miniatura.
+
+### Problemas conocidos
+
+- **La primera búsqueda de fotos puede tardar**: Openverse va lento en frío
+  —medido, más de 20 segundos— y a veces devuelve un error de pasarela antes de
+  responder. Las esperas son de 45 y 60 segundos con dos reintentos. Es un
+  límite del servicio, no del editor. Sin cuenta permite 20 búsquedas por
+  minuto y 200 al día, por eso busca al pulsar Enter y no mientras escribes.
+- **Siguen sin estar los intermedios, ni Lottie.** Son las fases 5 y 6 de
+  [docs/animacion-2d.md](docs/animacion-2d.md).
+- El tirón de ~78–100 ms en el proceso de GPU durante la reproducción sigue
+  abierto desde la v1.99.
+
+### De OpenToonz
+
+Nos pasaste su código. Es **BSD modificada**, permisiva; lo que se toma aquí es
+su **modelo de herramientas**, no su código C++. Y una cosa que **no** se toma:
+OpenToonz separa los dibujos de un nivel (*Level Strip*) del orden en que
+suenan (*Xsheet*). Es más potente y es lo que más preguntan sus propios
+usuarios en su foro. Una sola hoja, donde el dibujo se hace en el sitio donde
+suena, resuelve el caso común sin la lección.
+
 
 ---
 
