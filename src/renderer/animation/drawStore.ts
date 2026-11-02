@@ -17,16 +17,16 @@ export interface DrawState {
   /** The layer strokes land on. Null means the topmost one, which is the usual. */
   layerId: string | null;
   /**
-   * What the hand is doing: drawing by feel, or dragging out a shape.
-   * A shape becomes an ordinary stroke, so nothing downstream knows the
-   * difference (animation/shapes).
-   */
-  /**
    * Drawing, or moving a whole layer about on the picture - OpenToonz calls
    * the second one the Animate tool. They are different jobs: one makes the
    * drawing, the other places it, and a pointer cannot do both at once.
    */
   mode: 'draw' | 'animate';
+  /**
+   * How a line is made: by feel, or dragged out as a shape. A shape becomes an
+   * ordinary stroke, so nothing downstream knows the difference
+   * (animation/shapes).
+   */
   tool: 'freehand' | ShapeKind;
   /** Sides of a polygon, 3 to 12. */
   sides: number;

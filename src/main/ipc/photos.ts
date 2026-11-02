@@ -1,4 +1,5 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { BrowserWindow, dialog, ipcMain, net } from 'electron';
 import { IPC, type PhotoSearchReply } from '@shared/types/ipc';
 
@@ -35,6 +36,9 @@ const RETRIES = 2;
 
 /** The biggest picture worth pulling down: past this it is a download, not a background. */
 const MAX_BYTES = 25 * 1024 * 1024;
+
+/** A Lottie file is a page of JSON; far past this it is not one. */
+const MAX_LOTTIE_BYTES = 40 * 1024 * 1024;
 
 function request(url: string, accept: string, timeoutMs: number): Promise<{ status: number; body: Buffer }> {
   return new Promise((resolve, reject) => {
@@ -167,5 +171,30 @@ export function registerPhotoIpc(): void {
     if (result.canceled || !result.filePath) return null;
     await writeFile(result.filePath, json, 'utf8');
     return result.filePath;
+  });
+
+  /**
+   * A Lottie file chosen by the user and read back.
+   *
+   * Through an open dialog, so the page never names a path of its own, and
+   * with a size limit: a Lottie file is a page of JSON, and anything far
+   * larger is not one.
+   */
+  ipcMain.handle(IPC.animOpenLottie, async (): Promise<{ name: string; json: string } | null> => {
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    if (!window) return null;
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [{ name: 'Lottie (.json)', extensions: ['json'] }],
+    });
+    const path = result.canceled ? null : result.filePaths[0];
+    if (!path) return null;
+    try {
+      const size = (await stat(path)).size;
+      if (size > MAX_LOTTIE_BYTES) return null;
+      return { name: basename(path), json: await readFile(path, 'utf8') };
+    } catch {
+      return null;
+    }
   });
 }

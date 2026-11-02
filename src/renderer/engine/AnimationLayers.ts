@@ -16,13 +16,22 @@ import type { TextureManager } from './TextureManager';
  * frame, so playing an animation allocates nothing.
  */
 export class AnimationLayers {
-  private readonly keys = new Map<string, string>();
+  /** The texture keys in use per clip, so a deleted clip releases all of them. */
+  private readonly held = new Map<string, Set<string>>();
   private readonly canvases = new Map<string, HTMLCanvasElement>();
 
   constructor(private readonly textures: TextureManager) {}
 
-  private static textureKey(clip: Clip): string {
-    return `anim:${clip.id}`;
+  /**
+   * One key per clip AND exposure, not one per clip.
+   *
+   * With a single key per clip, moving to another drawing replaced the
+   * texture, so going back over the same frames rasterized everything again -
+   * measured at a full set of uploads on every lap of a loop. Per exposure,
+   * the second lap costs nothing.
+   */
+  private static textureKey(clip: Clip, exposure: number): string {
+    return `anim:${clip.id}@${exposure}`;
   }
 
   /**
@@ -37,9 +46,12 @@ export class AnimationLayers {
     if (!anim) return null;
     const exposure = exposureAt(anim, clip, frame);
     const key = rasterKey(anim, exposure, width, height, onion, frame);
-    const textureKey = AnimationLayers.textureKey(clip);
+    const textureKey = AnimationLayers.textureKey(clip, exposure);
 
-    if (this.keys.get(clip.id) === key) {
+    // The manager keeps the picture under this key until its revision changes,
+    // so a drawing already rasterized is simply found again - on a second lap
+    // of a loop, on scrubbing back, and throughout a hold.
+    if (this.textures.revisionOf(textureKey) === key) {
       const texture = this.textures.get(textureKey);
       if (texture) return { texture, flipY: true };
     }
@@ -48,7 +60,12 @@ export class AnimationLayers {
     canvas = rasterizeAnimation(anim, exposure, { width, height, onion, into: canvas, frame });
     this.canvases.set(clip.id, canvas);
     const texture = this.textures.upload(textureKey, canvas, key);
-    this.keys.set(clip.id, key);
+    let keys = this.held.get(clip.id);
+    if (!keys) {
+      keys = new Set();
+      this.held.set(clip.id, keys);
+    }
+    keys.add(textureKey);
     return { texture, flipY: true };
   }
 
@@ -58,10 +75,11 @@ export class AnimationLayers {
 
   /** The textures and canvases of clips that are gone. */
   retain(clipIds: Set<string>): void {
-    for (const id of [...this.keys.keys()]) {
+    for (const [id, keys] of [...this.held.entries()]) {
       if (clipIds.has(id)) continue;
-      this.textures.release(`anim:${id}`);
-      this.keys.delete(id);
+      // Every exposure of a gone clip, not just the one it last showed.
+      for (const key of keys) this.textures.release(key);
+      this.held.delete(id);
       this.canvases.delete(id);
     }
   }

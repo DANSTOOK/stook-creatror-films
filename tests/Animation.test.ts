@@ -18,7 +18,7 @@ import { drawKeyOf, nextDrawing, previousDrawing, SIZE_STEP } from '../src/rende
 import { chainOf, isMoved, NO_PLACE, placeOf } from '../src/renderer/animation/motion';
 import { isRealDrag, MAX_SIDES, MIN_SIDES, shapePoints, shapeStroke } from '../src/renderer/animation/shapes';
 import { blendStroke, canTween, nextCelAfter, planTween, resample } from '../src/renderer/animation/tween';
-import { hasDrawings, toLottie, toRgb } from '../src/renderer/animation/lottie';
+import { fromLottie, fromRgb, hasDrawings, toLottie, toRgb, type LottieImport } from '../src/renderer/animation/lottie';
 
 const stroke = (id: string, points = [0.1, 0.1, 0.5, 0.2, 0.2, 0.5]): Stroke => ({
   id,
@@ -840,5 +840,156 @@ describe('Lottie out', () => {
     expect(() => JSON.parse(made.json)).not.toThrow();
     // A colour it cannot read becomes white rather than breaking the file.
     expect(JSON.parse(made.json).layers[0].shapes[0].it[1].c.k.slice(0, 3)).toEqual([1, 1, 1]);
+  });
+});
+
+describe('Lottie in, and the round trip', () => {
+  const line = (id: string, x: number, colour = '#ff8800'): Stroke => ({
+    ...stroke(id),
+    color: colour,
+    size: 0.01,
+    points: [x, 0.4, 1, x + 0.1, 0.4, 1, x + 0.1, 0.6, 1],
+  });
+  const layerOf = (cels: { at: number; strokes: Stroke[] }[], over: Partial<AnimationLayer> = {}): AnimationLayer => ({
+    id: 'l',
+    name: 'Arm',
+    visible: true,
+    opacity: 1,
+    cels: cels.map((cel) => ({ id: `c${cel.at}`, at: cel.at, strokes: cel.strokes })),
+    ...over,
+  });
+  const exported = (layers: AnimationLayer[], duration = 24) =>
+    toLottie(anim(layers, 1), { durationFrames: duration, name: 'Anim' }, 1920, 1080, 24);
+
+  it('refuses what is not a Lottie file, and says which', () => {
+    expect(fromLottie('not json at all')).toBe('notJson');
+    expect(fromLottie('{"hello":1}')).toBe('notLottie');
+    // Every layer an image or some text: nothing this can draw.
+    expect(fromLottie(JSON.stringify({ w: 100, h: 100, fr: 24, op: 10, layers: [{ ty: 2 }, { ty: 5 }] }))).toBe('nothingDrawable');
+  });
+
+  it('counts the layers it had to leave behind', () => {
+    const doc = JSON.parse(exported([layerOf([{ at: 0, strokes: [line('a', 0.1)] }])], 12).json);
+    doc.layers.push({ ty: 2, nm: 'a picture' }, { ty: 5, nm: 'some type' });
+    const read = fromLottie(JSON.stringify(doc));
+    expect(typeof read).not.toBe('string');
+    expect((read as LottieImport).skipped).toBe(2);
+  });
+
+  it('comes back from its own export with the drawing in the same place', () => {
+    const original = anim([layerOf([{ at: 0, strokes: [line('a', 0.15)] }])], 1);
+    const made = toLottie(original, { durationFrames: 24, name: 'Anim' }, 1920, 1080, 24);
+    const read = fromLottie(made.json) as LottieImport;
+    expect(typeof read).not.toBe('string');
+    expect(read.frames).toBe(24);
+    expect(read.fps).toBe(24);
+
+    const before = original.layers[0].cels[0].strokes[0];
+    const after = read.anim.layers[0].cels[0].strokes[0];
+    expect(after.points).toHaveLength(before.points.length);
+    // Out through pixels and back: the same place, to the pixel.
+    for (let index = 0; index < before.points.length; index += 3) {
+      expect(after.points[index]).toBeCloseTo(before.points[index], 3);
+      expect(after.points[index + 1]).toBeCloseTo(before.points[index + 1], 3);
+    }
+    expect(after.color).toBe('#ff8800');
+    expect(after.size).toBeCloseTo(before.size, 3);
+  });
+
+  it('keeps the order the strokes were drawn in, both ways', () => {
+    // The export reverses a group, because Lottie draws back to front; the
+    // import reverses it back. Had either forgotten, a drawing would return
+    // inside out - which is the usual way a Lottie round trip goes wrong.
+    const original = [layerOf([{ at: 0, strokes: [line('under', 0.1, '#ff0000'), line('over', 0.5, '#0000ff')] }])];
+    const read = fromLottie(exported(original, 12).json) as LottieImport;
+    expect(read.anim.layers[0].cels[0].strokes.map((one) => one.color)).toEqual(['#ff0000', '#0000ff']);
+  });
+
+  it('keeps the bottom layer at the bottom through the round trip', () => {
+    const bottom = layerOf([{ at: 0, strokes: [line('b', 0.1, '#ff0000')] }], { id: 'bottom', name: 'Bottom' });
+    const top = layerOf([{ at: 0, strokes: [line('t', 0.5, '#00ff00')] }], { id: 'top', name: 'Top' });
+    const read = fromLottie(exported([bottom, top], 12).json) as LottieImport;
+    // The export names each exposure separately - "Bottom 1" - because every
+    // drawing becomes a Lottie layer of its own and they cannot share a name.
+    // The import leaves the name alone: a foreign layer may genuinely be
+    // called "Walk 1", and stripping a number off it would be a guess.
+    expect(read.anim.layers.map((one) => one.name)).toEqual(['Bottom 1', 'Top 1']);
+    // What matters is the ORDER: bottom still at the bottom.
+    expect(read.anim.layers[0].cels[0].strokes[0].color).toBe('#ff0000');
+    expect(read.anim.layers[1].cels[0].strokes[0].color).toBe('#00ff00');
+  });
+
+  it('reads a closed shape back as closed', () => {
+    const square: Stroke = { ...stroke('sq'), points: shapePoints({ kind: 'rectangle', from: { x: 0.2, y: 0.2 }, to: { x: 0.6, y: 0.6 } }) };
+    const read = fromLottie(exported([layerOf([{ at: 0, strokes: [square] }])], 12).json) as LottieImport;
+    const points = read.anim.layers[0].cels[0].strokes[0].points;
+    expect(points[0]).toBeCloseTo(points[points.length - 3], 3);
+    expect(points[1]).toBeCloseTo(points[points.length - 2], 3);
+  });
+
+  it('reads a file from somewhere else: a bare path with no style', () => {
+    const foreign = {
+      v: '5.5.0',
+      fr: 30,
+      ip: 0,
+      op: 60,
+      w: 800,
+      h: 600,
+      layers: [
+        {
+          ty: 4,
+          nm: 'Another tool',
+          ip: 0,
+          op: 60,
+          shapes: [{ ty: 'sh', ks: { a: 0, k: { v: [[0, 0], [400, 300], [800, 600]], c: false } } }],
+        },
+      ],
+    };
+    const read = fromLottie(JSON.stringify(foreign)) as LottieImport;
+    expect(typeof read).not.toBe('string');
+    expect(read.fps).toBe(30);
+    const points = read.anim.layers[0].cels[0].strokes[0].points;
+    // Pixels into fractions of that file's own frame, not of ours.
+    expect(points[0]).toBeCloseTo(0, 3);
+    expect(points[3]).toBeCloseTo(0.5, 3);
+    expect(points[4]).toBeCloseTo(0.5, 3);
+    // No style on it: drawn plainly rather than invisibly.
+    expect(read.anim.layers[0].cels[0].strokes[0].color).toBe('#ffffff');
+  });
+
+  it('takes the first value of an animated path rather than dropping it', () => {
+    const animated = {
+      fr: 24,
+      op: 24,
+      w: 100,
+      h: 100,
+      layers: [
+        {
+          ty: 4,
+          ip: 0,
+          shapes: [{ ty: 'sh', ks: { a: 1, k: [{ t: 0, s: { v: [[0, 0], [50, 50]], c: false } }, { t: 12, s: { v: [[100, 100], [50, 50]], c: false } }] } }],
+        },
+      ],
+    };
+    const read = fromLottie(JSON.stringify(animated)) as LottieImport;
+    expect(typeof read).not.toBe('string');
+    expect(read.anim.layers[0].cels[0].strokes[0].points[0]).toBeCloseTo(0, 3);
+  });
+
+  it('reads a colour back from Lottie’s triple', () => {
+    expect(fromRgb([1, 1, 1])).toBe('#ffffff');
+    expect(fromRgb([0, 0, 0])).toBe('#000000');
+    expect(fromRgb([1, 0.533, 0])).toBe('#ff8800');
+    // Nonsense in, something drawable out.
+    expect(fromRgb([Number.NaN, 2, -1])).toBe('#ffff00');
+  });
+
+  it('what comes back is an ordinary animation, editable like any other', () => {
+    const read = fromLottie(exported([layerOf([{ at: 0, strokes: [line('a', 0.1)] }])], 12).json) as LottieImport;
+    // It survives being saved and loaded as a project, which is the real test
+    // of whether it is a first-class animation or a special case.
+    const normalized = normalizeAnimation(JSON.parse(JSON.stringify(read.anim)));
+    expect(normalized?.layers[0].cels[0].strokes).toHaveLength(1);
+    expect(strokeCount(normalized as DrawnAnimation)).toBe(1);
   });
 });

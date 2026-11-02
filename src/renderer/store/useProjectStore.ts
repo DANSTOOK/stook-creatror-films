@@ -25,6 +25,7 @@ import type {
   TrackType,
   Transition,
   Vector2D,
+  DrawnAnimation,
   Easing,
   OnionSkin,
   Stroke,
@@ -359,6 +360,12 @@ interface ProjectStore {
    * layer and nothing drawn on it. Selected and shown. Returns its id.
    */
   addAnimationClip(seconds?: number): string;
+  /**
+   * An animation clip made from a Lottie file already read into drawings.
+   * It is an ordinary animation from the moment it lands: erasable,
+   * tweenable, movable, exportable again.
+   */
+  addAnimationFrom(anim: DrawnAnimation, frames: number, name: string): string;
   /**
    * One stroke onto a layer at an exposure. One stroke is ONE undo step, so
    * Ctrl+Z takes back the line just drawn and no more.
@@ -1544,6 +1551,29 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       },
       mergeKey,
     );
+  },
+
+  addAnimationFrom(anim, frames, name) {
+    const { project } = get();
+    const duration = Math.max(1, Math.round(frames));
+    const placement = planTitlePlacement(project, project.currentFrame, duration);
+    let createdId = '';
+    get().transact('Import animation', (current) => {
+      let rows = timelineRows(current.tracks);
+      let trackId = placement.trackId;
+      if (!trackId) {
+        const track = createTrack('video', 0, nextTrackName(rows, 'video'));
+        rows = [...rows];
+        rows.splice(insertionRow(rows, 'video'), 0, track);
+        trackId = track.id;
+      }
+      const clip = createAnimationClip(trackId, placement.startFrame, placement.durationFrames, name, anim);
+      createdId = clip.id;
+      return { ...current, tracks: withRowOrders(rows), clips: { ...current.clips, [clip.id]: clip } };
+    });
+    set({ ui: { ...get().ui, selectedClipIds: [createdId], selectedTrackId: get().project.clips[createdId]?.trackId ?? null } });
+    get().revealFrames(placement.startFrame, placement.startFrame + placement.durationFrames);
+    return createdId;
   },
 
   addAnimationClip(seconds = ANIM_SECONDS) {

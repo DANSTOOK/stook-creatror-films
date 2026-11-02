@@ -1,13 +1,14 @@
-import { ArrowRight, Circle, Copy, Eraser, Eye, EyeOff, Layers, Minus, Pencil, Plus, Square, Download, Trash2, Triangle, Wand2 } from 'lucide-react';
+import { ArrowRight, Circle, Copy, Eraser, Eye, EyeOff, Layers, Minus, Pencil, Plus, Square, Download, Trash2, Triangle, Upload, Wand2 } from 'lucide-react';
 import type { Clip } from '@shared/types';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useT } from '@renderer/i18n';
+import type { MessageKey } from '@shared/i18n';
 import { Step, Steps } from '@renderer/components/Common/Steps';
 import { MAX_SIZE, MIN_SIZE, useDrawStore } from '@renderer/animation/drawStore';
 import { celAt, exposureAt, exposureCount, frameOfExposure, MAX_ONION, MAX_STEP, stepOf, strokeCount } from '@renderer/animation/model';
 import { nextDrawing } from '@renderer/animation/keys';
 import { canTween, nextCelAfter } from '@renderer/animation/tween';
-import { hasDrawings, toLottie } from '@renderer/animation/lottie';
+import { fromLottie, hasDrawings, toLottie } from '@renderer/animation/lottie';
 import { notify } from '@renderer/notifications/notifications';
 import { MAX_SIDES, MIN_SIDES, SHAPE_KINDS } from '@renderer/animation/shapes';
 import { placeOf } from '@renderer/animation/motion';
@@ -43,6 +44,7 @@ export function AnimationPanel(): JSX.Element {
   const height = useProjectStore((state) => state.project.height);
   const fps = useProjectStore((state) => state.project.fps);
   const addAnimationClip = useProjectStore((state) => state.addAnimationClip);
+  const addAnimationFrom = useProjectStore((state) => state.addAnimationFrom);
   const setAnimationStep = useProjectStore((state) => state.setAnimationStep);
   const setOnionSkin = useProjectStore((state) => state.setOnionSkin);
   const addAnimationLayer = useProjectStore((state) => state.addAnimationLayer);
@@ -127,6 +129,21 @@ export function AnimationPanel(): JSX.Element {
   const drawn = strokeCount(anim);
   const ownCel = chosen?.cels.find((cel) => cel.at === here);
 
+  const importLottie = async (): Promise<void> => {
+    const picked = await window.filmora?.animOpenLottie?.();
+    if (!picked) return;
+    const read = fromLottie(picked.json);
+    if (typeof read === 'string') {
+      // The reason, not a shrug: each one is something the user can act on.
+      notify(t(`animation.lottieIn.${read}` as MessageKey), 'error');
+      return;
+    }
+    addAnimationFrom(read.anim, read.frames, picked.name.replace(/.json$/i, ''));
+    if (read.skipped > 0) {
+      notify(t('animation.lottieSkipped', { count: read.skipped }), 'warning');
+    }
+  };
+
   const saveLottie = async (): Promise<void> => {
     const made = toLottie(anim, clip, width, height, fps);
     const path = await window.filmora?.animSaveLottie?.(`${clip.name}.json`, made.json);
@@ -157,15 +174,26 @@ export function AnimationPanel(): JSX.Element {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 px-3 py-2">
         <span className="text-xs font-medium text-slate-200">{t('animation.title')}</span>
-        <button
-          type="button"
-          data-testid="animation-add"
-          onClick={makeOne}
-          className="flex items-center gap-1 rounded-control bg-white/5 px-2 py-1 text-2xs text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
-        >
-          <Plus size={12} />
-          {t('animation.add')}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            data-testid="animation-import"
+            onClick={() => void importLottie()}
+            className="flex items-center gap-1 rounded-control bg-white/5 px-2 py-1 text-2xs text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
+          >
+            <Upload size={12} />
+            {t('animation.import')}
+          </button>
+          <button
+            type="button"
+            data-testid="animation-add"
+            onClick={makeOne}
+            className="flex items-center gap-1 rounded-control bg-white/5 px-2 py-1 text-2xs text-slate-300 ring-1 ring-white/10 hover:bg-white/10"
+          >
+            <Plus size={12} />
+            {t('animation.add')}
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">

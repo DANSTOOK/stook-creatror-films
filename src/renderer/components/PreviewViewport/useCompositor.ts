@@ -65,6 +65,10 @@ export function useCompositor(canvasRef: RefObject<HTMLCanvasElement>): Composit
         showTransparencyGrid,
       });
       rendererRef.current = renderer;
+      // How many textures have really been uploaded. The animation module
+      // claims a held drawing costs what a still image costs, and this is the
+      // only honest way to check it: during a hold the count must not move.
+      (window as { __scfTextureUploads?: () => number }).__scfTextureUploads = () => renderer.textures.generation;
       setActiveFrameRenderer(renderer);
       setError(null);
     } catch (creationError) {
