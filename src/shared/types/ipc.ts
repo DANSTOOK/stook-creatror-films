@@ -22,6 +22,7 @@ export const IPC = {
   saveSticker: 'media:save-sticker',
   photosSearch: 'photos:search',
   photosFetch: 'photos:fetch',
+  animSaveLottie: 'anim:save-lottie',
   saveSound: 'media:save-sound',
   findSound: 'media:find-sound',
   trackObject: 'media:track-object',
@@ -689,6 +690,8 @@ export interface FilmoraApi {
   photosSearch(query: string, page: number): Promise<PhotoSearchReply>;
   /** One picture’s bytes, for the same reason. */
   photosFetch(url: string): Promise<ArrayBuffer | null>;
+  /** Write a drawn animation out as a Lottie file; the path chosen, or null. */
+  animSaveLottie(suggestedName: string, json: string): Promise<string | null>;
   /** A sound of the library (renderer/sounds), rendered as a WAV and kept in the app's folder; its path. */
   saveSound(id: string, wav: ArrayBuffer): Promise<string>;
   /** That sound's file when it was made before, or null. */

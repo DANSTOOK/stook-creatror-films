@@ -1,4 +1,4 @@
-import { ArrowRight, Circle, Copy, Eraser, Eye, EyeOff, Layers, Minus, Pencil, Plus, Square, Trash2, Triangle } from 'lucide-react';
+import { ArrowRight, Circle, Copy, Eraser, Eye, EyeOff, Layers, Minus, Pencil, Plus, Square, Download, Trash2, Triangle, Wand2 } from 'lucide-react';
 import type { Clip } from '@shared/types';
 import { useProjectStore } from '@renderer/store/useProjectStore';
 import { useT } from '@renderer/i18n';
@@ -6,6 +6,9 @@ import { Step, Steps } from '@renderer/components/Common/Steps';
 import { MAX_SIZE, MIN_SIZE, useDrawStore } from '@renderer/animation/drawStore';
 import { celAt, exposureAt, exposureCount, frameOfExposure, MAX_ONION, MAX_STEP, stepOf, strokeCount } from '@renderer/animation/model';
 import { nextDrawing } from '@renderer/animation/keys';
+import { canTween, nextCelAfter } from '@renderer/animation/tween';
+import { hasDrawings, toLottie } from '@renderer/animation/lottie';
+import { notify } from '@renderer/notifications/notifications';
 import { MAX_SIDES, MIN_SIDES, SHAPE_KINDS } from '@renderer/animation/shapes';
 import { placeOf } from '@renderer/animation/motion';
 
@@ -36,6 +39,9 @@ export function AnimationPanel(): JSX.Element {
   const clips = useProjectStore((state) => state.project.clips);
   const selected = useProjectStore((state) => state.ui.selectedClipIds);
   const currentFrame = useProjectStore((state) => state.project.currentFrame);
+  const width = useProjectStore((state) => state.project.width);
+  const height = useProjectStore((state) => state.project.height);
+  const fps = useProjectStore((state) => state.project.fps);
   const addAnimationClip = useProjectStore((state) => state.addAnimationClip);
   const setAnimationStep = useProjectStore((state) => state.setAnimationStep);
   const setOnionSkin = useProjectStore((state) => state.setOnionSkin);
@@ -45,6 +51,7 @@ export function AnimationPanel(): JSX.Element {
   const clearCel = useProjectStore((state) => state.clearCel);
   const duplicateCel = useProjectStore((state) => state.duplicateCel);
   const addBlankCel = useProjectStore((state) => state.addBlankCel);
+  const tweenFrom = useProjectStore((state) => state.tweenFrom);
   const setLayerKeyframe = useProjectStore((state) => state.setLayerKeyframe);
   const setLayerParent = useProjectStore((state) => state.setLayerParent);
   const seek = useProjectStore((state) => state.setCurrentFrame);
@@ -119,6 +126,15 @@ export function AnimationPanel(): JSX.Element {
   const placeNow = { position: { x: at.x, y: at.y }, scale: { x: at.scaleX, y: at.scaleY }, rotation: at.rotation };
   const drawn = strokeCount(anim);
   const ownCel = chosen?.cels.find((cel) => cel.at === here);
+
+  const saveLottie = async (): Promise<void> => {
+    const made = toLottie(anim, clip, width, height, fps);
+    const path = await window.filmora?.animSaveLottie?.(`${clip.name}.json`, made.json);
+    if (!path) return;
+    // Said out loud rather than silently: an eraser cannot be expressed in
+    // Lottie in a way every player honours, so those strokes are left out.
+    notify(made.dropped > 0 ? t('animation.lottieDropped', { count: made.dropped }) : t('animation.lottieSaved'), made.dropped > 0 ? 'warning' : 'success');
+  };
   // The step the eye should be on: the first one not finished. Only that one
   // opens by itself - two open at once is what made the first version read as
   // a wall of controls again.
@@ -349,6 +365,22 @@ export function AnimationPanel(): JSX.Element {
               </select>
             </label>
 
+            {/* In-betweens: only offered when the two drawings correspond,
+                because two that do not cannot be blended into anything but a
+                smear. The reason is said out loud when they do not. */}
+            {nextCelAfter(chosen ?? anim.layers[anim.layers.length - 1], here) !== null && (
+              <button
+                type="button"
+                data-testid="animation-tween"
+                disabled={!canTween(chosen, here)}
+                title={canTween(chosen, here) ? undefined : t('animation.tweenWhy')}
+                onClick={() => tweenFrom(clip.id, layerId ?? '', here)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-control bg-white/5 px-2 py-1.5 text-2xs text-slate-300 ring-1 ring-white/10 hover:bg-white/10 disabled:opacity-40"
+              >
+                <Wand2 size={12} />
+                {t('animation.tween')}
+              </button>
+            )}
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -642,6 +674,24 @@ export function AnimationPanel(): JSX.Element {
                 </select>
               </label>
             )}
+          </section>
+
+          {/* Out as Lottie: the payment for keeping strokes as data rather
+              than pixels. After Effects, Figma, a web page or a phone can all
+              read it, and it scales because it is shapes and not an image. */}
+          <section className="mt-2 space-y-1.5 border-t border-white/5 pt-2">
+            <span className="text-2xs text-slate-300">{t('animation.lottie')}</span>
+            <p className="text-[10px] leading-relaxed text-slate-500">{t('animation.lottieHint')}</p>
+            <button
+              type="button"
+              data-testid="animation-lottie"
+              disabled={!hasDrawings(anim)}
+              onClick={() => void saveLottie()}
+              className="flex w-full items-center justify-center gap-1.5 rounded-control bg-white/5 px-2 py-1.5 text-2xs text-slate-300 ring-1 ring-white/10 hover:bg-white/10 disabled:opacity-40"
+            >
+              <Download size={12} />
+              {t('animation.lottieSave')}
+            </button>
           </section>
         </details>
       </div>

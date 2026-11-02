@@ -1,4 +1,5 @@
-import { ipcMain, net } from 'electron';
+import { writeFile } from 'node:fs/promises';
+import { BrowserWindow, dialog, ipcMain, net } from 'electron';
 import { IPC, type PhotoSearchReply } from '@shared/types/ipc';
 
 /**
@@ -146,5 +147,25 @@ export function registerPhotoIpc(): void {
     } catch {
       return null;
     }
+  });
+
+  /**
+   * A drawn animation written out as Lottie.
+   *
+   * Through a save dialog, so the page never names a path of its own: the
+   * user chooses where it goes, which is the only place this is allowed to
+   * write.
+   */
+  ipcMain.handle(IPC.animSaveLottie, async (_event, suggestedName: unknown, json: unknown): Promise<string | null> => {
+    if (typeof json !== 'string' || json.length === 0) return null;
+    const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    if (!window) return null;
+    const result = await dialog.showSaveDialog(window, {
+      defaultPath: typeof suggestedName === 'string' && suggestedName ? suggestedName : 'animation.json',
+      filters: [{ name: 'Lottie (.json)', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, json, 'utf8');
+    return result.filePath;
   });
 }

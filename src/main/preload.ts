@@ -55,6 +55,7 @@ const api: FilmoraApi = {
   saveSticker: (id, png) => ipcRenderer.invoke(IPC.saveSticker, id, png) as Promise<string>,
   photosSearch: (query, page) => ipcRenderer.invoke(IPC.photosSearch, query, page) as Promise<PhotoSearchReply>,
   photosFetch: (url) => ipcRenderer.invoke(IPC.photosFetch, url) as Promise<ArrayBuffer | null>,
+  animSaveLottie: (name, json) => ipcRenderer.invoke(IPC.animSaveLottie, name, json) as Promise<string | null>,
   saveSound: (id, wav) => ipcRenderer.invoke(IPC.saveSound, id, wav) as Promise<string>,
   findSound: (id) => ipcRenderer.invoke(IPC.findSound, id) as Promise<string | null>,
   saveStill: (id, png) => ipcRenderer.invoke(IPC.saveStill, id, png) as Promise<string>,

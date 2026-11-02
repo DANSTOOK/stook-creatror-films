@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AnimationLayer, DrawnAnimation, OnionSkin, Stroke } from '../src/shared/types';
+import type { AnimationCel, AnimationLayer, DrawnAnimation, OnionSkin, Stroke } from '../src/shared/types';
 import {
   celAt,
   duplicateCel,
@@ -17,6 +17,8 @@ import { rasterKey } from '../src/renderer/animation/raster';
 import { drawKeyOf, nextDrawing, previousDrawing, SIZE_STEP } from '../src/renderer/animation/keys';
 import { chainOf, isMoved, NO_PLACE, placeOf } from '../src/renderer/animation/motion';
 import { isRealDrag, MAX_SIDES, MIN_SIDES, shapePoints, shapeStroke } from '../src/renderer/animation/shapes';
+import { blendStroke, canTween, nextCelAfter, planTween, resample } from '../src/renderer/animation/tween';
+import { hasDrawings, toLottie, toRgb } from '../src/renderer/animation/lottie';
 
 const stroke = (id: string, points = [0.1, 0.1, 0.5, 0.2, 0.2, 0.5]): Stroke => ({
   id,
@@ -568,5 +570,275 @@ describe('shapes dragged out', () => {
   it('ignores a slip of the hand that is not really a drag', () => {
     expect(isRealDrag({ x: 0.5, y: 0.5 }, { x: 0.5006, y: 0.5 })).toBe(false);
     expect(isRealDrag({ x: 0.5, y: 0.5 }, { x: 0.52, y: 0.5 })).toBe(true);
+  });
+});
+
+describe('in-betweens', () => {
+  const line = (id: string, x1: number, y1: number, x2: number, y2: number): Stroke => ({
+    ...stroke(id),
+    points: [x1, y1, 1, x2, y2, 1],
+  });
+  const withCels = (cels: { at: number; strokes: Stroke[] }[]): AnimationLayer => ({
+    id: 'l',
+    name: 'L',
+    visible: true,
+    opacity: 1,
+    cels: cels.map((cel) => ({ id: `c${cel.at}`, at: cel.at, strokes: cel.strokes })),
+  });
+
+  it('fills the gap with one drawing per exposure', () => {
+    const l = withCels([
+      { at: 0, strokes: [line('a', 0.1, 0.5, 0.3, 0.5)] },
+      { at: 5, strokes: [line('b', 0.7, 0.5, 0.9, 0.5)] },
+    ]);
+    const plan = planTween(l, 0, 5);
+    expect(typeof plan).not.toBe('string');
+    const cels = (plan as { cels: AnimationCel[] }).cels;
+    expect(cels.map((cel) => cel.at)).toEqual([1, 2, 3, 4]);
+    expect(cels.every((cel) => cel.strokes.length === 1)).toBe(true);
+  });
+
+  it('puts the halfway drawing halfway', () => {
+    const l = withCels([
+      { at: 0, strokes: [line('a', 0, 0.5, 0.2, 0.5)] },
+      { at: 2, strokes: [line('b', 0.8, 0.5, 1, 0.5)] },
+    ]);
+    const cels = (planTween(l, 0, 2) as { cels: AnimationCel[] }).cels;
+    expect(cels).toHaveLength(1);
+    const points = cels[0].strokes[0].points;
+    // The first end goes 0 -> 0.8, so halfway is 0.4.
+    expect(points[0]).toBeCloseTo(0.4, 2);
+    expect(points[points.length - 3]).toBeCloseTo(0.6, 2);
+  });
+
+  it('eases with the app’s own curves, so a run can start and stop gently', () => {
+    const l = withCels([
+      { at: 0, strokes: [line('a', 0, 0.5, 0.1, 0.5)] },
+      { at: 4, strokes: [line('b', 0.9, 0.5, 1, 0.5)] },
+    ]);
+    const straight = (planTween(l, 0, 4, 'linear') as { cels: AnimationCel[] }).cels;
+    const eased = (planTween(l, 0, 4, 'easeInOut') as { cels: AnimationCel[] }).cels;
+    // The first in-between of an eased run has moved LESS than a straight one.
+    expect(eased[0].strokes[0].points[0]).toBeLessThan(straight[0].strokes[0].points[0]);
+    // And they meet in the middle.
+    expect(eased[1].strokes[0].points[0]).toBeCloseTo(straight[1].strokes[0].points[0], 2);
+  });
+
+  it('refuses two drawings that do not correspond, rather than smear them', () => {
+    const l = withCels([
+      { at: 0, strokes: [line('a', 0, 0, 0.2, 0.2)] },
+      { at: 4, strokes: [line('b', 0.5, 0.5, 0.7, 0.7), line('c', 0.1, 0.1, 0.3, 0.3)] },
+    ]);
+    expect(planTween(l, 0, 4)).toBe('differentStrokes');
+  });
+
+  it('refuses when there is nothing to tween between', () => {
+    const l = withCels([{ at: 0, strokes: [line('a', 0, 0, 1, 1)] }]);
+    expect(planTween(l, 0, 4)).toBe('noEnd');
+    expect(planTween(l, 3, 9)).toBe('noStart');
+    const touching = withCels([
+      { at: 0, strokes: [line('a', 0, 0, 1, 1)] },
+      { at: 1, strokes: [line('b', 0, 0, 1, 1)] },
+    ]);
+    // Nothing between two drawings that are side by side.
+    expect(planTween(touching, 0, 1)).toBe('noGap');
+  });
+
+  it('refuses a gap so long it is a flip-book, not a tween', () => {
+    const l = withCels([
+      { at: 0, strokes: [line('a', 0, 0, 1, 1)] },
+      { at: 200, strokes: [line('b', 0, 0, 1, 1)] },
+    ]);
+    expect(planTween(l, 0, 200)).toBe('tooMany');
+  });
+
+  it('refuses two empty drawings instead of making empty ones', () => {
+    const l = withCels([{ at: 0, strokes: [] }, { at: 4, strokes: [] }]);
+    expect(planTween(l, 0, 4)).toBe('differentStrokes');
+  });
+
+  it('pairs strokes by where they sit, not by the order they were drawn', () => {
+    // Drawn body-then-arm in one, arm-then-body in the other. Pairing by index
+    // would cross them over and the tween would be a mess.
+    const l = withCels([
+      { at: 0, strokes: [line('body', 0.1, 0.1, 0.2, 0.1), line('arm', 0.8, 0.8, 0.9, 0.8)] },
+      { at: 2, strokes: [line('arm2', 0.82, 0.82, 0.92, 0.82), line('body2', 0.12, 0.12, 0.22, 0.12)] },
+    ]);
+    const cels = (planTween(l, 0, 2) as { cels: AnimationCel[] }).cels;
+    const xs = cels[0].strokes.map((s) => s.points[0]).sort((a, b) => a - b);
+    // Each stroke moved a little way, not across the frame to the other one.
+    expect(xs[0]).toBeGreaterThan(0.09);
+    expect(xs[0]).toBeLessThan(0.14);
+    expect(xs[1]).toBeGreaterThan(0.79);
+    expect(xs[1]).toBeLessThan(0.84);
+  });
+
+  it('resamples two strokes of different lengths onto the same count', () => {
+    const short = line('s', 0, 0, 1, 0);
+    const long: Stroke = { ...stroke('l'), points: [0, 0, 1, 0.25, 0, 1, 0.5, 0, 1, 0.75, 0, 1, 1, 0, 1] };
+    expect(resample(short).length).toBe(resample(long).length);
+    // Evenly along: the middle sample of a straight line is its middle.
+    const mid = resample(short);
+    expect(mid[Math.floor(mid.length / 6) * 3]).toBeCloseTo(0.5, 1);
+  });
+
+  it('handles a dot and a stroke that went nowhere without dividing by zero', () => {
+    const dot: Stroke = { ...stroke('d'), points: [0.5, 0.5, 1] };
+    const still: Stroke = { ...stroke('n'), points: [0.3, 0.3, 1, 0.3, 0.3, 1] };
+    expect(resample(dot).every((value) => Number.isFinite(value))).toBe(true);
+    expect(resample(still).every((value) => Number.isFinite(value))).toBe(true);
+    const blended = blendStroke(dot, still, 0.5);
+    expect(blended.points.every((value) => Number.isFinite(value))).toBe(true);
+    expect(blended.points[0]).toBeCloseTo(0.4, 2);
+  });
+
+  it('keeps the colour it started in rather than inventing a muddy third', () => {
+    const from: Stroke = { ...line('a', 0, 0, 1, 1), color: '#ff0000' };
+    const to: Stroke = { ...line('b', 0, 0, 1, 1), color: '#0000ff' };
+    expect(blendStroke(from, to, 0.5).color).toBe('#ff0000');
+  });
+
+  it('says whether a tween is possible from here, for the button', () => {
+    const good = withCels([
+      { at: 0, strokes: [line('a', 0, 0, 1, 1)] },
+      { at: 4, strokes: [line('b', 0.5, 0.5, 1, 1)] },
+    ]);
+    expect(canTween(good, 0)).toBe(true);
+    // From the last drawing there is nowhere to tween to.
+    expect(canTween(good, 4)).toBe(false);
+    expect(canTween(undefined, 0)).toBe(false);
+    expect(nextCelAfter(good, 0)).toBe(4);
+    expect(nextCelAfter(good, 4)).toBeNull();
+  });
+});
+
+describe('Lottie out', () => {
+  const line = (id: string, x: number, colour = '#ff8800'): Stroke => ({
+    ...stroke(id),
+    color: colour,
+    size: 0.01,
+    points: [x, 0.4, 1, x + 0.1, 0.4, 1, x + 0.1, 0.6, 1],
+  });
+  const withCels = (cels: { at: number; strokes: Stroke[] }[], over: Partial<AnimationLayer> = {}): AnimationLayer => ({
+    id: 'l',
+    name: 'Layer 1',
+    visible: true,
+    opacity: 1,
+    cels: cels.map((cel) => ({ id: `c${cel.at}`, at: cel.at, strokes: cel.strokes })),
+    ...over,
+  });
+  const clipOf = (durationFrames = 24) => ({ durationFrames, name: 'Anim' });
+  const parse = (anim: DrawnAnimation, duration = 24) => JSON.parse(toLottie(anim, clipOf(duration), 1920, 1080, 24).json);
+
+  it('writes a document a player can read: rate, length, size, layers', () => {
+    const doc = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }])], 2));
+    expect(doc.fr).toBe(24);
+    expect(doc.ip).toBe(0);
+    expect(doc.op).toBe(24);
+    expect(doc.w).toBe(1920);
+    expect(doc.h).toBe(1080);
+    expect(doc.v).toMatch(/^\d+\./);
+    expect(Array.isArray(doc.layers)).toBe(true);
+  });
+
+  it('turns every drawing into a shape layer shown for exactly its hold', () => {
+    // On twos: the drawing at exposure 0 runs to exposure 3, which is frame 6.
+    const doc = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }, { at: 3, strokes: [line('b', 0.5)] }])], 2));
+    expect(doc.layers).toHaveLength(2);
+    const [first, second] = [...doc.layers].sort((a: { ip: number }, b: { ip: number }) => a.ip - b.ip);
+    expect(first.ty).toBe(4);
+    expect(first.ip).toBe(0);
+    expect(first.op).toBe(6);
+    expect(second.ip).toBe(6);
+  });
+
+  it('never runs a drawing past the end of the clip', () => {
+    const doc = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }])], 2), 5);
+    expect(Math.max(...doc.layers.map((l: { op: number }) => l.op))).toBeLessThanOrEqual(5);
+  });
+
+  it('writes the points as pixels, keeping the drawing where it was', () => {
+    const doc = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }])], 1));
+    const path = doc.layers[0].shapes[0].it[0].ks.k;
+    expect(path.v[0]).toEqual([0.1 * 1920, 0.4 * 1080]);
+    expect(path.v).toHaveLength(3);
+  });
+
+  it('closes a shape that ends where it began, and leaves an open line open', () => {
+    const square: Stroke = { ...stroke('sq'), points: shapePoints({ kind: 'rectangle', from: { x: 0.2, y: 0.2 }, to: { x: 0.6, y: 0.6 } }) };
+    const closed = parse(anim([withCels([{ at: 0, strokes: [square] }])], 1));
+    expect(closed.layers[0].shapes[0].it[0].ks.k.c).toBe(true);
+    const open = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }])], 1));
+    expect(open.layers[0].shapes[0].it[0].ks.k.c).toBe(false);
+  });
+
+  it('puts the style after the path, because Lottie paints what comes before it', () => {
+    const doc = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }])], 1));
+    const group = doc.layers[0].shapes[0].it;
+    expect(group[0].ty).toBe('sh');
+    expect(group[1].ty).toBe('st');
+    // #ff8800 as a 0..1 triple, with full alpha.
+    expect(group[1].c.k[0]).toBeCloseTo(1, 2);
+    expect(group[1].c.k[1]).toBeCloseTo(0.533, 2);
+    expect(group[1].c.k[2]).toBeCloseTo(0, 2);
+    expect(group[1].c.k[3]).toBe(1);
+    // Width in pixels of the shorter side, which is how a stroke stores it.
+    expect(group[1].w.k).toBeCloseTo(0.01 * 1080, 1);
+  });
+
+  it('reverses the shapes, since Lottie draws a group back to front', () => {
+    const doc = parse(anim([withCels([{ at: 0, strokes: [line('first', 0.1), line('second', 0.5)] }])], 1));
+    const names = doc.layers[0].shapes.map((shape: { nm: string }) => shape.nm);
+    // Drawn first must end up LAST, or the export comes out inside out.
+    expect(names).toEqual(['second', 'first']);
+  });
+
+  it('leaves out the eraser and says how many it dropped', () => {
+    const eraser: Stroke = { ...line('rub', 0.3), brush: 'eraser' };
+    const made = toLottie(anim([withCels([{ at: 0, strokes: [line('a', 0.1), eraser] }])], 1), clipOf(), 1920, 1080, 24);
+    expect(made.dropped).toBe(1);
+    const doc = JSON.parse(made.json);
+    expect(doc.layers[0].shapes).toHaveLength(1);
+  });
+
+  it('leaves out a hidden layer and a drawing with nothing on it', () => {
+    const hidden = parse(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }], { visible: false })], 1));
+    expect(hidden.layers).toHaveLength(0);
+    const blank = parse(anim([withCels([{ at: 0, strokes: [] }])], 1));
+    expect(blank.layers).toHaveLength(0);
+  });
+
+  it('carries a moved layer’s place onto the layer it writes', () => {
+    const moved = withCels([{ at: 0, strokes: [line('a', 0.1)] }], {
+      motion: { position: [{ id: 'k', frame: 0, value: { x: 0.25, y: 0 }, easing: 'linear' }], rotation: [{ id: 'r', frame: 0, value: 30, easing: 'linear' }] },
+    });
+    const doc = parse(anim([moved], 1));
+    expect(doc.layers[0].ks.p.k[0]).toBeCloseTo(0.25 * 1920 + 960, 1);
+    expect(doc.layers[0].ks.r.k).toBe(30);
+  });
+
+  it('says when there is nothing worth exporting', () => {
+    expect(hasDrawings(undefined)).toBe(false);
+    expect(hasDrawings(anim([withCels([{ at: 0, strokes: [] }])], 1))).toBe(false);
+    const onlyEraser: Stroke = { ...line('rub', 0.3), brush: 'eraser' };
+    expect(hasDrawings(anim([withCels([{ at: 0, strokes: [onlyEraser] }])], 1))).toBe(false);
+    expect(hasDrawings(anim([withCels([{ at: 0, strokes: [line('a', 0.1)] }])], 1))).toBe(true);
+  });
+
+  it('reads a colour, and falls back to white on one it cannot', () => {
+    expect(toRgb('#ffffff')).toEqual([1, 1, 1]);
+    expect(toRgb('#000000')).toEqual([0, 0, 0]);
+    const orange = toRgb('#ff8800');
+    expect(orange[0]).toBeCloseTo(1, 2);
+    expect(orange[1]).toBeCloseTo(0.533, 2);
+    expect(toRgb('rubbish')).toEqual([1, 1, 1]);
+  });
+
+  it('reads back as valid JSON whatever is in a drawing', () => {
+    const odd: Stroke = { ...line('odd', 0.1), color: 'not a colour' as string };
+    const made = toLottie(anim([withCels([{ at: 0, strokes: [odd] }])], 1), clipOf(), 1920, 1080, 24);
+    expect(() => JSON.parse(made.json)).not.toThrow();
+    // A colour it cannot read becomes white rather than breaking the file.
+    expect(JSON.parse(made.json).layers[0].shapes[0].it[1].c.k.slice(0, 3)).toEqual([1, 1, 1]);
   });
 });

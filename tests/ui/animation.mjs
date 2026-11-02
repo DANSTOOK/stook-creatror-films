@@ -409,6 +409,44 @@ async function main() {
     const undone2 = await inkCentre(window);
     check('and undo puts it back where it was', Math.abs(undone2.x - before2.x) < 0.02, before2.x.toFixed(3) + ' vs ' + undone2.x.toFixed(3));
 
+    console.log('13. in-betweens');
+    const tw = await window.evaluate(() => {
+      const st = window.__scfStore.getState();
+      const clip = Object.values(st.project.clips).find((c) => c.anim);
+      // A layer of its own, so nothing drawn earlier is in the way.
+      const layerId = st.addAnimationLayer(clip.id);
+      const line = (id, x) => ({ id, brush: 'pencil', color: '#ffffff', size: 0.02, opacity: 1, points: [x, 0.4, 1, x + 0.08, 0.6, 1] });
+      window.__scfStore.getState().drawStroke(clip.id, layerId, 0, line('a', 0.12));
+      window.__scfStore.getState().drawStroke(clip.id, layerId, 5, line('b', 0.78));
+      const depth = window.__scfHistory.getState().undoStack.length;
+      const refusal = window.__scfStore.getState().tweenFrom(clip.id, layerId, 0);
+      const after = window.__scfStore.getState().project.clips[clip.id].anim.layers.find((l) => l.id === layerId);
+      return {
+        refusal,
+        exposures: after.cels.map((c) => c.at),
+        xs: after.cels.map((c) => Number(c.strokes[0].points[0].toFixed(3))),
+        steps: window.__scfHistory.getState().undoStack.length - depth,
+        layerId,
+        clipId: clip.id,
+      };
+    });
+    check('the gap is filled, one drawing per exposure', tw.refusal === null && JSON.stringify(tw.exposures) === JSON.stringify([0, 1, 2, 3, 4, 5]), JSON.stringify(tw.exposures));
+    // Even steps: the whole point of an in-between is that it is in between.
+    const gaps = tw.xs.slice(1).map((x, i) => Number((x - tw.xs[i]).toFixed(3)));
+    check('and they are evenly spaced', new Set(gaps).size === 1, tw.xs.join(' ') + '  steps ' + gaps.join(','));
+    check('the whole run is one undo step', tw.steps === 1, String(tw.steps));
+
+    const tweenRefused = await window.evaluate((info) => {
+      const st = window.__scfStore.getState();
+      const line = (id, x) => ({ id, brush: 'pencil', color: '#ffffff', size: 0.02, opacity: 1, points: [x, 0.8, 1, x + 0.05, 0.9, 1] });
+      st.drawStroke(info.clipId, info.layerId, 12, line('p', 0.2));
+      window.__scfStore.getState().drawStroke(info.clipId, info.layerId, 12, line('q', 0.4));
+      window.__scfStore.getState().drawStroke(info.clipId, info.layerId, 18, line('r', 0.6));
+      return window.__scfStore.getState().tweenFrom(info.clipId, info.layerId, 12);
+    }, tw);
+    // Two drawings that do not correspond would blend into a smear, so it says so.
+    check('two drawings that do not correspond are refused, with a reason', tweenRefused === 'differentStrokes', String(tweenRefused));
+
     console.log('10. the console');
     check('nothing in the console', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {

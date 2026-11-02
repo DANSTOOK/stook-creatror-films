@@ -32,6 +32,7 @@ import type {
 import { createTitleClip, planTitlePlacement, titleDropPlacement, TITLE_NAME, TITLE_SECONDS } from '@renderer/text/titleClip';
 import { ANIM_SECONDS, createAnimationClip } from '@renderer/animation/animClip';
 import { DEFAULT_ONION, duplicateCel, MAX_ONION, MAX_STEP, newId, withCel, withStroke } from '@renderer/animation/model';
+import { nextCelAfter, planTween, type TweenRefusal } from '@renderer/animation/tween';
 import { templateById, templateOf } from '@renderer/text/templates';
 import { normalizeTitleStyle, titleName } from '@renderer/text/titleStyle';
 import { NO_ANIMATION, normalizeAnimation } from '@renderer/text/animation';
@@ -380,6 +381,15 @@ interface ProjectStore {
    * character leaves the screen without the layer being hidden.
    */
   addBlankCel(clipId: string, layerId: string, exposure: number): void;
+  /**
+   * Fill the gap between the drawing at `exposure` and the next one with
+   * in-betweens, worked out rather than drawn (animation/tween).
+   *
+   * Returns null when it worked, or a word saying why it would not: two
+   * drawings that do not correspond cannot be blended into anything but a
+   * smear, and saying so beats making one.
+   */
+  tweenFrom(clipId: string, layerId: string, exposure: number, easing?: Easing): TweenRefusal | null;
   /** Take a drawing off a layer, leaving the one before it to hold. */
   clearCel(clipId: string, layerId: string, exposure: number): void;
   /** How many frames each drawing is held for: 1 on ones, 2 on twos. */
@@ -1571,6 +1581,30 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       if (layers === clip.anim.layers) return project;
       return { ...project, clips: { ...project.clips, [clipId]: { ...clip, anim: { ...clip.anim, layers } } } };
     });
+  },
+
+  tweenFrom(clipId, layerId, exposure, easing = 'linear') {
+    const clip = get().project.clips[clipId];
+    const layer = clip?.anim?.layers.find((entry) => entry.id === layerId);
+    if (!clip?.anim || !layer) return 'noStart';
+    const to = nextCelAfter(layer, exposure);
+    if (to === null) return 'noEnd';
+    const plan = planTween(layer, exposure, to, easing);
+    if (typeof plan === 'string') return plan;
+
+    get().transact('In-betweens', (project) => {
+      const current = project.clips[clipId];
+      if (!current?.anim) return project;
+      const layers = current.anim.layers.map((entry) => {
+        if (entry.id !== layerId) return entry;
+        // Anything already sitting in the gap is replaced: a half-filled gap
+        // tweened again would otherwise keep the old drawings among the new.
+        const kept = entry.cels.filter((cel) => cel.at <= exposure || cel.at >= to);
+        return { ...entry, cels: [...kept, ...plan.cels].sort((a, b) => a.at - b.at) };
+      });
+      return { ...project, clips: { ...project.clips, [clipId]: { ...current, anim: { ...current.anim, layers } } } };
+    });
+    return null;
   },
 
   addBlankCel(clipId, layerId, exposure) {

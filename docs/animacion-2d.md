@@ -130,9 +130,12 @@ Esa es la única decisión que, tomada mal, no se puede corregir después.
 
 ## 4. El plan por fases
 
-> **Estado a 1 de noviembre de 2026.** Hechas las fases **0, 1, 2 y 3**
-> (commits `4b9aedd` y `04935f7`). Se tomó el camino **C, el híbrido**: los
-> trazos se guardan como datos. Pendientes las fases 4 a 7.
+> **Estado a 1 de noviembre de 2026.** Hechas las fases **0 a 6**
+> Se tomó el camino **C, el híbrido**: los
+> trazos se guardan como datos, y esa decisión se cobró sola: los intermedios
+> (fase 5) y la exportación a Lottie (fase 6) salieron **sin tocar el modelo de
+> datos**, porque los trazos eran puntos y no imagen. Queda la fase 7
+> (rendimiento), y de la 6 falta la **importación** de Lottie.
 >
 > Un hallazgo del camino, por si se olvida: la exposición se calcula contando
 > también `sourceOffsetFrames`, no solo `startFrame`. Sin eso, partir un clip
