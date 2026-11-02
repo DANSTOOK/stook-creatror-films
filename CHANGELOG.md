@@ -7,11 +7,104 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1929 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **1964 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **90/90 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.4.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v3.2.0 — Intermedios, Lottie de ida y vuelta, y el plan terminado
+2026-11-02 · el plan de [docs/animacion-2d.md](docs/animacion-2d.md) completo: **fases 0 a 7, las ocho**
+
+### Añadido
+
+- **Intermedios.** Entre dos dibujos, la aplicación calcula los que van en medio
+  en vez de que los dibujes tú. Usa las **mismas nueve curvas** del resto del
+  editor, así que una tanda puede entrar y salir suave igual que un título.
+  - Medido en la aplicación: 0,12 → 0,252 → 0,384 → 0,516 → 0,648 → 0,78,
+    pasos idénticos de 0,132, y **la tanda entera es un paso de deshacer**.
+  - **Se niegan en vez de adivinar.** Solo funcionan si los dos dibujos tienen
+    el mismo número de trazos, y dicen por qué cuando no. Es exactamente la
+    razón por la que Pencil2D no los tiene: dos dibujos del mismo brazo se
+    pueden mezclar; un brazo y una cara no, y ninguna astucia convierte eso en
+    otra cosa que un borrón. Un mensaje que puedes leer vale más que un
+    destrozo que tienes que deshacer.
+  - Dentro de esa regla es indulgente: los trazos se emparejan **por dónde
+    están**, no por el orden en que los dibujaste. Si en un dibujo hiciste
+    cuerpo-brazo y en el otro brazo-cuerpo, emparejar por índice los cruzaría.
+  - El color **no se mezcla**: dos colores dan un tercero turbio que nadie
+    eligió, así que se queda el de partida.
+
+- **Exportar a Lottie.** Un archivo de formas, no de píxeles: lo abren After
+  Effects, Figma, una web o un móvil, y escala sin perder nitidez.
+  - Esto es el cobro de una decisión del primer día. En el documento de octubre
+    escribí que *«guardar píxeles cierra para siempre los intermedios y la
+    exportación a Lottie»*. Las dos puertas se abrieron **sin tocar el modelo
+    de datos**, porque un trazo era una lista de puntos y no una imagen.
+  - Cada dibujo se expone **exactamente los fotogramas que está mantenido**.
+  - **El borrador no se exporta**, y la aplicación te dice cuántos trazos dejó
+    fuera: Lottie no tiene un «quita lo que hay debajo en esta capa» que
+    respeten todos los reproductores, y disimularlo sería peor que decirlo.
+
+- **Importar Lottie**, que completa la ida y vuelta — la única prueba que
+  valida de verdad un formato.
+  - Medido en la aplicación: **tres trazos salen, tres vuelven**, los colores en
+    el mismo orden y los puntos idénticos hasta la cuarta cifra.
+  - Lo que entra es una **animación normal**: se borra, se interpola, se mueve y
+    se vuelve a exportar. Hay una prueba que lo guarda y lo carga como proyecto
+    para comprobar que no es un caso especial.
+  - Solo lee capas de forma con trazados reales, y **dice cuántas capas dejó
+    fuera**. Una imagen hay que descargarla, un texto hay que componerlo y una
+    composición anidada es otra animación entera: cada una es una función
+    aparte, y un archivo leído a medias que pierde media cara en silencio es
+    peor que uno que dice lo que no supo leer.
+
+### Arreglado
+
+- **Reproducir en bucle rehacía todos los dibujos en cada vuelta.** La caché
+  guardaba una textura **por clip**, no por dibujo, así que al cambiar de dibujo
+  se reemplazaba y volver atrás lo rasterizaba todo otra vez. Como reproducir en
+  bucle es lo que uno hace mientras anima, esto se pagaba constantemente.
+  - Ahora la clave es por exposición. Medido: la segunda vuelta pasó de **12
+    subidas de textura a 0**.
+  - No hizo falta añadir gestión de memoria: el gestor de texturas ya desalojaba
+    por uso más antiguo pasados 512 MB, así que una animación larga se cuida
+    sola.
+
+### Cómo se comprobó
+
+- **1964/1964** unitarias, **98/98** de ellas del módulo de animación.
+- **38/38** en la aplicación en marcha (`tests/ui/animation.mjs`).
+- **4/4** de rendimiento (`tests/perf/animation.mjs`), contando subidas de
+  textura reales.
+- `tsc` limpio en los dos proyectos.
+
+### Lo que la fase 7 enseñó, que es lo que más me importa de esta entrega
+
+Diseñé tres medidas. Las **dos primeras confirmaron** lo que esta aplicación
+venía afirmando desde octubre: un dibujo mantenido no sube ninguna textura, y 24
+fotogramas con 12 dibujos cuestan 11 subidas — una por dibujo, no por fotograma.
+Me habría quedado ahí satisfecho.
+
+La **tercera, escrita para poner en duda la afirmación** en vez de confirmarla,
+encontró el fallo de la caché. Está en `tests/perf/animation.mjs` con un
+comentario que dice cuál de las tres falló primero.
+
+### Problemas conocidos
+
+- **Lottie: la reproducción en un reproductor de terceros no está verificada.**
+  El archivo se comprobó campo por campo contra la especificación y vuelve
+  idéntico por la importación propia, pero no lo he abierto en After Effects ni
+  en lottiefiles.com.
+- Al importar, una capa de **imagen, texto o composición anidada** se deja
+  fuera y se te dice cuántas.
+- La primera búsqueda de fotos sigue siendo lenta: es Openverse en frío, no el
+  editor.
+- El tirón de ~78–100 ms en el proceso de GPU durante la reproducción sigue
+  abierto desde la v1.99, y no tiene que ver con la animación.
+
 
 ---
 
