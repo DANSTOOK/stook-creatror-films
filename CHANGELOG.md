@@ -7,11 +7,121 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **1964 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **2027 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **90/90 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.4.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v3.3.0 — Mejores momentos, y las voces de Azure
+2026-11-06 · dos funciones nuevas y **dos fallos que llevaban tiempo ahí**
+
+### Añadido
+
+- **Mejores momentos.** En una grabación larga, busca los trozos que merece la
+  pena conservar y te ofrece **dos cosas y nada más**: *marcarlos*, que no
+  cambia nada y te deja mirar, o *quedarte solo con ellos*, que es la edición.
+  Marcar va primero a propósito: la opinión de una máquina sobre qué minuto de
+  tu grabación importa conviene mirarla antes de que corte.
+  - **Dice en qué se basa, en una línea, dentro de la ventana.** Busca dónde
+    el habla sigue sin interrumpirse, que es donde alguien está explicando
+    algo. No mide nada nuevo: usa los silencios y los cambios de plano que la
+    aplicación ya detectaba para *Quitar silencios* y *Cortes por escena*.
+  - **No dice saber qué es interesante, porque no puede.** Puntuar por volumen
+    o por ritmo de corte sería inventarse una idea de «interesante» que no hay
+    forma de medir y disfrazar una suposición de criterio. La puntuación es
+    sencillamente cuánto dura el habla, y **se dibuja como una barra** para
+    que puedas no estar de acuerdo.
+  - Comprobado con voz de verdad: la propia aplicación leyó un guion con una
+    **pausa de dos segundos declarada**, y encontró exactamente **los dos
+    tramos** que el guion tiene. Marcar añadió 2 marcadores, **no cortó ni un
+    fotograma** y fue **un solo paso de deshacer**. Quedarse solo con los
+    momentos dejó la grabación en **496 → 433 fotogramas**.
+  - 21 pruebas unitarias del criterio y 9 comprobaciones en la aplicación.
+
+- **Las voces de Azure.** Las voces neuronales de Microsoft —**Dalia** y
+  **Jorge** de México, **Elvira** y **Álvaro** de España, y 46 más en
+  español— con **tu propia clave** de Azure.
+  - **De dónde salen.** Son las mismas que suenan en las páginas gratuitas de
+    texto a voz. La API de una de ellas devuelve **349 voces en 136 idiomas**
+    llamadas Jenny, Guy, Aria, Dalia, Jorge, Elvira: es el catálogo de Azure
+    detrás de identificadores opacos. No había un tercer motor que encontrar.
+  - **Lo que suma sobre esas páginas:** SSML. Pausas exactas, énfasis, y los
+    **estilos** (`newscast`, `cheerful`, `whispering`) para las voces que los
+    tienen. El estilo solo aparece si la voz **lo tiene de verdad**, según la
+    lista que da Azure: ofrecer uno que la voz ignora en silencio sería
+    mentirte.
+  - **El tono lo cambia Azure por dentro del modelo**, no desplazando el audio
+    ya hecho, así que la voz sigue sonando como ella misma. «Voz clara» y los
+    personajes se siguen aplicando igual.
+  - **La clave se guarda cifrada con el llavero del sistema**, igual que el
+    secreto de YouTube, solo en la carpeta de datos de la aplicación, y
+    **nunca llega a la página**: la interfaz pregunta si hay clave y qué puede
+    hablar, nunca su valor. Si Azure la rechaza, **no se guarda**.
+  - Las pausas escritas en el guion **no se le envían a Azure** como `<break>`.
+    Se siguen haciendo aquí, porque una duración **medida** vale más que una
+    **declarada**: los subtítulos se cuadran con el audio terminado.
+  - 42 pruebas unitarias del documento SSML carácter a carácter contra la
+    documentación de Microsoft, y 30 comprobaciones en la aplicación con Azure
+    suplantado en 127.0.0.1 para poder **leer la petición que sale**: las
+    cabeceras y el documento son los que la documentación exige, una pausa de
+    dos segundos más dos trozos de un segundo dan **4,00 s** en la línea de
+    tiempo, y `Tom & Jerry ... <ahora>` sale como entidades.
+
+### Arreglado
+
+- **La caja del guion desaparecía a la primera tecla.** El paso 1 se
+  consideraba «hecho» en cuanto había cualquier texto, y se le había dicho que
+  se abriera solo mientras no hubiera ninguno — así que **escribías una letra
+  y la caja se plegaba**, y el resto de la frase se iba a ninguna parte. Un
+  paso cuyo contenido *es* lo que escribes no puede plegarse por el hecho de
+  que escribas.
+  - Medido en la aplicación en marcha: la caja pasaba de estar a **no estar**
+    tras teclear una sola «H». Ahora sigue ahí y conserva lo tecleado, y hay
+    una comprobación permanente que teclea una letra y lo verifica.
+  - **Esto estaba en la v3.2.0 que tienes instalada.**
+
+- **Seis pruebas de interfaz se habían podrido sin que nadie lo viera.**
+  `tts`, `tts-pauses`, `tts-plus`, `tts-long`, `respeak` y `voice-cards`
+  buscaban controles que la reorganización en pasos había metido detrás de un
+  pliegue, y **la suite de publicación no las ejecuta**, así que fallaban en
+  silencio. Comprobado que ya fallaban antes de este cambio, mirando la
+  estructura del panel en el commit anterior, antes de echarme la culpa o
+  quitármela.
+  - Recuperadas: **tts 129/129, tts-pauses 16/16, tts-plus 12/12, tts-long
+    6/6, respeak 9/9, voice-cards 13/13.**
+
+### Sin verificar
+
+- **Que el Azure de verdad acepte el documento.** Todo lo de arriba se
+  comprueba contra un Azure suplantado en esta máquina, que es la única manera
+  de leer la petición que sale. Solo una clave real lo confirma, y el botón
+  **Comprobar** del panel es el que lo pregunta.
+- Qué voces exactas trae el bloque más nuevo del catálogo de Microsoft (Ava,
+  Andrew, Sofía, Valentina, Ximena, Emiliano). Los nombres encajan con las
+  voces multilingües y de alta fidelidad, pero no se verificaron una por una
+  contra el catálogo oficial. La lista que manda es siempre la que devuelve
+  Azure para tu clave.
+
+### Problemas conocidos
+
+- **Las voces de Azure necesitan internet y gastan tu cuota.** El nivel
+  gratuito son 500.000 caracteres al mes, verificado en la página de precios
+  de Microsoft. El precio del nivel pagado **no se da aquí**: su página lo
+  muestra como `$-` y su API de precios no devolvió la fila, así que habría
+  que verlo en la calculadora de Azure antes de fiarse de ninguna cifra.
+- **No se usa el endpoint de «Leer en voz alta» de Edge**, que es lo que casi
+  seguro hay detrás de las páginas gratuitas. Hoy exige una cabecera
+  `Sec-MS-GEC` cuya implementación de referencia vive en un módulo llamado
+  `drm.py`: un SHA-256 modificado más un segundo resumen «CS64», unas 500
+  líneas de constantes sacadas del binario de Edge. Eso no es una API sin
+  documentar, es **falsificar el token con el que el servidor comprueba quién
+  llama**, y se rompe cada vez que Microsoft rota las constantes — la versión 1
+  ya está muerta. Azure da las mismas voces por la vía legítima.
+- Sigue abierto desde la v1.99: el tirón de 78–100 ms de `GPUTask` durante la
+  reproducción.
 
 ---
 
