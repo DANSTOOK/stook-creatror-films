@@ -26,6 +26,7 @@ import { loadLocalFamilies } from './text/fonts';
 import { PreferencesDialog } from './components/Preferences/PreferencesDialog';
 import { openCaptionsForm } from './components/Captions/CaptionsTab';
 import { RemoveSilencesDialog } from './components/RemoveSilences/RemoveSilencesDialog';
+import { HighlightsDialog, useHighlightsDialog } from '@renderer/components/Highlights/HighlightsDialog';
 import { useSilenceDialogStore } from './edit/silenceDialog';
 import { ActivityBar } from './components/Layout/ActivityBar';
 import { ReframeDialog, useReframeDialog } from './components/Reframe/ReframeDialog';
@@ -297,6 +298,8 @@ export default function App(): JSX.Element {
   const preferencesPresence = usePresence(preferencesOpen);
   const silenceOpen = useSilenceDialogStore((state) => state.open);
   const silencePresence = usePresence(silenceOpen);
+  const highlightsClipId = useHighlightsDialog((state) => state.clipId);
+  const highlightsPresence = usePresence(highlightsClipId !== null);
   const reframeOpen = useReframeDialog((state) => state.open);
   const reframePresence = usePresence(reframeOpen);
   const scenesOpen = useSceneDialog((state) => state.open);
@@ -936,6 +939,7 @@ export default function App(): JSX.Element {
           {view === 'editor' && <SaveTemplateDialog />}
           {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
           {silencePresence.mounted && <RemoveSilencesDialog closing={silencePresence.closing} onClose={() => useSilenceDialogStore.getState().close()} />}
+          {highlightsPresence.mounted && <HighlightsDialog closing={highlightsPresence.closing} onClose={() => useHighlightsDialog.getState().close()} />}
           {reframePresence.mounted && <ReframeDialog closing={reframePresence.closing} onClose={() => useReframeDialog.getState().close()} />}
           {scenesPresence.mounted && <SceneCutsDialog closing={scenesPresence.closing} onClose={() => useSceneDialog.getState().close()} />}
           {voiceoverPresence.mounted && <VoiceoverDialog closing={voiceoverPresence.closing} onClose={() => useVoiceoverDialog.getState().close()} />}

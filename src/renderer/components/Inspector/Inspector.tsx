@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKeyframeWindow } from '@renderer/components/Keyframes/KeyframeWindow';
 import { onWorkspace } from '@renderer/workspaces/workspaces';
-import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, Snowflake, Music2, Trash2, X } from 'lucide-react';
+import { AudioLines, Diamond, FolderOpen, Palette, Plus, Clapperboard, RotateCcw, Scissors, Snowflake, Sparkles, Music2, Trash2, X } from 'lucide-react';
 import type { Clip, MaskConfig, MediaAsset, ProjectState } from '@shared/types';
 import { framesToTimecode } from '@shared/utils/timecode';
 import { createId } from '@shared/utils/id';
@@ -38,6 +38,7 @@ import { SpeedTab } from './SpeedTab';
 import { ProjectPanel } from './ProjectPanel';
 import { canRemoveSilences } from '@renderer/edit/silences';
 import { useSilenceDialogStore } from '@renderer/edit/silenceDialog';
+import { useHighlightsDialog } from '@renderer/components/Highlights/HighlightsDialog';
 import { useSceneDialog } from '@renderer/components/SceneCuts/SceneCutsDialog';
 import { freezeFrame } from '@renderer/edit/freezeRun';
 import { DenoiseRow } from './DenoiseRow';
@@ -805,6 +806,21 @@ export function Inspector(): JSX.Element {
           >
             <Scissors size={13} />
             {t('silence.button')}
+          </button>
+        </div>
+      )}
+      {/* Best moments: the same sound asked a different question - not
+          "where is it quiet" but "where does the talking run on". */}
+      {canRemoveSilences(clip) && (
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            data-testid="inspector-highlights"
+            className="tool-button h-control w-full justify-center border border-panel-600"
+            onClick={() => useHighlightsDialog.getState().open(clip.id)}
+          >
+            <Sparkles size={13} />
+            {t('highlights.button')}
           </button>
         </div>
       )}
