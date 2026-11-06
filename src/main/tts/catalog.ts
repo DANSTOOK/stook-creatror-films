@@ -35,7 +35,17 @@ import type { TtsVoiceId } from '@shared/types/ipc';
  */
 
 export type TtsLanguage = 'es' | 'en';
-export type TtsEngineKind = 'piper' | 'kokoro';
+
+/**
+ * Which engine speaks a voice.
+ *
+ * `piper` and `kokoro` are programs in the installer and need nothing but
+ * this computer. `azure` is Microsoft's Azure AI Speech over the network: it
+ * needs a key the person supplies and an internet connection, and the voices
+ * it offers are not listed in this file at all - the service's own voices
+ * list is the truth about them (main/tts/azure/voices.ts).
+ */
+export type TtsEngineKind = 'piper' | 'kokoro' | 'azure';
 
 export interface TtsVoice {
   id: TtsVoiceId;

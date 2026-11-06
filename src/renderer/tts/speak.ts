@@ -30,6 +30,12 @@ export interface TtsOptions {
   captions: boolean;
   /** A character for the voice: narrator, radio, phone, robot, ... (main/tts/finish.ts). */
   effect: TtsEffect;
+  /**
+   * An expressive style, for an Azure voice that has one. Not remembered
+   * between sessions: it belongs to one voice, and the voice chosen next time
+   * may not have it.
+   */
+  style?: string;
 }
 
 const EFFECTS: readonly TtsEffect[] = ['none', 'warm', 'radio', 'phone', 'megaphone', 'robot', 'whisper', 'cave', 'stadium'];
@@ -128,7 +134,7 @@ export async function generate(text: string, options: TtsOptions, voice: string,
   const jobId = job ?? createId('tts');
   const stop = onProgress ? window.filmora.onTtsProgress?.((event) => event.jobId === jobId && onProgress(event.fraction)) : undefined;
   try {
-    const result = await window.filmora.ttsGenerate?.(jobId, { text, voice, speed: options.speed, pitch: options.pitch, enhance: options.enhance, effect: options.effect });
+    const result = await window.filmora.ttsGenerate?.(jobId, { text, voice, speed: options.speed, pitch: options.pitch, enhance: options.enhance, effect: options.effect, style: options.style });
     if (!result || result.cancelled || !result.path) return null;
     const uri = await window.filmora.mediaUrl(result.path);
     const fps = useProjectStore.getState().project.fps;

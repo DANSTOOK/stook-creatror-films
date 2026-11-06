@@ -129,9 +129,31 @@ async function main() {
     await window.getByRole('menuitem', { name: 'Timeline', exact: true }).click();
     await window.getByRole('menuitem', { name: /Text to speech/ }).click();
     await window.getByTestId('tts-dialog').waitFor({ state: 'visible', timeout: 15_000 });
+    // The voice step is folded until there is a script, and folds itself again
+    // once a voice is chosen, so it is opened by its heading - as a person does.
+    const box = window.getByTestId('tts-text');
+    /*
+     * Before anything else: typing must not make the box vanish.
+     *
+     * Step one is "done" as soon as there is any text, and it used to be told
+     * to open only while there was none - so the first keystroke folded the
+     * box away and the rest of the sentence went nowhere. One letter, typed
+     * as a person types it, is enough to catch that.
+     */
+    await box.click();
+    await window.keyboard.type('H');
+    await sleep(400);
+    check('the script box survives the first keystroke', await box.isVisible().catch(() => false));
+    check('and holds what was typed', (await box.inputValue()) === 'H');
+    await box.fill('');
+
+    // The voice step folds itself as soon as a voice is chosen, which happens
+    // on its own, so it is opened by its heading the way a person opens it.
+    await window.getByTestId('tts-step-2-header').click();
+    await window.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
+    await window.getByTestId('tts-more-voices').click();
     await window.getByTestId('tts-language').selectOption('es');
     await window.getByTestId('tts-voice-es-419-dora').click();
-    const box = window.getByTestId('tts-text');
 
     /* 1. the pause buttons ---------------------------------------------------------------------- */
     await box.fill('Hola a todos. Empezamos ahora.');
@@ -176,6 +198,16 @@ async function main() {
     /* 2. generated: silent for those two seconds, captions after it ----------------------------- */
     const generate = async (text, { captions = false } = {}) => {
       await box.fill(text);
+      // The captions tick lives in step three's "fine" fold; both are opened
+      // the way a person opens them, and only when they are not already open.
+      if (!(await window.getByTestId('tts-captions').isVisible().catch(() => false))) {
+        if (!(await window.getByTestId('tts-fine').isVisible().catch(() => false))) {
+          await window.getByTestId('tts-step-3-header').click();
+          await window.getByTestId('tts-fine').waitFor({ state: 'visible', timeout: 10_000 });
+        }
+        await window.getByTestId('tts-fine').click();
+        await window.getByTestId('tts-captions').waitFor({ state: 'visible', timeout: 10_000 });
+      }
       const wantCaptions = await window.getByTestId('tts-captions').isChecked();
       if (wantCaptions !== captions) await window.getByTestId('tts-captions').click();
       const before = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);

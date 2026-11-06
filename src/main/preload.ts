@@ -289,6 +289,11 @@ const api: FilmoraApi = {
   ttsPreview: (request) => ipcRenderer.invoke(IPC.ttsPreview, request) as Promise<string>,
   ttsGenerate: (jobId, request) => ipcRenderer.invoke(IPC.ttsGenerate, jobId, request) as Promise<TtsResult>,
   ttsCancel: (jobId) => ipcRenderer.invoke(IPC.ttsCancel, jobId) as Promise<void>,
+  // The key goes one way only. Nothing sends it back to the page: the status
+  // it gets says whether there is one and what it can speak, never its value.
+  ttsAzureSave: (key, region) => ipcRenderer.invoke(IPC.ttsAzureSave, key, region) as Promise<TtsEngineStatus>,
+  ttsAzureForget: () => ipcRenderer.invoke(IPC.ttsAzureForget) as Promise<TtsEngineStatus>,
+  ttsAzureCheck: () => ipcRenderer.invoke(IPC.ttsAzureCheck) as Promise<TtsEngineStatus>,
   onTtsProgress(listener) {
     const handler = (_event: unknown, progress: TtsProgressEvent): void => listener(progress);
     ipcRenderer.on(IPC.ttsProgress, handler);

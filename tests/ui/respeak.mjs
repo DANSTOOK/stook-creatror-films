@@ -88,6 +88,11 @@ async function main() {
     const first = 'Hola, esta es la primera versión de la locución.';
     await window.getByTestId('library-tab-voice').click();
     await window.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 15_000 });
+    // The voice list is inside step two, which folds itself once a voice is
+    // chosen; both are opened the way a person opens them.
+    await window.getByTestId('tts-step-2-header').click();
+    await window.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
+    await window.getByTestId('tts-more-voices').click();
     await window.getByTestId('tts-language').selectOption('es');
     await window.getByTestId('tts-text').fill(first);
     await window.getByTestId('tts-generate').click();

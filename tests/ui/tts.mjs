@@ -80,12 +80,24 @@ async function generate(app, window, { language, voice, text }) {
   await appMenu(window, 'Timeline', /Text to speech|Texto a voz/);
   const tts = window.getByTestId('tts-dialog');
   await tts.waitFor({ state: 'visible', timeout: 15_000 });
+  // The script comes first: step two is folded until there is something to
+  // say, and folds itself again once a voice is chosen - so it is opened the
+  // way a person opens it, by its heading.
+  // Step one folds once something has been made, so on a second pass it is
+  // reopened before the next script is typed.
+  if (!(await window.getByTestId('tts-text').isVisible().catch(() => false))) {
+    await window.getByTestId('tts-step-1').click();
+    await window.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 10_000 });
+  }
+  await window.getByTestId('tts-text').fill(text);
+  await window.getByTestId('tts-step-2').click();
+  await window.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
+  await window.getByTestId('tts-more-voices').click();
   await window.getByTestId('tts-language').selectOption(language);
   const card = window.getByTestId(`tts-voice-${voice}`);
   const present = await card.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
   if (!present) return { present: false };
   await card.click();
-  await window.getByTestId('tts-text').fill(text);
   const before = await window.evaluate(() => Object.keys(window.__scfStore.getState().project.clips).length);
   const started = Date.now();
   await window.getByTestId('tts-generate').click();

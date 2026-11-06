@@ -154,6 +154,9 @@ export const IPC = {
   ttsPreview: 'tts:preview',
   ttsGenerate: 'tts:generate',
   ttsCancel: 'tts:cancel',
+  ttsAzureSave: 'tts:azure-save',
+  ttsAzureForget: 'tts:azure-forget',
+  ttsAzureCheck: 'tts:azure-check',
   ttsProgress: 'tts:progress',
   mattesStatus: 'mattes:status',
   mattesModelDownload: 'mattes:model-download',
@@ -330,8 +333,8 @@ export type TtsEffect = 'none' | 'warm' | 'radio' | 'phone' | 'megaphone' | 'rob
 
 export interface TtsVoiceStatus {
   id: TtsVoiceId;
-  /** Which program speaks it. */
-  engine: 'piper' | 'kokoro';
+  /** Which program speaks it, or 'azure' for a voice spoken over the network. */
+  engine: 'piper' | 'kokoro' | 'azure';
   /** A person's name for it (Dora, Aldo, ...). */
   name: string;
   /** What it sounds like, as an i18n key's last part (tts.persona.<persona>). */
@@ -346,6 +349,26 @@ export interface TtsVoiceStatus {
   present: boolean;
   /** Bytes to fetch for a downloadable voice not yet here; 0 when bundled or present. */
   downloadBytes: number;
+  /**
+   * The expressive styles this voice has, for Azure's `<mstts:express-as>`
+   * (e.g. 'newscast', 'cheerful'). Empty for a voice with none and for every
+   * local voice: only Azure's own voices list knows which voice has any.
+   */
+  styles?: string[];
+}
+
+/** What the app knows about the Azure account, with no part of the key in it. */
+export interface AzureSpeechStatus {
+  /** A key and region are stored on this computer. */
+  configured: boolean;
+  /** The region or endpoint the key is for; empty when none is set. */
+  region: string;
+  /** The key on disk is protected by the operating system's keychain. */
+  keychain: boolean;
+  /** How many of the offered voices this key can actually speak; 0 until it is checked. */
+  voiceCount: number;
+  /** Why the last check failed, as an i18n key's last part (tts.azure.error.*); absent when it worked. */
+  problem?: string;
 }
 
 export interface TtsEngineStatus {
@@ -361,6 +384,8 @@ export interface TtsEngineStatus {
   voices: TtsVoiceStatus[];
   /** Where downloadable voices come from, as the permission prompt names it. */
   voiceSource: string;
+  /** The Azure account, for the panel's own section. Never carries the key. */
+  azure: AzureSpeechStatus;
 }
 
 export interface TtsVoiceProgress {
@@ -380,6 +405,12 @@ export interface TtsRequest {
   enhance?: boolean;
   /** A character: narrator's warmth, radio, phone, robot, ... (main/tts/finish.ts). None when absent. */
   effect?: TtsEffect;
+  /**
+   * An expressive style for an Azure voice that has one, from that voice's
+   * `styles`. Ignored by every other engine, and by Azure for a voice whose
+   * own list does not contain it.
+   */
+  style?: string;
 }
 
 export interface TtsResult {
@@ -1040,6 +1071,12 @@ export interface FilmoraApi {
   /** Synthesise the full text to a WAV on disk; returns the path for import. */
   ttsGenerate?(jobId: string, request: TtsRequest): Promise<TtsResult>;
   ttsCancel?(jobId: string): Promise<void>;
+  /** Store a key and region, check them against Azure, and report what they can speak. */
+  ttsAzureSave?(key: string, region: string): Promise<TtsEngineStatus>;
+  /** Forget the stored key. */
+  ttsAzureForget?(): Promise<TtsEngineStatus>;
+  /** Ask Azure again with the stored key, e.g. after the connection came back. */
+  ttsAzureCheck?(): Promise<TtsEngineStatus>;
   onTtsProgress?(listener: (progress: TtsProgressEvent) => void): () => void;
 
   /* Remove background: mattes computed on this computer. Optional, like captions. */

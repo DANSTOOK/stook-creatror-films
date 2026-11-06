@@ -127,9 +127,24 @@ async function main() {
 
     console.log('2. a line: an audio clip, and nothing else');
     const line = 'Hola a todos. Hoy vamos a editar un video en pocos minutos, paso a paso. Empecemos.';
+    // Step two folds itself once a voice is chosen - one is chosen on its own
+    // - so it is opened by its heading, and the voice list unfolded inside it.
+    await tts.getByTestId('tts-step-2-header').click();
+    await tts.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
+    await tts.getByTestId('tts-more-voices').click();
     await tts.getByTestId('tts-language').selectOption('es');
     await tts.getByTestId('tts-voice-es-419-dora').click();
     await tts.getByTestId('tts-text').fill(line);
+    // Pitch, "clear voice", the characters and the captions tick are all in
+    // step three's "fine" fold; both are opened once, here.
+    if (!(await tts.getByTestId('tts-pitch').isVisible().catch(() => false))) {
+      if (!(await tts.getByTestId('tts-fine').isVisible().catch(() => false))) {
+        await tts.getByTestId('tts-step-3-header').click();
+        await tts.getByTestId('tts-fine').waitFor({ state: 'visible', timeout: 10_000 });
+      }
+      await tts.getByTestId('tts-fine').click();
+      await tts.getByTestId('tts-pitch').waitFor({ state: 'visible', timeout: 10_000 });
+    }
     await tts.getByTestId('tts-pitch').fill('0');
     if (!(await tts.getByTestId('tts-enhance').isChecked())) await tts.getByTestId('tts-enhance').check();
     const captionsOff = !(await tts.getByTestId('tts-captions').isChecked());

@@ -64,6 +64,13 @@ async function main() {
     await window.getByRole('button', { name: 'Blank project' }).click({ force: true, timeout: 30_000 });
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
     await window.getByTestId('library-tab-voice').click();
+    // The characters live in step two, which folds itself once a voice is
+    // chosen - and one is chosen on its own. Opened by its heading, as a
+    // person opens it.
+    await window.getByTestId('tts-step-2-header').waitFor({ state: 'visible', timeout: 15_000 });
+    if (!(await window.getByTestId('tts-characters').isVisible().catch(() => false))) {
+      await window.getByTestId('tts-step-2-header').click();
+    }
     await window.getByTestId('tts-characters').waitFor({ state: 'visible', timeout: 15_000 });
     // The voices are listed once the engine has answered.
     await window.waitForSelector('[data-testid^="tts-voice-"][role="radio"]', { timeout: 15_000 }).catch(() => undefined);
@@ -109,6 +116,15 @@ async function main() {
     check('the face lifts a little under the pointer, and stays put with less motion asked for', /^matrix\(1\.0[5-9]/.test(lifted) && still === 'none', `${lifted} / ${still}`);
 
     /* 3. picking -------------------------------------------------------------------------------------- */
+    // The pace, pitch and style controls are in step three's "fine" fold.
+    if (!(await window.getByTestId('tts-speed').isVisible().catch(() => false))) {
+      if (!(await window.getByTestId('tts-fine').isVisible().catch(() => false))) {
+        await window.getByTestId('tts-step-3-header').click();
+        await window.getByTestId('tts-fine').waitFor({ state: 'visible', timeout: 10_000 });
+      }
+      await window.getByTestId('tts-fine').click();
+      await window.getByTestId('tts-speed').waitFor({ state: 'visible', timeout: 10_000 });
+    }
     const state = () => window.evaluate(() => ({
       speed: Number(document.querySelector('[data-testid="tts-speed"]').value),
       pitch: Number(document.querySelector('[data-testid="tts-pitch"]').value),

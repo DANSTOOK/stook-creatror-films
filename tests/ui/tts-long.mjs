@@ -127,6 +127,15 @@ async function appMenu(window, menu, item) {
 async function startGenerate(window, { language, voice, text }) {
   await appMenu(window, 'Timeline', /Text to speech|Texto a voz/);
   await window.getByTestId('tts-dialog').waitFor({ state: 'visible', timeout: 15_000 });
+  // Step two folds itself once a voice is chosen, and one is chosen on its
+  // own, so it is opened by its heading and the voice list unfolded inside it.
+  if (!(await window.getByTestId('tts-more-voices').isVisible().catch(() => false))) {
+    await window.getByTestId('tts-step-2-header').click();
+    await window.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
+  }
+  if (!(await window.getByTestId('tts-language').isVisible().catch(() => false))) {
+    await window.getByTestId('tts-more-voices').click();
+  }
   await window.getByTestId('tts-language').selectOption(language);
   await window.getByTestId(`tts-voice-${voice}`).click();
   await window.getByTestId('tts-text').fill(text);

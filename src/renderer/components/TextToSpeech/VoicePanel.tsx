@@ -110,6 +110,12 @@ export function VoicePanel(): JSX.Element {
   const [enhance, setEnhance] = useState(saved.enhance);
   const [captions, setCaptions] = useState(saved.captions);
   const [character, setCharacter] = useState<string | null>(null);
+  /** An Azure voice's expressive style. Not remembered: it belongs to one voice, and the next voice may not have it. */
+  const [style, setStyle] = useState('');
+  /** What is typed into the Azure boxes. The key is sent once and never read back. */
+  const [azureKey, setAzureKey] = useState('');
+  const [azureRegion, setAzureRegion] = useState('');
+  const [azureBusy, setAzureBusy] = useState(false);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -144,6 +150,31 @@ export function VoicePanel(): JSX.Element {
   const voices = useMemo(() => (status?.voices ?? []).filter((voice) => voice.present), [status]);
   const forLanguage = useMemo(() => voices.filter((voice) => voice.language === language), [voices, language]);
   const voice = forLanguage.find((candidate) => candidate.id === voiceId) ?? forLanguage[0];
+  const azure = status?.azure;
+  const styles = voice?.styles ?? [];
+
+  // A style belongs to the voice that has it. Choosing another voice drops it
+  // rather than sending Azure a style it would silently ignore.
+  useEffect(() => {
+    if (style && !styles.includes(style)) setStyle('');
+  }, [style, styles]);
+
+  /** The region box starts at whatever is already stored, so Check is one click. */
+  useEffect(() => {
+    if (azure?.region) setAzureRegion((current) => current || azure.region);
+  }, [azure?.region]);
+
+  const azureCall = async (run: () => Promise<TtsEngineStatus | undefined>): Promise<void> => {
+    setAzureBusy(true);
+    try {
+      const next = await run();
+      if (next) setStatus(next);
+    } catch (error) {
+      notify(errorText(error), 'error');
+    } finally {
+      setAzureBusy(false);
+    }
+  };
 
   useEffect(() => {
     rememberTtsOptions({ language, voice: voice?.id ?? voiceId, speed, pitch, enhance, captions, effect });
@@ -182,7 +213,9 @@ export function VoicePanel(): JSX.Element {
     try {
       // The script's first line, or the voice introducing itself.
       const line = text.trim() || t('tts.sample', { name: who.name });
-      const url = await window.filmora.ttsPreview?.({ text: line, voice: who.id, speed, pitch, enhance, effect });
+      // The style only applies to the voice it came from, so a preview of a
+      // different voice in the list is heard without it.
+      const url = await window.filmora.ttsPreview?.({ text: line, voice: who.id, speed, pitch, enhance, effect, style: who.id === voice?.id ? style : undefined });
       if (url) {
         const audio = new Audio(url);
         audioRef.current = audio;
@@ -203,7 +236,7 @@ export function VoicePanel(): JSX.Element {
     jobRef.current = jobId;
     try {
       const start = useProjectStore.getState().project.currentFrame;
-      const clipId = await speakText(text, start, { language, voice: voice.id, speed, pitch, enhance, captions, effect }, voice.id, setProgress, jobId);
+      const clipId = await speakText(text, start, { language, voice: voice.id, speed, pitch, enhance, captions, effect, style: style || undefined }, voice.id, setProgress, jobId);
       if (clipId) notify(t('tts.added', { name: voice.name }), 'success');
     } catch (error) {
       notify(errorText(error), 'error');
@@ -217,10 +250,112 @@ export function VoicePanel(): JSX.Element {
     if (jobRef.current) void window.filmora.ttsCancel?.(jobRef.current);
   };
 
+  /*
+   * Azure's own section.
+   *
+   * Defined here rather than inline because it is also the whole of what the
+   * panel can offer when there is no voice on this computer at all: without
+   * it, a build with no local engine - or one whose voices have been removed
+   * - would show a dead end with no way to reach the voices that do work.
+   */
+  const azureSection = (
+    <details className="rounded-control bg-panel-900/60 px-2 py-1" data-testid="tts-azure">
+      <summary className="cursor-pointer text-2xs text-slate-400">{t('tts.azure.title')}</summary>
+      <section className="mt-1.5 space-y-1.5">
+        <p className="text-2xs leading-relaxed text-slate-400">{t('tts.azure.what')}</p>
+
+        {azure?.configured ? (
+          <>
+            <p className="text-2xs text-slate-300" data-testid="tts-azure-state">
+              {azure.voiceCount > 0
+                ? t('tts.azure.ready', { count: azure.voiceCount, region: azure.region })
+                : t(`tts.azure.error.${azure.problem ?? 'unknown'}` as MessageKey)}
+            </p>
+            {!azure.keychain && <p className="text-2xs text-amber-300">{t('tts.azure.noKeychain')}</p>}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="tool-button h-6 border border-panel-600 px-2 text-2xs"
+                data-testid="tts-azure-check"
+                disabled={azureBusy}
+                onClick={() => void azureCall(() => window.filmora.ttsAzureCheck?.() ?? Promise.resolve(undefined))}
+              >
+                {azureBusy ? t('tts.azure.checking') : t('tts.azure.check')}
+              </button>
+              <button
+                type="button"
+                className="tool-button h-6 border border-panel-600 px-2 text-2xs"
+                data-testid="tts-azure-forget"
+                disabled={azureBusy}
+                onClick={() => void azureCall(() => window.filmora.ttsAzureForget?.() ?? Promise.resolve(undefined))}
+              >
+                {t('tts.azure.forget')}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-2xs text-slate-400" data-testid="tts-azure-state">
+              {azure?.problem ? t(`tts.azure.error.${azure.problem}` as MessageKey) : t('tts.azure.noKey')}
+            </p>
+            <label className="block space-y-0.5">
+              <span className="field-label">{t('tts.azure.key')}</span>
+              {/* A password field: the key is a secret, and nothing reads it back out. */}
+              <input
+                type="password"
+                className="input-field h-6 w-full px-1 text-2xs"
+                data-testid="tts-azure-key"
+                autoComplete="off"
+                spellCheck={false}
+                value={azureKey}
+                onChange={(event) => setAzureKey(event.target.value)}
+              />
+              <span className="block text-2xs leading-snug text-slate-500">{t('tts.azure.keyHint')}</span>
+            </label>
+            <label className="block space-y-0.5">
+              <span className="field-label">{t('tts.azure.region')}</span>
+              <input
+                type="text"
+                className="input-field h-6 w-full px-1 text-2xs"
+                data-testid="tts-azure-region"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="eastus"
+                value={azureRegion}
+                onChange={(event) => setAzureRegion(event.target.value)}
+              />
+              <span className="block text-2xs leading-snug text-slate-500">{t('tts.azure.regionHint')}</span>
+            </label>
+            <button
+              type="button"
+              className="button-primary h-6 px-2 text-2xs"
+              data-testid="tts-azure-save"
+              disabled={azureBusy || !azureKey.trim() || !azureRegion.trim()}
+              onClick={() =>
+                void azureCall(async () => {
+                  const next = await window.filmora.ttsAzureSave?.(azureKey.trim(), azureRegion.trim());
+                  // Out of the page as soon as it is stored: there is no
+                  // reason for the key to sit in a React state afterwards.
+                  setAzureKey('');
+                  return next;
+                })
+              }
+            >
+              {azureBusy ? t('tts.azure.checking') : t('tts.azure.save')}
+            </button>
+          </>
+        )}
+      </section>
+    </details>
+  );
+
   if (!hasNativeBridge() || status?.available === false) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col" data-testid="tts-unavailable">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-testid="tts-unavailable">
         <PanelEmptyState icon={AudioLines} title={t('tts.unavailable')} hint={t('tts.unavailableHint')} />
+        {/* Not a dead end: Azure's voices need nothing installed, so the way
+            to them is offered here too. */}
+        {hasNativeBridge() && <div className="p-2">{azureSection}</div>}
       </div>
     );
   }
@@ -234,7 +369,16 @@ export function VoicePanel(): JSX.Element {
           title={t('tts.step1')}
           hint={t('tts.step1Hint')}
           done={spoken.trim().length > 0}
-          open={spoken.trim().length === 0}
+          /*
+           * Open until it is folded by hand.
+           *
+           * This used to be `spoken.trim().length === 0`, which read sensibly
+           * and was wrong: the step is "done" as soon as there is any text, so
+           * the first keystroke folded the box away and the rest of what was
+           * being typed went nowhere. A step whose content IS the typing
+           * cannot fold itself on the strength of having some.
+           */
+          open
           summary={spoken.trim() ? `${spoken.trim().slice(0, 48)}${spoken.trim().length > 48 ? '…' : ''}` : undefined}
           testId="tts-step-1"
         >
@@ -368,7 +512,7 @@ export function VoicePanel(): JSX.Element {
                       <span className="flex items-center gap-1.5 text-xs text-slate-100">
                         {item.name}
                         <span className="rounded bg-panel-800 px-1 text-[10px] uppercase tracking-wide text-slate-400">
-                          {t(item.engine === 'kokoro' ? 'tts.engineNatural' : 'tts.engineQuick')}
+                          {t(item.engine === 'azure' ? 'tts.engineAzure' : item.engine === 'kokoro' ? 'tts.engineNatural' : 'tts.engineQuick')}
                         </span>
                       </span>
                       <span className="block truncate text-2xs text-slate-400">
@@ -393,8 +537,30 @@ export function VoicePanel(): JSX.Element {
               );
             })}
           </ul>
+
+          {/* Only shown for a voice that actually has styles: Azure ignores a
+              style a voice does not have, which would look like the app lying. */}
+          {styles.length > 0 && (
+            <label className="flex items-center gap-2 text-2xs text-slate-300" data-testid="tts-azure-style-row">
+              <span className="w-20 shrink-0">{t('tts.azure.style')}</span>
+              <select
+                className="input-field h-6 flex-1 px-1 text-2xs"
+                data-testid="tts-azure-style"
+                value={style}
+                onChange={(event) => own(setStyle)(event.target.value)}
+              >
+                <option value="">{t('tts.azure.styleNone')}</option>
+                {styles.map((one) => (
+                  <option key={one} value={one}>
+                    {one}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </section>
         </details>
+
         </Step>
 
         <Step
@@ -454,6 +620,14 @@ export function VoicePanel(): JSX.Element {
         {voice && <p className="text-[10px] leading-relaxed text-slate-500">{t('tts.licence', { name: voice.name, licence: voice.licence })}</p>}
         </Step>
         </Steps>
+
+        {/*
+          Azure, after the three steps rather than inside one: setting a key
+          is something a person does once, not a step of writing a script -
+          and step two is folded away until there is text, which would have
+          hidden it exactly when someone first goes looking for it.
+        */}
+        {azureSection}
       </div>
 
       <footer className="flex shrink-0 items-center gap-2 border-t border-[color:var(--hairline)] p-2">
