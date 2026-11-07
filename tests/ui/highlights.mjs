@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
+import { signIn, standIn } from './azure-stub.mjs';
 
 /**
  * Best moments, in the running app: `node tests/ui/highlights.mjs`
@@ -12,13 +13,14 @@ import { _electron as electron } from 'playwright';
  * and the answer can be checked against what was actually said rather than
  * against a recording nobody can look at.
  *
- * Needs the staged build/ (piper and its voices), like the caption tests.
+ * The voice is Azure's, stood in for on 127.0.0.1, so this runs with no key
+ * and no network. What that costs here is nothing: the pauses are made by the
+ * app itself, so the silences this test looks for are exactly where the
+ * script puts them whoever says the words.
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'highlights');
-const ttsDir = join(root, 'build', 'piper');
-const voicesDir = join(root, 'build', 'tts-voices');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 /**
@@ -38,11 +40,11 @@ const check = (name, passed, detail = '') => {
 
 async function main() {
   if (!existsSync(join(root, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
-  for (const [path, what] of [[ttsDir, 'piper'], [voicesDir, 'the voices']]) {
-    if (!existsSync(path)) throw new Error(`Missing ${what} at ${path} - stage build/ first.`);
-  }
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
+
+  const azure = standIn();
+  const endpoint = await azure.listen();
 
   const app = await electron.launch({
     args: [`--user-data-dir=${join(work, `profile-${process.pid}`)}`, join(root, 'dist-electron/main/index.js')],
@@ -53,9 +55,7 @@ async function main() {
       SCF_BACKGROUND: '1',
       SCF_SKIP_HOME: '1',
       SCF_NO_CLOSE_PROMPT: '1',
-      SCF_TTS_DIR: ttsDir,
-      SCF_TTS_BUNDLED_DIR: voicesDir,
-      SCF_TTS_VOICES_DIR: join(work, 'voices'),
+      SCF_AZURE_ENDPOINT: endpoint,
     },
   });
   const pid = app.process().pid;
@@ -68,8 +68,8 @@ async function main() {
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
 
     console.log('1. a recording with two stretches of talking and a gap between');
-    await window.getByTestId('library-tab-voice').click();
-    await window.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 15_000 });
+    // A key first: there are no voices without one.
+    await signIn(window);
     await window.getByTestId('tts-text').fill(SCRIPT);
     await window.getByTestId('tts-generate').click();
     const spoke = await window
@@ -153,6 +153,7 @@ async function main() {
     check('nothing in the console', issues.length === 0, issues.slice(0, 2).join(' | '));
   } finally {
     await app.close().catch(() => undefined);
+    await azure.close().catch(() => undefined);
     try { execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {}
   }
   const passed = checks.filter(Boolean).length;

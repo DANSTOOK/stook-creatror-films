@@ -22,14 +22,16 @@ build/whisper/
 # Speech models, wherever one ends up.
 ggml-*.bin
 
-# TTS engine, bundled voices and bundled captions model: staged by the
-# release workflow (.github/workflows/release.yml), never committed - like
-# build/whisper above. The .onnx weights would be hundreds of MB in git.
-build/piper/
-build/tts-voices/
+# The bundled captions model: staged by the release workflow
+# (.github/workflows/release.yml), never committed - like build/whisper above.
 build/whisper-models/
 
-# Text-to-speech engines staged for the installer (the release workflow fetches them).
+# Left over from the two text-to-speech engines that used to be staged here
+# (Piper and sherpa-onnx with the Kokoro model). Nothing fetches them any
+# more - the voices are Azure's - but a checkout that still has them should
+# not offer them to a commit.
+build/piper/
+build/tts-voices/
 build/sherpa-onnx/
 build/sherpa-x/
 build/kokoro-x/

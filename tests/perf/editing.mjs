@@ -81,8 +81,6 @@ async function main() {
       SCF_BACKGROUND: process.env.SCF_BACKGROUND ?? '1',
       SCF_NO_CLOSE_PROMPT: '1',
       FILMORA_GPU: process.env.PERF_GPU ?? 'high-performance',
-      SCF_TTS_DIR: join(projectRoot, 'build', 'piper'),
-      SCF_TTS_BUNDLED_DIR: join(projectRoot, 'build', 'tts-voices'),
     },
   });
   const pid = app.process().pid;

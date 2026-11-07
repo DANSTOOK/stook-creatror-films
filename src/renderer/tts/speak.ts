@@ -12,8 +12,8 @@ import { scriptWords } from '@shared/tts/script';
 /**
  * Text to speech onto the timeline, from wherever it is asked for: the Text
  * to speech window, a title's "Read aloud", a captions track's "Narrate".
- * The voice is made on this computer (main/tts: Piper, then a clear-voice
- * finish), kept with the app's data, and put at the given frame on a Voice
+ * The voice is made by Azure AI Speech on the person's own key (main/tts,
+ * then a clear-voice finish), kept with the app's data, and put at the given frame on a Voice
  * track on the dialogue bus - so music under it ducks - with, when asked,
  * captions of what it says. One undo step a call.
  */
@@ -73,10 +73,18 @@ export function rememberTtsOptions(options: TtsOptions): void {
   }
 }
 
-/** The voice to speak with: the one chosen, if it is here, else the first present in the language. */
+/**
+ * The voice to speak with: the one chosen, if the key can speak it, else the
+ * first one it can in the language.
+ *
+ * Every voice in the status is already one the stored key can speak - the main
+ * side intersects its shortlist with Azure's own list - so there is nothing to
+ * filter here any more. There was, when a voice could be in the list and not
+ * yet on this computer.
+ */
 export function voiceFor(status: TtsEngineStatus | null | undefined, options: TtsOptions): string | null {
-  const present = (status?.voices ?? []).filter((voice) => voice.present);
-  return (present.find((voice) => voice.id === options.voice) ?? present.find((voice) => voice.language === options.language) ?? present[0])?.id ?? null;
+  const offered = status?.voices ?? [];
+  return (offered.find((voice) => voice.id === options.voice) ?? offered.find((voice) => voice.language === options.language) ?? offered[0])?.id ?? null;
 }
 
 /** Lines for captions of `text` over `seconds`: a sentence each (long ones in pieces), timed by their length. */

@@ -4,50 +4,42 @@ import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { signIn, standIn, spokenText } from './azure-stub.mjs';
 
 /**
- * Text to speech, end to end in the running app, and the round trip that
- * proves both new features at once: generate Spanish and English with the
- * bundled voices, confirm each lands as an audio clip at the playhead on a new
- * track with the right duration and real (non-silent) sound, then run the
- * app's own engine (whisper-cli with the bundled captions model) over the
- * generated audio and check the words come back.
+ * Every voice the app offers, end to end in the running app:
+ * `node tests/ui/tts.mjs`
  *
- * Launch env and the blank-project start follow tests/ui/captions.mjs. The
- * engine and voices are the ones staged in build/ (SCF_TTS_DIR,
- * SCF_TTS_BUNDLED_DIR); the captions engine and bundled model likewise.
+ * For each one: it is offered in the Voice tab, it speaks, the clip lands as
+ * an audio clip at the playhead with a length that matches its audio, the WAV
+ * is on disk and is not silence - and the request that made it named that
+ * voice and its own locale.
+ *
+ * Azure is stood in for on 127.0.0.1 (SCF_AZURE_ENDPOINT), so this runs with
+ * no key and no network.
+ *
+ * This test used to generate with the eight Piper and Kokoro voices in the
+ * installer and then read each one back with the app's own captions engine, a
+ * word-error rate per voice. That check is gone with those engines, and it is
+ * worth being plain about what went with it: nothing here listens to a voice
+ * any more. What replaced it is narrower and certain - the voice asked for is
+ * the voice in the request - and the one thing it cannot tell you is how
+ * Microsoft's voice sounds. A real key says that, through the panel's Check
+ * button and a sentence of Dalia.
  */
 
-const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
-const ffmpeg = require('ffmpeg-static');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(here, '../..');
 const workDir = join(projectRoot, '.ui-tmp', 'tts');
-const ttsDir = join(projectRoot, 'build', 'piper');
-const voicesDir = join(projectRoot, 'build', 'tts-voices');
-const whisperDir = join(projectRoot, 'build', 'whisper');
-const bundledModels = join(projectRoot, 'build', 'whisper-models');
-const whisperCli = join(whisperDir, 'whisper-cli.exe');
-const captionsModel = join(bundledModels, 'ggml-small-q5_1.bin');
 
 const checks = [];
 const check = (name, passed, detail = '') => {
   checks.push(Boolean(passed));
   console.log(`   ${passed ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`);
 };
-const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-
-const fold = (text) => text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
-function wer(ref, hyp) {
-  const d = Array.from({ length: ref.length + 1 }, (_, i) => [i, ...new Array(hyp.length).fill(0)]);
-  for (let j = 1; j <= hyp.length; j += 1) d[0][j] = j;
-  for (let i = 1; i <= ref.length; i += 1) for (let j = 1; j <= hyp.length; j += 1) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (ref[i - 1] === hyp[j - 1] ? 0 : 1));
-  return d[ref.length][hyp.length] / Math.max(1, ref.length);
-}
 
 /** Peak absolute amplitude of a mono 16-bit WAV: proves it is not silence. */
 function wavPeak(path) {
@@ -65,18 +57,11 @@ async function appMenu(window, menu, item) {
   await window.waitForTimeout(250);
 }
 
-async function transcribe(wav, lang) {
-  const pcm = `${wav}.16k.wav`;
-  await execFileAsync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', wav, '-ar', '16000', '-ac', '1', pcm]);
-  const { stdout } = await execFileAsync(whisperCli, ['-m', captionsModel, '-f', pcm, '-l', lang, '-nt', '-np', '-ng'], { maxBuffer: 1 << 24 });
-  return stdout.trim();
-}
-
 /**
  * Text to speech is the library's Voice tab (components/TextToSpeech/VoicePanel);
  * the Timeline menu brings it forward.
  */
-async function generate(app, window, { language, voice, text }) {
+async function generate(window, { language, voice, text }) {
   await appMenu(window, 'Timeline', /Text to speech|Texto a voz/);
   const tts = window.getByTestId('tts-dialog');
   await tts.waitFor({ state: 'visible', timeout: 15_000 });
@@ -123,15 +108,12 @@ const newestAudioClip = (window) =>
   });
 
 async function main() {
+  if (!existsSync(join(projectRoot, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
   await rm(workDir, { recursive: true, force: true });
   await mkdir(workDir, { recursive: true });
 
-  for (const need of [[ttsDir, 'piper'], [voicesDir, 'voices'], [whisperCli, 'whisper-cli'], [captionsModel, 'bundled captions model']]) {
-    if (!existsSync(need[0])) {
-      console.error(`Missing ${need[1]} at ${need[0]} - stage build/ first.`);
-      process.exit(2);
-    }
-  }
+  const azure = standIn();
+  const endpoint = await azure.listen();
 
   const app = await electron.launch({
     args: [`--user-data-dir=${join(workDir, 'profile')}`, join(projectRoot, 'dist-electron/main/index.js')],
@@ -143,12 +125,7 @@ async function main() {
       SCF_BACKGROUND: '1',
       SCF_SKIP_HOME: '1',
       SCF_NO_CLOSE_PROMPT: '1',
-      SCF_TTS_DIR: ttsDir,
-      SCF_TTS_BUNDLED_DIR: voicesDir,
-      SCF_TTS_VOICES_DIR: join(workDir, 'downloaded-voices'),
-      SCF_WHISPER_DIR: whisperDir,
-      SCF_WHISPER_BUNDLED_DIR: bundledModels,
-      SCF_WHISPER_MODELS_DIR: join(workDir, 'models'),
+      SCF_AZURE_ENDPOINT: endpoint,
     },
   });
   const window = await app.firstWindow();
@@ -157,24 +134,24 @@ async function main() {
   window.on('console', (m) => m.type() === 'error' && issues.push(m.text()));
   window.on('pageerror', (e) => issues.push(`pageerror ${e.message}`));
   await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
+  // A key first: there are no voices without one.
+  await signIn(window);
 
-  // Every voice the installer ships, each read back by the captions engine.
-  const es = { language: 'es', text: 'Hola, esto es una prueba de la voz en español. El resultado debería ser claro.', ref: 'hola esto es una prueba de la voz en espanol el resultado deberia ser claro' };
-  const en = { language: 'en', text: 'Hello, this is a test of the English voice. The result should be clear.', ref: 'hello this is a test of the english voice the result should be clear' };
+  const es = { language: 'es', text: 'Hola, esto es una prueba de la voz en español. El resultado debería ser claro.' };
+  const en = { language: 'en', text: 'Hello, this is a test of the English voice. The result should be clear.' };
   const cases = [
-    ...['es-419-dora', 'es-419-alex', 'es-MX-ald', 'es-MX-claude', 'es-AR-daniela', 'es-419-santa', 'es-ES-davefx', 'es-ES-sharvard'].map((voice) => ({ ...es, voice })),
-    ...['en-US-heart', 'en-US-bella', 'en-US-michael', 'en-US-fenrir', 'en-GB-emma', 'en-GB-george', 'en-US-kristin', 'en-US-norman'].map((voice) => ({ ...en, voice })),
+    ...['es-MX-DaliaNeural', 'es-MX-JorgeNeural', 'es-CO-SalomeNeural', 'es-AR-ElenaNeural', 'es-ES-ElviraNeural', 'es-ES-AlvaroNeural'].map((voice) => ({ ...es, voice })),
+    ...['en-US-AvaMultilingualNeural', 'en-US-AndrewMultilingualNeural', 'en-US-JennyNeural', 'en-US-GuyNeural', 'en-US-AriaNeural', 'en-GB-RyanNeural'].map((voice) => ({ ...en, voice })),
   ];
 
   for (const c of cases) {
-    const made = await generate(app, window, c);
+    const askedBefore = azure.seen.synth.length;
+    const made = await generate(window, c);
     const label = `${c.voice}`;
     check(`${label}: the voice is offered in the Voice tab`, made.present);
     if (!made.present) continue;
     const info = await newestAudioClip(window);
     check(`${label}: a clip landed on an audio track, the tab still there`, info && info.trackType === 'audio' && made.stays, `${made.seconds.toFixed(1)} s to make`);
-    const picked = label;
-    void picked;
     check(`${label}: the clip is at the playhead`, info && Math.abs(info.start - info.playhead) <= 1, info ? `start ${info.start} vs playhead ${info.playhead}` : 'no clip');
     const fpsGuess = info ? info.duration / Math.max(0.01, info.assetSeconds) : 0;
     check(`${label}: the clip's length matches the audio`, info && info.duration > 0 && Math.abs(fpsGuess - Math.round(fpsGuess)) < 0.2, info ? `${info.duration}f for ${info.assetSeconds.toFixed(2)}s` : '');
@@ -186,29 +163,25 @@ async function main() {
       const { peak, seconds } = wavPeak(wav);
       check(`${label}: the audio is not silent`, peak > 1000, `peak ${peak}`);
       check(`${label}: the audio is at least a couple of seconds`, seconds > 2, `${seconds.toFixed(2)}s`);
-      const heard = await transcribe(wav, c.language);
-      /*
-       * A quarter of the words wrong is the bar, and it is loose on purpose:
-       * this measures a voice THROUGH the captions engine, so it carries both
-       * of their errors.
-       *
-       * It is also not perfectly repeatable, which is worth knowing before
-       * chasing it. Whisper's output shifts a little with how the work is
-       * split - threads, and whether the GPU took it - so the same audio can
-       * come back slightly differently on a loaded machine. Measured on
-       * en-US-norman, whose 'Hello, this is a test' the model hears as
-       * 'Although this is a test': 14 % with the machine idle and 29 % inside a
-       * full sweep. If this check fails in a sweep, run it on its own before
-       * believing it.
-       */
-      const rate = wer(fold(c.ref), fold(heard));
-      check(`${label}: the app's captions read the speech back (WER ${(rate * 100).toFixed(0)}%)`, rate <= 0.25, heard.slice(0, 120));
     }
+
+    // What was actually asked for: this voice, its own locale, and the words
+    // of the script - nothing of the panel's own leaking into the speech.
+    const sent = azure.seen.synth.slice(askedBefore);
+    const locale = c.voice.slice(0, 5);
+    check(
+      `${label}: the request named this voice and spoke ${locale}`,
+      sent.length > 0 && sent.every((one) => one.body.includes(`<voice name="${c.voice}">`) && one.body.includes(`xml:lang="${locale}"`)),
+      `${sent.length} requests`,
+    );
+    const said = sent.map((one) => spokenText(one.body)).join(' ');
+    check(`${label}: it was asked to say the script, and only that`, said.replace(/\s+/g, ' ').length > 20 && !/\[pausa|\[pause|<|>/.test(said), said.slice(0, 60));
   }
 
   check('no console errors', issues.length === 0, issues.slice(0, 2).join(' | '));
 
   await app.close().catch(() => undefined);
+  await azure.close().catch(() => undefined);
   try { await execFileAsync('taskkill', ['/PID', String(pid), '/T', '/F']); } catch { /* already gone */ }
 
   const passed = checks.filter(Boolean).length;

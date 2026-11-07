@@ -16,23 +16,30 @@ import { _electron as electron } from 'playwright';
  *      line-breaking rules.
  *   4. With it off, the same audio comes back in Spanish.
  *
- * The voice is made by the app's own text to speech, so the test does not need
- * a recording of a person. Needs a build and the staged build/ (piper, its
- * voices, whisper and the bundled model).
+ * The Spanish line is a small WAV in tests/fixtures, imported like any other
+ * media. It used to be made by the app's own text to speech on the spot, which
+ * stopped being possible when the voices became Azure's: a test that cannot
+ * reach the network cannot make speech any more, and a tone is not speech -
+ * whisper has nothing to transcribe in one. So the sentence was spoken once,
+ * by the public-domain voice the installer used to carry (es_ES-davefx, CC0),
+ * and kept. This is a captions test; where its audio comes from was never the
+ * point.
+ *
+ * Needs a build and the staged build/ (whisper and the bundled model).
  */
 
 const require = createRequire(import.meta.url);
 void require;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'captions-translate');
-const ttsDir = join(root, 'build', 'piper');
-const voicesDir = join(root, 'build', 'tts-voices');
+const spanishLine = join(root, 'tests', 'fixtures', 'spanish-line.wav');
 const whisperDir = join(root, 'build', 'whisper');
 const bundledModels = join(root, 'build', 'whisper-models');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
-/** Said in Spanish, and the English words a translation should bring. */
+/** What the fixture says in Spanish, and the English words a translation should bring. */
 const SPOKEN = 'El perro corre por la playa todas las mañanas con mucha alegría.';
+void SPOKEN;
 const ENGLISH = ['dog', 'beach', 'runs', 'morning', 'every'];
 const SPANISH = ['perro', 'playa', 'corre'];
 
@@ -59,7 +66,7 @@ const captions = (window) =>
 
 async function main() {
   if (!existsSync(join(root, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
-  for (const [path, what] of [[ttsDir, 'piper'], [voicesDir, 'the voices'], [whisperDir, 'whisper'], [bundledModels, 'the bundled model']]) {
+  for (const [path, what] of [[spanishLine, 'the Spanish line'], [whisperDir, 'whisper'], [bundledModels, 'the bundled model']]) {
     if (!existsSync(path)) throw new Error(`Missing ${what} at ${path} - stage build/ first.`);
   }
   rmSync(work, { recursive: true, force: true });
@@ -75,9 +82,6 @@ async function main() {
       SCF_BACKGROUND: '1',
       SCF_SKIP_HOME: '1',
       SCF_NO_CLOSE_PROMPT: '1',
-      SCF_TTS_DIR: ttsDir,
-      SCF_TTS_BUNDLED_DIR: voicesDir,
-      SCF_TTS_VOICES_DIR: join(work, 'downloaded-voices'),
       SCF_WHISPER_DIR: whisperDir,
       SCF_WHISPER_BUNDLED_DIR: bundledModels,
       SCF_WHISPER_MODELS_DIR: join(work, 'models'),
@@ -92,18 +96,21 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
 
-    console.log('1. a Spanish voice to transcribe');
-    await window.getByTestId('library-tab-voice').click();
-    await window.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 15_000 });
-    await window.getByTestId('tts-language').selectOption('es');
-    await window.getByTestId('tts-text').fill(SPOKEN);
-    await window.getByTestId('tts-generate').click();
+    console.log('1. the Spanish line on the timeline');
+    await app.evaluate(({ dialog }, files) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: files }); }, [spanishLine]);
+    await window.getByRole('button', { name: 'Import', exact: true }).click();
+    await window.waitForFunction(() => window.__scfStore.getState().assets.length === 1, null, { timeout: 60_000 });
+    await window.evaluate(() => {
+      const state = window.__scfStore.getState();
+      const track = state.project.tracks.find((one) => one.type === 'audio') ?? state.project.tracks[0];
+      state.addAssetToTimeline(state.assets[0], track.id, 0);
+    });
     const spoke = await window
-      .waitForFunction(() => Object.keys(window.__scfStore.getState().project.clips).length > 0, null, { timeout: 180_000 })
+      .waitForFunction(() => Object.keys(window.__scfStore.getState().project.clips).length > 0, null, { timeout: 60_000 })
       .then(() => true)
       .catch(() => false);
-    check('the app speaks the Spanish line', spoke);
-    if (!spoke) throw new Error('no voice');
+    check('the Spanish line is on the timeline', spoke);
+    if (!spoke) throw new Error('no audio');
 
     console.log('2. the tick, and only for a language that is not English');
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('app:menu-command', 'generateCaptions'));

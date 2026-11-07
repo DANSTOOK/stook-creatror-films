@@ -7,11 +7,93 @@ comprobó**. Si algo está implementado pero no verificado, va en *Sin verificar
 Si está a medias o miente, va en *Problemas conocidos*. La idea es que esta
 página se pueda leer sin tener que creerse nada por fe.
 
-Cifras de referencia al día de hoy: **2027 pruebas unitarias**, **22/22
+Cifras de referencia al día de hoy: **2017 pruebas unitarias**, **22/22
 comprobaciones de extremo a extremo**, **127/127 comprobaciones de interfaz** en la suite general y **90/90 archivos de interfaz** en la barrida completa (y una prueba propia por cada función nueva) (fundidos arrastrados con el ratón y medidos en el render, el visor a pantalla completa y su imán al centro, contraste medido sobre la aplicación en marcha, menú Ventana, velocidad de clip y reversa comprobadas fotograma a fotograma, proxies de metraje 4K con exportación desde el original, autoguardado con sus copias, restaurar una versión anterior y recuperar trabajo sin guardar tras cerrar la ventana, clips enlazados que se seleccionan, mueven y recortan como uno solo, los cuatro recortes del rodillo —empalme, borde libre, deslizar dentro y deslizar entre vecinos— arrastrados con el ratón, marcar entrada y salida, lanzadera J/K/L y edición a tres puntos, mover y escalar clips arrastrándolos en el visor, exactitud fotograma a fotograma, arrastrar y soltar, selección por arrastre, arrastre del cursor con imagen y sonido, arrastre hacia atrás tras un corte, cortes en el cursor, orden de pistas, imán, copiar y pegar, mezclador, ajustes del proyecto, marcadores, paneles redimensionables, bins y carpetas con subcarpetas, carpetas soltadas desde el Explorador, deshacer bins, la ventana de exportación, opciones de exportación, la sala principal, los avisos de cambios sin guardar y reapertura desde la lista de recientes en una sesión nueva), **41/41 comprobaciones de proyectos** (`npm run test:stress:projects`: 26 proyectos, 21 respuestas a «¿guardar cambios?», 60 diálogos, 100 menús y 40 viajes a la sala), **26/26 comprobaciones de movimiento** (`npm run test:motion`: cadencia de fotogramas medida durante diálogos, menús, listas y cambios de pantalla, con el vídeo reproduciéndose y también mientras se renderiza una exportación), una **prueba de estrés de una hora** con tu vídeo (`npm run test:stress`, **26/26**: 108.000 fotogramas exportados, sin deriva y con el sonido en sincronía) y
 **22/22 comprobaciones de GPU** en hardware real (RTX 4060 Laptop + Intel UHD) y **6/6 de metraje largo** (45 minutos),
 todas contra la compilación de desarrollo. Contra el ejecutable empaquetado
 y sin red: **129/129** con la v2.4.0-beta.1 (ninguna petición a la red).
+
+---
+
+## v3.4.0 — Solo las voces de Azure
+2026-11-06 · **se van los dos motores que hablaban en este equipo**
+
+### Cambiado
+
+- **Ya no hay motor de voz dentro de la aplicación.** Piper y Kokoro —los dos
+  programas que hablaban aquí mismo, sin internet— **se han borrado**, con sus
+  siete voces y el modelo de Kokoro. Las únicas voces son las neuronales de
+  Microsoft, por Azure AI Speech y **con tu propia clave**: es el motor que
+  pediste tras oírlo en las páginas gratuitas de texto a voz.
+  - **El instalador adelgaza.** Lo que se quita del paquete es el ejecutable de
+    Piper con los datos de espeak-ng, el de sherpa-onnx con su onnxruntime, las
+    siete voces `.onnx` y el modelo de Kokoro: la mayor parte de lo que pesaba.
+    La cifra exacta del instalador nuevo está abajo, medida, no estimada.
+  - **Sin clave no hay voz, y la aplicación lo dice así.** El panel ya no
+    muestra «el texto a voz no forma parte de esta versión»: dice que falta tu
+    clave y te deja pegarla ahí mismo. Ese camino ya estaba comprobado desde la
+    v3.3.0 y ahora es el único.
+  - **Lo que esto cuesta, dicho claro:** hace falta internet y gasta tu cuota de
+    Azure. Antes se podía hablar sin conexión. Es el intercambio que elegiste.
+
+- **Los doce personajes hablan con voces de Azure.** El narrador es Jorge
+  (México), la locutora Elena (Argentina), la del informativo Salomé
+  (Colombia), el cuentacuentos Elvira y el abuelo Álvaro (España); en inglés,
+  Andrew, Ava, Jenny, Guy, Aria y Ryan. Un personaje cuya voz tu clave no pueda
+  hablar cae en una que sí, como antes.
+
+### Arreglado
+
+- **El tono ya no se aplicaba dos veces, y ahora hay una prueba que lo vigila.**
+  Azure cambia el tono dentro del modelo; desplazar además el audio terminado
+  sería hacerlo dos veces. Se comprueba leyendo la petición que sale (`+4st` en
+  el SSML) y midiendo que el audio **no** se tocó después.
+
+### Las pruebas
+
+- **2017 unitarias** (165 archivos). Eran 2027: se fueron las que comprobaban
+  las dos líneas de comandos que ya no existen y el catálogo de voces del
+  instalador. Lo que seguía siendo cierto se quedó: cómo se corta un texto
+  largo, el límite de velocidad, la carpeta temporal de los trabajos y el
+  lector de WAV, ahora en `tests/TtsSplit.test.ts`.
+- **Las ocho pruebas de interfaz de la voz se reescribieron contra un Azure
+  suplantado en 127.0.0.1**, compartido en `tests/ui/azure-stub.mjs`: devuelve
+  un tono de longitud proporcional al texto, como habla una persona, y
+  **graba cada petición**. Así se siguen midiendo de verdad las pausas, los
+  tiempos de los subtítulos, el recorte, el unido, el teléfono del personaje
+  de llamada y los -16 LUFS, y además se puede leer lo que salió.
+  - `tts` **109/109** (doce voces, cada una comprobando que la petición nombró
+    esa voz y su idioma), `tts-pauses` **17/17**, `tts-plus` **14/14**,
+    `tts-long` **7/7**, `azure-voice` **30/30**, `voice-cards` **13/13**,
+    `respeak` **9/9**, `highlights` **9/9**, `captions-translate` **6/6**.
+- **Lo que esas pruebas ya no pueden decir, y conviene saberlo.** Antes la
+  aplicación se hablaba a sí misma y sus propios subtítulos leían la voz de
+  vuelta, voz por voz: eso medía que una voz sonaba a palabras. Un tono no se
+  puede transcribir, así que esa comprobación **se perdió** con los motores
+  locales. En su lugar se comprueba lo que decide el resultado —la voz y el
+  idioma que van en la petición— y lo demás lo dice una clave real.
+- **La prueba de subtítulos en inglés desde un vídeo en español** ya no se
+  fabrica la voz: lleva un WAV de 165 KB con la frase dicha una vez por la voz
+  de dominio público que el instalador llevaba (es_ES-davefx, CC0). Es una
+  prueba de subtítulos; de dónde salía su audio nunca fue lo importante.
+
+### Sin verificar
+
+- **Que el Azure de verdad acepte el documento.** Sigue igual que en la
+  v3.3.0: todo se comprueba contra un Azure suplantado en este equipo, que es
+  la única manera de leer la petición que sale. Solo una clave real lo
+  confirma, y el botón **Comprobar** del panel es el que lo pregunta. Con los
+  motores locales fuera, **esto ya no es un detalle**: si tu clave no funciona,
+  la aplicación no tiene voz.
+
+### Problemas conocidos
+
+- **Las voces necesitan internet y gastan tu cuota.** El nivel gratuito son
+  500.000 caracteres al mes, verificado en la página de precios de Microsoft.
+  El precio del nivel pagado **no se da aquí**: su página lo muestra como `$-`
+  y su API de precios no devolvió la fila.
+- Sigue abierto desde la v1.99: el tirón de 78–100 ms de `GPUTask` durante la
+  reproducción.
 
 ---
 

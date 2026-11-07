@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:f
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
+import { signIn, standIn } from './azure-stub.mjs';
 
 /**
  * The Voice tab's characters as cards with a face each, as CapCut's:
@@ -18,7 +19,9 @@ import { _electron as electron } from 'playwright';
  *   5. the cards fit the panel, and the keyboard reaches and picks them;
  *   6. nothing in the page's errors or the app's log.
  *
- * Writes only into its own work folder. Needs a build (npm run build). The window is never shown.
+ * Writes only into its own work folder. Needs a build (npm run build). The
+ * voices are Azure's, stood in for on 127.0.0.1, so this runs with no key
+ * and no network. The window is never shown.
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -39,10 +42,12 @@ async function main() {
   mkdirSync(work, { recursive: true });
   const profile = join(work, `profile-${process.pid}-${Date.now()}`);
 
+  const azure = standIn();
+  const endpoint = await azure.listen();
+
   const app = await electron.launch({
     args: [`--user-data-dir=${profile}`, join(root, 'dist-electron/main/index.js')],
     cwd: root,
-    // The engine and voices staged in build/, as tests/ui/tts.mjs runs them.
     env: {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
@@ -50,9 +55,7 @@ async function main() {
       SCF_BACKGROUND: '1',
       SCF_NO_CLOSE_PROMPT: '1',
       SCF_LOG_DIR: logs,
-      SCF_TTS_DIR: join(root, 'build', 'piper'),
-      SCF_TTS_BUNDLED_DIR: join(root, 'build', 'tts-voices'),
-      SCF_TTS_VOICES_DIR: join(work, 'downloaded-voices'),
+      SCF_AZURE_ENDPOINT: endpoint,
     },
   });
   const pid = app.process().pid;
@@ -63,7 +66,9 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
     await window.getByRole('button', { name: 'Blank project' }).click({ force: true, timeout: 30_000 });
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
-    await window.getByTestId('library-tab-voice').click();
+    // A key first: without one there are no voices, and a character has
+    // nothing to set.
+    await signIn(window);
     // The characters live in step two, which folds itself once a voice is
     // chosen - and one is chosen on its own. Opened by its heading, as a
     // person opens it.
@@ -72,7 +77,7 @@ async function main() {
       await window.getByTestId('tts-step-2-header').click();
     }
     await window.getByTestId('tts-characters').waitFor({ state: 'visible', timeout: 15_000 });
-    // The voices are listed once the engine has answered.
+    // The voices are listed once Azure has answered.
     await window.waitForSelector('[data-testid^="tts-voice-"][role="radio"]', { timeout: 15_000 }).catch(() => undefined);
     await sleep(300);
 
@@ -169,6 +174,7 @@ async function main() {
     check('no errors on the page', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);
+    await azure.close().catch(() => undefined);
     try {
       execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } catch {

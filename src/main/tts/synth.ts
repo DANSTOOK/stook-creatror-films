@@ -1,10 +1,7 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { cpus, freemem } from 'node:os';
 import { parseScript } from '@shared/tts/script';
-import { kokoroCommand, piperCommand, splitText, windowsCodePage, type PiperEngine } from './engine';
-import type { TtsEngineKind } from './catalog';
+import { splitText } from './split';
 import { AzureError, synthesize, type AzureAccount, type AzureFetch } from './azure/client';
 import { readWav, silence, trimSilence, writeWav } from './wav';
 
@@ -12,24 +9,25 @@ import { readWav, silence, trimSilence, writeWav } from './wav';
  * Text-to-speech jobs: words in, one WAV out, nothing left behind.
  *
  * The script is read for the pauses written into it (shared/tts/script), and
- * its speech split into sentence-sized pieces (engine.splitText). The engine
- * is run once per piece, each writing a small WAV into a folder of the job's
- * own under the system temp directory - a few pieces at a time on a computer
- * with the cores for it, so a long text takes a fraction of the time. Each
- * piece's own silence at its ends is cut, and the pieces are joined with a
- * short gap between them, or with exactly the pause written there, into the
- * single clip the page imports; where each piece landed comes back with it,
- * for captions that follow the voice. The engines are child processes, as
- * ffmpeg and whisper-cli are: a cancel kills them, and whether the job ends,
- * fails or is cancelled its folder is deleted.
+ * its speech split into pieces one request can speak (split.splitText). Each
+ * piece is asked of Azure AI Speech and written as a small WAV into a folder
+ * of the job's own under the system temp directory - a few at a time, so a
+ * long text takes a fraction of the time. Each piece's own silence at its
+ * ends is cut, and the pieces are joined with a short gap between them, or
+ * with exactly the pause written there, into the single clip the page
+ * imports; where each piece landed comes back with it, for captions that
+ * follow the voice.
  *
- * Azure's voices are the one engine that is not a program on this computer:
- * a piece of speech is a request instead of a process, and what comes back
- * is written into the job's folder as the same WAV a program would have
- * written. Everything after that - trimming each piece, the pauses, the
- * joining, the caption timings - is the code below, unchanged, because the
- * timings are measured from the audio rather than reported by whoever made
- * it. A cancel aborts the requests the way it kills the processes.
+ * The pauses, the trimming, the joining and the caption timings are measured
+ * from the audio that came back, never reported by whoever made it - which is
+ * why they are still done here and not handed to the service as SSML
+ * `<break>`s. A cancel aborts the requests in flight, and whether the job
+ * ends, fails or is cancelled its folder is deleted.
+ *
+ * There was a time when this ran two programs on this computer (Piper, and
+ * Kokoro through sherpa-onnx) as child processes beside ffmpeg and
+ * whisper-cli. They are gone, and with them the plan that counted cores and
+ * memory: nothing on this computer is the bottleneck for a request.
  */
 
 export class SynthError extends Error {
@@ -39,7 +37,7 @@ export class SynthError extends Error {
   }
 }
 
-/** What one Azure voice needs that a local one does not: an account and the voice's own name. */
+/** Which voice speaks, on whose account, and how. */
 export interface AzureSynth {
   account: AzureAccount;
   /** Azure's `ShortName`, e.g. `es-MX-DaliaNeural`. */
@@ -50,23 +48,17 @@ export interface AzureSynth {
   role?: string;
   /**
    * Semitones up or down. Azure changes the pitch in the model, which is
-   * better than shifting the finished audio - so for this engine the panel's
-   * pitch comes here and `finishVoice` is told to leave it alone.
+   * better than shifting the finished audio - so the panel's pitch comes
+   * here and `finishVoice` is told to leave it alone.
    */
   semitones?: number;
 }
 
 export interface SynthRequest {
   text: string;
-  /** Which program speaks: Piper, Kokoro through sherpa-onnx, or Azure over the network. */
-  engine?: TtsEngineKind;
-  /** Set when `engine` is 'azure'; ignored otherwise. */
-  azure?: AzureSynth;
-  /** Piper: the voice's .onnx (its .onnx.json beside it). Kokoro: the model's folder. */
-  model: string;
-  /** Kokoro: espeak-ng's voice for the text (es-419). */
-  phonemes?: string;
-  speakerId: number;
+  /** The voice and the account that speaks it. */
+  azure: AzureSynth;
+  /** 0.5-2, where 1 is the voice's natural pace. */
   speed: number;
   /** Silence between joined pieces, seconds. A pause written into the script replaces it there. */
   sentenceSilence: number;
@@ -88,9 +80,6 @@ export interface SynthOutcome {
   segments: SpokenSegment[];
 }
 
-const tail = (text: string, lines = 4): string =>
-  text.trim().split(/\r?\n/).filter((line) => line.trim()).slice(-lines).join(' / ').slice(-500);
-
 /**
  * A job's folder untouched this long is a crashed session's leftovers. A job
  * that is running writes a piece into its folder every few seconds - a piece
@@ -98,28 +87,10 @@ const tail = (text: string, lines = 4): string =>
  */
 export const STALE_JOB_MS = 60 * 60 * 1000;
 
-const MB = 1024 * 1024;
-
-/**
- * How many pieces run at once, and with how many threads each. One engine
- * process makes poor use of a big CPU: measured on a 24-core laptop, Kokoro
- * spoke 108 s of voice in 71 s as one process of 8 threads, in 39 s as four
- * of 5 and in 24 s as six of 2 - its threads share the work badly, separate
- * processes well. So a long text is spoken by up to six processes side by
- * side, two threads each, half the cores left to the editor. Each holds the
- * model (about 420 MB, measured), so free memory caps them too, 2 GB kept
- * spare. A small machine stays at one.
- */
-export function workerPlan(cores: number, freeBytes = Number.POSITIVE_INFINITY): { workers: number; threads: number } {
-  const byMemory = Math.floor((freeBytes - 2048 * MB) / (450 * MB));
-  const workers = Math.max(1, Math.min(6, Math.floor(cores / 4), byMemory));
-  return { workers, threads: Math.max(1, Math.min(4, Math.floor(cores / (workers * 2)))) };
-}
-
-/** What a job runs: a piece of speech for the engine, or a pause written into the script. */
+/** What a job runs: a piece of speech to be said, or a pause written into the script. */
 export type Step = { kind: 'speech'; text: string } | { kind: 'pause'; seconds: number };
 
-/** The script as steps: each stretch of speech in engine-sized pieces, the pauses between them. */
+/** The script as steps: each stretch of speech in request-sized pieces, the pauses between them. */
 export function scriptSteps(text: string): Step[] {
   return parseScript(text).flatMap((part): Step[] =>
     part.kind === 'pause' ? [part] : splitText(part.text).map((piece) => ({ kind: 'speech' as const, text: piece })),
@@ -160,17 +131,16 @@ export function joinSteps(steps: readonly Step[], made: ReadonlyMap<number, Int1
 
 interface Job {
   dir: string;
-  children: Set<ChildProcess>;
-  /** Azure's requests in flight; a cancel aborts these as it kills the processes. */
+  /** The requests in flight; a cancel aborts these. */
   aborts: Set<AbortController>;
   cancelled: boolean;
 }
 
 /**
- * How many Azure requests run at once.
+ * How many requests run at once.
  *
- * Nothing on this computer is the bottleneck, so the plan that counts cores
- * and memory does not apply. Three is chosen to be well inside the rate a
+ * Nothing on this computer is the bottleneck, so there is no plan to make
+ * from cores and memory. Three is chosen to be well inside the rate a
  * resource allows while still being three times quicker than one at a time;
  * a 429 is waited out by the client rather than avoided by going slower.
  */
@@ -182,14 +152,8 @@ export class Synthesizer {
   constructor(
     private readonly options: {
       tempRoot: string;
-      engine: () => PiperEngine | null;
-      /** Kokoro's program, and the espeak-ng data it reads (Piper's own). */
-      kokoro?: () => { engine: PiperEngine; espeakData: string } | null;
       /** How Azure is called: Electron's `net.fetch` in the app, a stand-in in the tests. */
-      azureFetch?: () => AzureFetch;
-      /** Cores and free memory to plan for; the machine's by default (a test sets them). */
-      cores?: number;
-      freeBytes?: number;
+      azureFetch: () => AzureFetch;
     },
   ) {}
 
@@ -198,8 +162,7 @@ export class Synthesizer {
    * that. The root is shared by every copy of the app on this account (a
    * second window, a test run), so a job folder another copy is still filling
    * is left alone: emptying the whole root, as this did, deleted a long text's
-   * folder halfway through and its next piece could not be written ("Failed
-   * to create ...\9.wav").
+   * folder halfway through and its next piece could not be written.
    */
   async sweep(now = Date.now()): Promise<void> {
     const entries = await readdir(this.options.tempRoot).catch(() => [] as string[]);
@@ -216,36 +179,28 @@ export class Synthesizer {
     const job = this.jobs.get(jobId);
     if (!job) return;
     job.cancelled = true;
-    for (const child of job.children) child.kill();
     for (const abort of job.aborts) abort.abort();
   }
 
   /**
    * Synthesise `request.text` to one WAV at `outPath`. `onProgress` is called
-   * with the fraction of pieces finished so the page can show a bar and the
-   * work does not block anything (the engines run off in their own processes).
+   * with the fraction of pieces finished so the page can show a bar.
    */
   async synth(jobId: string, request: SynthRequest, outPath: string, onProgress?: (fraction: number) => void): Promise<SynthOutcome> {
-    const azure = request.engine === 'azure' ? (request.azure ?? null) : null;
-    if (request.engine === 'azure' && !azure) throw new SynthError('No Azure account for this voice');
-    const kokoro = request.engine === 'kokoro' ? (this.options.kokoro?.() ?? null) : null;
-    // Azure needs nothing installed, so the check for a local program is only
-    // for the engines that are one.
-    const engine = azure ? null : request.engine === 'kokoro' ? (kokoro?.engine ?? null) : this.options.engine();
-    if (!azure && !engine) throw new SynthError('The text-to-speech engine is not part of this build');
+    const azure = request.azure;
+    if (!azure) throw new SynthError('No Azure account for this voice');
     const steps = scriptSteps(request.text);
     const speech = steps.flatMap((step, index) => (step.kind === 'speech' ? [{ index, text: step.text }] : []));
     if (speech.length === 0) throw new SynthError('There is no text to speak');
 
     const dir = join(this.options.tempRoot, jobId);
-    const job: Job = { dir, children: new Set(), aborts: new Set(), cancelled: false };
+    const job: Job = { dir, aborts: new Set(), cancelled: false };
     this.jobs.set(jobId, job);
     await mkdir(dir, { recursive: true });
     const cancelled: SynthOutcome = { cancelled: true, path: null, durationSeconds: 0, segments: [] };
 
     try {
-      const plan = workerPlan(this.options.cores ?? cpus().length, this.options.freeBytes ?? freemem());
-      const workers = Math.min(azure ? AZURE_WORKERS : plan.workers, speech.length);
+      const workers = Math.min(AZURE_WORKERS, speech.length);
       const made = new Map<number, { sampleRate: number; samples: Int16Array }>();
       let next = 0;
       let done = 0;
@@ -255,19 +210,13 @@ export class Synthesizer {
           const piece = speech[next];
           next += 1;
           const pieceWav = join(dir, `${piece.index}.wav`);
-          const run = (): Promise<void> =>
-            azure
-              ? this.runAzurePiece(job, azure, request, piece.text, pieceWav)
-              : kokoro
-                ? this.runKokoroPiece(job, kokoro.engine, kokoro.espeakData, request, piece.text, pieceWav, plan.threads)
-                : this.runPiece(job, engine!, request, piece.text, pieceWav);
           // The folder is made again before each piece, and a piece that fails
           // is tried once more: whatever empties temp meanwhile (a cleaner,
           // Storage Sense) costs a moment, not the text. The pieces made so far
           // are held here, not on disk.
           await mkdir(dir, { recursive: true });
           try {
-            await run();
+            await this.runPiece(job, azure, request, piece.text, pieceWav);
           } catch (error) {
             if (job.cancelled) return;
             // A key Azure refused, or SSML it would not parse, fails the same
@@ -275,7 +224,7 @@ export class Synthesizer {
             // client has already waited out whatever was worth waiting for.
             if (error instanceof AzureError) throw error;
             await mkdir(dir, { recursive: true });
-            await run();
+            await this.runPiece(job, azure, request, piece.text, pieceWav);
           }
           if (job.cancelled) return;
           const wav = await readWav(pieceWav);
@@ -290,7 +239,6 @@ export class Synthesizer {
       } catch (error) {
         // One piece failed for good: the others are stopped rather than left to run on.
         job.cancelled = true;
-        for (const child of job.children) child.kill();
         for (const abort of job.aborts) abort.abort();
         await Promise.allSettled(running);
         throw error;
@@ -308,41 +256,17 @@ export class Synthesizer {
     }
   }
 
-  /** Runs one engine process for `job`; resolves when it ends well (or is cancelled), rejects with its last words. */
-  private spawnPiece(job: Job, bin: string, args: string[], dir: string, input: string | null, name: string, options: { windowsHide?: boolean } = {}): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, { cwd: dir, ...options });
-      job.children.add(child);
-      let stderr = '';
-      child.stderr?.on('data', (chunk: Buffer) => {
-        stderr = (stderr + chunk.toString('utf8')).slice(-20_000);
-      });
-      child.stdout?.resume();
-      child.on('error', (error) => {
-        job.children.delete(child);
-        reject(new SynthError(String(error)));
-      });
-      child.on('close', (code) => {
-        job.children.delete(child);
-        if (job.cancelled || code === 0) return resolve();
-        reject(new SynthError(tail(stderr) || `${name} exited with ${code}`));
-      });
-      if (input !== null) child.stdin?.end(input);
-    });
-  }
-
   /**
-   * One piece through Azure: a request instead of a process.
+   * One piece: a request, and what comes back written as a WAV.
    *
-   * What comes back is written as the WAV the rest of the job expects, so
-   * everything after this - trimming, the pauses, the joining, the caption
-   * timings - is the same code the local engines go through. The error is
-   * left as an `AzureError` rather than wrapped in a `SynthError`, because
-   * the panel turns its `failure` into the one sentence that says what to
-   * do about it; the handler in ttsIpc does the wrapping.
+   * Everything after this - trimming, the pauses, the joining, the caption
+   * timings - works on that file. The error is left as an `AzureError`
+   * rather than wrapped in a `SynthError`, because the panel turns its
+   * `failure` into the one sentence that says what to do about it; the
+   * handler in ttsIpc does the wrapping.
    */
-  private async runAzurePiece(job: Job, azure: AzureSynth, request: SynthRequest, text: string, output: string): Promise<void> {
-    const fetch = this.options.azureFetch?.();
+  private async runPiece(job: Job, azure: AzureSynth, request: SynthRequest, text: string, output: string): Promise<void> {
+    const fetch = this.options.azureFetch();
     if (!fetch) throw new SynthError('No way to reach Azure in this build');
     const abort = new AbortController();
     job.aborts.add(abort);
@@ -365,36 +289,5 @@ export class Synthesizer {
     } finally {
       job.aborts.delete(abort);
     }
-  }
-
-  /** One piece through Kokoro: the text is the program's last argument (engine.kokoroCommand). */
-  private runKokoroPiece(job: Job, engine: PiperEngine, espeakData: string, request: SynthRequest, text: string, output: string, threads: number): Promise<void> {
-    const args = kokoroCommand({
-      modelDir: request.model,
-      espeakData,
-      speakerId: request.speakerId,
-      phonemes: request.phonemes ?? 'es-419',
-      output,
-      speed: request.speed,
-      threads,
-      codePage: windowsCodePage(),
-      text,
-    });
-    return this.spawnPiece(job, engine.bin, args, engine.dir, null, 'sherpa-onnx', { windowsHide: true });
-  }
-
-  private runPiece(job: Job, engine: PiperEngine, request: SynthRequest, text: string, output: string): Promise<void> {
-    const args = piperCommand({
-      model: request.model,
-      speakerId: request.speakerId,
-      output,
-      speed: request.speed,
-      sentenceSilence: request.sentenceSilence,
-    });
-    // The engine's own folder as the working directory so it loads its DLLs
-    // and finds its espeak-ng data beside the executable. The text is fed on
-    // stdin, never as an argument: any length, any characters, nothing
-    // interpreted.
-    return this.spawnPiece(job, engine.bin, args, engine.dir, `${text.replace(/[\r\n]+/g, ' ')}\n`, 'piper');
   }
 }

@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { signIn, standIn } from './azure-stub.mjs';
 
 /**
  * Text to speech, everywhere in the editor: `node tests/ui/tts-plus.mjs`
@@ -15,14 +16,17 @@ import { _electron as electron } from 'playwright';
  *      track (dialogue bus), kept in the app's folder (not temp), not
  *      clipped, at about -16 LUFS; with "also add captions" ticked, captions
  *      cover what it says;
- *   2b. the Phone call character: Daniela, through a phone line (nothing
+ *   2b. the Phone call character: Elena, through a phone line (nothing
  *      left above 4 kHz);
- *   3. pitch +4 raises the voice (its fundamental a quarter higher) and keeps
- *      its pace;
+ *   3. pitch +4 is asked of the voice itself, in semitones, and nothing is
+ *      done to the finished audio;
  *   4. a title's menu reads it aloud from where it starts;
  *   5. a captions track's menu narrates each caption at its own time.
  *
- * Needs a build (npm run build). The window is never shown.
+ * Needs a build (npm run build). The voices are Azure's, stood in for on
+ * 127.0.0.1, so this runs with no key and no network; what the finish does to
+ * the audio is measured for real, and the request that went out is read.
+ * The window is never shown.
  */
 
 const require = createRequire(import.meta.url);
@@ -84,19 +88,19 @@ async function main() {
   execFileSync(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=0x334155:s=640x360:r=30:d=20', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', video]);
   const profile = join(work, `profile-${process.pid}-${Date.now()}`);
 
+  const azure = standIn();
+  const endpoint = await azure.listen();
+
   const app = await electron.launch({
     args: [`--user-data-dir=${profile}`, join(root, 'dist-electron/main/index.js')],
     cwd: root,
-    // The engine and voices staged in build/, as tests/ui/tts.mjs runs them.
     env: {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
       ELECTRON_RUN_AS_NODE: undefined,
       SCF_BACKGROUND: '1',
       SCF_NO_CLOSE_PROMPT: '1',
-      SCF_TTS_DIR: join(root, 'build', 'piper'),
-      SCF_TTS_BUNDLED_DIR: join(root, 'build', 'tts-voices'),
-      SCF_TTS_VOICES_DIR: join(work, 'downloaded-voices'),
+      SCF_AZURE_ENDPOINT: endpoint,
     },
   });
   const pid = app.process().pid;
@@ -107,6 +111,10 @@ async function main() {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
     await window.getByRole('button', { name: 'Blank project' }).click({ force: true, timeout: 30_000 });
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
+    // A key first: there are no voices without one. Back to Media after it,
+    // because that is the tab this test goes on to import into.
+    await signIn(window);
+    await window.getByTestId('library-tab-media').click();
     await app.evaluate(({ dialog }, files) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: files }); }, [video]);
     await window.getByRole('button', { name: 'Import', exact: true }).click();
     await window.waitForFunction(() => window.__scfStore.getState().assets.length === 1, null, { timeout: 60_000 });
@@ -133,7 +141,7 @@ async function main() {
     await tts.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
     await tts.getByTestId('tts-more-voices').click();
     await tts.getByTestId('tts-language').selectOption('es');
-    await tts.getByTestId('tts-voice-es-419-dora').click();
+    await tts.getByTestId('tts-voice-es-MX-DaliaNeural').click();
     await tts.getByTestId('tts-text').fill(line);
     // Pitch, "clear voice", the characters and the captions tick are all in
     // step three's "fine" fold; both are opened once, here.
@@ -195,7 +203,7 @@ async function main() {
     await tts.getByTestId('tts-captions').uncheck();
     await tts.getByTestId('tts-character-call').click();
     const chosen = await tts.evaluate(() => ({
-      voice: document.querySelector('[data-testid="tts-voice-es-AR-daniela"]')?.getAttribute('aria-checked'),
+      voice: document.querySelector('[data-testid="tts-voice-es-AR-ElenaNeural"]')?.getAttribute('aria-checked'),
       phone: document.querySelector('[data-testid="tts-effect-phone"]')?.getAttribute('aria-pressed'),
     }));
     await window.evaluate(() => window.__scfStore.getState().setCurrentFrame(900));
@@ -207,7 +215,7 @@ async function main() {
     const callPath = await window.evaluate(() => window.__scfStore.getState().assets.at(-1).sourcePath);
     const callHigh = band(callPath, 4500);
     const naturalHigh = band(kept, 4500);
-    check('the Phone call character: Daniela, through a phone line (the top end gone)', chosen.voice === 'true' && chosen.phone === 'true' && callHigh < naturalHigh - 15,
+    check('the Phone call character: Elena, through a phone line (the top end gone)', chosen.voice === 'true' && chosen.phone === 'true' && callHigh < naturalHigh - 15,
       `above 4.5 kHz: ${naturalHigh.toFixed(1)} dB natural, ${callHigh.toFixed(1)} dB on the phone`);
     await tts.getByTestId('tts-effect-none').click();
 
@@ -222,13 +230,24 @@ async function main() {
       await sleep(500);
       return window.evaluate(() => window.__scfStore.getState().assets.at(-1).sourcePath);
     };
-    const normal = crossings(await generateWith(0));
-    const higher = crossings(await generateWith(4));
-    const ratio = higher.rate / normal.rate;
-    // +4 semitones is ×1.26; a generated voice varies a little from one take to the next,
-    // in pitch and in length (Piper's durations are sampled: a few per cent).
-    check('pitch +4 raises the voice and keeps its pace', ratio > 1.15 && ratio < 1.4 && Math.abs(higher.seconds / normal.seconds - 1) < 0.08,
-      `pitch ${normal.rate.toFixed(0)} → ${higher.rate.toFixed(0)} Hz (×${ratio.toFixed(2)}), length ${normal.seconds.toFixed(2)} → ${higher.seconds.toFixed(2)} s`);
+    /*
+     * Pitch is Azure's to change, inside the model, so that the voice still
+     * sounds like itself. It used to be a shift applied to the finished audio,
+     * and the check here measured the fundamental of what came out. There is
+     * nothing to measure now - the stand-in returns the same tone whatever is
+     * asked - so what is checked is the thing that decides it: the semitones
+     * in the request, and that the audio was NOT shifted afterwards as well.
+     */
+    const askedAt = azure.seen.synth.length;
+    const plain = crossings(await generateWith(0));
+    const asked = azure.seen.synth.slice(askedAt).map((one) => one.body).join(' ');
+    check('with no pitch asked for, no pitch is sent', !asked.includes('<prosody pitch'), asked.slice(asked.indexOf('<prosody'), asked.indexOf('<prosody') + 60));
+    const raisedAt = azure.seen.synth.length;
+    const raised = crossings(await generateWith(4));
+    const sent = azure.seen.synth.slice(raisedAt).map((one) => one.body).join(' ');
+    check('pitch +4 is asked of the voice as +4st, in the SSML', /<prosody[^>]*pitch="\+4st"/.test(sent), (/<prosody[^>]*>/.exec(sent) ?? [''])[0]);
+    check('and the finished audio is not shifted on top of it: the same tone, the same length', Math.abs(raised.rate / plain.rate - 1) < 0.05 && Math.abs(raised.seconds / plain.seconds - 1) < 0.08,
+      `${plain.rate.toFixed(0)} → ${raised.rate.toFixed(0)} Hz, ${plain.seconds.toFixed(2)} → ${raised.seconds.toFixed(2)} s`);
 
     const rightClick = async (clipId) => {
       const canvas = await window.locator('[data-panel="timeline"] canvas').first().boundingBox();
@@ -296,6 +315,7 @@ async function main() {
     check('no errors on the page', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);
+    await azure.close().catch(() => undefined);
     try {
       execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } catch {

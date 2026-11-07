@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { _electron as electron } from 'playwright';
+import { signIn, standIn } from './azure-stub.mjs';
 
 /**
  * Pauses in text to speech, and the new voices: `node tests/ui/tts-pauses.mjs`
@@ -19,13 +20,15 @@ import { _electron as electron } from 'playwright';
  *      starts after it;
  *   3. a pause first is silence at the clip's start; a pasted SSML
  *      <break time="1.5s"/> is a pause too;
- *   4. the new English voice Heart speaks, and the app's captions engine reads
- *      it back; a character picked for an English script takes its English
- *      voice;
+ *   4. the English voices are offered and one of them speaks; a character
+ *      picked for an English script takes its English voice;
  *   5. nothing in the page's errors or the app's log.
  *
- * Writes only into its own work folder. Needs a build (npm run build) and the
- * engines staged in build/. The window is never shown.
+ * Writes only into its own work folder. Needs a build (npm run build). The
+ * voices are Azure's, stood in for on 127.0.0.1 - so the silences and the
+ * caption timings below are measured from real audio the app made, while
+ * whether the voice sounds like a person is not something this can tell.
+ * The window is never shown.
  */
 
 const require = createRequire(import.meta.url);
@@ -35,8 +38,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'tts-pauses');
 const logs = join(work, 'logs');
 const shots = process.env.TTS_SHOTS ?? '';
-const ttsDir = join(root, 'build', 'piper');
-const voicesDir = join(root, 'build', 'tts-voices');
 const whisperDir = join(root, 'build', 'whisper');
 const bundledModels = join(root, 'build', 'whisper-models');
 const whisperCli = join(whisperDir, 'whisper-cli.exe');
@@ -94,6 +95,9 @@ function silences({ samples, rate }) {
   return spans;
 }
 
+/** Set before the app is launched: where the Azure stand-in is listening. */
+let azureEndpoint = '';
+
 const env = (profile) => ({
   ...process.env,
   ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
@@ -102,9 +106,7 @@ const env = (profile) => ({
   SCF_SKIP_HOME: '1',
   SCF_NO_CLOSE_PROMPT: '1',
   SCF_LOG_DIR: logs,
-  SCF_TTS_DIR: ttsDir,
-  SCF_TTS_BUNDLED_DIR: voicesDir,
-  SCF_TTS_VOICES_DIR: join(profile, 'downloaded-voices'),
+  SCF_AZURE_ENDPOINT: azureEndpoint,
   SCF_WHISPER_DIR: whisperDir,
   SCF_WHISPER_BUNDLED_DIR: bundledModels,
   SCF_WHISPER_MODELS_DIR: join(profile, 'models'),
@@ -112,10 +114,12 @@ const env = (profile) => ({
 
 async function main() {
   if (!existsSync(join(root, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
-  for (const need of [ttsDir, voicesDir, whisperCli, captionsModel]) if (!existsSync(need)) throw new Error(`Missing ${need} - stage build/ first.`);
+  for (const need of [whisperCli, captionsModel]) if (!existsSync(need)) throw new Error(`Missing ${need} - stage build/ first.`);
   await rm(work, { recursive: true, force: true });
   await mkdir(work, { recursive: true });
   const profile = join(work, 'profile');
+  const azure = standIn();
+  azureEndpoint = await azure.listen();
   const app = await electron.launch({ args: [`--user-data-dir=${profile}`, join(root, 'dist-electron/main/index.js')], cwd: root, env: env(profile) });
   const pid = app.process().pid;
   const issues = [];
@@ -125,6 +129,8 @@ async function main() {
     window.on('console', (message) => message.type() === 'error' && issues.push(message.text()));
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1600, 1000));
     await window.waitForSelector('[data-testid="preview-panel"]', { timeout: 30_000 });
+    // A key first: there are no voices without one.
+    await signIn(window);
     await window.getByTestId('app-menu-button').click();
     await window.getByRole('menuitem', { name: 'Timeline', exact: true }).click();
     await window.getByRole('menuitem', { name: /Text to speech/ }).click();
@@ -153,7 +159,7 @@ async function main() {
     await window.getByTestId('tts-more-voices').waitFor({ state: 'visible', timeout: 10_000 });
     await window.getByTestId('tts-more-voices').click();
     await window.getByTestId('tts-language').selectOption('es');
-    await window.getByTestId('tts-voice-es-419-dora').click();
+    await window.getByTestId('tts-voice-es-MX-DaliaNeural').click();
 
     /* 1. the pause buttons ---------------------------------------------------------------------- */
     await box.fill('Hola a todos. Empezamos ahora.');
@@ -250,24 +256,26 @@ async function main() {
 
     /* 4. the new English voices ----------------------------------------------------------------- */
     await window.getByTestId('tts-language').selectOption('en');
-    const offered = await window.evaluate(() => ['en-US-heart', 'en-US-bella', 'en-US-michael', 'en-US-fenrir', 'en-GB-emma', 'en-GB-george'].filter((id) => document.querySelector(`[data-testid="tts-voice-${id}"]`)));
-    check('six natural English voices are offered: Heart, Bella, Michael, Fenrir, Emma and George', offered.length === 6, offered.join(', '));
-    await window.getByTestId('tts-voice-en-US-heart').click();
-    const heart = await generate('Hello there. [pause 1s] This is Heart, the new English voice.');
-    let heard = '';
-    if (heart?.path) {
-      const mono = join(work, 'heart.16k.wav');
-      await execFileAsync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y', '-i', heart.path, '-ar', '16000', '-ac', '1', mono]);
-      heard = (await execFileAsync(whisperCli, ['-m', captionsModel, '-f', mono, '-l', 'en', '-nt', '-np', '-ng'], { maxBuffer: 1 << 24 })).stdout.trim();
-    }
-    check('Heart speaks it, and the captions engine reads it back', /hello there/i.test(heard) && /new english voice/i.test(heard), heard.slice(0, 120));
+    const wanted = ['en-US-AvaMultilingualNeural', 'en-US-AndrewMultilingualNeural', 'en-US-JennyNeural', 'en-US-GuyNeural', 'en-US-AriaNeural', 'en-GB-RyanNeural'];
+    const offered = await window.evaluate((ids) => ids.filter((id) => document.querySelector(`[data-testid="tts-voice-${id}"]`)), wanted);
+    check('the English voices are offered: Ava, Andrew, Jenny, Guy, Aria and Ryan', offered.length === wanted.length, offered.join(', '));
+    await window.getByTestId('tts-voice-en-US-JennyNeural').click();
+    const jenny = await generate('Hello there. [pause 1s] This is the English voice.');
+    const jennyGaps = jenny?.path ? silences(pcm(jenny.path)).filter(([start]) => start > 0.2) : [];
+    const jennyPause = jennyGaps.reduce((best, span) => Math.max(best, span[1] - span[0]), 0);
+    // An English script's pause mark is written in English, and it has to be
+    // read as a pause too, not spoken aloud.
+    check('an English voice speaks, and its [pause 1s] is a second of silence', Boolean(jenny?.path) && Math.abs(jennyPause - 1) <= 0.12, `${jennyPause.toFixed(2)} s`);
+    const said = azure.seen.synth.map((one) => one.body).join(' ');
+    check('no pause mark was ever sent to be read aloud', !/\[pausa|\[pause/.test(said));
     await window.getByTestId('tts-character-narrator').click();
     const narrator = await window.evaluate(() => document.querySelector('[role="radio"][aria-checked="true"]')?.getAttribute('data-testid') ?? '');
-    check('with the script in English, the narrator character takes its English voice (Michael)', narrator === 'tts-voice-en-US-michael', narrator);
+    check('with the script in English, the narrator character takes its English voice (Andrew)', narrator === 'tts-voice-en-US-AndrewMultilingualNeural', narrator);
 
     check('no errors on the page', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);
+    await azure.close().catch(() => undefined);
     try {
       execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
     } catch {

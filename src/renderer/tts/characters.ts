@@ -6,30 +6,28 @@ import type { MessageKey } from '@shared/i18n';
  * documentary narrator, the radio host, the excited YouTuber, the storyteller,
  * a child, a monster, a robot - as CapCut's and Filmora's voice characters
  * offer them. Each is only a starting point: the voice, sliders and style it
- * sets stay free to change. The voices named are the installer's own
- * (main/tts/catalog.ts), a Spanish one and, for a script in English, an
- * English one; one that is missing falls back to any voice present.
+ * sets stay free to change. Each names an Azure voice by its `ShortName`
+ * (main/tts/azure/voices.ts), a Spanish one and, for a script in English, an
+ * English one; a voice the person's key cannot speak falls back to one it can
+ * (VoicePanel.pick), so a character always does something.
  *
- * The Spanish voice of every character is a PIPER voice, each trained on
- * Spanish alone and chosen for its region: es-MX-claude and es-AR-daniela are
- * the two at 'high' quality, so they go where the voice is heard clean, and the
- * medium ones go where an effect covers it (the monster's cave, the robot).
+ * The Spanish voices are chosen by region and by what the character is:
+ * Mexico's Jorge and Dalia carry the narrator and the YouTuber, Argentina's
+ * Elena the host and the child, Colombia's Salomé the news, and Spain's
+ * Elvira and Álvaro the storyteller and the grandfather. Where an effect
+ * covers the voice anyway - the monster's cave, the robot - the choice
+ * matters least, so the same male voice does both.
  *
- * They used to be Kokoro's es-419 voices. Kokoro is one model for eight
- * languages trained on a few hundred hours in all (its own model card gives no
- * per-language figure), and its Spanish carries the accent of a model that is
- * mostly English - which is what 'the Mexican sounds American' was. Nothing had
- * to be downloaded to fix it: every Piper voice named here already ships in the
- * installer (build/tts-voices), they were simply not being used. Kokoro's
- * Spanish voices are still in the list to pick by hand, and its English ones
- * stay the English characters' - English is the language it was built for.
+ * They used to be Piper's and Kokoro's voices, trained models that ran on
+ * this computer. Those two engines are gone; these are the voices behind the
+ * free text-to-speech pages, which is what was asked for.
  */
 
 export interface VoiceCharacter {
   id: string;
   label: MessageKey;
   voice: string;
-  /** The voice when the script is in English (Kokoro's English voices). */
+  /** The voice when the script is in English. */
   voiceEn?: string;
   speed: number;
   pitch: number;
@@ -37,18 +35,18 @@ export interface VoiceCharacter {
 }
 
 export const VOICE_CHARACTERS: readonly VoiceCharacter[] = [
-  { id: 'narrator', label: 'tts.character.narrator', voice: 'es-MX-claude', voiceEn: 'en-US-michael', speed: 0.92, pitch: -1, effect: 'warm' },
-  { id: 'host', label: 'tts.character.host', voice: 'es-AR-daniela', voiceEn: 'en-US-heart', speed: 1, pitch: 0, effect: 'radio' },
-  { id: 'youtuber', label: 'tts.character.youtuber', voice: 'es-MX-claude', voiceEn: 'en-US-bella', speed: 1.15, pitch: 1, effect: 'none' },
-  { id: 'news', label: 'tts.character.news', voice: 'es-AR-daniela', voiceEn: 'en-GB-emma', speed: 1.05, pitch: 0, effect: 'radio' },
-  { id: 'storyteller', label: 'tts.character.storyteller', voice: 'es-ES-sharvard', voiceEn: 'en-GB-george', speed: 0.88, pitch: 0.5, effect: 'warm' },
-  { id: 'grandpa', label: 'tts.character.grandpa', voice: 'es-ES-davefx', voiceEn: 'en-GB-george', speed: 0.9, pitch: 0, effect: 'warm' },
-  { id: 'child', label: 'tts.character.child', voice: 'es-AR-daniela', voiceEn: 'en-US-bella', speed: 1.05, pitch: 6, effect: 'none' },
-  { id: 'monster', label: 'tts.character.monster', voice: 'es-MX-ald', voiceEn: 'en-US-fenrir', speed: 0.9, pitch: -6, effect: 'cave' },
-  { id: 'robot', label: 'tts.character.robot', voice: 'es-MX-ald', voiceEn: 'en-US-michael', speed: 1, pitch: 0, effect: 'robot' },
-  { id: 'call', label: 'tts.character.call', voice: 'es-AR-daniela', voiceEn: 'en-US-heart', speed: 1, pitch: 0, effect: 'phone' },
-  { id: 'whisper', label: 'tts.character.whisper', voice: 'es-ES-sharvard', voiceEn: 'en-US-heart', speed: 0.9, pitch: 0, effect: 'whisper' },
-  { id: 'announcer', label: 'tts.character.announcer', voice: 'es-MX-claude', voiceEn: 'en-US-fenrir', speed: 1, pitch: -1, effect: 'stadium' },
+  { id: 'narrator', label: 'tts.character.narrator', voice: 'es-MX-JorgeNeural', voiceEn: 'en-US-AndrewMultilingualNeural', speed: 0.92, pitch: -1, effect: 'warm' },
+  { id: 'host', label: 'tts.character.host', voice: 'es-AR-ElenaNeural', voiceEn: 'en-US-AvaMultilingualNeural', speed: 1, pitch: 0, effect: 'radio' },
+  { id: 'youtuber', label: 'tts.character.youtuber', voice: 'es-MX-DaliaNeural', voiceEn: 'en-US-JennyNeural', speed: 1.15, pitch: 1, effect: 'none' },
+  { id: 'news', label: 'tts.character.news', voice: 'es-CO-SalomeNeural', voiceEn: 'en-US-AriaNeural', speed: 1.05, pitch: 0, effect: 'radio' },
+  { id: 'storyteller', label: 'tts.character.storyteller', voice: 'es-ES-ElviraNeural', voiceEn: 'en-GB-RyanNeural', speed: 0.88, pitch: 0.5, effect: 'warm' },
+  { id: 'grandpa', label: 'tts.character.grandpa', voice: 'es-ES-AlvaroNeural', voiceEn: 'en-GB-RyanNeural', speed: 0.9, pitch: 0, effect: 'warm' },
+  { id: 'child', label: 'tts.character.child', voice: 'es-AR-ElenaNeural', voiceEn: 'en-US-JennyNeural', speed: 1.05, pitch: 6, effect: 'none' },
+  { id: 'monster', label: 'tts.character.monster', voice: 'es-MX-JorgeNeural', voiceEn: 'en-US-GuyNeural', speed: 0.9, pitch: -6, effect: 'cave' },
+  { id: 'robot', label: 'tts.character.robot', voice: 'es-MX-JorgeNeural', voiceEn: 'en-US-GuyNeural', speed: 1, pitch: 0, effect: 'robot' },
+  { id: 'call', label: 'tts.character.call', voice: 'es-AR-ElenaNeural', voiceEn: 'en-US-AvaMultilingualNeural', speed: 1, pitch: 0, effect: 'phone' },
+  { id: 'whisper', label: 'tts.character.whisper', voice: 'es-ES-ElviraNeural', voiceEn: 'en-US-AvaMultilingualNeural', speed: 0.9, pitch: 0, effect: 'whisper' },
+  { id: 'announcer', label: 'tts.character.announcer', voice: 'es-MX-JorgeNeural', voiceEn: 'en-US-GuyNeural', speed: 1, pitch: -1, effect: 'stadium' },
 ];
 
 /** The styles, in the order the panel shows them. */

@@ -2,10 +2,10 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 /**
  * The little bit of WAV handling text-to-speech needs: reading the PCM out of
- * the mono 16-bit files Piper writes, and joining several of them (one per
+ * the mono 16-bit files the service returns, and joining several of them (one per
  * chunk of text) into the single clip that lands on the timeline.
  *
- * Only the shape Piper produces is handled - PCM (format 1), one channel, 16
+ * Only the shape asked for is handled - PCM (format 1), one channel, 16
  * bits - because that is the only thing that is ever read here. The chunks all
  * come from the same voice, so they share a sample rate; it is taken from the
  * first file and the rest are trusted to match.
@@ -17,14 +17,15 @@ export interface WavData {
   samples: Int16Array;
 }
 
-/** The PCM out of one Piper WAV. Throws if it is not the expected shape. */
+/** The PCM out of one WAV. Throws if it is not the expected shape. */
 export async function readWav(path: string): Promise<WavData> {
   const buffer = await readFile(path);
   if (buffer.length < 44 || buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
     throw new Error('Not a WAV file');
   }
-  // Walk the chunks to find fmt and data; Piper's header is canonical, but a
-  // walk costs nothing and does not break if a LIST chunk ever appears.
+  // Walk the chunks to find fmt and data; the header that comes back is
+  // canonical (riff-24khz-16bit-mono-pcm), but a walk costs nothing and does
+  // not break if a LIST chunk ever appears.
   let offset = 12;
   let sampleRate = 0;
   let channels = 0;

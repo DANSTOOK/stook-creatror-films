@@ -147,10 +147,6 @@ export const IPC = {
   captionsWriteSidecar: 'captions:write-sidecar',
   captionsWriteTemp: 'captions:write-temp',
   ttsStatus: 'tts:status',
-  ttsVoiceDownload: 'tts:voice-download',
-  ttsVoiceCancel: 'tts:voice-cancel',
-  ttsVoiceDelete: 'tts:voice-delete',
-  ttsVoiceProgress: 'tts:voice-progress',
   ttsPreview: 'tts:preview',
   ttsGenerate: 'tts:generate',
   ttsCancel: 'tts:cancel',
@@ -325,7 +321,7 @@ export interface CaptionProgressEvent {
 
 /* Text to speech ------------------------------------------------------------- */
 
-/** A voice id from main/tts/catalog.ts, e.g. 'es-ES-davefx'. */
+/** A voice id: Azure's own `ShortName`, e.g. 'es-MX-DaliaNeural'. */
 export type TtsVoiceId = string;
 
 /** A character for a generated voice (main/tts/finish.ts). */
@@ -333,9 +329,7 @@ export type TtsEffect = 'none' | 'warm' | 'radio' | 'phone' | 'megaphone' | 'rob
 
 export interface TtsVoiceStatus {
   id: TtsVoiceId;
-  /** Which program speaks it, or 'azure' for a voice spoken over the network. */
-  engine: 'piper' | 'kokoro' | 'azure';
-  /** A person's name for it (Dora, Aldo, ...). */
+  /** A person's name for it (Dalia, Jorge, ...). */
   name: string;
   /** What it sounds like, as an i18n key's last part (tts.persona.<persona>). */
   persona: string;
@@ -343,16 +337,11 @@ export interface TtsVoiceStatus {
   region: string;
   sex: 'male' | 'female';
   licence: string;
-  /** Part of the installer: always here, never downloaded. */
-  bundled: boolean;
-  /** On this computer and ready to use (bundled, or downloaded and verified). */
-  present: boolean;
-  /** Bytes to fetch for a downloadable voice not yet here; 0 when bundled or present. */
-  downloadBytes: number;
   /**
    * The expressive styles this voice has, for Azure's `<mstts:express-as>`
-   * (e.g. 'newscast', 'cheerful'). Empty for a voice with none and for every
-   * local voice: only Azure's own voices list knows which voice has any.
+   * (e.g. 'newscast', 'cheerful'). Empty for a voice with none: only Azure's
+   * own voices list knows which voice has any, and offering a style a voice
+   * ignores in silence would be a lie.
    */
   styles?: string[];
 }
@@ -372,9 +361,9 @@ export interface AzureSpeechStatus {
 }
 
 export interface TtsEngineStatus {
-  /** The text-to-speech program is part of this build. */
+  /** There is a key that works and voices it can speak. */
   available: boolean;
-  /** This engine (Piper) controls speed but not pitch. */
+  /** Azure changes the pitch inside the model, so the panel may offer it. */
   supportsPitch: boolean;
   /**
    * The audio is machine-generated; the chosen engine's licence may require
@@ -382,16 +371,8 @@ export interface TtsEngineStatus {
    */
   disclosureRequired: boolean;
   voices: TtsVoiceStatus[];
-  /** Where downloadable voices come from, as the permission prompt names it. */
-  voiceSource: string;
   /** The Azure account, for the panel's own section. Never carries the key. */
   azure: AzureSpeechStatus;
-}
-
-export interface TtsVoiceProgress {
-  id: TtsVoiceId;
-  received: number;
-  total: number;
 }
 
 export interface TtsRequest {
@@ -1059,13 +1040,8 @@ export interface FilmoraApi {
    */
   captionsWriteTemp?(srt: string): Promise<string>;
 
-  /* Text to speech: voices synthesised on this computer. Optional, like captions. */
+  /* Text to speech: Azure's voices on the person's own key. Optional, like captions. */
   ttsStatus?(): Promise<TtsEngineStatus>;
-  /** Download an optional voice from its pinned source and verify it. Uses the network: ask first. */
-  ttsVoiceDownload?(id: TtsVoiceId): Promise<TtsEngineStatus>;
-  ttsVoiceCancel?(id: TtsVoiceId): Promise<void>;
-  ttsVoiceDelete?(id: TtsVoiceId): Promise<TtsEngineStatus>;
-  onTtsVoiceProgress?(listener: (progress: TtsVoiceProgress) => void): () => void;
   /** Synthesise a short preview and return a playable data URL. */
   ttsPreview?(request: TtsRequest): Promise<string>;
   /** Synthesise the full text to a WAV on disk; returns the path for import. */

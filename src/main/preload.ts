@@ -16,7 +16,6 @@ import {
   type CaptionProgressEvent,
   type CaptionTranscribeResult,
   type TtsEngineStatus,
-  type TtsVoiceProgress,
   type TtsProgressEvent,
   type TtsResult,
   type MatteEngineStatus,
@@ -276,16 +275,6 @@ const api: FilmoraApi = {
   captionsWriteTemp: (srt) => ipcRenderer.invoke(IPC.captionsWriteTemp, srt) as Promise<string>,
 
   ttsStatus: () => ipcRenderer.invoke(IPC.ttsStatus) as Promise<TtsEngineStatus>,
-  ttsVoiceDownload: (id) => ipcRenderer.invoke(IPC.ttsVoiceDownload, id) as Promise<TtsEngineStatus>,
-  ttsVoiceCancel: (id) => ipcRenderer.invoke(IPC.ttsVoiceCancel, id) as Promise<void>,
-  ttsVoiceDelete: (id) => ipcRenderer.invoke(IPC.ttsVoiceDelete, id) as Promise<TtsEngineStatus>,
-  onTtsVoiceProgress(listener) {
-    const handler = (_event: unknown, progress: TtsVoiceProgress): void => listener(progress);
-    ipcRenderer.on(IPC.ttsVoiceProgress, handler);
-    return () => {
-      ipcRenderer.off(IPC.ttsVoiceProgress, handler);
-    };
-  },
   ttsPreview: (request) => ipcRenderer.invoke(IPC.ttsPreview, request) as Promise<string>,
   ttsGenerate: (jobId, request) => ipcRenderer.invoke(IPC.ttsGenerate, jobId, request) as Promise<TtsResult>,
   ttsCancel: (jobId) => ipcRenderer.invoke(IPC.ttsCancel, jobId) as Promise<void>,

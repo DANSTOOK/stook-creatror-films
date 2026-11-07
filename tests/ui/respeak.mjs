@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
+import { signIn, standIn } from './azure-stub.mjs';
 
 /**
  * Saying a voice clip again: `node tests/ui/respeak.mjs`
@@ -15,14 +16,12 @@ import { _electron as electron } from 'playwright';
  *      second voice appearing beside the first.
  *   4. One undo brings the old voice back, words and all.
  *
- * Needs a build and the staged build/ (piper and its voices). The window is
- * never shown.
+ * Needs a build. The voices are Azure's, stood in for on 127.0.0.1, so this
+ * runs with no key and no network. The window is never shown.
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const work = join(root, '.ui-tmp', 'respeak');
-const ttsDir = join(root, 'build', 'piper');
-const voicesDir = join(root, 'build', 'tts-voices');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
 const checks = [];
@@ -54,11 +53,11 @@ const voiceClip = (window) =>
 
 async function main() {
   if (!existsSync(join(root, 'dist-electron/main/index.js'))) throw new Error('No build: run npm run build first.');
-  for (const [path, what] of [[ttsDir, 'piper'], [voicesDir, 'the voices']]) {
-    if (!existsSync(path)) throw new Error(`Missing ${what} at ${path} - stage build/ first.`);
-  }
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
+
+  const azure = standIn();
+  const endpoint = await azure.listen();
 
   const app = await electron.launch({
     args: [`--user-data-dir=${join(work, `profile-${process.pid}`)}`, join(root, 'dist-electron/main/index.js')],
@@ -70,9 +69,7 @@ async function main() {
       SCF_BACKGROUND: '1',
       SCF_SKIP_HOME: '1',
       SCF_NO_CLOSE_PROMPT: '1',
-      SCF_TTS_DIR: ttsDir,
-      SCF_TTS_BUNDLED_DIR: voicesDir,
-      SCF_TTS_VOICES_DIR: join(work, 'downloaded-voices'),
+      SCF_AZURE_ENDPOINT: endpoint,
     },
   });
   const pid = app.process().pid;
@@ -86,8 +83,7 @@ async function main() {
 
     console.log('1. a voice, and what it remembers');
     const first = 'Hola, esta es la primera versión de la locución.';
-    await window.getByTestId('library-tab-voice').click();
-    await window.getByTestId('tts-text').waitFor({ state: 'visible', timeout: 15_000 });
+    await signIn(window);
     // The voice list is inside step two, which folds itself once a voice is
     // chosen; both are opened the way a person opens them.
     await window.getByTestId('tts-step-2-header').click();
@@ -154,6 +150,7 @@ async function main() {
     check('no errors on the page', issues.length === 0, issues.slice(0, 3).join(' | '));
   } finally {
     await app.close().catch(() => undefined);
+    await azure.close().catch(() => undefined);
     try { execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {}
   }
   const passed = checks.filter(Boolean).length;

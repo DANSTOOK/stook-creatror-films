@@ -24,8 +24,10 @@ import { VoiceAvatar } from './VoiceAvatar';
  * exactly that text lands at the playhead on a Voice track. Captions of it
  * are an option, off unless ticked.
  *
- * The voices ship in the installer (main/tts/catalog.ts): Kokoro's, the most
- * natural, and Piper's, the quickest. Everything runs on this computer.
+ * The voices are Microsoft's, spoken by Azure AI Speech on the person's own
+ * key (main/tts/azure/). There is no engine in the installer any more, so
+ * until a key is saved the panel has nothing to offer but the box to save one
+ * in - which is why that section is reachable from the empty state too.
  */
 
 const SEX: Record<TtsVoiceStatus['sex'], MessageKey> = { male: 'tts.male', female: 'tts.female' };
@@ -147,7 +149,9 @@ export function VoicePanel(): JSX.Element {
     };
   }, []);
 
-  const voices = useMemo(() => (status?.voices ?? []).filter((voice) => voice.present), [status]);
+  // Every voice in the status is one the stored key can actually speak: the
+  // main side intersects the shortlist with Azure's own list for that key.
+  const voices = useMemo(() => status?.voices ?? [], [status]);
   const forLanguage = useMemo(() => voices.filter((voice) => voice.language === language), [voices, language]);
   const voice = forLanguage.find((candidate) => candidate.id === voiceId) ?? forLanguage[0];
   const azure = status?.azure;
@@ -254,9 +258,8 @@ export function VoicePanel(): JSX.Element {
    * Azure's own section.
    *
    * Defined here rather than inline because it is also the whole of what the
-   * panel can offer when there is no voice on this computer at all: without
-   * it, a build with no local engine - or one whose voices have been removed
-   * - would show a dead end with no way to reach the voices that do work.
+   * panel can offer before a key is saved: without it, a fresh install would
+   * show a dead end with no way to reach the only voices there are.
    */
   const azureSection = (
     <details className="rounded-control bg-panel-900/60 px-2 py-1" data-testid="tts-azure">
@@ -509,12 +512,13 @@ export function VoicePanel(): JSX.Element {
                     }}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-xs text-slate-100">
-                        {item.name}
-                        <span className="rounded bg-panel-800 px-1 text-[10px] uppercase tracking-wide text-slate-400">
-                          {t(item.engine === 'azure' ? 'tts.engineAzure' : item.engine === 'kokoro' ? 'tts.engineNatural' : 'tts.engineQuick')}
-                        </span>
-                      </span>
+                      {/*
+                        * No engine badge: every voice here is spoken by the
+                        * same service, and a tag that says the same thing on
+                        * every row tells a person nothing. It was there when
+                        * there were three engines to tell apart.
+                        */}
+                      <span className="flex items-center gap-1.5 text-xs text-slate-100">{item.name}</span>
                       <span className="block truncate text-2xs text-slate-400">
                         {item.region} · {t(SEX[item.sex])} · {t(`tts.persona.${item.persona}` as MessageKey)}
                       </span>

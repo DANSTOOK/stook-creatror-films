@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinSteps, scriptSteps, workerPlan } from '@main/tts/synth';
+import { joinSteps, scriptSteps } from '@main/tts/synth';
 import { trimSilence } from '@main/tts/wav';
 
 /**
@@ -60,22 +60,5 @@ describe('trimSilence', () => {
   it('a piece with no sound in it comes back empty; one with no silence comes back whole', () => {
     expect(trimSilence(new Int16Array(500), RATE).length).toBe(0);
     expect(trimSilence(tone(0.3), RATE, { fade: 0 })).toEqual(tone(0.3));
-  });
-});
-
-describe('workerPlan', () => {
-  const GB = 1024 * 1024 * 1024;
-  it('up to six engines of two threads on a big machine, one on a small one, half the cores left over', () => {
-    expect(workerPlan(24)).toEqual({ workers: 6, threads: 2 });
-    expect(workerPlan(12)).toEqual({ workers: 3, threads: 2 });
-    expect(workerPlan(8)).toEqual({ workers: 2, threads: 2 });
-    expect(workerPlan(4)).toEqual({ workers: 1, threads: 2 });
-    expect(workerPlan(1)).toEqual({ workers: 1, threads: 1 });
-  });
-
-  it('free memory caps them: each holds the model, and 2 GB stay spare', () => {
-    expect(workerPlan(24, 3 * GB)).toEqual({ workers: 2, threads: 4 });
-    expect(workerPlan(24, 1 * GB)).toEqual({ workers: 1, threads: 4 });
-    expect(workerPlan(24, 20 * GB)).toEqual({ workers: 6, threads: 2 });
   });
 });
